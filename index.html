@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-180.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="css/style.css?v=b19">
+<link rel="stylesheet" href="css/style.css?v=b20">
 </head>
 <body>
 <div id="viewport">
@@ -50,7 +50,7 @@
       <div class="paytable" id="paytable"></div>
 
       <div class="cabinet" id="cabinet">
-        <div class="cab19d" id="cab19d">
+        <div class="cab20d" id="cab20d">
         <div class="led l"></div><div class="led r"></div>
         <div class="rim"></div>
         <div class="frame"></div>
@@ -106,7 +106,7 @@
     <div id="toast"></div>
     <div id="meter"></div>
     <!-- 最初のタップで音声を有効化する（ブラウザ/OSの自動再生制限への対応） -->
-    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p class="tap">TAP TO START</p><p class="ok">決定ボタンでスタート</p></div><small id="ver">b19</small></div>
+    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p class="tap">TAP TO START</p><p class="ok">決定ボタンでスタート</p></div><small id="ver">b20</small></div>
   </div>
   <div id="rotate"><div>端末を横向きにしてご利用ください</div></div>
 </div>
@@ -116,16 +116,16 @@
 window.addEventListener('error', function (e) {
   var d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal' }));
   d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;padding:10px 14px;border-radius:10px;background:#7a211a;color:#fff;font:14px/1.5 sans-serif;white-space:pre-wrap';
-  d.textContent = 'エラー (b19): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
+  d.textContent = 'エラー (b20): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
 });
 </script>
-<script src="js/engine.js?v=b19"></script>
-<script src="js/store.js?v=b19"></script>
-<script src="js/audio.js?v=b19"></script>
-<script src="js/reel.js?v=b19"></script>
-<script src="js/fx.js?v=b19"></script>
-<script src="js/admin.js?v=b19"></script>
-<script src="js/tv.js?v=b19"></script>
-<script src="js/game.js?v=b19"></script>
+<script src="js/engine.js?v=b20"></script>
+<script src="js/store.js?v=b20"></script>
+<script src="js/audio.js?v=b20"></script>
+<script src="js/reel.js?v=b20"></script>
+<script src="js/fx.js?v=b20"></script>
+<script src="js/admin.js?v=b20"></script>
+<script src="js/tv.js?v=b20"></script>
+<script src="js/game.js?v=b20"></script>
 </body>
 </html>
