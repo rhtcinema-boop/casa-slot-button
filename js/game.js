@@ -266,7 +266,7 @@ const Game = (function () {
         const v = Engine.validateProbs(s.probs);
         if (!v.ok) throw new Error('probs');
         const now = Date.now();
-        s.hits = Engine.pruneHits(s.hits, now);
+        s.hits = Engine.pruneHits(s.hits, now, s.limits && s.limits.resetHour);
         const blocked = Engine.blockedKeys(s.limits, s.hits, now);
         res = Engine.drawProb(s.probs, undefined, blocked);
         if (res.value > 0) s.hits.push({ ts: now, key: res.key });
@@ -292,21 +292,48 @@ const Game = (function () {
      当たり・NEXT で止まるとき …「ハズレと思いきや当たり」: 0 で止まりかけて滑る／0 に行きかけて戻る／0 で一度止まって再始動
      DRAMA はその演出が出る割合（ステージ別）。 */
   const DRAMA = { lose: [0, 0.55, 0.7, 0.9], win: [0, 0.5, 0.65, 0.85] };
+  const RESPIN_RATE = [0, 0.1, 0.12, 0.15]; // 当たりのとき ONE MORE CHANCE になる割合（ステージ別）
+
+  /* 停止パターンのカタログ（100通り）。止まりかけ回数(1〜3) × 各回の間(短/普通/長) × 行き過ぎて戻る × じわじわ入る の
+     組み合わせを、固定の乱数で並べ替えて先頭100個を使う（毎回同じ100通り）。重さは変わらない（数値の組み合わせだけ）。 */
+  const PATTERNS = (function () {
+    let seed = 20260930;
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const all = [];
+    [1, 2, 3].forEach((pre) => {
+      const combos = [[]];
+      for (let i = 0; i < pre; i++) { const next = []; combos.forEach((c) => ['s', 'n', 'l'].forEach((h) => next.push(c.concat(h)))); combos.length = 0; combos.push(...next); }
+      combos.forEach((holds) => [0, 1].forEach((over) => [0, 1].forEach((crawl) => { if (!(over && crawl)) all.push({ pre, holds, over: !!over, crawl: !!crawl }); })));
+    });
+    for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = all[i]; all[i] = all[j]; all[j] = t; }
+    return all.slice(0, 100).map((p, i) => Object.assign({ id: i + 1 }, p));
+  })();
+  const HOLD_SEC = { s: [0.25, 0.3, 0.35], n: [0.45, 0.6, 0.8], l: [0.7, 1.0, 1.3] }; // ステージ別（1,2,3）
+
+  /* 直近20回に使ったパターンは避けて選ぶ。使ったパターンは端末に記録する */
+  function pickCatalog() {
+    const used = Store.state.patHist || [];
+    const pool = PATTERNS.filter((p) => used.indexOf(p.id) < 0);
+    const p = (pool.length ? pool : PATTERNS)[Math.floor(Math.random() * (pool.length ? pool.length : PATTERNS.length))];
+    try { Store.transact((s) => { s.patHist = (s.patHist || []).concat(p.id).slice(-20); }); } catch (err) { /* 記録のみ */ }
+    return p;
+  }
   function pickPattern(st, sym) {
     if (window.__fxTest && window.__fxTest.pat) return window.__fxTest.pat; // 演出確認用（結果には影響しない）
-    const good = st === 3 ? [100000, 50000] : ['NEXT', st === 1 ? 1000 : 5000];
-    const k = Math.random();
-    if (sym === 0) {
-      if (Math.random() > DRAMA.lose[st]) return { type: 'plain' };
-      if (k < 0.4) return { type: 'slip', bait: [good[0]] };
-      if (k < 0.75) return { type: 'back', bait: [good[0]] };
-      return { type: 'slip2', bait: [good[1], good[0]] };
-    }
-    if (Math.random() > DRAMA.win[st]) return { type: Math.random() < 0.5 ? 'plain' : 'slip' };
-    if (k < 0.3) return { type: 'slip', bait: [0] };
-    if (k < 0.55) return { type: 'back', bait: [0] };
-    if (k < 0.75) return { type: 'slip2', bait: [null, 0] };
-    return { type: 'respin' };
+    const isWin = sym !== 0;
+    if (Math.random() > (isWin ? DRAMA.win : DRAMA.lose)[st]) return { type: 'plain' };
+    if (isWin && Math.random() < RESPIN_RATE[st]) return { type: 'respin' };
+    const p = pickCatalog();
+    // 止まりかけ地点で見せる絵柄: 当たりなら「0 や下の金額」、ハズレなら「NEXT や高額」を地点ごとにランダムに
+    const strip = Engine.STAGE_DEFS[st - 1];
+    const amounts = strip.values.filter((v) => v > 0);
+    const lower = typeof sym === 'number' ? amounts.filter((v) => v < sym) : amounts;
+    const winBaits = [0, 0].concat(lower);                                   // 0 を多めに
+    const loseBaits = (strip.hasNext ? ['NEXT', 'NEXT'] : []).concat(amounts.slice(-2)); // NEXT と高額
+    const src = isWin ? winBaits : loseBaits;
+    const bait = [];
+    for (let i = 0; i < p.pre + (p.over ? 1 : 0); i++) bait.push(Math.random() < 0.8 ? src[Math.floor(Math.random() * src.length)] : null);
+    return { type: 'seq', pre: p.pre, holds: p.holds.map((h) => HOLD_SEC[h][st - 1]), over: p.over, crawl: p.crawl, bait, id: p.id };
   }
 
   /* ---------- 確定演出（虹） ----------
