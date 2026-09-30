@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="casa SLOT">
+<meta name="theme-color" content="#050506">
+<meta name="format-detection" content="telephone=no">
+<title>casa SLOT</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-180.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="css/style.css?v=b1">
+</head>
+<body>
+<div id="viewport">
+  <div id="stage" data-stage="1">
+    <div class="bg bg1"></div><div class="bg bg2"></div><div class="bg bg3"></div>
+    <div class="lattice"></div>
+    <div class="tline"></div>
+    <div class="rays"></div>
+    <div class="rays2"></div>
+    <div class="beams"><i class="beam l"></i><i class="beam r"></i><i class="beam l2"></i><i class="beam r2"></i></div>
+    <div class="vignette"></div>
+
+    <div id="content">
+      <div class="spot"></div>
+
+      <header class="marquee">
+        <span class="rule"></span>
+        <h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1>
+        <span class="rule r"></span>
+      </header>
+
+      <!-- 長押しでPIN入力（設定画面への隠し入口） -->
+      <div id="crest"><div class="logo-emblem"></div></div>
+
+      <div class="ladder" id="ladder">
+        <div class="rung" data-s="3"><small>STAGE</small><b>3</b><em>FINAL</em></div>
+        <div class="rail"><i></i><i></i><i></i></div>
+        <div class="rung" data-s="2"><small>STAGE</small><b>2</b></div>
+        <div class="rail"><i></i><i></i><i></i></div>
+        <div class="rung" data-s="1"><small>STAGE</small><b>1</b></div>
+      </div>
+
+      <!-- テーブルに置かれたチップとカード -->
+      <div class="props">
+        <div class="mini-card" style="left:6px;bottom:6px;transform:rotate(-20deg)"><b>A</b><i>&#9824;</i></div>
+        <div class="mini-card" style="left:44px;bottom:12px;transform:rotate(-6deg)"><b>K</b><i>&#9824;</i></div>
+        <div class="stack" style="left:150px;height:118px;--c:#1b1b20;--s:#e9c25e"></div>
+        <div class="stack" style="left:214px;height:84px;--c:#d8261c;--s:#ffffff"></div>
+        <div class="stack acc" style="left:122px;height:56px"></div>
+      </div>
+
+      <div class="cabinet" id="cabinet">
+        <div class="cab3d" id="cab3d">
+        <div class="led l"></div><div class="led r"></div>
+        <div class="rim"></div>
+        <div class="frame"></div>
+        <div class="bulbs" id="bulbs"></div>
+        <div class="window" id="window">
+          <canvas id="reel"></canvas>
+          <div class="payglow"></div>
+          <div class="shade"></div>
+          <div class="glass"></div>
+        </div>
+        <div class="sheen"></div>
+        <i class="gem tl"></i><i class="gem tr"></i><i class="gem bl"></i><i class="gem br"></i>
+        <div class="pointer l"></div><div class="pointer r"></div>
+        </div>
+      </div>
+
+      <div class="plate" id="plate">
+        <div class="plate-main" id="plateMain"></div>
+        <div class="plate-sub" id="plateSub"></div>
+      </div>
+
+      <button class="help-btn" id="helpBtn" aria-label="遊び方">?</button>
+      <div class="credit-box"><div><small>CREDIT</small><b id="credit">0</b></div><div><small>TOTAL</small><b id="total">0</b></div></div>
+
+      <div class="lever spinwrap" id="lever">
+        <button class="spin-btn" id="spinBtn" type="button"><small>SPIN</small><b>スロットを<br>回す</b></button>
+        <div class="lever-led" id="leverLed">READY</div>
+      </div>
+
+      <div id="dim"></div>
+
+      <div class="banner" id="banner">
+        <div class="banner-rays"></div>
+        <div class="banner-label" id="bannerLabel"></div>
+        <div class="banner-value" id="bannerValue"></div>
+        <canvas id="bannerCv"></canvas>
+      </div>
+
+
+      <div class="lockbar" id="lockbar"></div>
+    </div>
+
+    <div id="flash"></div>
+    <div class="shutter top"><div class="shutter-edge"></div></div>
+    <div class="shutter bottom"><div class="shutter-edge"></div></div>
+    <div id="doors"></div>
+    <div id="trans"></div>
+    <div class="seam"></div>
+    <div class="shutter-rays"></div>
+    <div class="shutter-label" id="shutterLabel"><small>STAGE</small><b>2</b><em></em></div>
+    <div id="fxwrap"><canvas id="fx"></canvas></div>
+    <div id="blackout"></div>
+    <div class="speedlines"></div>
+
+    <div id="ui"></div>
+    <div id="toast"></div>
+    <div id="meter"></div>
+    <!-- 最初のタップで音声を有効化する（ブラウザ/OSの自動再生制限への対応） -->
+    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p>TAP TO START</p></div><small id="ver">b1</small></div>
+  </div>
+  <div id="rotate"><div>端末を横向きにしてご利用ください</div></div>
+</div>
+
+<script>
+/* 起動や動作中にエラーが起きたら画面に表示する（原因調査用） */
+window.addEventListener('error', function (e) {
+  var d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal' }));
+  d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;padding:10px 14px;border-radius:10px;background:#7a211a;color:#fff;font:14px/1.5 sans-serif;white-space:pre-wrap';
+  d.textContent = 'エラー (b1): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
+});
+</script>
+<script src="js/engine.js?v=b1"></script>
+<script src="js/store.js?v=b1"></script>
+<script src="js/audio.js?v=b1"></script>
+<script src="js/reel.js?v=b1"></script>
+<script src="js/fx.js?v=b1"></script>
+<script src="js/admin.js?v=b1"></script>
+<script src="js/game.js?v=b1"></script>
+</body>
+</html>
