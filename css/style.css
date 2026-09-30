@@ -1328,3 +1328,11 @@ body.is-tv .help-btn { opacity: .5; }
 .credit-box, .recent, .lockbar .res, .rung { box-sizing: border-box; }
 .ladder { transform: none; }
 body.tv #crest.tvfocus { border-radius: 22px; }
+
+/* ---------- テレビ版の軽量化: 常時動く飾りを止める（一回きりの演出は残す） ---------- */
+body.is-tv .bulbs i, body.is-tv .led, body.is-tv .pointer, body.is-tv .rung.on, body.is-tv .vignette, body.is-tv .sheen::before, body.is-tv .rim,
+body.is-tv .lockbar .side .btn, body.is-tv .rail i, body.is-tv .plate.idle .plate-main, body.is-tv .rays, body.is-tv .rays2, body.is-tv .beam, body.is-tv .spot, body.is-tv .tline { animation: none !important; }
+body.is-tv .rays, body.is-tv .rays2, body.is-tv .beams, body.is-tv .sheen, body.is-tv .rim, body.is-tv .lattice { display: none !important; }
+body.is-tv .frame, body.is-tv .rung, body.is-tv .recent, body.is-tv .credit-box, body.is-tv .lockbar .res, body.is-tv .paytable .ps { filter: none !important; }
+body.is-tv .bulbs { opacity: .35; }
+body.is-tv #content, body.is-tv #fxwrap { transform-origin: 770px 420px; }
