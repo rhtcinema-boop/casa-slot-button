@@ -211,17 +211,17 @@ const Admin = (function () {
     return '<div class="summary">' +
       Engine.STAGE_DEFS.map((d) => stat('STAGE ' + d.stage + ' の合計', st.sums[d.stage] + '%', st.sums[d.stage] === 100 ? 'ok' : 'ng')).join('') +
       stat('当選する確率（0以外）', pct(st.win)) + stat('STAGE 2 に進む確率', pct(st.reach[2])) + stat('STAGE 3 に進む確率', pct(st.reach[3])) +
-      stat('1プレイの平均当選額', fmtN(Math.round(st.ev))) + '</div>' +
+      '</div><div class="summary">' + stat('最終期待値（1回あたりの平均当選額）', fmtN(Math.round(st.ev))) + '</div>' +
       errorsHtml(v.errors, changed ? '入力内容に問題はありません。保存すると次のプレイから反映されます。' : '') +
       '<div class="acts"><button class="btn ghost" data-act="prob-reset" ' + (changed ? '' : 'disabled') + '>元に戻す</button>' +
       '<button class="btn" data-act="prob-save" ' + (v.ok && changed ? '' : 'disabled') + '>確率を保存</button></div>';
   }
   function viewProbs() {
     const s = Store.state, ses = s.session;
-    return '<div class="panel"><h4>各ステージの確率</h4><p class="hint">ステージごとに、それぞれの目で止まる確率（％）を入力します。各ステージの合計をちょうど 100% にしてください。NEXT STAGE は次のステージに進む確率です。プレイヤー画面には確率は表示されません。</p></div>' +
+    return '<div class="panel"><h4>各ステージの確率</h4><p class="hint">ステージごとに、それぞれの目で止まる確率（％）を ◀ ▶ で増減します。各ステージの合計をちょうど 100% にしてください。NEXT STAGE は次のステージに進む確率です。プレイヤー画面には確率は表示されません。</p></div>' +
       '<div class="cols3">' + Engine.STAGE_DEFS.map((d) =>
         '<div class="panel"><h4>STAGE ' + d.stage + '</h4>' +
-        Engine.probKeys(d).map((k) => '<div class="row"><div class="lbl">' + probLabel(k) + '</div><div class="stepper"><input class="num" type="number" inputmode="decimal" min="0" max="100" step="0.01" value="' + probForm[d.stage][k] + '" data-p="' + d.stage + ':' + k + '"><span style="font-size:20px;color:#a89f89">%</span></div></div>').join('') +
+        Engine.probKeys(d).map((k) => { const p = d.stage + ':' + k; return '<div class="row"><div class="lbl">' + probLabel(k) + '</div><div class="stepper pstep"><button data-act="pstep" data-d="-1" data-p="' + p + '">◀</button><span class="pv">' + probForm[d.stage][k] + '<i>%</i></span><button data-act="pstep" data-d="1" data-p="' + p + '">▶</button></div></div>'; }).join('') +
         '</div>').join('') + '</div>' +
       '<div id="live">' + probSummary() + '</div>' +
       '<div class="panel"><h4>集計</h4><div class="summary">' + stat('プレイ回数', fmtN(ses.playNo)) + stat('当選額の合計', fmtN(ses.awarded)) + '</div><div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="stats-reset">集計をリセット</button></div></div>';
@@ -539,6 +539,12 @@ const Admin = (function () {
           if (b.dataset.f === 'total') form.total = bump(form.total);
           else if (b.dataset.k) form.counts[b.dataset.k] = bump(form.counts[b.dataset.k]);
           else if (b.dataset.a) adjust.counts[b.dataset.a] = bump(adjust.counts[b.dataset.a]);
+          return render();
+        }
+        case 'pstep': {
+          const pk = b.dataset.p.split(':'), d = +b.dataset.d;
+          const v = Number(probForm[pk[0]][pk[1]]) || 0;
+          probForm[pk[0]][pk[1]] = Math.max(0, Math.min(100, Math.round((v + d) * 100) / 100));
           return render();
         }
         case 'prob-reset': probForm = copyProbs(Store.state.probs); return render();
