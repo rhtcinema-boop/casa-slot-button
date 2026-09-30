@@ -1142,3 +1142,19 @@ input[type=range].vol { width: 380px; height: 44px; accent-color: #e9c25e; touch
 .rc b { font-size: 32px; }
 .credit-box small { font: 700 15px/1 "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif; letter-spacing: .08em; }
 .credit-box b { font-size: 40px; }
+
+/* ---------- 画面下: 各ステージで当たる金額 ---------- */
+.lockbar { top: 712px; height: 122px; }
+.lockbar .side .btn { height: 94px; font-size: 42px; }
+.lockbar .side.solo .btn { font-size: 48px; }
+.plate { top: 712px; }
+.paytable { position: absolute; left: 350px; top: 844px; width: 1190px; height: 46px; display: flex; align-items: stretch; gap: 10px; }
+.paytable .ps { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 0 14px; border-radius: 12px; background: rgba(8, 8, 10, .82); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); opacity: .62; }
+.paytable .ps em { font: 700 15px/1 var(--font-label); font-style: normal; letter-spacing: .2em; color: #a89f89; }
+.paytable .ps b { font: 700 26px/1 var(--font-num); letter-spacing: .03em; background: var(--amt, var(--gold-grad)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+#stage[data-stage="1"] .paytable .ps[data-s="1"], #stage[data-stage="2"] .paytable .ps[data-s="2"], #stage[data-stage="3"] .paytable .ps[data-s="3"] { opacity: 1; box-shadow: inset 0 0 0 2px rgba(var(--acc), .9); }
+#stage[data-stage="1"] .paytable .ps[data-s="1"] em, #stage[data-stage="2"] .paytable .ps[data-s="2"] em, #stage[data-stage="3"] .paytable .ps[data-s="3"] em { color: var(--accent); }
+.paytable { left: calc(350px + 34px * var(--t, 0)); width: calc(1190px - 100px * var(--t, 0)); gap: 8px; }
+.paytable .ps { gap: 12px; padding: 0 8px; }
+.paytable .ps em { font-size: 13px; letter-spacing: .14em; white-space: nowrap; }
+.paytable .ps b { font-size: 23px; }
