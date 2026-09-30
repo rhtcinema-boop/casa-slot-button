@@ -48,9 +48,15 @@ const TV = (function () {
     const list = candidates();
     setFocus((curKey && list.find((e) => keyOf(e) === curKey)) || defaultOf(list));
   }
+  // ゲーム画面の固定ルート: NEXT GAME →(上)→ ? →(上)→ casa ロゴ →(下)→ ? →(下)→ NEXT GAME
+  const ROUTE = { helpBtn: { ArrowUp: 'crest', ArrowLeft: 'crest' }, crest: { ArrowDown: 'helpBtn', ArrowRight: 'helpBtn' } };
   function move(dir) {
     ensure();
     if (!cur) return;
+    if (layer().id === 'content' && ROUTE[cur.id] && ROUTE[cur.id][dir]) {
+      const el = document.getElementById(ROUTE[cur.id][dir]);
+      if (visible(el)) return setFocus(el);
+    }
     const cr = rect(cur), cx = (cr.left + cr.right) / 2, cy = (cr.top + cr.bottom) / 2;
     let best = null, bestScore = Infinity;
     candidates().forEach((el) => {
