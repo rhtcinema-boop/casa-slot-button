@@ -265,13 +265,17 @@ const Game = (function () {
         const ses = s.session;
         const v = Engine.validateProbs(s.probs);
         if (!v.ok) throw new Error('probs');
-        res = Engine.drawProb(s.probs);
+        const now = Date.now();
+        s.hits = Engine.pruneHits(s.hits, now);
+        const blocked = Engine.blockedKeys(s.limits, s.hits, now);
+        res = Engine.drawProb(s.probs, undefined, blocked);
+        if (res.value > 0) s.hits.push({ ts: now, key: res.key });
         ses.playNo += 1;
         ses.awarded += res.value;
         s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
         s.locked = true;
-        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage) });
+        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined });
       });
     } catch (err) {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
