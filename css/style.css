@@ -1140,4 +1140,5 @@ input[type=range].vol { width: 380px; height: 44px; accent-color: #e9c25e; touch
 .rc small { display: flex; flex-direction: column; gap: 5px; font-size: 18px; font-variant-numeric: tabular-nums; color: #d9d0b8; }
 .rc small i { font-style: normal; font-size: 13px; color: #8e8672; }
 .rc b { font-size: 32px; }
-.credit-box { height: 58px; }
+.credit-box small { font: 700 15px/1 "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif; letter-spacing: .08em; }
+.credit-box b { font-size: 40px; }
