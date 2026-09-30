@@ -1293,3 +1293,37 @@ body.is-tv .help-btn { opacity: .5; }
 /* 左上のロゴ: 四角い枠（金属タイル）を外してロゴだけにする */
 #crest::before, #crest::after { display: none; }
 #crest .logo-emblem { width: 78px; height: 90px; }
+
+/* ==================== グリッド整理（列幅と余白を統一） ====================
+   左列 48-318 / 中央 360-1170（リール窓 420-1110）/ 右列 1250-1550。
+   上段 y20-120、中段 150-690、下段1 710-800、下段2（賞金表）820-880。4:3 では --t で中段以下が下へ広がる。 */
+:root { --panel-bg: linear-gradient(180deg, rgba(24, 24, 28, .94), rgba(9, 9, 11, .94)); --panel-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000, 0 12px 26px rgba(0, 0, 0, .55); }
+/* 上段 */
+#crest { left: 48px; top: 22px; width: 88px; height: 96px; }
+.marquee { left: 445px; top: 24px; width: 670px; height: 92px; }
+.help-btn { left: 1190px; top: 48px; width: 44px; height: 44px; }
+.credit-box { left: 1250px; top: 20px; width: 300px; height: 100px; border-radius: 18px; background: var(--panel-bg); box-shadow: var(--panel-shadow); padding: 6px 20px; }
+/* 中段 */
+.ladder { left: 48px; top: calc(150px + 30px * var(--t, 0)); width: 270px; transform: perspective(1000px) rotateY(15deg); }
+.rung { border-radius: 18px; }
+.cabinet { top: calc(150px + 30px * var(--t, 0)); }
+.recent { left: 1250px; top: calc(150px + 30px * var(--t, 0)); width: 300px; height: 650px; border-radius: 18px; background: var(--panel-bg); box-shadow: var(--panel-shadow); }
+.recent-view { margin: 0 18px; }
+.rc { height: 60px; }
+/* 下段1: LAST（左列と同じ幅）と NEXT GAME（リール窓と同じ幅） */
+.lockbar { left: 48px; width: 1102px; top: calc(710px + 70px * var(--t, 0)); height: 90px; }
+.lockbar .res { left: 0; width: 270px; height: 90px; border-radius: 18px; background: var(--panel-bg); box-shadow: var(--panel-shadow); }
+.lockbar .res small { font-size: 22px; }
+.lockbar .res b { font-size: 48px; }
+.lockbar .side, .lockbar .side.solo { left: 372px; width: 690px; height: 90px; }
+.lockbar .side .btn, .lockbar .side.solo .btn { font-size: 46px; border-radius: 18px; }
+.plate { left: 420px; top: calc(710px + 70px * var(--t, 0)); width: 690px; height: 90px; border-radius: 18px; }
+/* 下段2: 賞金表は3つの独立したブロック（左列の左端〜右列の右端に揃える） */
+.paytable { left: 48px; top: calc(820px + 110px * var(--t, 0)); width: 1502px; height: 60px; gap: 16px; }
+.paytable .ps, .paytable .ps:first-child, .paytable .ps:last-child { border-radius: 18px; background: var(--panel-bg); box-shadow: var(--panel-shadow); opacity: .75; gap: 20px; padding: 0 18px; }
+.paytable .ps em { font-size: 22px; }
+.paytable .ps span { gap: 20px; }
+#stage[data-stage=1] .paytable .ps[data-s=1], #stage[data-stage=2] .paytable .ps[data-s=2], #stage[data-stage=3] .paytable .ps[data-s=3] { opacity: 1; background: linear-gradient(180deg, rgba(var(--acc), .22), rgba(var(--acc), .08)), var(--panel-bg); box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 0 5px #000, 0 12px 26px rgba(0, 0, 0, .55); }
+.paytable { padding: 0; box-sizing: border-box; }
+.credit-box, .recent, .lockbar .res, .rung { box-sizing: border-box; }
+.ladder { transform: none; }
