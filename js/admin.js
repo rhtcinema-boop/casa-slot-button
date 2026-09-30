@@ -43,6 +43,29 @@ const UI = (function () {
     });
   }
 
+  /* 1行の文字入力。Promise<string|null> */
+  function askText(o) {
+    return new Promise((resolve) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'scrim';
+      wrap.innerHTML = '<div class="card dialog"><h2>' + esc(o.title) + '</h2><div class="body">' + (o.sub ? '<p>' + esc(o.sub) + '</p>' : '') +
+        '<input class="txt" type="text" maxlength="20" value="' + esc(o.value || '') + '" style="width:100%;height:56px;border-radius:12px;border:0;padding:0 16px;font:600 24px var(--font-ui);color:#fff6d6;background:#08080a;box-shadow:inset 0 0 0 2px #3c3c45;user-select:text;-webkit-user-select:text"></div>' +
+        '<div class="acts"><button class="btn ghost" data-r="0">キャンセル</button><button class="btn" data-r="1">' + esc(o.ok || 'OK') + '</button></div></div>';
+      const inp = wrap.querySelector('input');
+      wrap.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-r]');
+        if (!b) return;
+        Sfx.play('button');
+        const v = inp.value.trim();
+        wrap.remove();
+        resolve(b.dataset.r === '1' ? v : null);
+      });
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); wrap.querySelector('[data-r="1"]').click(); } });
+      root().appendChild(wrap);
+      setTimeout(() => { try { inp.focus(); inp.select(); } catch (err) { /* noop */ } }, 50);
+    });
+  }
+
   /* PINパッド。check(pin) がエラー文字列を返す間は閉じない。Promise<pin|null> */
   function askPin(o) {
     return new Promise((resolve) => {
@@ -174,7 +197,7 @@ const UI = (function () {
     });
   }
 
-  return { toast, confirm, askPin, askNewPin, auth, askNumber };
+  return { toast, confirm, askPin, askNewPin, auth, askNumber, askText };
 })();
 
 const Admin = (function () {
@@ -183,7 +206,7 @@ const Admin = (function () {
   const TYPES = {
     PLAY: ['play', 'プレイ'], OVERFLOW_PLAY: ['over', '超過プレイ'],
     SESSION_START: ['ops', '営業開始'], SESSION_END: ['ops', '営業終了'], NEXT_PLAY: ['ops', '次のプレイ'], CREDIT_ADD: ['ops', 'クレジット追加'], CREDIT_SET: ['ops', 'クレジット変更'], TOTAL: ['ops', 'クレジット終了'],
-    PROB_SET: ['cfg', '確率変更'], STATS_RESET: ['ops', '集計リセット'],
+    PROB_SET: ['cfg', '確率変更'], STATS_RESET: ['ops', '集計リセット'], PRESET_SAVE: ['cfg', 'プリセット保存'], PRESET_DELETE: ['cfg', 'プリセット削除'], LIMITS_SET: ['cfg', '本数制限変更'],
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
@@ -216,6 +239,25 @@ const Admin = (function () {
       '<div class="acts"><button class="btn ghost" data-act="prob-reset" ' + (changed ? '' : 'disabled') + '>元に戻す</button>' +
       '<button class="btn" data-act="prob-save" ' + (v.ok && changed ? '' : 'disabled') + '>確率を保存</button></div>';
   }
+  let limForm = null; // 編集中の制限 { on, total, max }
+  const copyLimits = (l) => ({ on: !!(l && l.on), total: Number(l && l.total) || 0, max: Object.assign({}, l && l.max) });
+  function viewPresets() {
+    const ps = Store.state.presets || [];
+    return '<div class="panel"><h4>プリセット</h4><p class="hint">いまの確率（上の入力内容）に名前を付けて保存しておき、あとから読み込めます。読み込んだあとは「確率を保存」を押すと反映されます。</p>' +
+      (ps.length ? '<table class="tbl"><tr><th>名前</th><th class="n">最終期待値</th><th></th></tr>' + ps.map((p, i) => '<tr><td>' + esc(p.name) + '</td><td class="n">' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '</td><td class="n" style="white-space:nowrap"><button class="btn sm" data-act="preset-load" data-i="' + i + '">読み込む</button> <button class="btn sm ghost" data-act="preset-over" data-i="' + i + '">上書き</button> <button class="btn sm ghost" data-act="preset-rename" data-i="' + i + '">名前</button> <button class="btn sm danger" data-act="preset-del" data-i="' + i + '">削除</button></td></tr>').join('') + '</table>' : '<p class="hint">まだプリセットはありません。</p>') +
+      '<div class="acts" style="justify-content:flex-start"><button class="btn sm" data-act="preset-add">いまの確率をプリセットとして保存</button></div></div>';
+  }
+  function viewLimits() {
+    const s = Store.state, now = Date.now(), counts = Engine.hitCounts(s.hits, now);
+    const changed = JSON.stringify(limForm) !== JSON.stringify(copyLimits(s.limits));
+    const stepRow = (label, val, attr, hint) => '<div class="row"><div class="lbl" style="font-family:var(--font-ui);font-size:20px">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="stepper pstep"><button data-act="lim-step" data-d="-1" ' + attr + '>◀</button><span class="pv">' + (val ? val + '<i>回</i>' : '<i>なし</i>') + '</span><button data-act="lim-step" data-d="1" ' + attr + '>▶</button></div></div>';
+    return '<div class="panel"><h4>24時間の当たり本数制限</h4><p class="hint">直近24時間に出た当たり（0以外）の本数が上限に達すると、24時間の窓が空くまで当たりが出なくなります（その分の確率はそのステージの 0 に回ります）。0 は制限なし。</p>' +
+      '<div class="row"><div class="lbl" style="font-family:var(--font-ui);font-size:20px">制限を使う</div><button class="btn sm ' + (limForm.on ? '' : 'ghost') + '" data-act="lim-on">' + (limForm.on ? 'ON' : 'OFF') + '</button></div>' +
+      stepRow('24時間の当たり本数の上限（合計）', limForm.total, 'data-k="total"', '直近24時間の当たり: ' + counts.total + ' 回' + (limForm.total && counts.total >= limForm.total ? '（上限に達しています）' : '')) +
+      '<details style="margin-top:10px"><summary style="cursor:pointer;color:#a89f89;font-size:17px">金額ごとの上限（任意）</summary><table class="tbl"><tr><th>金額</th><th class="n">24時間の上限</th><th class="n">直近24時間</th></tr>' +
+      Engine.OUTCOMES.filter((o) => o.value > 0).map((o) => { const m = Number(limForm.max[o.key]) || 0, c = counts[o.key] || 0; return '<tr><td>' + keyLabel(o.key) + '</td><td class="n"><div class="stepper pstep" style="justify-content:flex-end"><button data-act="lim-step" data-d="-1" data-k="' + o.key + '">◀</button><span class="pv">' + (m ? m + '<i>回</i>' : '<i>なし</i>') + '</span><button data-act="lim-step" data-d="1" data-k="' + o.key + '">▶</button></div></td><td class="n" style="' + (m && c >= m ? 'color:#ff9d8c' : '') + '">' + c + ' 回' + (m && c >= m ? '（上限）' : '') + '</td></tr>'; }).join('') + '</table></details>' +
+      '<div class="acts"><button class="btn ghost" data-act="lim-reset" ' + (changed ? '' : 'disabled') + '>元に戻す</button><button class="btn" data-act="lim-save" ' + (changed ? '' : 'disabled') + '>制限を保存</button></div></div>';
+  }
   function viewProbs() {
     const s = Store.state, ses = s.session;
     return '<div class="panel"><h4>各ステージの確率</h4><p class="hint">ステージごとに、それぞれの目で止まる確率（％）を ◀ ▶ で増減します。各ステージの合計をちょうど 100% にしてください。NEXT STAGE は次のステージに進む確率です。プレイヤー画面には確率は表示されません。</p></div>' +
@@ -224,6 +266,7 @@ const Admin = (function () {
         Engine.probKeys(d).map((k) => { const p = d.stage + ':' + k; return '<div class="row"><div class="lbl">' + probLabel(k) + '</div><div class="stepper pstep"><button data-act="pstep" data-d="-1" data-p="' + p + '">◀</button><span class="pv">' + probForm[d.stage][k] + '<i>%</i></span><button data-act="pstep" data-d="1" data-p="' + p + '">▶</button></div></div>'; }).join('') +
         '</div>').join('') + '</div>' +
       '<div id="live">' + probSummary() + '</div>' +
+      viewPresets() + viewLimits() +
       '<div class="panel"><h4>集計</h4><div class="summary">' + stat('プレイ回数', fmtN(ses.playNo)) + stat('当選額の合計', fmtN(ses.awarded)) + '</div><div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="stats-reset">集計をリセット</button></div></div>';
   }
 
@@ -237,6 +280,7 @@ const Admin = (function () {
     role = r; tab = 'ops';
     loadForm();
     probForm = copyProbs(Store.state.probs);
+    limForm = copyLimits(Store.state.limits);
     capForm = null;
     hist = { all: null, group: 'all', session: 'all', page: 0 };
     if (!el) {
@@ -363,11 +407,14 @@ const Admin = (function () {
     const counts = (c) => Engine.OUTCOMES.filter((o) => c[o.key] > 0).map((o) => keyLabel(o.key) + ' ×' + c[o.key]).join('、') || 'なし';
     switch (e.type) {
       case 'PLAY':
-        return 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ');
+        return 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + (d.blocked ? '｜24時間制限で除外: ' + d.blocked.map(keyLabel).join('、') : '');
       case 'PROB_SET': {
         const f = (p) => Engine.STAGE_DEFS.map((x) => 'STAGE ' + x.stage + '［' + Engine.probKeys(x).map((k) => probLabel(k) + ' ' + p[x.stage][k] + '%').join('、') + '］').join(' ');
         return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after);
       }
+      case 'PRESET_SAVE': return 'プリセット「' + esc(d.name) + '」を保存';
+      case 'PRESET_DELETE': return 'プリセット「' + esc(d.name) + '」を削除';
+      case 'LIMITS_SET': { const f = (l) => (l.on ? 'ON' : 'OFF') + '｜合計 ' + (l.total ? l.total + '回' : 'なし') + '｜' + (Engine.OUTCOMES.filter((o) => l.max && l.max[o.key]).map((o) => keyLabel(o.key) + ' ' + l.max[o.key] + '回').join('、') || '金額ごとの上限なし'); return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after); }
       case 'STATS_RESET': return 'プレイ ' + d.plays + ' 回・当選額合計 ' + fmtN(d.awarded) + ' をリセット';
       case 'OVERFLOW_PLAY':
         return 'プレイ #' + d.playNo + '｜<b>超過プレイ / 0</b>（STAGE ' + d.stage + ' で終了）｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + '｜残本数 ' + d.remainBefore + ' → ' + d.remainAfter + '（在庫消費なし）';
@@ -546,6 +593,52 @@ const Admin = (function () {
           const pk = b.dataset.p.split(':'), d = +b.dataset.d;
           const v = Number(probForm[pk[0]][pk[1]]) || 0;
           probForm[pk[0]][pk[1]] = Math.max(0, Math.min(100, Math.round((v + d) * 100) / 100));
+          return render();
+        }
+        case 'preset-add': {
+          const name = await UI.askText({ title: 'プリセットの名前', sub: 'いまの確率をこの名前で保存します', value: 'プリセット' + ((Store.state.presets || []).length + 1), ok: '保存' });
+          if (!name) return;
+          Store.transact((st) => { st.presets = (st.presets || []).concat({ name, probs: copyProbs(probForm) }); Store.log('PRESET_SAVE', { name, probs: copyProbs(probForm) }, role); });
+          UI.toast('プリセット「' + name + '」を保存しました。', 'ok');
+          return render();
+        }
+        case 'preset-load': {
+          const p = Store.state.presets[+b.dataset.i];
+          if (!p) return;
+          probForm = copyProbs(p.probs);
+          UI.toast('「' + p.name + '」を読み込みました。「確率を保存」で反映されます。', 'ok');
+          return render();
+        }
+        case 'preset-over': {
+          const i = +b.dataset.i, p = Store.state.presets[i];
+          if (!p || !(await UI.confirm({ title: 'プリセットを上書き', html: '<p>「' + esc(p.name) + '」をいまの確率で上書きします。</p>', ok: '上書き' }))) return;
+          Store.transact((st) => { st.presets[i].probs = copyProbs(probForm); Store.log('PRESET_SAVE', { name: p.name, probs: copyProbs(probForm) }, role); });
+          return render();
+        }
+        case 'preset-rename': {
+          const i = +b.dataset.i, p = Store.state.presets[i];
+          const name = p && (await UI.askText({ title: '名前を変更', value: p.name, ok: '変更' }));
+          if (!name) return;
+          Store.transact((st) => { st.presets[i].name = name; });
+          return render();
+        }
+        case 'preset-del': {
+          const i = +b.dataset.i, p = Store.state.presets[i];
+          if (!p || !(await UI.confirm({ title: 'プリセットを削除', html: '<p>「' + esc(p.name) + '」を削除します。</p>', ok: '削除', danger: true }))) return;
+          Store.transact((st) => { st.presets.splice(i, 1); Store.log('PRESET_DELETE', { name: p.name }, role); });
+          return render();
+        }
+        case 'lim-on': limForm.on = !limForm.on; return render();
+        case 'lim-step': {
+          const k = b.dataset.k, d = +b.dataset.d;
+          if (k === 'total') limForm.total = Math.max(0, Math.min(999, limForm.total + d));
+          else { const v = Math.max(0, Math.min(99, (Number(limForm.max[k]) || 0) + d)); if (v) limForm.max[k] = v; else delete limForm.max[k]; }
+          return render();
+        }
+        case 'lim-reset': limForm = copyLimits(Store.state.limits); return render();
+        case 'lim-save': {
+          Store.transact((st) => { const before = copyLimits(st.limits); st.limits = copyLimits(limForm); Store.log('LIMITS_SET', { before, after: copyLimits(limForm) }, role); });
+          UI.toast('制限を保存しました。次のプレイから反映されます。', 'ok');
           return render();
         }
         case 'prob-reset': probForm = copyProbs(Store.state.probs); return render();
