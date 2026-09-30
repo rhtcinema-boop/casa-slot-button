@@ -28,6 +28,14 @@ const Cloud = (function () {
     db = firebase.firestore();
     try { await db.enablePersistence({ synchronizeTabs: true }); } catch (e) { /* 複数タブなどで不可でも動く */ }
     if (!auth.currentUser) await auth.signInAnonymously();
+    // ログイン直後は Firestore 側にトークンが渡る前に読みにいくと権限エラーになるので、トークンを取ってひと呼吸おく
+    try { await auth.currentUser.getIdToken(); } catch (e) { /* noop */ }
+    await new Promise((res) => setTimeout(res, 400));
+  }
+  /* 権限エラー（ログイン直後の取りこぼし）は1回だけやり直す */
+  async function retry(fn) {
+    try { return await fn(); }
+    catch (e) { if (e && e.code === 'permission-denied') { await new Promise((res) => setTimeout(res, 1200)); return fn(); } throw e; }
   }
   function ready() {
     if (!enabled) return Promise.reject(new Error('cloud disabled'));
@@ -55,13 +63,13 @@ const Cloud = (function () {
   async function listStores() {
     await ready();
     if (isLocal) { const d = lread(); return Object.keys(d.stores).map((id) => ({ id, name: d.stores[id].name })).sort((a, b) => a.name.localeCompare(b.name, 'ja')); }
-    const q = await db.collection('stores').get();
+    const q = await retry(() => db.collection('stores').get());
     return q.docs.map((x) => ({ id: x.id, name: x.data().name || '' })).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
   }
   async function getStore(id) {
     await ready();
     if (isLocal) { const s = lread().stores[id]; return s ? Object.assign({ id }, s) : null; }
-    const d = await db.collection('stores').doc(id).get();
+    const d = await retry(() => db.collection('stores').doc(id).get());
     return d.exists ? Object.assign({ id }, d.data()) : null;
   }
   /* 店舗ドキュメントの変更を監視。cb(store|null) */
@@ -75,7 +83,7 @@ const Cloud = (function () {
   async function getPreset(id) {
     await ready();
     if (isLocal) { const p = lread().presets[id]; return p ? Object.assign({ id }, p) : null; }
-    const d = await db.collection('presets').doc(id).get();
+    const d = await retry(() => db.collection('presets').doc(id).get());
     return d.exists ? Object.assign({ id }, d.data()) : null;
   }
   /* プリセットの変更を監視（配布されたものだけ） */
@@ -88,7 +96,7 @@ const Cloud = (function () {
   async function listPresets() {
     await ready();
     if (isLocal) { const d = lread(); return Object.keys(d.presets).map((id) => Object.assign({ id }, d.presets[id])); }
-    const q = await db.collection('presets').get();
+    const q = await retry(() => db.collection('presets').get());
     return q.docs.map((x) => Object.assign({ id: x.id }, x.data()));
   }
   /* 店舗側: いま使うプリセットを選ぶ／生存報告 */
