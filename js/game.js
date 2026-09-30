@@ -228,9 +228,12 @@ const Game = (function () {
     } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); return false; }
     busy = true;
     lockbar.classList.remove('show');
-    if (curStage !== 1) await transition(1);
+    if (curStage !== 1) await transition(1); else setStage(1);
     win.classList.remove('win', 'lose');
     showingResult = false;
+    // 次のゲームの前に、リールに READY TO SPIN を一拍見せる
+    setPlate('idle', 'NEXT GAME', '');
+    await wait(900);
     busy = false;
     return true;
   }
@@ -914,6 +917,8 @@ const Game = (function () {
     lockbar.addEventListener('click', onLockbar);
     initSecret();
     initHelp();
+    // 画面下: 各ステージで当たる金額の一覧
+    $('paytable').innerHTML = Engine.STAGE_DEFS.map((d) => '<div class="ps" data-s="' + d.stage + '"><em>STAGE ' + d.stage + '</em>' + d.values.filter((v) => v > 0).map((v) => '<b class="amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length) + '">' + fmtN(v) + '</b>').join('') + '</div>').join('');
     buildLightSprites();
     applyPerf();
     setStage(1);
