@@ -71,7 +71,12 @@ const TV = (function () {
       const score = p + (overlap ? 0.3 : 2.5) * s;
       if (score < bestScore) { bestScore = score; best = el; }
     });
-    if (best) setFocus(best);
+    if (best) return setFocus(best);
+    // 行き先が無いときは、そのダイアログ／設定の本文を上下にスクロールする（長い説明文をリモコンで読むため）
+    if (dir === 'ArrowUp' || dir === 'ArrowDown') {
+      const box = layer().querySelector('.dialog .body, .adm-body');
+      if (box && box.scrollHeight > box.clientHeight + 4) box.scrollBy({ top: dir === 'ArrowDown' ? 160 : -160, behavior: 'smooth' });
+    }
   }
   const isNum = (el) => el && el.tagName === 'INPUT' && (el.type === 'number' || el.type === 'range');
   function setVal(el, d) {
