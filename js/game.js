@@ -105,62 +105,48 @@ const Game = (function () {
   }
 
   /* ---------- レバー ---------- */
-  const Lever = (function () {
-    let enabled = false, el, btn, led, onPull = null;
-    function press(e) {
-      e.preventDefault();
-      Sfx.unlock();
-      if (!enabled) {
-        restart(el, 'deny');
-        Sfx.play('leverDeny');
-        if (plate.classList.contains('error')) restart(plate, 'bump');
-        return;
-      }
-      setEnabled(false);
-      Sfx.play('leverCommit');
-      restart(btn, 'pressed');
-      restart(cabinet, 'thud');
-      if (onPull) onPull();
-    }
-    function setEnabled(on) {
-      enabled = on;
-      el.classList.toggle('ready', on);
-      led.textContent = on ? 'READY' : 'LOCKED';
-    }
-    function init(cb) {
-      el = $('lever'); btn = $('spinBtn'); led = $('leverLed');
-      onPull = cb;
-      btn.addEventListener('pointerdown', press);
-      setEnabled(false);
-    }
-    return { init, setEnabled };
-  })();
+  const Lever = { init() {}, setEnabled() {} }; // ボタン版: レバーは無い
 
   /* ---------- 状態 → 画面 ---------- */
-  function canPlay() {
-    const s = Store.state;
-    return !!(s.pins && s.session && !s.locked && !s.play && s.credits > 0 && Engine.sumCounts(s.session.remaining) > 0);
+  /* 待機中: 下の大きな NEXT GAME ボタンだけを出す */
+  function idleBar() {
+    plate.classList.add('hidden');
+    lockbar.innerHTML = '<div class="side solo"><button class="btn" data-act="next">NEXT GAME</button></div>';
+    lockbar.classList.add('show');
   }
   function refresh() {
     if (busy) return;
     const s = Store.state;
+    showCredits();
+    renderRecent();
     if (s.play && s.play.phase === 'shown') return showLocked(s.play, false);
-    lockbar.classList.remove('show');
-    if (s.play) return awaitLever(s.play.cur || 1, false);
-    clearSure();
     win.classList.remove('win', 'lose');
     cabinet.classList.remove('party');
+    if (s.play) { // 演出の途中で閉じた: NEXT GAME で続きから再開（再抽選はしない）
+      const st = s.play.cur || 1;
+      if (showingResult || curStage !== st) { showingResult = false; setStage(st); }
+      return idleBar();
+    }
+    clearSure();
     if (showingResult || curStage !== 1) { showingResult = false; setStage(1); }
-    const ok = canPlay();
-    Lever.setEnabled(ok);
-    showCredits();
-    if (ok) setPlate('idle', 'PRESS TO SPIN', '「スロットを回す」を押してください');
-    else if (s.pins && s.session && Engine.sumCounts(s.session.remaining) > 0 && !(s.credits > 0)) {
-      // 営業中だがクレジットが無い: クレジットを入れるボタンを出す
-      plate.classList.add('hidden');
-      lockbar.innerHTML = '<div class="res"><small>CREDIT</small><b class="zero">0</b></div><div class="side"><button class="btn" data-act="credit">ADD CREDIT</button></div>';
-      lockbar.classList.add('show');
-    } else setPlate('error', MSG_EMPTY);
+    if (!s.pins) { lockbar.classList.remove('show'); return setPlate('idle', 'WELCOME', ''); }
+    idleBar();
+  }
+  const hhmm = (ts) => { const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return '<i>' + d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + '</i>' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
+  /* 画面右: 配当の履歴（日付・時刻と金額。新しい順、直近200件）。はみ出す数になったら自動でゆっくり上下にスクロールする */
+  function renderRecent() {
+    const list = $('recentList');
+    const r = (Store.state.recent || []).slice().reverse();
+    list.innerHTML = r.length
+      ? r.map((x) => '<div class="rc"><small>' + hhmm(x.ts) + '</small><b class="amt lv' + Math.max(1, WIN_LEVELS.filter((v) => v <= x.value).length) + '">' + fmtN(x.value) + '</b></div>').join('')
+      : '<div class="rc none">—</div>';
+    list.style.animation = 'none';
+    const over = list.scrollHeight - list.parentNode.clientHeight;
+    if (over > 0) {
+      void list.offsetWidth;
+      list.style.setProperty('--over', -over + 'px');
+      list.style.animation = 'recentscroll ' + Math.max(6, over / 22).toFixed(1) + 's ease-in-out 2s infinite alternate';
+    }
   }
   /* 画面に出す合計当選額。演出中のプレイの分は、結果が出るまで含めない */
   function shownTotal() {
@@ -168,7 +154,7 @@ const Game = (function () {
     return (s.wonTotal || 0) - (s.play && s.play.phase === 'drawn' ? s.play.value : 0);
   }
   function showCredits() {
-    $('credit').textContent = Store.state.credits || 0;
+    $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
     $('total').textContent = fmtN(shownTotal());
   }
   /* クレジットを使い切ったとき: 合計当選額を大きく見せる */
@@ -229,67 +215,64 @@ const Game = (function () {
     const p = Store.state.play;
     lockbar.innerHTML =
       '<div class="res"><small>RESULT</small><b class="' + (p.value === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= p.value).length)) + '">' + fmtN(p.value) + '</b></div>' +
-      '<div class="res tot"><small>TOTAL</small><b class="' + (shownTotal() === 0 ? 'zero' : '') + '">' + fmtN(shownTotal()) + '</b></div>' +
       '<div class="side"><button class="btn" data-act="next">NEXT GAME</button></div>';
   }
-  async function onLockbar(e) {
-    const b = e.target.closest('[data-act]');
-    if (!b || busy) return;
-    Sfx.play('button');
-    if (b.dataset.act === 'credit') { // プレイ前: クレジットを入れる
-      if (await addCredits()) refresh();
-      return;
-    }
-    // NEXT GAME: クレジットが残っていればそのまま次へ。無ければ PIN → クレジット数の入力
-    if (!(Store.state.credits > 0) && !(await addCredits())) return;
-    if (!Store.state.play || busy) return;
+  /* 結果表示中のプレイを片付けて STAGE 1 に戻す */
+  async function clearShown() {
+    if (!Store.state.play) return true;
     try {
       Store.transact((s) => {
         Store.log('NEXT_PLAY', { playNo: s.play ? s.play.playNo : null, credits: s.credits });
         s.play = null; s.locked = false;
       });
-    } catch (err) { return UI.toast('保存に失敗しました: ' + err.message, 'err'); }
+    } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); return false; }
     busy = true;
     lockbar.classList.remove('show');
-    await transition(1);
+    if (curStage !== 1) await transition(1);
     win.classList.remove('win', 'lose');
     showingResult = false;
     busy = false;
-    refresh();
+    return true;
+  }
+  /* ボタンは NEXT GAME の1個だけ。押すと1回で最後のステージまで自動で進む */
+  async function onLockbar(e) {
+    const b = e.target.closest('[data-act]');
+    if (!b || busy) return;
+    Sfx.unlock();
+    Sfx.play('button');
+    const s = Store.state;
+    if (s.play && s.play.phase === 'drawn') { lockbar.classList.remove('show'); return runStage(s.play, s.play.cur || 1); }
+    if (!(await clearShown())) return;
+    startPlay();
   }
 
   /* ---------- 抽選確定 ----------
      レバーを引き切った瞬間に「抽選・在庫消費・ロック・履歴」を1回の書き込みで確定する。
      以降の演出は確定済みの結果をなぞるだけなので、途中で落ちても再抽選は起きない。 */
-  function onPull() {
+  function startPlay() {
     const s0 = Store.state;
-    if (busy || !s0.session) return refresh();
-    // 2ステージ目以降: 結果は確定済み。レバーはそのステージの演出を始めるだけ（再抽選しない）
-    if (s0.play && s0.play.phase === 'drawn') return runStage(s0.play, s0.play.cur || 1);
-    if (s0.locked || s0.play || !(s0.credits > 0)) return refresh();
+    if (busy || s0.locked || s0.play) return refresh();
     let res;
     try {
       Store.transact((s) => {
         const ses = s.session;
-        if (!(s.credits > 0)) throw new Error('no credit');
-        s.credits -= 1;                 // 抽選の確定と同じ書き込みで1クレジット消費
-        const before = Engine.sumCounts(ses.remaining);
-        res = Engine.draw(ses);
-        Engine.applyDraw(ses, res);
+        const v = Engine.validateProbs(s.probs);
+        if (!v.ok) throw new Error('probs');
+        res = Engine.drawProb(s.probs);
+        ses.playNo += 1;
+        ses.awarded += res.value;
         s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
-        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: res.overflow, phase: 'drawn', cur: 1, ts: Date.now() };
+        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
         s.locked = true;
-        Store.log(res.overflow ? 'OVERFLOW_PLAY' : 'PLAY', {
-          playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage),
-          remainBefore: before, remainAfter: Engine.sumCounts(ses.remaining), label: res.overflow ? '超過プレイ / 0' : undefined,
-        });
+        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage) });
       });
     } catch (err) {
-      UI.toast('抽選を開始できませんでした（保存エラー）。', 'err');
+      UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
       return refresh();
     }
     oneMore = false;
     showCredits();
+    lockbar.classList.remove('show');
     runStage(Store.state.play, 1);
   }
 
@@ -352,6 +335,7 @@ const Game = (function () {
   /* 1ステージ分の演出。NEXT STAGE なら次のステージへ移り、再びレバー待ちに戻る。 */
   async function runStage(play, st) {
     busy = true;
+    lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
     const pat = pickPattern(st, sym);
     setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
@@ -406,9 +390,10 @@ const Game = (function () {
     }
     await resultFx(play);
     clearSure();
-    const out = !(Store.state.credits > 0); // このプレイでクレジットを使い切った
-    try { Store.transact((s) => { if (s.play) s.play.phase = 'shown'; if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (s.play.value > 0) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
+    renderRecent();
     if (out) await totalFx(Store.state.wonTotal || 0);
     busy = false;
     if (Store.state.play) showLocked(Store.state.play, true); else refresh();
@@ -849,10 +834,10 @@ const Game = (function () {
         title: '遊び方', ok: '閉じる', cancel: false,
         html:
           '<div class="help">' +
-          '<h5>進め方</h5><ol><li>「スロットを回す」を押すと、リールが回って止まります。</li><li>止まった数字が結果です。</li><li><b>NEXT STAGE</b> で止まったら次のステージへ。自動で続けて回ります。</li><li>STAGE 3 が最後のステージです。</li></ol>' +
+          '<h5>進め方</h5><ol><li><b>NEXT GAME</b> を押すと、リールが回って止まります。</li><li>止まった数字が結果です。</li><li><b>NEXT STAGE</b> で止まったら次のステージへ。自動で続けて回ります。</li><li>STAGE 3 が最後のステージです。</li></ol>' +
           '<h5>各ステージで出るもの</h5>' +
           Engine.STAGE_DEFS.map((d) => '<div class="hrow"><em>STAGE ' + d.stage + '</em><div>' + fmtList(d) + '</div></div>').join('') +
-          '<h5>演出について</h5><ul><li>止まりかけてから、もう1コマ進んだり戻ったりすることがあります。</li><li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li><li>画面全体が<b>虹色</b>になったら、当選が確定しています。</li><li>1回のプレイで 1 クレジットを使います。</li></ul>' +
+          '<h5>演出について</h5><ul><li>止まりかけてから、もう1コマ進んだり戻ったりすることがあります。</li><li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li><li>画面全体が<b>虹色</b>になったら、当選が確定しています。</li></ul>' +
           '</div>',
       });
     });
@@ -860,39 +845,41 @@ const Game = (function () {
 
   /* ---------- 設定画面への隠し入口（左上エンブレム長押し） ---------- */
   function initSecret() {
-    const crest = $('crest');
-    let timer = 0;
-    const cancel = () => { clearTimeout(timer); timer = 0; crest.classList.remove('holding'); };
-    crest.addEventListener('pointerdown', (e) => {
+    // casa ロゴ（左上のエンブレム／中央上の casa SLOT）を続けて3回タップ → PIN → 設定画面
+    let n = 0, last = 0, opening = false;
+    const tap = async (e) => {
       e.preventDefault();
-      if (busy || !Store.state.pins) return;
-      crest.classList.add('holding');
-      timer = setTimeout(async () => {
-        cancel();
-        Sfx.play('button');
-        const role = await UI.auth('PINを入力', ['staff', 'admin'], '設定画面', '営業設定PIN または 管理者PIN');
-        if (!role || busy) return;
-        try { Store.transact(() => Store.log('ADMIN_LOGIN', {}, role)); } catch (err) { /* ログのみ */ }
-        Admin.open(role);
-      }, 2500);
-    });
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => crest.addEventListener(ev, cancel));
+      if (busy || opening || !Store.state.pins) return;
+      const now = performance.now();
+      n = now - last < 700 ? n + 1 : 1;
+      last = now;
+      if (n < 3) return;
+      n = 0;
+      opening = true;
+      Sfx.play('button');
+      const role = await UI.auth('PINを入力', ['admin'], '設定画面', '管理者PIN');
+      opening = false;
+      if (!role || busy) return;
+      try { Store.transact(() => Store.log('ADMIN_LOGIN', {}, role)); } catch (err) { /* ログのみ */ }
+      Admin.open(role);
+    };
+    $('crest').addEventListener('pointerdown', tap);
+    document.querySelector('.marquee .brand').addEventListener('pointerdown', tap);
   }
 
   async function firstRun() {
     await UI.confirm({
       title: '初期設定', ok: '登録を始める', cancel: false,
-      html: '<p>ご利用の前に、2種類のPIN（4〜8桁の数字）を登録してください。登録が完了するまでアプリは使用できません。</p>' +
-        '<dl class="kv"><dt>営業設定PIN</dt><dd>日常の営業設定・営業開始/終了・プレイ後のスタッフ認証</dd><dt>管理者PIN</dt><dd>履歴閲覧・プライズ上限ルール・PIN再発行など</dd></dl>' +
-        '<p style="color:#8e8672;font-size:16px">登録後、設定画面は画面左上のエンブレムを約3秒長押しして開きます。</p>',
+      html: '<p>ご利用の前に、管理者PIN（4〜8桁の数字）を登録してください。</p>' +
+        '<p>PINが必要なのは設定画面を開くときだけです。ゲームはPINなしで遊べます。</p>' +
+        '<p style="color:#8e8672;font-size:16px">登録後、設定画面は casa のロゴを続けて3回タップして開きます。</p>',
     });
-    const staff = await UI.askNewPin('営業設定PINの登録', { solid: true, cancelable: false });
-    const admin = await UI.askNewPin('管理者PINの登録', { solid: true, cancelable: false, differPin: staff, differMsg: '営業設定PINと同じ番号は使用できません。' });
+    const admin = await UI.askNewPin('管理者PINの登録', { solid: true, cancelable: false });
     Store.transact((s) => {
-      s.pins = { staff: Engine.makePin(staff), admin: Engine.makePin(admin) };
+      s.pins = { admin: Engine.makePin(admin) };
       Store.log('PIN_SETUP', {});
     });
-    UI.toast('PINを登録しました。左上のエンブレムを長押しして営業設定を行ってください。', 'ok');
+    UI.toast('PINを登録しました。casa のロゴを3回タップすると確率を設定できます。', 'ok');
   }
 
   function guardGestures() {
@@ -923,7 +910,6 @@ const Game = (function () {
     buildBulbs();
     FX.init($('fx'));
     Reel.init($('reel'));
-    Lever.init(onPull);
     $('shutterLabel').innerHTML = '<div class="medal"><div class="face front"><small>STAGE</small><b>2</b><em></em></div></div>'; // 平面1枚（立体の層は重いので廃止）
     lockbar.addEventListener('click', onLockbar);
     initSecret();
