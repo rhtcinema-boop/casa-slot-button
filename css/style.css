@@ -1285,3 +1285,8 @@ body.is-tv .help-btn { opacity: .5; }
 .recent { height: 665px; }
 .rc { height: 60px; }
 .rc small { font-size: 19px; gap: 2px; }
+/* 4:3（iPad）: 筐体の左右の電飾帯（枠の外側 約50px）に、履歴とはしごが重ならないようにする。
+   4:3 で見える範囲は x 73〜1527 なので、右の履歴は 1240〜1520、左のはしごは 75〜296 に収める */
+.recent { left: calc(1250px - 10px * var(--t, 0)); width: calc(300px - 20px * var(--t, 0)); }
+.ladder { left: calc(48px + 27px * var(--t, 0)); transform: perspective(1000px) rotateY(15deg) scale(calc(1 - .18 * var(--t, 0))); }
+.recent-view { margin: 0 calc(18px - 4px * var(--t, 0)); }
