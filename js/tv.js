@@ -167,3 +167,4 @@ const TV = (function () {
   document.addEventListener('DOMContentLoaded', init);
   return { isTV, back, menu, settings, press, get enabled() { return on; } };
 })();
+window.TV = TV; // Android（Fire TV）側は window.TV 経由で呼ぶ（const は window に載らないため明示する）
