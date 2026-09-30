@@ -3,7 +3,7 @@ const Game = (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const CX = 770, CY = 420;          // リール窓の中心（#content 座標）
+  const CX = 765, CY = 420;          // リール窓の中心（#content 座標）
   /* ステージごとのテーマカラー（粒子・稲妻・衝撃波の色）: 1=ゴールド / 2=サファイア / 3=ルビー */
   const STAGE_COL = { 1: ['gold', 'gold', 'white'], 2: ['blue', 'cyan', 'white', 'violet'], 3: ['red', 'gold', 'white', 'red'] };
   const STAGE_ACC = { 1: 'gold', 2: 'cyan', 3: 'red' };
@@ -24,7 +24,7 @@ const Game = (function () {
     stageEl.style.height = H + 'px';
     stageEl.style.transform = 'translate(' + (w - 1600 * scale) / 2 + 'px,' + (h - H * scale) / 2 + 'px) scale(' + scale + ')';
     // 縦に余裕がある画面（4:3 の iPad など）では全体を最大15%拡大して上下の余白を減らす
-    const t = (H - 900) / 300, f = 1 + 0.15 * t;
+    const t = (H - 900) / 300, f = 1 + 0.10 * t; // 4:3 では最大10%まで（中央を優先し左右を詰める）
     [$('content'), $('fxwrap')].forEach((el) => {
       el.style.left = 30 * (1 - f) + 'px';            // 拡大の基準点（リール中心）のずれを補正して中央に保つ
       el.style.top = (H - 900) / 2 + 30 * (1 - f) + 'px';
@@ -33,7 +33,7 @@ const Game = (function () {
     });
     scale *= f;
     stageH = H;
-    if (typeof FX !== 'undefined') FX.setGround(450 + H / 2 / (1 + 0.15 * (H - 900) / 300) + 6, () => Sfx.play('chip'));
+    if (typeof FX !== 'undefined') FX.setGround(450 + H / 2 / (1 + 0.10 * (H - 900) / 300) + 6, () => Sfx.play('chip'));
   }
 
   /* 時間の速さを from → to へ指数関数的に変える（粒子と画面上のアニメーション全体が対象）。
@@ -72,11 +72,15 @@ const Game = (function () {
 
   function buildBulbs() {
     const box = $('bulbs'), pts = [];
-    const L = 31, T = 31, R = 809, B = 529;
-    for (let x = 78; x <= 762; x += 57) pts.push([x, T]);
-    for (let y = 84; y <= 476; y += 56) pts.push([R, y]);
-    for (let x = 762; x >= 78; x -= 57) pts.push([x, B]);
-    for (let y = 476; y >= 84; y -= 56) pts.push([L, y]);
+    // 筐体 810×540 の外周に沿って並べる（上下13個・左右8個）
+    const W = 810, H = 540, L = 31, T = 31, R = W - 31, B = H - 31;
+    const xs = [], ys = [];
+    for (let i = 0; i < 13; i++) xs.push(Math.round(78 + (W - 156) * i / 12));
+    for (let i = 0; i < 8; i++) ys.push(Math.round(84 + (H - 168) * i / 7));
+    xs.forEach((x) => pts.push([x, T]));
+    ys.forEach((y) => pts.push([R, y]));
+    xs.slice().reverse().forEach((x) => pts.push([x, B]));
+    ys.slice().reverse().forEach((y) => pts.push([L, y]));
     pts.forEach((p, i) => {
       const b = document.createElement('i');
       b.style.left = p[0] + 'px'; b.style.top = p[1] + 'px';
@@ -135,20 +139,18 @@ const Game = (function () {
   }
   const hhmm = (ts) => { const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return '<i>' + d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + '</i>' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
   /* 画面右: 配当の履歴（日付・時刻と金額。新しい順、直近200件）。はみ出す数になったら自動でゆっくり上下にスクロールする */
+  let recentShown = -1;
   function renderRecent() {
     const list = $('recentList');
-    const r = (Store.state.recent || []).slice().reverse();
+    const all = Store.state.recent || [];
+    const r = all.slice(-10).reverse();
+    const grew = recentShown >= 0 && all.length > recentShown;
+    recentShown = all.length;
     list.innerHTML = r.length
-      ? r.map((x) => '<div class="rc"><small>' + hhmm(x.ts) + '</small><b class="amt lv' + Math.max(1, WIN_LEVELS.filter((v) => v <= x.value).length) + '">' + fmtN(x.value) + '</b></div>').join('')
+      ? r.map((x, i) => '<div class="rc' + (grew && i === 0 ? ' new' : '') + '"><small>' + hhmm(x.ts) + '</small><b>' + fmtN(x.value) + '</b></div>').join('')
       : '<div class="rc none">—</div>';
-    list.style.animation = 'none';
-    const over = list.scrollHeight - list.parentNode.clientHeight;
-    if (over > 0) {
-      void list.offsetWidth;
-      list.style.setProperty('--over', -over + 'px');
-      list.style.animation = 'recentscroll ' + Math.max(6, over / 22).toFixed(1) + 's ease-in-out 2s infinite alternate';
-    }
   }
+
   /* 画面に出す合計当選額。演出中のプレイの分は、結果が出るまで含めない */
   function shownTotal() {
     const s = Store.state;
@@ -215,7 +217,7 @@ const Game = (function () {
   function renderLockbar() {
     const p = Store.state.play;
     lockbar.innerHTML =
-      '<div class="res"><small>RESULT</small><b class="' + (p.value === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= p.value).length)) + '">' + fmtN(p.value) + '</b></div>' +
+      '<div class="res"><small>LAST</small><b class="' + (p.value === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= p.value).length)) + '">' + fmtN(p.value) + '</b></div>' +
       '<div class="side"><button class="btn" data-act="next">NEXT GAME</button></div>';
   }
   /* 結果表示中のプレイを片付けて STAGE 1 に戻す */
