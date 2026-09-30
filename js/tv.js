@@ -147,6 +147,9 @@ const TV = (function () {
   function init() {
     if (isTV) { document.body.classList.add('tv', 'is-tv'); setTimeout(enable, 800); }
     document.addEventListener('keydown', onKey, true);
+    document.addEventListener('focusin', (e) => { const el = e.target; if (el && el !== document.body && el.matches && el.matches(FOCUSABLE)) { enable(); setFocus(el); } }, true);
+    // ロゴ（div）でのブラウザ標準の決定（keydown が届く環境向け）
+    document.getElementById('crest').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); enable(); setFocus(e.currentTarget); activate(); } });
     // ダイアログや設定の描き直し、NEXT GAME の出入りに合わせてフォーカスを付け直す
     const mo = new MutationObserver(() => {
       if (!on || pending) return;
