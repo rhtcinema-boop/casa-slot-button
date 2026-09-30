@@ -114,6 +114,9 @@ const TV = (function () {
     document.body.classList.add('tv');
     ensure();
   }
+  function press(name, repeat) { // Android（Fire TV）側から呼ばれる
+    onKey({ key: name, keyCode: 0, repeat: !!repeat, target: document.activeElement, preventDefault() {} });
+  }
   function onKey(e) {
     const k = e.key, code = e.keyCode;
     const splash = document.getElementById('splash');
@@ -142,7 +145,7 @@ const TV = (function () {
     move(k);
   }
   function init() {
-    if (isTV) document.body.classList.add('tv', 'is-tv');
+    if (isTV) { document.body.classList.add('tv', 'is-tv'); setTimeout(enable, 800); }
     document.addEventListener('keydown', onKey, true);
     // ダイアログや設定の描き直し、NEXT GAME の出入りに合わせてフォーカスを付け直す
     const mo = new MutationObserver(() => {
@@ -153,5 +156,5 @@ const TV = (function () {
     mo.observe(document.getElementById('lockbar'), { childList: true, attributes: true, attributeFilter: ['class'] });
   }
   document.addEventListener('DOMContentLoaded', init);
-  return { isTV, back, menu, settings, get enabled() { return on; } };
+  return { isTV, back, menu, settings, press, get enabled() { return on; } };
 })();
