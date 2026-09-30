@@ -1345,3 +1345,6 @@ body.lite .rc b, body.lite .paytable .ps b { text-shadow: none; }
 body.is-tv #content, body.is-tv #fxwrap { transform-origin: 770px 420px; }
 #crest:focus, .lockbar .btn:focus, .help-btn:focus { outline: none; }
 body.tv #crest:focus { outline: 5px solid #fff; outline-offset: 5px; border-radius: 22px; }
+/* 最下段: 最大金額だけ */
+.paytable .ps span i { font: 700 15px/1 var(--font-label); font-style: normal; letter-spacing: .2em; color: #a89f89; margin-right: 4px; }
+.paytable .ps b, .paytable .ps[data-s="3"] b { font-size: 32px; }
