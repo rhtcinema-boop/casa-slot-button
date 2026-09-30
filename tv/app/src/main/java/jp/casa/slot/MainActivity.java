@@ -53,7 +53,10 @@ public class MainActivity extends Activity {
                 return !"appassets.androidplatform.net".equals(request.getUrl().getHost()); // 外部リンクは開かない
             }
         });
+        web.setFocusable(true);
+        web.setFocusableInTouchMode(true);
         setContentView(web);
+        web.requestFocus();
         hideSystemUi();
         web.loadUrl("https://appassets.androidplatform.net/assets/www/index.html");
     }
@@ -85,6 +88,20 @@ public class MainActivity extends Activity {
                 if (backHold < 12) web.evaluateJavascript("window.TV && TV.back()", null);
                 backHold = 0;
             }
+            return true;
+        }
+        // 十字キーと決定も横取りして Web 側へ渡す（WebView が自分で握って画面に届かないことがある）
+        String name = null;
+        switch (code) {
+            case KeyEvent.KEYCODE_DPAD_UP: name = "ArrowUp"; break;
+            case KeyEvent.KEYCODE_DPAD_DOWN: name = "ArrowDown"; break;
+            case KeyEvent.KEYCODE_DPAD_LEFT: name = "ArrowLeft"; break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: name = "ArrowRight"; break;
+            case KeyEvent.KEYCODE_DPAD_CENTER: case KeyEvent.KEYCODE_ENTER: case KeyEvent.KEYCODE_BUTTON_A: name = "Enter"; break;
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: case KeyEvent.KEYCODE_MEDIA_PLAY: name = "Enter"; break;
+        }
+        if (name != null) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) web.evaluateJavascript("window.TV && TV.press('" + name + "'," + (event.getRepeatCount() > 0) + ")", null);
             return true;
         }
         if (code == KeyEvent.KEYCODE_MENU) {
