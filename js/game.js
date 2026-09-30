@@ -844,7 +844,7 @@ const Game = (function () {
           '<h5>進め方</h5><ol><li><b>NEXT GAME</b> を押すと、リールが回って止まります。</li><li>止まった数字が結果です。</li><li><b>NEXT STAGE</b> で止まったら次のステージへ。自動で続けて回ります。</li><li>STAGE 3 が最後のステージです。</li></ol>' +
           '<h5>各ステージで出るもの</h5>' +
           Engine.STAGE_DEFS.map((d) => '<div class="hrow"><em>STAGE ' + d.stage + '</em><div>' + fmtList(d) + '</div></div>').join('') +
-          '<h5>テレビ（リモコン）で設定を開くには</h5><ul><li>十字キーで左上の casa ロゴに枠を合わせて決定</li><li>またはメニューボタン（≡）を3回、または戻るボタンを長押し</li></ul><h5>演出について</h5><ul><li>止まりかけてから、もう1コマ進んだり戻ったりすることがあります。</li><li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li><li>画面全体が<b>虹色</b>になったら、当選が確定しています。</li></ul>' +
+          '<h5>テレビ（リモコン）で設定を開くには</h5><ul><li>十字キーで左上の casa ロゴに枠を合わせて、決定を続けて5回</li><li>またはメニューボタン（≡）を3回、または戻るボタンを長押し</li></ul><h5>演出について</h5><ul><li>止まりかけてから、もう1コマ進んだり戻ったりすることがあります。</li><li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li><li>画面全体が<b>虹色</b>になったら、当選が確定しています。</li></ul>' +
           '</div>',
       });
     });
@@ -867,9 +867,9 @@ const Game = (function () {
     const tap = (e) => {
       e.preventDefault();
       const now = performance.now();
-      n = now - last < 700 ? n + 1 : 1;
+      n = now - last < 900 ? n + 1 : 1;
       last = now;
-      if (n < 3) return;
+      if (n < 5) return;
       n = 0;
       openSettings();
     };
@@ -882,14 +882,14 @@ const Game = (function () {
       title: '初期設定', ok: '登録を始める', cancel: false,
       html: '<p>ご利用の前に、管理者PIN（4〜8桁の数字）を登録してください。</p>' +
         '<p>PINが必要なのは設定画面を開くときだけです。ゲームはPINなしで遊べます。</p>' +
-        '<p style="color:#8e8672;font-size:16px">登録後、設定画面は casa のロゴを続けて3回タップして開きます。</p>',
+        '<p style="color:#8e8672;font-size:16px">登録後、設定画面は casa のロゴを続けて5回タップして開きます。</p>',
     });
     const admin = await UI.askNewPin('管理者PINの登録', { solid: true, cancelable: false });
     Store.transact((s) => {
       s.pins = { admin: Engine.makePin(admin) };
       Store.log('PIN_SETUP', {});
     });
-    UI.toast('PINを登録しました。casa のロゴを3回タップすると確率を設定できます。', 'ok');
+    UI.toast('PINを登録しました。casa のロゴを5回タップすると確率を設定できます。', 'ok');
   }
 
   function guardGestures() {
