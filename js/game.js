@@ -90,6 +90,14 @@ const Game = (function () {
     });
   }
 
+  /* 結果 val を静止表示するときの3本の絵柄（直前に回した組み合わせがあればそれ、無ければ代表的なもの） */
+  let lastCombo = null;
+  function comboFor(st, val) {
+    const p = Store.state.play;
+    if (p && p.combo && p.stage === st && p.value === val) return p.combo;
+    if (lastCombo && lastCombo.st === st && lastCombo.read === val) return lastCombo.combo;
+    return Engine.reelCombos(st, val)[0];
+  }
   function setStage(n, show) {
     curStage = n;
     stageEl.dataset.stage = n;
@@ -99,7 +107,7 @@ const Game = (function () {
       r.classList.toggle('done', s < n);
     });
     if (sureShown) FX.setAmbient(40, RAINBOW); else FX.setAmbient([0, 0, 14, 30][n], STAGE_COL[n]);
-    Reel.setStage(n, show);
+    Reel.setStage(n, show === undefined ? undefined : comboFor(n, show));
     Sfx.setStage(n);
   }
 
@@ -324,16 +332,8 @@ const Game = (function () {
     if (Math.random() > (isWin ? DRAMA.win : DRAMA.lose)[st]) return { type: 'plain' };
     if (isWin && Math.random() < RESPIN_RATE[st]) return { type: 'respin' };
     const p = pickCatalog();
-    // 止まりかけ地点で見せる絵柄: 当たりなら「0 や下の金額」、ハズレなら「NEXT や高額」を地点ごとにランダムに
-    const strip = Engine.STAGE_DEFS[st - 1];
-    const amounts = strip.values.filter((v) => v > 0);
-    const lower = typeof sym === 'number' ? amounts.filter((v) => v < sym) : amounts;
-    const winBaits = [0, 0].concat(lower);                                   // 0 を多めに
-    const loseBaits = (strip.hasNext ? ['NEXT', 'NEXT'] : []).concat(amounts.slice(-2)); // NEXT と高額
-    const src = isWin ? winBaits : loseBaits;
-    const bait = [];
-    for (let i = 0; i < p.pre + (p.over ? 1 : 0); i++) bait.push(Math.random() < 0.8 ? src[Math.floor(Math.random() * src.length)] : null);
-    return { type: 'seq', pre: p.pre, holds: p.holds.map((h) => HOLD_SEC[h][st - 1]), over: p.over, crawl: p.crawl, bait, id: p.id };
+    // 止まりかけで見せる「惜しい絵柄」は spinReel 側で、先に止まった2本との合計が別の結果になる絵柄から選ぶ
+    return { type: 'seq', pre: p.pre, holds: p.holds.map((h) => HOLD_SEC[h][st - 1]), over: p.over, crawl: p.crawl, id: p.id };
   }
 
   /* ---------- 確定演出（虹） ----------
@@ -385,7 +385,7 @@ const Game = (function () {
     if (oneMore) {
       // ワンモアチャンス後の引き直し: 短めの回転で本当の結果へ
       oneMore = false;
-      await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain', quick: true }, extra);
+      await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain' }, extra); // 回り直しも通常と同じ速さ・間隔
     } else if (pat.type === 'respin') {
       // ハズレと思いきや当たり: 0 で完全に止まる → 暗転 → ONE MORE CHANCE → もう一度レバーを引かせる
       await spinReel(st, 0, { type: 'plain' }, extra);
@@ -429,7 +429,7 @@ const Game = (function () {
     await resultFx(play);
     clearSure();
     const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
-    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (s.play.value > 0) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
     if (out) await totalFx(Store.state.wonTotal || 0);
@@ -437,14 +437,41 @@ const Game = (function () {
     if (Store.state.play) showLocked(Store.state.play, true); else refresh();
   }
 
+  /* 3本リールを回す。結果 sym（金額 / 0 / 'NEXT'）は確定済み。ここで決めるのは見せ方だけ:
+       組み合わせ … その結果になる3本の並びから、直近20回と被らないものを選ぶ
+       止まる順番 … 6通りからランダム。ただし「最後の1本で結果が変わる」順番を優先（最後まで分からない）
+       惜しい絵柄 … 最後の1本が止まりかけで見せる絵柄は、先に止まった2本との合計が別の正規の結果になるもの
+       停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに 1.3 倍 */
+  const ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
   function spinReel(st, sym, pat, extra) {
     const beats = [];
     extra = extra || {};
-    return Reel.spin(st, sym, {
+    pat = pat || { type: 'plain' };
+    const combos = Engine.reelCombos(st, sym);
+    const usedC = Store.state.comboHist || [];
+    let pool = combos.filter((c) => usedC.indexOf(st + ':' + c.join('/')) < 0);
+    if (!pool.length) pool = combos;
+    const combo = pool[Math.floor(Math.random() * pool.length)];
+    const deciding = ORDERS.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
+    const ordPool = deciding.length ? deciding : ORDERS;
+    const order = ordPool[Math.floor(Math.random() * ordPool.length)];
+    const alts = Engine.reelAlternatives(st, combo, order[2]);
+    const nb = pat.type === 'seq' ? pat.pre + (pat.over ? 1 : 0) : pat.type === 'slip2' ? 2 : pat.type === 'slip' || pat.type === 'back' ? 1 : 0;
+    const bait = [];
+    for (let i = 0; i < nb; i++) bait.push(alts.length && Math.random() < 0.85 ? alts[Math.floor(Math.random() * alts.length)] : null);
+    const p = Object.assign({}, pat, { bait });
+    const k = Math.pow(1.3, st - 1);
+    const iv = (pat.quick ? 0.7 : 2.0) * k;
+    const first = (pat.quick ? 1.4 : 3.2) * Math.pow(1.12, st - 1); // 1本目が止まるまで（回り出し＋減速ぶんを含む）
+    const stops = [first, first + iv, first + iv + iv * 1.5];
+    lastCombo = { st, read: sym, combo };
+    try { Store.transact((s) => { s.comboHist = (s.comboHist || []).concat(st + ':' + combo.join('/')).slice(-20); }); } catch (err) { /* 記録のみ */ }
+    return Reel.spin(st, combo, order, stops, p, {
       onStart: () => { Sfx.play('reelStart'); extra.onStart && extra.onStart(); },
       onTick: (n) => Sfx.tick(n),
       onSpeed: (n) => Sfx.spin(n),
       onNear: () => { extra.onNear && extra.onNear(); },
+      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); } }, // 1本目・2本目の停止
       onTease: (dur) => {
         Sfx.play('tease', dur);
         stageEl.classList.add('reach'); // 集中線で緊張感を出す
@@ -461,7 +488,7 @@ const Game = (function () {
         restart(cabinet, 'thud');
         bump();
       },
-    }, pat);
+    });
   }
 
   /* NEXT STAGE 突入: 停止 → 移行パターン → 到着（チャージと爆発は金額当選の演出で使う） */
@@ -875,7 +902,7 @@ const Game = (function () {
         title: '遊び方', ok: '閉じる', cancel: false,
         html:
           '<div class="help">' +
-          '<h5>進め方</h5><ol><li><b>NEXT GAME</b> を押すと、リールが回って止まります。</li><li>止まった数字が結果です。</li><li><b>NEXT STAGE</b> で止まったら次のステージへ。自動で続けて回ります。</li><li>STAGE 3 が最後のステージです。</li></ol>' +
+          '<h5>進め方</h5><ol><li><b>NEXT GAME</b> を押すと、3本のリールが回って1本ずつ止まります。</li><li><b>3本に出た金額の合計</b>が結果です（<b>BAR</b> は 0）。</li><li><b>NEXT STAGE が3本そろう</b>と次のステージへ。自動で続けて回ります。</li><li>STAGE 3 が最後のステージです。</li></ol>' +
           '<h5>各ステージで出るもの</h5>' +
           Engine.STAGE_DEFS.map((d) => '<div class="hrow"><em>STAGE ' + d.stage + '</em><div>' + fmtList(d) + '</div></div>').join('') +
           '<h5>テレビ（リモコン）で設定を開くには</h5><ul><li>十字キーで左上の casa ロゴに枠を合わせて、決定を続けて5回</li><li>またはメニューボタン（≡）を3回、または戻るボタンを長押し</li></ul><h5>演出について</h5><ul><li>止まりかけてから、もう1コマ進んだり戻ったりすることがあります。</li><li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li><li>画面全体が<b>虹色</b>になったら、当選が確定しています。</li></ul>' +
