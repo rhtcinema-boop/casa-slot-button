@@ -42,7 +42,8 @@ const Store = (function () {
     if (!state.probs) state.probs = Engine.defaultProbs();
     if (!state.recent) state.recent = [];
     if (!state.presets) state.presets = [];                       // 確率のプリセット [{ name, probs }]
-    if (!state.limits) state.limits = { on: false, total: 0, max: {} }; // 24時間の当たり本数制限
+    if (!state.limits) state.limits = { on: false, total: 0, max: {}, resetHour: 19 }; // 営業日（毎日 resetHour 時にリセット）の当たり本数制限
+    if (state.limits.resetHour === undefined) state.limits.resetHour = 19;
     if (!state.hits) state.hits = [];                             // 直近24時間の当たり [{ ts, key }]
     if (!state.session) state.session = { id: 1, startedAt: Date.now(), total: 0, cap: 0, initial: Engine.emptyCounts(), remaining: Engine.emptyCounts(), consumed: Engine.emptyCounts(), playNo: 0, overflowCount: 0, awarded: 0 };
     return state;
