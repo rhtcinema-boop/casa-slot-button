@@ -29,7 +29,7 @@ const Game = (function () {
     [$('content'), $('fxwrap')].forEach((el) => {
       el.style.left = 30 * (1 - f) + 'px';            // 拡大の基準点（リール中心）のずれを補正して中央に保つ
       el.style.top = (H - 900) / 2 - 55 * t + 30 * (1 - f) + 'px';
-      el.style.scale = String(f);
+      el.style.transform = 'scale(' + f + ')'; // scale プロパティは古い WebView が非対応なので transform を使う
       el.style.setProperty('--t', t.toFixed(3));
     });
     scale *= f;
@@ -916,6 +916,7 @@ const Game = (function () {
       document.body.innerHTML = '<p style="color:#ff9d8c;padding:40px;font-size:20px">保存領域を利用できないため起動できません。プライベートブラウズを解除するか、ブラウザの設定を確認してください。<br>' + esc(err.message) + '</p>';
       return;
     }
+    if (window.TV && TV.isTV) { const m = /Chrome\/(\d+)/.exec(navigator.userAgent); const v = $('ver'); if (v && m) v.textContent += ' · TV/Chrome ' + m[1]; }
     if (window.TV && TV.isTV && !Store.state.settings.perf) { try { Store.transact((s) => { s.settings.perf = { noBg: true }; }); } catch (e) { /* 設定のみ */ } }
     Sfx.init(Store.state.settings.volume);
     buildBulbs();
