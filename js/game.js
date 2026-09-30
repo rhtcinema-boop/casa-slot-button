@@ -292,6 +292,7 @@ const Game = (function () {
     oneMore = false;
     showCredits();
     lockbar.classList.remove('show');
+    if (storeMode()) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
     runStage(Store.state.play, 1);
   }
 
@@ -341,6 +342,60 @@ const Game = (function () {
      ハズレのプレイでは絶対に出ない。1プレイで1回まで。発生後は結果が出るまで虹色のまま。
      SURE_RATE はステージアップ1回あたりの発生率（たまに出る程度）。 */
   const SURE_RATE = 0.08;
+  /* プチュン: ブラウン管が消えるように突然暗転 → 復帰。
+       real … 2,000 以上の当たりが確定しているプレイで 1/2。復帰と同時に虹色モード（当選確定）
+       fake … それ以外でたまに（PUCHUN_FAKE）。色は変わらず、そのまま当たりにも 0 にもなる「じらし」 */
+  const PUCHUN_MIN = 2000, PUCHUN_REAL = 0.5, PUCHUN_FAKE = 0.06;
+  let puchunPlan = null; // このステージのスピンで実行する予定 { kind:'real'|'fake', fx:'crt'|'flash' }
+  const pickFx = () => (Math.random() < 0.5 ? 'crt' : 'flash'); // 暗転（プチュン）か白飛び（フラッシュ）か半々
+  function planPuchun(play, st) {
+    puchunPlan = null;
+    if (window.__fxTest && window.__fxTest.puchun) { puchunPlan = { kind: window.__fxTest.puchun, fx: window.__fxTest.fx || pickFx() }; return; }
+    const finalStage = st === play.stage;
+    if (finalStage && play.value >= PUCHUN_MIN && !sureShown && !play.overflow) { if (Math.random() < PUCHUN_REAL) puchunPlan = { kind: 'real', fx: pickFx() }; return; }
+    if (Math.random() < PUCHUN_FAKE) puchunPlan = { kind: 'fake', fx: pickFx() };
+  }
+  /* 画面が消える（crt）／白く飛ぶ（flash）。during() は真っ暗・真っ白の間に呼ばれる（ステージ切替などに使う） */
+  async function blink(fx, holdMs, during) {
+    const crt = $('crt');
+    // ゆっくり: 消えるのに約1秒、消えたまま holdMs、戻るのに約0.7秒
+    if (fx === 'flash') {
+      Sfx.play('warp');
+      crt.className = 'white-in';
+      await wait(600);
+      crt.className = 'white';
+      Sfx.spin(0);
+      if (during) await during();
+      await wait(holdMs);
+      crt.className = 'white-out';
+      await wait(1000);
+      crt.className = '';
+      return;
+    }
+    Sfx.play('crtOff');
+    crt.className = 'off';
+    await wait(950);
+    crt.className = 'dark';
+    Sfx.spin(0);
+    if (during) await during();
+    await wait(holdMs);
+    Sfx.play('crtOn');
+    crt.className = 'on';
+    await wait(700);
+    crt.className = '';
+  }
+  async function puchun(plan) {
+    await blink(plan.fx, plan.kind === 'real' ? 2200 : 1600);
+    if (plan.kind === 'real') announceSure();
+  }
+  /* ワープ開始: NEXT GAME 直後、結果が STAGE 2 以上のプレイでたまに、いきなり上のステージから始まる */
+  const WARP_RATE = 0.18;
+  function pickWarp(play, st) {
+    if (st !== 1 || play.stage < 2 || play.overflow) return 0;
+    if (window.__fxTest && window.__fxTest.warp !== undefined) return window.__fxTest.warp;
+    if (Math.random() >= WARP_RATE) return 0;
+    return play.stage === 3 && Math.random() < 0.5 ? 3 : Math.min(play.stage, 2); // 3 まで行けるときは半々で 3 に直行
+  }
   let pendingSure = false;
   function pickSure(play) {
     if (sureShown || !play || !(play.value > 0) || play.overflow) return false;
@@ -376,6 +431,20 @@ const Game = (function () {
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
     const pat = oneMore ? { type: 'plain' } : pickPattern(st, sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    if (!oneMore && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
+    const warpTo = oneMore ? 0 : pickWarp(play, st);
+    if (warpTo) { // いきなり上のステージへ（途中のステージは回さない）
+      puchunPlan = null;
+      setPlate('spin', 'GOOD LUCK', 'STAGE ' + st);
+      await wait(350);
+      await blink(pickFx(), 1800, async () => { setStage(warpTo); });
+      try { Store.transact((s) => { if (s.play) s.play.cur = warpTo; }); } catch (err) { /* 進行位置のみ */ }
+      Sfx.play('stageReady');
+      showBanner('next', 'WARP', 'STAGE ' + warpTo);
+      await wait(5000); // 「いきなり飛んだ」余韻
+      await hideBanner();
+      return runStage(play, warpTo);
+    }
     setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
     const extra = {};
@@ -476,7 +545,7 @@ const Game = (function () {
       onTick: (n) => Sfx.tick(n),
       onSpeed: (n) => Sfx.spin(n),
       onNear: () => { extra.onNear && extra.onNear(); },
-      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); } }, // 1本目・2本目の停止
+      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
       onTease: (dur) => {
         Sfx.play('tease', dur);
         stageEl.classList.add('reach'); // 集中線で緊張感を出す
@@ -916,6 +985,103 @@ const Game = (function () {
   }
 
   /* ---------- 設定画面への隠し入口（左上エンブレム長押し） ---------- */
+  /* ---------- 店舗モード（クラウド同期） ----------
+     初回は店舗を選んでその店舗のパスワードを入れる。以後はマスターが配ったプリセットだけを使う。 */
+  const storeMode = () => Cloud.enabled && !!Store.state.store;
+  let cloudPresets = {};   // 配布されたプリセット { id: { name, probs, limits } }
+  let cloudStore = null;   // 店舗ドキュメントの最新
+  let unwatch = null, presetWatch = {};
+  async function chooseStore() {
+    for (;;) {
+      let stores = [];
+      try { stores = await Cloud.listStores(); } catch (err) { stores = null; }
+      if (!stores || !stores.length) {
+        await UI.confirm({ title: stores ? '店舗が登録されていません' : '接続できません', ok: '再試行', cancel: false,
+          html: '<p>' + (stores ? 'マスター画面で店舗を登録してから、もう一度お試しください。' : 'インターネット接続を確認してください。') + '</p>' });
+        continue;
+      }
+      const id = await new Promise((resolve) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'scrim solid';
+        wrap.innerHTML = '<div class="card dialog"><h2>店舗を選んでください</h2><div class="body"><div class="store-list">' +
+          stores.map((s) => '<button class="btn store-btn" data-id="' + esc(s.id) + '">' + esc(s.name) + '</button>').join('') + '</div></div></div>';
+        wrap.addEventListener('click', (e) => { const b = e.target.closest('[data-id]'); if (!b) return; Sfx.play('button'); wrap.remove(); resolve(b.dataset.id); });
+        $('ui').appendChild(wrap);
+      });
+      const st = stores.find((s) => s.id === id);
+      let doc = null;
+      try { doc = await Cloud.getStore(id); } catch (err) { /* 下で扱う */ }
+      if (!doc || !doc.pin) { UI.toast('店舗の情報を取得できませんでした。', 'err'); continue; }
+      const pin = await UI.askPin({ title: st.name, sub: '店舗のパスワード', solid: true, check: (p) => (Engine.checkPin(p, doc.pin) ? null : 'パスワードが正しくありません。') });
+      if (pin === null) continue;
+      Store.transact((s) => {
+        s.store = { id, name: st.name, boundAt: Date.now() };
+        s.pins = { admin: doc.pin };
+        Store.log('STORE_LOGIN', { storeId: id, name: st.name });
+      });
+      Sfx.play('ok');
+      return;
+    }
+  }
+  function unbindStore(msg) {
+    if (unwatch) { unwatch(); unwatch = null; }
+    try { Store.transact((s) => { s.store = null; s.pins = null; Store.log('STORE_LOGOUT', {}); }); } catch (err) { /* 保存のみ */ }
+    UI.toast(msg || 'マスターからログアウトされました。', 'err');
+    setTimeout(() => location.reload(), 1500);
+  }
+  /* 配布されたプリセットを端末の確率・制限に反映（結果には「次のプレイから」効く） */
+  function applyPreset(p) {
+    if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
+    const same = JSON.stringify(Store.state.probs) === JSON.stringify(p.probs) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
+    if (same && Store.state.presetId === p.id) return;
+    try {
+      Store.transact((s) => {
+        s.probs = JSON.parse(JSON.stringify(p.probs));
+        s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
+        s.presetId = p.id;
+        Store.log('PRESET_APPLY', { id: p.id, name: p.name });
+      });
+    } catch (err) { /* 保存のみ */ }
+    if (Admin.isOpen()) Admin.rerender();
+  }
+  function startCloudSync() {
+    const me = Store.state.store;
+    if (!me) return;
+    const beat = () => Cloud.updateStoreFields(me.id, { lastSeen: Date.now(), deviceVersion: ($('ver') && $('ver').textContent) || '' }).catch(() => {});
+    beat(); setInterval(beat, 10 * 60 * 1000);
+    unwatch = Cloud.watchStore(me.id, (doc) => {
+      if (!doc) return unbindStore('この店舗はマスターで削除されました。');
+      if (doc.logoutAt && doc.logoutAt > me.boundAt) return unbindStore();
+      cloudStore = doc;
+      if (doc.pin && JSON.stringify(doc.pin) !== JSON.stringify(Store.state.pins && Store.state.pins.admin)) {
+        try { Store.transact((s) => { s.pins = { admin: doc.pin }; }); } catch (err) { /* 保存のみ */ }
+      }
+      const ids = (doc.presetIds || []).slice();
+      if (doc.activePresetId && ids.indexOf(doc.activePresetId) < 0) ids.push(doc.activePresetId);
+      ids.forEach((pid) => {
+        if (presetWatch[pid]) return;
+        presetWatch[pid] = true;
+        Cloud.watchPreset(pid, (p) => {
+          if (!p) { delete cloudPresets[pid]; return; }
+          cloudPresets[pid] = p;
+          if (cloudStore && cloudStore.activePresetId === pid) applyPreset(p);
+          if (Admin.isOpen()) Admin.rerender();
+        });
+      });
+      if (doc.activePresetId && cloudPresets[doc.activePresetId]) applyPreset(cloudPresets[doc.activePresetId]);
+      if (Admin.isOpen()) Admin.rerender();
+    });
+  }
+  /* 設定画面から: 店舗がプリセット名を選ぶ */
+  async function choosePreset(pid) {
+    const me = Store.state.store;
+    if (!me || !cloudPresets[pid]) return false;
+    applyPreset(cloudPresets[pid]);
+    try { await Cloud.updateStoreFields(me.id, { activePresetId: pid }); } catch (err) { UI.toast('クラウドへの保存に失敗しました（端末には反映済み）。', 'err'); }
+    return true;
+  }
+  const storeInfo = () => ({ store: Store.state.store, presets: (cloudStore && cloudStore.presetIds || []).map((id) => cloudPresets[id]).filter(Boolean), activeId: Store.state.presetId || (cloudStore && cloudStore.activePresetId) || null });
+
   function initSecret() {
     // casa ロゴ（左上のエンブレム／中央上の casa SLOT）を続けて3回タップ → PIN → 設定画面
     let n = 0, last = 0, opening = false;
@@ -1011,11 +1177,14 @@ const Game = (function () {
         resolve();
       }, { once: true });
     });
-    if (!Store.state.pins) { await firstRun(); refresh(); }
+    if (Cloud.enabled) {
+      if (!Store.state.store) { await chooseStore(); refresh(); }
+      startCloudSync();
+    } else if (!Store.state.pins) { await firstRun(); refresh(); }
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !(window.TV && TV.isTV)) navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, openSettings: () => openSettings && openSettings() };
+  return { refresh, applyPerf, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset };
 })();
 window.Game = Game;
