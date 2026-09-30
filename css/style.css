@@ -1281,3 +1281,7 @@ body.is-tv .help-btn { opacity: .5; }
 #stage.fxmode .ladder { opacity: .6; }
 #stage.fxmode .recent, #stage.fxmode .paytable { opacity: .5; }
 #stage.fxmode .marquee, #stage.fxmode .credit-box, #stage.fxmode #crest, #stage.fxmode .help-btn { opacity: .65; }
+/* 重なりの修正: 履歴の下端を NEXT GAME の下端（815）に揃える。1行60px×10件＋見出し44px */
+.recent { height: 665px; }
+.rc { height: 60px; }
+.rc small { font-size: 19px; gap: 2px; }
