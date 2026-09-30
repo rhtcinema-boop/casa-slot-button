@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# 同時に走らせない（複数ファイルを続けて上げたとき、古いビルドが後から上書きするのを防ぐ）
+concurrency:
+  group: tv-build
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
