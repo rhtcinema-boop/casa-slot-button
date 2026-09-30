@@ -1158,3 +1158,59 @@ input[type=range].vol { width: 380px; height: 44px; accent-color: #e9c25e; touch
 .paytable .ps { gap: 12px; padding: 0 8px; }
 .paytable .ps em { font-size: 13px; letter-spacing: .14em; white-space: nowrap; }
 .paytable .ps b { font-size: 23px; }
+
+/* ---------- テレビ（リモコン）操作 ---------- */
+#splash .ok { display: none; }
+body.is-tv #splash .tap { display: none; }
+body.is-tv #splash .ok { display: block; }
+body.is-tv { cursor: none; }
+body.tv .tvfocus { outline: 5px solid #fff !important; outline-offset: 5px; box-shadow: 0 0 0 9px rgba(255, 255, 255, .28), 0 0 34px rgba(255, 255, 255, .9) !important; position: relative; z-index: 3; }
+body.tv .tvfocus.tvedit { outline-color: #5fd6ff !important; box-shadow: 0 0 0 9px rgba(95, 214, 255, .3), 0 0 34px #5fd6ff !important; }
+body.tv .adm .tab.tvfocus { outline-offset: 2px; }
+body.tv input.num.tvfocus, body.tv .vol.tvfocus { outline-offset: 3px; }
+
+/* ---------- 左下: 各ステージで当たる金額（イラストの代わり） ---------- */
+.lockbar { top: 738px; height: 150px; }
+.lockbar .side .btn { height: 112px; font-size: 46px; }
+.lockbar .side.solo .btn { font-size: 54px; }
+.plate { top: 730px; }
+.paytable { left: calc(30px + 92px * var(--t, 0)); top: 712px; width: 300px; height: 176px; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 18px; background: linear-gradient(180deg, rgba(20, 20, 24, .92), rgba(8, 8, 10, .92)); box-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000, 0 18px 40px rgba(0, 0, 0, .6); transform: scale(calc(1 - .12 * var(--t, 0))); transform-origin: 0 100%; }
+.paytable .ps { flex: 1 1 0; justify-content: flex-start; gap: 10px; padding: 0 8px; border-radius: 10px; background: none; box-shadow: none; }
+.paytable .ps em { font-size: 13px; letter-spacing: .12em; min-width: 66px; }
+.paytable .ps span { display: flex; gap: 9px; flex-wrap: nowrap; }
+.paytable .ps b { font-size: 21px; }
+#stage[data-stage="1"] .paytable .ps[data-s="1"], #stage[data-stage="2"] .paytable .ps[data-s="2"], #stage[data-stage="3"] .paytable .ps[data-s="3"] { background: rgba(var(--acc), .14); box-shadow: inset 0 0 0 1px rgba(var(--acc), .7); }
+.stepper.pstep { gap: 6px; }
+.stepper.pstep button { width: 54px; height: 52px; font-size: 22px; }
+.stepper.pstep .pv { min-width: 96px; text-align: center; font: 700 28px/1 var(--font-num); color: #fff6d6; }
+.stepper.pstep .pv i { font-style: normal; font-size: 16px; color: #a89f89; margin-left: 3px; }
+
+.paytable { left: calc(24px + 96px * var(--t, 0)); width: 316px; padding: 10px 10px; gap: 4px; }
+.paytable .ps { gap: 10px; padding: 0 6px; }
+.paytable .ps em { min-width: 30px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 700 17px/1 var(--font-num); letter-spacing: 0; color: var(--accent); background: rgba(var(--acc), .18); box-shadow: inset 0 0 0 1px rgba(var(--acc), .6); }
+.paytable .ps span { gap: 8px; }
+.paytable .ps b { font-size: 21px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.paytable .ps[data-s="3"] b { font-size: 20px; }
+
+/* ---------- レイアウト調整: 結果バーは筐体と同じ幅、最下段に各ステージで当たる金額 ---------- */
+.lockbar { left: 130px; width: 1110px; top: 716px; height: 112px; padding: 0 22px 0 34px; gap: 22px; }
+.lockbar .res b { font-size: 58px; }
+.lockbar .side .btn { height: 84px; padding: 0 64px; font-size: 40px; border-radius: 20px; }
+.lockbar .side.solo .btn { font-size: 46px; padding: 0 190px; }
+.plate { top: 716px; }
+.recent { height: 678px; }
+.paytable { left: calc(24px + 90px * var(--t, 0)); top: 842px; width: calc(1552px - 180px * var(--t, 0)); height: 48px; flex-direction: row; gap: 14px; padding: 0; background: none; box-shadow: none; transform: none; border-radius: 0; }
+.paytable .ps { flex: 1 1 0; justify-content: center; gap: 16px; padding: 0 14px; border-radius: 12px; background: rgba(8, 8, 10, .8); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); opacity: .7; }
+.paytable .ps em { width: auto; min-width: 0; height: auto; border-radius: 0; background: none; box-shadow: none; display: inline; font: 700 14px/1 var(--font-label); letter-spacing: .22em; color: #a89f89; }
+.paytable .ps span { gap: 14px; }
+.paytable .ps b, .paytable .ps[data-s="3"] b { font-size: 25px; }
+#stage[data-stage="1"] .paytable .ps[data-s="1"], #stage[data-stage="2"] .paytable .ps[data-s="2"], #stage[data-stage="3"] .paytable .ps[data-s="3"] { opacity: 1; background: rgba(var(--acc), .14); box-shadow: inset 0 0 0 2px rgba(var(--acc), .85); }
+/* ---------- 結果バー: RESULT はステージ表示と同じ幅の別ボックス、NEXT GAME はリールと同じ幅 ---------- */
+.lockbar { left: 70px; width: 1120px; top: 716px; height: 112px; padding: 0; gap: 0; background: none; box-shadow: none; border-radius: 0; overflow: visible; display: none; }
+.lockbar.show { display: block; }
+.lockbar .res { position: absolute; left: calc(50px * var(--t, 0)); top: 0; width: calc(220px - 22px * var(--t, 0)); height: 112px; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: linear-gradient(180deg, #1b1b20, #0c0c0f); box-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000, 0 12px 26px rgba(0, 0, 0, .55); }
+.lockbar .res small { font-size: 14px; }
+.lockbar .res b { font-size: 50px; line-height: 1; }
+.lockbar .side { position: absolute; left: 340px; top: 0; width: 720px; height: 112px; margin: 0; display: block; }
+.lockbar .side.solo { left: 340px; margin: 0; }
+.lockbar .side .btn, .lockbar .side.solo .btn { width: 100%; height: 100%; padding: 0; font-size: 46px; border-radius: 20px; }
