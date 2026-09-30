@@ -7,7 +7,8 @@ const Game = (function () {
   /* ステージごとのテーマカラー（粒子・稲妻・衝撃波の色）: 1=ゴールド / 2=サファイア / 3=ルビー */
   const STAGE_COL = { 1: ['gold', 'gold', 'white'], 2: ['blue', 'cyan', 'white', 'violet'], 3: ['red', 'gold', 'white', 'red'] };
   const STAGE_ACC = { 1: 'gold', 2: 'cyan', 3: 'red' };
-  let oneMore = false; // ワンモアチャンスでレバーの引き直し待ちか
+  let oneMore = false;
+  let openSettings = null; // 設定画面を開く（ロゴ3回タップ／テレビのメニューボタン3回） // ワンモアチャンスでレバーの引き直し待ちか
   let sureShown = false, sureText = ['WIN CONFIRMED', '当選確定！']; // 確定演出が発生中か
   const RAINBOW = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'violet'];
   const MSG_EMPTY = '抽選可能回数がありません。設定を確認してください。';
@@ -850,14 +851,8 @@ const Game = (function () {
   function initSecret() {
     // casa ロゴ（左上のエンブレム／中央上の casa SLOT）を続けて3回タップ → PIN → 設定画面
     let n = 0, last = 0, opening = false;
-    const tap = async (e) => {
-      e.preventDefault();
-      if (busy || opening || !Store.state.pins) return;
-      const now = performance.now();
-      n = now - last < 700 ? n + 1 : 1;
-      last = now;
-      if (n < 3) return;
-      n = 0;
+    openSettings = async () => {
+      if (busy || opening || !Store.state.pins || Admin.isOpen()) return;
       opening = true;
       Sfx.play('button');
       const role = await UI.auth('PINを入力', ['admin'], '設定画面', '管理者PIN');
@@ -865,6 +860,15 @@ const Game = (function () {
       if (!role || busy) return;
       try { Store.transact(() => Store.log('ADMIN_LOGIN', {}, role)); } catch (err) { /* ログのみ */ }
       Admin.open(role);
+    };
+    const tap = (e) => {
+      e.preventDefault();
+      const now = performance.now();
+      n = now - last < 700 ? n + 1 : 1;
+      last = now;
+      if (n < 3) return;
+      n = 0;
+      openSettings();
     };
     $('crest').addEventListener('pointerdown', tap);
     document.querySelector('.marquee .brand').addEventListener('pointerdown', tap);
@@ -909,6 +913,7 @@ const Game = (function () {
       document.body.innerHTML = '<p style="color:#ff9d8c;padding:40px;font-size:20px">保存領域を利用できないため起動できません。プライベートブラウズを解除するか、ブラウザの設定を確認してください。<br>' + esc(err.message) + '</p>';
       return;
     }
+    if (window.TV && TV.isTV && !Store.state.settings.perf) { try { Store.transact((s) => { s.settings.perf = { noBg: true }; }); } catch (e) { /* 設定のみ */ } }
     Sfx.init(Store.state.settings.volume);
     buildBulbs();
     FX.init($('fx'));
@@ -918,7 +923,7 @@ const Game = (function () {
     initSecret();
     initHelp();
     // 画面下: 各ステージで当たる金額の一覧
-    $('paytable').innerHTML = Engine.STAGE_DEFS.map((d) => '<div class="ps" data-s="' + d.stage + '"><em>STAGE ' + d.stage + '</em>' + d.values.filter((v) => v > 0).map((v) => '<b class="amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length) + '">' + fmtN(v) + '</b>').join('') + '</div>').join('');
+    $('paytable').innerHTML = Engine.STAGE_DEFS.map((d) => '<div class="ps" data-s="' + d.stage + '"><em>STAGE ' + d.stage + '</em><span>' + d.values.filter((v) => v > 0).map((v) => '<b class="amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length) + '">' + fmtN(v) + '</b>').join('') + '</span></div>').join('');
     buildLightSprites();
     applyPerf();
     setStage(1);
@@ -934,9 +939,9 @@ const Game = (function () {
       }, { once: true });
     });
     if (!Store.state.pins) { await firstRun(); refresh(); }
-    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !(window.TV && TV.isTV)) navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf };
+  return { refresh, applyPerf, openSettings: () => openSettings && openSettings() };
 })();
