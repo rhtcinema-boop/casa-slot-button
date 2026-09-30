@@ -267,6 +267,26 @@ const Reel = (function () {
       tail.push(decay(decT, V, vP, 4.4)); teaseIdx = tail.length;
       tail.push(seg(p1, vP, vP)); tip(1.0 - p1 * vP, vP);
       tail.push(seg(pauseT, vP, vP)); tip(1.05 - pauseT * vP, vL);
+    } else if (type === 'seq') {
+      // 汎用: pre 回止まりかけ（T-pre … T-1）、各回 holds[i] 秒。over なら最後に行き過ぎて戻る。crawl なら最後はじわじわ入る
+      const pre = Math.max(1, Math.min(3, o.pre | 0)), holds = o.holds || [];
+      tail.push(decay(decT * (pre === 3 ? 0.55 : pre === 2 ? 0.75 : 1), V, vP, 4.4)); teaseIdx = tail.length; // 止まりかけが多いぶん減速は短く
+      for (let i = 0; i < pre; i++) {
+        const h = holds[i] !== undefined ? holds[i] : pauseT;
+        tail.push(seg(h, vP, vP));
+        if (i < pre - 1) tip(1.0 - h * vP, vP);
+        else if (o.over) {
+          tip(1.05 - h * vP, vL);
+          tail.push(seg(0.55 / (vL / 2), vL, 0));  // 目標を 0.55 コマ通り過ぎて失速
+          tail.push(seg(0.4, 0, 0));               // 宙づり
+          tail.push(seg(0.5, 0, -2.2));            // 引き戻し
+          vEnd = -2.2;
+        } else if (o.crawl) {
+          const vc = 0.5, dist = 1.05 - h * vP;                     // 最後の1コマを約2秒かけて
+          tail.push(seg(dist / vc, vc, vc));       // 最後の1コマをじわじわ
+          vEnd = vc;
+        } else tip(1.05 - h * vP, vL);
+      }
     } else if (type === 'back') {
       tail.push(decay(decT, V, 0.9, 4.4)); teaseIdx = tail.length;
       tail.push(seg(0.85 / 0.45, 0.9, 0));     // 目標を 0.55 コマ通り過ぎて失速
@@ -308,9 +328,10 @@ const Reel = (function () {
     const bait = o.bait || [];
     const put = (i, s) => { if (s !== undefined && s !== null) ov[i] = s; };
     Object.keys(ov).forEach((k) => { if (Math.abs(k - p0) > 2) delete ov[k]; });
-    [T - 2, T - 1, T, T + 1].forEach((i) => delete ov[i]);
+    [T - 3, T - 2, T - 1, T, T + 1].forEach((i) => delete ov[i]);
     if (STRIPS[st][mod(T, n)] !== sym) ov[T] = sym; // 万一、帯に無い絵柄が指定されたら、その位置にそのまま表示する
-    if (type === 'slip') put(T - 1, bait[0]);
+    if (type === 'seq') { const pre = Math.max(1, Math.min(3, o.pre | 0)); for (let i = 0; i < pre; i++) put(T - pre + i, bait[i]); if (o.over) put(T + 1, bait[pre]); }
+    else if (type === 'slip') put(T - 1, bait[0]);
     else if (type === 'slip2') { put(T - 2, bait[0]); put(T - 1, bait[1]); }
     else if (type === 'back') put(T + 1, bait[0]);
     return { at, T, V, tStop, total: tStop + SET, startAt: TW, teaseAt, teaseDur: teaseAt >= 0 ? tStop - teaseAt : 0 };
