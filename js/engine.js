@@ -156,6 +156,66 @@
     session.consumed[res.key] += 1;
     session.awarded += res.value;
   }
+  /* ---------- 確率抽選（ボタン版） ----------
+     probs[stage][key] は％（小数第2位まで）。key は金額の文字列か 'NEXT'。各ステージの合計は 100。 */
+  function probKeys(d) { return d.values.map(String).concat(d.hasNext ? ['NEXT'] : []); }
+  function defaultProbs() {
+    return {
+      1: { 0: 60, 500: 20, 1000: 10, NEXT: 10 },
+      2: { 0: 50, 1000: 20, 2000: 10, 3000: 6, 5000: 4, NEXT: 10 },
+      3: { 0: 70, 10000: 20, 50000: 8, 100000: 2 },
+    };
+  }
+  const units = (x) => Math.round(Number(x) * 100); // 0.01% 単位の整数
+  function validateProbs(p) {
+    const errors = [];
+    STAGE_DEFS.forEach((d) => {
+      const row = (p && p[d.stage]) || {};
+      let ok = true, sum = 0;
+      probKeys(d).forEach((k) => {
+        const v = Number(row[k]);
+        if (!Number.isFinite(v) || v < 0 || v > 100 || Math.abs(v * 100 - Math.round(v * 100)) > 1e-6) ok = false;
+        else sum += units(v);
+      });
+      if (!ok) errors.push('STAGE ' + d.stage + ': 0〜100 の数字（小数第2位まで）で入力してください。');
+      else if (sum !== 10000) errors.push('STAGE ' + d.stage + ': 合計が ' + sum / 100 + '% です。ちょうど 100% にしてください。');
+    });
+    return { ok: errors.length === 0, errors };
+  }
+  function probStats(p) {
+    const sums = {}, reach = { 1: 1 }, outcome = {};
+    let ev = 0, win = 0;
+    STAGE_DEFS.forEach((d) => {
+      const row = (p && p[d.stage]) || {};
+      let sum = 0;
+      probKeys(d).forEach((k) => { const v = Number(row[k]); sum += Number.isFinite(v) ? units(v) : 0; });
+      sums[d.stage] = sum / 100;
+      const r = reach[d.stage] || 0;
+      d.values.forEach((v) => {
+        const q = r * (Number(row[v]) || 0) / 100;
+        outcome[d.stage + ':' + v] = q;
+        ev += q * v;
+        if (v > 0) win += q;
+      });
+      if (d.hasNext) reach[d.stage + 1] = r * (Number(row.NEXT) || 0) / 100;
+    });
+    return { sums, reach, outcome, ev, win };
+  }
+  function drawProb(p, rng) {
+    rng = rng || secureRandomInt;
+    for (let i = 0; i < STAGE_DEFS.length; i++) {
+      const d = STAGE_DEFS[i], row = p[d.stage], keys = probKeys(d);
+      const w = keys.map((k) => Math.max(0, units(row[k]) || 0));
+      const total = w.reduce((a, b) => a + b, 0);
+      let pick = '0';
+      if (total > 0) {
+        let r = rng(total);
+        for (let j = 0; j < keys.length; j++) { if (r < w[j]) { pick = keys[j]; break; } r -= w[j]; }
+      }
+      if (pick !== 'NEXT') return { overflow: false, key: d.stage + ':' + pick, stage: d.stage, value: Number(pick) };
+    }
+    throw new Error('drawProb: unreachable');
+  }
   function pathFor(stage) {
     const p = [];
     for (let i = 1; i <= stage; i++) p.push(i);
@@ -233,6 +293,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
+    probKeys, defaultProbs, validateProbs, probStats, drawProb,
     sha256, makePin, checkPin,
   };
 });
