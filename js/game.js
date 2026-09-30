@@ -348,7 +348,7 @@ const Game = (function () {
     setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
     const extra = {};
-    FX.cards(10, 0.3, { sweep: true });
+    if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
     Sfx.play('shuffle');
 
     if (oneMore) {
@@ -497,9 +497,11 @@ const Game = (function () {
     // 重い処理が同じ瞬間に重ならないよう、少しずつずらして出す
     FX.ring(CX, CY, 'white', 1300, 1.0);
     FX.burst(CX, CY, fin ? 160 : 120, { max: 1700, life: 1.6, size: 26, colors });
-    setTimeout(() => { FX.ring(CX, CY, ACC, 1500, 1.2); FX.streaks(CX, CY, fin ? 70 : 50, 0.7, { colors }); }, 120);
-    setTimeout(() => [300, 1300].forEach((x) => FX.fountain(x, 930, fin ? 40 : 30, 0.6, colors)), 240);
-    setTimeout(() => FX.flakes(fin ? 60 : 40, 0.8, colors), 360);
+    setTimeout(() => { FX.ring(CX, CY, ACC, 1500, 1.2); if (!window.LITE) FX.streaks(CX, CY, fin ? 70 : 50, 0.7, { colors }); }, 120);
+    if (!window.LITE) { // 軽量モードでは噴水・紙吹雪を省略
+      setTimeout(() => [300, 1300].forEach((x) => FX.fountain(x, 930, fin ? 40 : 30, 0.6, colors)), 240);
+      setTimeout(() => FX.flakes(fin ? 60 : 40, 0.8, colors), 360);
+    }
     const y1 = RUNG_Y[to];
     setTimeout(() => { FX.ring(180, y1, ACC, 260, 0.6); FX.burst(180, y1, 50, { max: 600, colors }); }, 480);
     if (title) { await wait(420); await stampStage(to, 380); await hideStamp(); await wait(80); }
@@ -537,7 +539,7 @@ const Game = (function () {
   async function transVault(to) {
     const fin = to === 3, rb = pendingSure;
     const colors = rb ? RAINBOW : STAGE_COL[to];
-    const n = rb ? 8 : fin ? 3 : 1;
+    const n = window.LITE ? 1 : rb ? 8 : fin ? 3 : 1; // 軽量モードは常に1組
     const gap = n === 8 ? 170 : 300;
     const layers = buildDoors(n, rb ? DOOR_RGB.rainbow : fin ? DOOR_RGB.fin : null);
     stageEl.classList.remove('opening', 'opening-slow', 'blast');
@@ -811,6 +813,7 @@ const Game = (function () {
   /* ---------- 診断: コマ時間の表示と、負荷の切り分け用スイッチ（設定画面の「その他」） ---------- */
   function applyPerf() {
     const p = Store.state.settings.perf || {};
+    if (!(window.TV && TV.isTV) && !!p.lite !== !!window.LITE) { location.reload(); return; }
     stageEl.classList.toggle('no-bg', !!p.noBg);
     FX.setEnabled(!p.noFx);
     const m = $('meter');
@@ -917,6 +920,9 @@ const Game = (function () {
       return;
     }
     if (window.TV && TV.isTV) { const m = /Chrome\/(\d+)/.exec(navigator.userAgent); const v = $('ver'); if (v && m) v.textContent += ' · TV/Chrome ' + m[1]; }
+    // 軽量モード: テレビ版は常にON。iPad でも設定→その他でONにできる（各モジュールは window.LITE を見る）
+    window.LITE = !!((window.TV && TV.isTV) || (Store.state.settings.perf && Store.state.settings.perf.lite));
+    document.body.classList.toggle('lite', window.LITE);
     if (window.TV && TV.isTV && !Store.state.settings.perf) { try { Store.transact((s) => { s.settings.perf = { noBg: true }; }); } catch (e) { /* 設定のみ */ } }
     Sfx.init(Store.state.settings.volume);
     buildBulbs();
