@@ -204,16 +204,23 @@
   /* 24時間の当たり本数制限。limits = { on, total, max: { 'stage:value': n } }
      total = 直近24時間の当たり本数（合計）の上限、max = 金額ごとの上限（任意）。0 は無制限。hits = [{ ts, key }]。
      上限に達した金額は、その分の確率をそのステージの「0」に回す（他の当たりは増えない）。 */
-  const DAY = 24 * 60 * 60 * 1000;
-  function pruneHits(hits, now) { return (hits || []).filter((h) => now - h.ts < DAY); }
-  function hitCounts(hits, now) {
+  /* 営業日の区切り: 毎日 resetHour 時（既定 19:00）にカウントが 0 に戻る。直近の区切り時刻を返す */
+  function windowStart(now, resetHour) {
+    const h = Number.isInteger(resetHour) ? resetHour : 19;
+    const d = new Date(now);
+    d.setHours(h, 0, 0, 0);
+    if (d.getTime() > now) d.setDate(d.getDate() - 1);
+    return d.getTime();
+  }
+  function pruneHits(hits, now, resetHour) { const from = windowStart(now, resetHour); return (hits || []).filter((h) => h.ts >= from); }
+  function hitCounts(hits, now, resetHour) {
     const c = { total: 0 };
-    pruneHits(hits, now).forEach((h) => { c[h.key] = (c[h.key] || 0) + 1; c.total += 1; });
+    pruneHits(hits, now, resetHour).forEach((h) => { c[h.key] = (c[h.key] || 0) + 1; c.total += 1; });
     return c;
   }
   function blockedKeys(limits, hits, now) {
     if (!limits || !limits.on) return [];
-    const c = hitCounts(hits, now), out = [];
+    const c = hitCounts(hits, now, limits.resetHour), out = [];
     const total = Number(limits.total) || 0;
     OUTCOMES.forEach((o) => {
       if (!(o.value > 0)) return;
@@ -316,7 +323,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, probStats, drawProb, pruneHits, hitCounts, blockedKeys,
+    probKeys, defaultProbs, validateProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys,
     sha256, makePin, checkPin,
   };
 });
