@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-180.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="css/style.css?v=b4">
+<link rel="stylesheet" href="css/style.css?v=b5">
 </head>
 <body>
 <div id="viewport">
@@ -50,13 +50,13 @@
       <div class="props">
         <div class="mini-card" style="left:6px;bottom:6px;transform:rotate(-20deg)"><b>A</b><i>&#9824;</i></div>
         <div class="mini-card" style="left:44px;bottom:12px;transform:rotate(-6deg)"><b>K</b><i>&#9824;</i></div>
-        <div class="stack" style="left:150px;height:118px;--c:#1b4b40;--s:#e9c25e"></div>
+        <div class="stack" style="left:150px;height:118px;--c:#1b5b50;--s:#e9c25e"></div>
         <div class="stack" style="left:214px;height:84px;--c:#d8261c;--s:#ffffff"></div>
         <div class="stack acc" style="left:122px;height:56px"></div>
       </div>
 
       <div class="cabinet" id="cabinet">
-        <div class="cab4d" id="cab4d">
+        <div class="cab5d" id="cab5d">
         <div class="led l"></div><div class="led r"></div>
         <div class="rim"></div>
         <div class="frame"></div>
@@ -79,7 +79,7 @@
       </div>
 
       <button class="help-btn" id="helpBtn" aria-label="遊び方">?</button>
-      <div class="credit-box"><div><small>PLAYS</small><b id="credit">0</b></div><div style="display:none"><small>TOTAL</small><b id="total">0</b></div></div>
+      <div class="credit-box"><div><small>合計回転数</small><b id="credit">0</b></div><div><small>合計当選額</small><b id="total">0</b></div></div>
 
       <div class="recent" id="recent"><h6>配当履歴</h6><div class="recent-view"><div class="recent-list" id="recentList"></div></div></div>
 
@@ -112,7 +112,7 @@
     <div id="toast"></div>
     <div id="meter"></div>
     <!-- 最初のタップで音声を有効化する（ブラウザ/OSの自動再生制限への対応） -->
-    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p>TAP TO START</p></div><small id="ver">b4</small></div>
+    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p>TAP TO START</p></div><small id="ver">b5</small></div>
   </div>
   <div id="rotate"><div>端末を横向きにしてご利用ください</div></div>
 </div>
@@ -122,15 +122,15 @@
 window.addEventListener('error', function (e) {
   var d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal' }));
   d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;padding:10px 14px;border-radius:10px;background:#7a211a;color:#fff;font:14px/1.5 sans-serif;white-space:pre-wrap';
-  d.textContent = 'エラー (b4): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
+  d.textContent = 'エラー (b5): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
 });
 </script>
-<script src="js/engine.js?v=b4"></script>
-<script src="js/store.js?v=b4"></script>
-<script src="js/audio.js?v=b4"></script>
-<script src="js/reel.js?v=b4"></script>
-<script src="js/fx.js?v=b4"></script>
-<script src="js/admin.js?v=b4"></script>
-<script src="js/game.js?v=b4"></script>
+<script src="js/engine.js?v=b5"></script>
+<script src="js/store.js?v=b5"></script>
+<script src="js/audio.js?v=b5"></script>
+<script src="js/reel.js?v=b5"></script>
+<script src="js/fx.js?v=b5"></script>
+<script src="js/admin.js?v=b5"></script>
+<script src="js/game.js?v=b5"></script>
 </body>
 </html>
