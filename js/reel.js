@@ -4,9 +4,8 @@
    倒れ込む → デテントにバネで収まる」という動きになる。 */
 const Reel = (function () {
   'use strict';
-  const IS_TV = /casaTV/.test(navigator.userAgent);
-  const W = 720, H = 440, CH = 220, SW = 680, S = IS_TV ? 1 : 2; // 設計px。S はキャンバス解像度倍率（テレビ版は1で軽く）
-  const MIN_FRAME = IS_TV ? 1000 / 24 - 2 : 0; // テレビ版は24フレーム上限
+  const W = 720, H = 440, CH = 220, SW = 680; // 設計px
+  let S = 2, MIN_FRAME = 0; // S はキャンバス解像度倍率。軽量モードでは init で 1 と 24fps 上限にする
   const BLUR_S = 0.5, PAD = 80;
   const STRIPS = {
     1: [500, 'NEXT', 0, 1000],
@@ -22,8 +21,9 @@ const Reel = (function () {
      停止までの目安: STAGE 1 約4秒 / STAGE 2 約6.5秒 / STAGE 3 約9.5秒 */
   const TIMING = {
     1: { speed: 30, cruise: [0.5, 0.8], decel: 2.1, pause: 0.35, tease: 0.5 },
-    2: { speed: 32, cruise: [1.0, 1.4], decel: 3.3, pause: 0.75, tease: 0.85 },
-    3: { speed: 34, cruise: [1.6, 2.1], decel: 4.6, pause: 1.3, tease: 1 },
+    // ステージが上がるごとに止まるまでの長さが 1.2 倍（約 5.2秒 → 6.2秒 → 7.5秒）
+    2: { speed: 32, cruise: [0.6, 1.0], decel: 2.8, pause: 0.6, tease: 0.85 },
+    3: { speed: 34, cruise: [0.9, 1.3], decel: 3.3, pause: 0.8, tease: 1 },
   };
   const LINE_RGB = { 1: '233,194,94', 2: '110,200,255', 3: '255,110,90' }; // コマ境界線の色
   // 極太書体（iPad 標準搭載の Impact）。数字もラベルも同じ書体でそろえる
@@ -375,6 +375,7 @@ const Reel = (function () {
   }
 
   function init(canvas) {
+    if (window.LITE) { S = 1; MIN_FRAME = 1000 / 24 - 2; }
     cv = canvas;
     cv.width = W * S; cv.height = H * S;
     ctx = cv.getContext('2d');
