@@ -1336,3 +1336,5 @@ body.is-tv .rays, body.is-tv .rays2, body.is-tv .beams, body.is-tv .sheen, body.
 body.is-tv .frame, body.is-tv .rung, body.is-tv .recent, body.is-tv .credit-box, body.is-tv .lockbar .res, body.is-tv .paytable .ps { filter: none !important; }
 body.is-tv .bulbs { opacity: .35; }
 body.is-tv #content, body.is-tv #fxwrap { transform-origin: 770px 420px; }
+#crest:focus, .lockbar .btn:focus, .help-btn:focus { outline: none; }
+body.tv #crest:focus { outline: 5px solid #fff; outline-offset: 5px; border-radius: 22px; }
