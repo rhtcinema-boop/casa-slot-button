@@ -83,9 +83,9 @@ public class MainActivity extends Activity {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (event.getRepeatCount() == 0) backHold = 0;
                 backHold += 1;
-                if (backHold == 12) web.evaluateJavascript("window.TV && TV.settings()", null);
+                if (backHold == 12) web.evaluateJavascript("typeof TV!=='undefined' && TV.settings()", null);
             } else if (event.getAction() == KeyEvent.ACTION_UP) {
-                if (backHold < 12) web.evaluateJavascript("window.TV && TV.back()", null);
+                if (backHold < 12) web.evaluateJavascript("typeof TV!=='undefined' && TV.back()", null);
                 backHold = 0;
             }
             return true;
@@ -101,11 +101,11 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: case KeyEvent.KEYCODE_MEDIA_PLAY: name = "Enter"; break;
         }
         if (name != null) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN) web.evaluateJavascript("window.TV && TV.press('" + name + "'," + (event.getRepeatCount() > 0) + ")", null);
+            if (event.getAction() == KeyEvent.ACTION_DOWN) web.evaluateJavascript("typeof TV!=='undefined' && TV.press('" + name + "'," + (event.getRepeatCount() > 0) + ")", null);
             return true;
         }
         if (code == KeyEvent.KEYCODE_MENU) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) web.evaluateJavascript("window.TV && TV.menu()", null);
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) web.evaluateJavascript("typeof TV!=='undefined' && TV.menu()", null);
             return true;
         }
         return super.dispatchKeyEvent(event);
