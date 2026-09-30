@@ -1004,7 +1004,8 @@ const Game = (function () {
   /* ---------- 設定画面への隠し入口（左上エンブレム長押し） ---------- */
   /* ---------- 店舗モード（クラウド同期） ----------
      初回は店舗を選んでその店舗のパスワードを入れる。以後はマスターが配ったプリセットだけを使う。 */
-  const storeMode = () => Cloud.enabled && !!Store.state.store;
+  let cloudDown = false; // クラウドに接続できず、端末内の設定で動いている
+  const storeMode = () => Cloud.enabled && !cloudDown && !!Store.state.store;
   let cloudPresets = {};   // 配布されたプリセット { id: { name, probs, limits } }
   let cloudStore = null;   // 店舗ドキュメントの最新
   let unwatch = null, presetWatch = {};
@@ -1013,8 +1014,9 @@ const Game = (function () {
       let stores = [];
       try { stores = await Cloud.listStores(); } catch (err) { stores = null; }
       if (!stores || !stores.length) {
-        await UI.confirm({ title: stores ? '店舗が登録されていません' : '接続できません', ok: '再試行', cancel: false,
-          html: '<p>' + (stores ? 'マスター画面で店舗を登録してから、もう一度お試しください。' : 'インターネット接続を確認してください。') + '</p>' });
+        const retry = await UI.confirm({ title: stores ? '店舗が登録されていません' : 'クラウドに接続できません', ok: '再試行', cancelLabel: 'このまま1台で使う',
+          html: '<p>' + (stores ? 'マスター画面で店舗を登録してから、もう一度お試しください。' : 'インターネット接続と、Firebase の設定（Authentication・Firestore）を確認してください。') + '</p><p style="color:#8e8672;font-size:15px">「このまま1台で使う」を選ぶと、端末内の設定で今までどおり動きます（次回起動時にまた店舗を選べます）。</p>' });
+        if (!retry) { cloudDown = true; return; }
         continue;
       }
       const id = await new Promise((resolve) => {
@@ -1195,8 +1197,10 @@ const Game = (function () {
       }, { once: true });
     });
     if (Cloud.enabled) {
-      if (!Store.state.store) { await chooseStore(); refresh(); }
-      startCloudSync();
+      try { await Cloud.ready(); } catch (err) { cloudDown = true; UI.toast('クラウドに接続できません。端末内の設定で動作します。', 'err'); }
+      if (!cloudDown && !Store.state.store) { await chooseStore(); refresh(); }
+      if (!cloudDown && Store.state.store) startCloudSync();
+      if (!Store.state.pins) { await firstRun(); refresh(); } // クラウド無しで使うときは従来どおり端末の PIN
     } else if (!Store.state.pins) { await firstRun(); refresh(); }
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !(window.TV && TV.isTV)) navigator.serviceWorker.register('sw.js').catch(() => {});
   }
