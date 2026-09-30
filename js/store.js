@@ -38,6 +38,10 @@ const Store = (function () {
       try { Object.assign(state, JSON.parse(raw)); }
       catch (e) { throw new Error('保存データが破損しています。'); }
     }
+    // ボタン版: 在庫ではなく確率で抽選する。集計用に常設のセッションを1つ持つ
+    if (!state.probs) state.probs = Engine.defaultProbs();
+    if (!state.recent) state.recent = [];
+    if (!state.session) state.session = { id: 1, startedAt: Date.now(), total: 0, cap: 0, initial: Engine.emptyCounts(), remaining: Engine.emptyCounts(), consumed: Engine.emptyCounts(), playNo: 0, overflowCount: 0, awarded: 0 };
     return state;
   }
   function save() {
