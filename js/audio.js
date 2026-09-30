@@ -34,11 +34,10 @@ const Sfx = (function () {
       const x = ir.getChannelData(ch);
       for (let i = 0; i < len; i++) x[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.4);
     }
-    const conv = ctx.createConvolver();
-    conv.buffer = ir;
     revSend = ctx.createGain();
     revSend.gain.value = 0.5;
-    revSend.connect(conv); conv.connect(master);
+    if (window.LITE) { revSend.gain.value = 0.15; revSend.connect(master); } // 軽量モード: 残響（畳み込み）は使わず薄く直結
+    else { const conv = ctx.createConvolver(); conv.buffer = ir; revSend.connect(conv); conv.connect(master); }
 
     // ディレイ（やまびこ）
     const dl = ctx.createDelay(1);
@@ -46,7 +45,8 @@ const Sfx = (function () {
     const fb = ctx.createGain(); fb.gain.value = 0.36;
     const dlp = ctx.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 3200;
     dlySend = ctx.createGain(); dlySend.gain.value = 0.5;
-    dlySend.connect(dl); dl.connect(dlp); dlp.connect(fb); fb.connect(dl); dlp.connect(master);
+    if (window.LITE) { dlySend.gain.value = 0.1; dlySend.connect(master); } // 軽量モード: やまびこ無し
+    else { dlySend.connect(dl); dl.connect(dlp); dlp.connect(fb); fb.connect(dl); dlp.connect(master); }
     return true;
   }
 
@@ -74,7 +74,7 @@ const Sfx = (function () {
   /* 軽量化: 同時に鳴っている音の数を数え、多すぎるときは小さな音（きらめき・コインなど）から間引く。
      音を一度に大量に作ると、その瞬間に画面が引っかかるため。 */
   const voices = [];
-  const MAX_VOICES = 32;
+  const MAX_VOICES = window.LITE ? 12 : 32;
   function admit(t, dur, gain) {
     const now = ctx.currentTime;
     while (voices.length && voices[0] < now) voices.shift();
@@ -597,7 +597,7 @@ const Sfx = (function () {
   function tick(speed) {
     if (!ready()) return;
     const now = ctx.currentTime;
-    if (now - lastTick < 0.058) return;
+    if (now - lastTick < (window.LITE ? 0.11 : 0.058)) return; // 軽量モードはピコピコ音を半分に
     lastTick = now;
     const slow = 1 - Math.min(1, speed * 3);
     const sc = SCALES[stage];
@@ -609,8 +609,10 @@ const Sfx = (function () {
     tickN++;
     // 矩形波のピコピコ音（8bit風）＋ごく短いクリック
     tone({ type: 'square', f, d: 0.05 + slow * 0.09, g: 0.075 + slow * 0.04, lp: 5200, pan });
-    tone({ type: 'triangle', f: f * 2, d: 0.04 + slow * 0.06, g: 0.05, pan: -pan });
-    noise({ f: 2600, q: 2.5, d: 0.012, g: 0.05, pan });
+    if (!window.LITE) {
+      tone({ type: 'triangle', f: f * 2, d: 0.04 + slow * 0.06, g: 0.05, pan: -pan });
+      noise({ f: 2600, q: 2.5, d: 0.012, g: 0.05, pan });
+    }
     if (slow > 0.5) chime(f, 0, 0.3 + slow * 0.3, 0.04 + slow * 0.06, { pan: -pan }); // 止まり際は余韻を足す
   }
 
