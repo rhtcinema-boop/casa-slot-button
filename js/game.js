@@ -375,7 +375,7 @@ const Game = (function () {
     busy = true;
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
-    const pat = pickPattern(st, sym);
+    const pat = oneMore ? { type: 'plain' } : pickPattern(st, sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
     setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
     const extra = {};
@@ -450,7 +450,12 @@ const Game = (function () {
     const combos = Engine.reelCombos(st, sym);
     const usedC = Store.state.comboHist || [];
     let pool = combos.filter((c) => usedC.indexOf(st + ':' + c.join('/')) < 0);
-    if (!pool.length) pool = combos;
+    if (!pool.length) { // 候補が少なくて20回ぶん避けきれないときは、同じ結果の直近ぶん（候補数の半分まで）だけ避ける
+      const keys = combos.map((c) => st + ':' + c.join('/'));
+      const recent = usedC.filter((k) => keys.indexOf(k) >= 0).slice(-Math.floor(combos.length / 2));
+      pool = combos.filter((c) => recent.indexOf(st + ':' + c.join('/')) < 0);
+      if (!pool.length) pool = combos;
+    }
     const combo = pool[Math.floor(Math.random() * pool.length)];
     const deciding = ORDERS.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
     const ordPool = deciding.length ? deciding : ORDERS;
@@ -902,9 +907,8 @@ const Game = (function () {
         title: '遊び方', ok: '閉じる', cancel: false,
         html:
           '<div class="help">' +
-          '<h5>進め方</h5><ol><li><b>NEXT GAME</b> を押すと、3本のリールが回って1本ずつ止まります。</li><li><b>3本に出た金額の合計</b>が結果です（<b>BAR</b> は 0）。</li><li><b>NEXT STAGE が3本そろう</b>と次のステージへ。自動で続けて回ります。</li><li>STAGE 3 が最後のステージです。</li></ol>' +
-          '<h5>各ステージで出るもの</h5>' +
-          Engine.STAGE_DEFS.map((d) => '<div class="hrow"><em>STAGE ' + d.stage + '</em><div>' + fmtList(d) + '</div></div>').join('') +
+          '<h5>進め方</h5><ol><li><b>NEXT GAME</b> を押すと、3本のリールが回って1本ずつ止まります。</li><li><b>3本に出た金額の合計</b>が結果です（<b>BAR</b> は 0）。</li><li><b>NEXT STAGE が3本そろう</b>と次のステージへ。自動で続けて回ります。NEXT STAGE が1〜2本だけのときは 0（BAR と同じ）として合計します。</li><li>STAGE 3 が最後のステージです。</li></ol>' +
+          '<h5>当たる金額</h5><p>金額はランダムです。' + Engine.STAGE_DEFS.map((d) => 'STAGE ' + d.stage + ' は最大 <b>' + fmtN(Math.max.apply(null, d.values)) + '</b>').join('、') + '。</p>' +
           '<h5>テレビ（リモコン）で設定を開くには</h5><ul><li>十字キーで左上の casa ロゴに枠を合わせて、決定を続けて5回</li><li>またはメニューボタン（≡）を3回、または戻るボタンを長押し</li></ul><h5>演出について</h5><ul><li>止まりかけてから、もう1コマ進んだり戻ったりすることがあります。</li><li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li><li>画面全体が<b>虹色</b>になったら、当選が確定しています。</li></ul>' +
           '</div>',
       });
@@ -991,7 +995,8 @@ const Game = (function () {
     initSecret();
     initHelp();
     // 画面下: 各ステージで当たる金額の一覧
-    $('paytable').innerHTML = Engine.STAGE_DEFS.map((d) => '<div class="ps" data-s="' + d.stage + '"><em>STAGE ' + d.stage + '</em><span>' + d.values.filter((v) => v > 0).map((v) => '<b class="amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length) + '">' + fmtN(v) + '</b>').join('') + '</span></div>').join('');
+    // 最下段: ステージごとの最大金額だけを見せる（内訳は見せない）
+    $('paytable').innerHTML = Engine.STAGE_DEFS.map((d) => { const mx = Math.max.apply(null, d.values); return '<div class="ps" data-s="' + d.stage + '"><em>STAGE ' + d.stage + '</em><span><i>MAX</i><b class="amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= mx).length) + '">' + fmtN(mx) + '</b></span></div>'; }).join('');
     buildLightSprites();
     applyPerf();
     setStage(1);
