@@ -1,0 +1,46 @@
+name: Build Fire TV app
+
+on:
+  push:
+    branches: [main]
+    paths: ['tv/**', 'index.html', 'sw.js', 'manifest.webmanifest', 'css/**', 'js/**', '*.png', '.github/workflows/tv.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v3
+        with: { gradle-version: '8.9' }
+      - name: Bundle web app into assets
+        run: |
+          rm -rf tv/app/src/main/assets/www && mkdir -p tv/app/src/main/assets/www/css tv/app/src/main/assets/www/js
+          cp index.html manifest.webmanifest *.png tv/app/src/main/assets/www/
+          cp css/*.css tv/app/src/main/assets/www/css/ && cp js/*.js tv/app/src/main/assets/www/js/
+          echo "APP_VERSION_NAME=$(grep -o 'id=\"ver\">[^<]*' index.html | sed 's/.*>//')" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
+      - name: Prepare signing key
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        env: { KEYSTORE_B64: "${{ secrets.KEYSTORE_B64 }}" }
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/casa.p12"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/casa.p12" >> "$GITHUB_ENV"
+      - name: Build APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: casa
+        run: gradle -p tv assembleRelease --no-daemon
+      - name: Publish to release "tv"
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          cp tv/app/build/outputs/apk/release/app-release.apk casa-slot-tv.apk
+          gh release view tv >/dev/null 2>&1 || gh release create tv -t "casa SLOT Fire TV app" -n "Fire TV Stick 用 APK。Downloader アプリで下の casa-slot-tv.apk の URL を開いてインストールします。"
+          gh release upload tv casa-slot-tv.apk --clobber
+          gh release edit tv -n "Fire TV Stick 用 APK（${APP_VERSION_NAME}、build ${APP_VERSION_CODE}）。Downloader アプリで casa-slot-tv.apk の URL を開いてインストールします。"
