@@ -4,7 +4,9 @@
    倒れ込む → デテントにバネで収まる」という動きになる。 */
 const Reel = (function () {
   'use strict';
-  const W = 720, H = 440, CH = 220, SW = 680, S = 2; // 設計px。S はキャンバス解像度倍率
+  const IS_TV = /casaTV/.test(navigator.userAgent);
+  const W = 720, H = 440, CH = 220, SW = 680, S = IS_TV ? 1 : 2; // 設計px。S はキャンバス解像度倍率（テレビ版は1で軽く）
+  const MIN_FRAME = IS_TV ? 1000 / 24 - 2 : 0; // テレビ版は24フレーム上限
   const BLUR_S = 0.5, PAD = 80;
   const STRIPS = {
     1: [500, 'NEXT', 0, 1000],
@@ -321,7 +323,7 @@ const Reel = (function () {
       const prof = buildProfile(pos, st, sym, opts || {});
       const t0 = performance.now();
       let lastP = pos, lastT = 0, lastCell = Math.round(pos);
-      let lastNow = t0, frameNo = 0;
+      let lastNow = t0, frameNo = 0; let lastDrawn = 0;
       let started = false, teased = false, neared = false, stopped = false;
       cancelAnimationFrame(raf);
       function frame(now) {
@@ -346,10 +348,12 @@ const Reel = (function () {
         }
         // 端末が60フレームを保てないときは、描くのを1コマおきにする（不安定に上下するより30で安定させる）。
         // 位置は時刻から計算しているので、止まる位置や音のタイミングは変わらない。
+        if (MIN_FRAME && now - lastDrawn < MIN_FRAME) { raf = requestAnimationFrame(frame); return; } // 24fps 上限（位置は時刻から計算するので結果は変わらない）
+        lastDrawn = now;
         frameMs += (Math.min(100, now - lastNow) - frameMs) * 0.08;
         lastNow = now;
         if (!slow && frameMs > 21) slow = true; else if (slow && frameMs < 12) slow = false;
-        if (!slow || (frameNo++ & 1) === 0) draw(p, speed);
+        if (MIN_FRAME || !slow || (frameNo++ & 1) === 0) draw(p, speed);
         raf = requestAnimationFrame(frame);
       }
       raf = requestAnimationFrame(frame);
