@@ -1118,3 +1118,26 @@ input[type=range].vol { width: 380px; height: 44px; accent-color: #e9c25e; touch
 @keyframes spinpulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
 @keyframes spinpress { 0% { transform: scale(.9); } 100% { transform: scale(1); } }
 #stage.no-bg .spin-btn { animation: none !important; }
+
+/* ---------- ボタン版: ボタンは NEXT GAME の1個だけ（下に大きく）／右側は直近の当選 ---------- */
+.lockbar { top: 738px; height: 150px; transform: none; }
+.lockbar .side .btn { height: 112px; padding: 0 70px; border-radius: 24px; font-size: 46px; letter-spacing: .12em; }
+.lockbar .side.solo { margin: 0 auto; align-items: center; }
+.lockbar .side.solo .btn { padding: 0 150px; font-size: 54px; }
+.marquee .brand, #crest { cursor: pointer; touch-action: manipulation; }
+.recent { position: absolute; left: calc(1262px - 62px * var(--t, 0)); top: 150px; width: 270px; height: 560px; border-radius: 22px; padding: 18px 0 14px; background: linear-gradient(180deg, rgba(20, 20, 24, .92), rgba(8, 8, 10, .92)); box-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000, 0 18px 40px rgba(0, 0, 0, .6); display: flex; flex-direction: column; }
+.recent h6 { margin: 0 0 12px; text-align: center; font: 700 19px/1 var(--font-label); letter-spacing: .3em; padding-left: .3em; color: var(--accent); }
+.recent-view { flex: 1; overflow: hidden; margin: 0 16px; border-top: 1px solid rgba(var(--acc), .3); }
+.recent-list { will-change: transform; }
+.rc { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 13px 4px 11px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.rc small { font: 600 19px/1 var(--font-ui); letter-spacing: .04em; color: #a89f89; }
+.rc b { font: 700 34px/1 var(--font-num); letter-spacing: .03em; background: var(--amt, var(--gold-grad)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.rc.none { justify-content: center; color: #6d6656; font-size: 26px; border: 0; padding-top: 40px; }
+@keyframes recentscroll { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, var(--over), 0); } }
+
+.recent h6 { font: 700 21px/1 "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif; letter-spacing: .24em; padding-left: .24em; }
+.rc { align-items: center; padding: 10px 2px 9px; }
+.rc small { display: flex; flex-direction: column; gap: 5px; font-size: 18px; font-variant-numeric: tabular-nums; color: #d9d0b8; }
+.rc small i { font-style: normal; font-size: 13px; color: #8e8672; }
+.rc b { font-size: 32px; }
+.credit-box { height: 58px; }
