@@ -246,6 +246,78 @@
     }
     throw new Error('drawProb: unreachable');
   }
+  /* ---------- 3本リールの見せ方（合計方式） ----------
+     各リールは「金額」「BAR（0円）」「NEXT」のどれか。NEXT が3本そろえば次のステージ、それ以外は金額の合計が当選額（NEXT 1〜2本は 0 扱い）。
+     結果は確率で先に決まっていて、その結果になる組み合わせの中から見せ方を選ぶだけ。 */
+  const REEL_SYMS = {
+    1: [100, 200, 300, 400, 500],
+    2: [500, 1000, 2000, 3000, 5000],
+    3: [5000, 10000, 20000, 30000, 50000, 100000],
+  };
+  function readReels(stage, syms) {
+    let nexts = 0, sum = 0;
+    syms.forEach((s) => { if (s === 'NEXT') nexts++; else if (typeof s === 'number') sum += s; });
+    if (nexts >= 3 && STAGE_DEFS[stage - 1].hasNext) return 'NEXT';
+    return sum;
+  }
+  // 配列の要素の並び替え（重複を除く）
+  function perms(arr) {
+    const out = [], seen = {};
+    (function go(rest, acc) {
+      if (!rest.length) { const k = acc.join('|'); if (!seen[k]) { seen[k] = true; out.push(acc.slice()); } return; }
+      for (let i = 0; i < rest.length; i++) go(rest.slice(0, i).concat(rest.slice(i + 1)), acc.concat([rest[i]]));
+    })(arr, []);
+    return out;
+  }
+  const comboCache = {};
+  /* target（金額 / 0 / 'NEXT'）になる3本の組み合わせをすべて返す（左中右の並びも別物として数える） */
+  function reelCombos(stage, target) {
+    const key = stage + ':' + target;
+    if (comboCache[key]) return comboCache[key];
+    const D = REEL_SYMS[stage], hasNext = STAGE_DEFS[stage - 1].hasNext;
+    const out = [], seen = {};
+    const add = (c) => { const k = c.join('|'); if (!seen[k]) { seen[k] = true; out.push(c); } };
+    if (target === 'NEXT') {
+      if (hasNext) add(['NEXT', 'NEXT', 'NEXT']); // 次のステージは3本そろいだけ
+    } else if (target === 0) {
+      add(['BAR', 'BAR', 'BAR']);
+      if (hasNext) { perms(['NEXT', 'BAR', 'BAR']).forEach(add); perms(['NEXT', 'NEXT', 'BAR']).forEach(add); }
+    } else {
+      // 金額を 1〜3 個の絵柄の和で作る（同じ絵柄の繰り返し可）。残りは BAR、または NEXT（1〜2本。3本そろわなければ 0 扱い）
+      const sets = [];
+      for (let i = 0; i < D.length; i++) {
+        if (D[i] === target) sets.push([D[i]]);
+        for (let j = i; j < D.length; j++) {
+          if (D[i] + D[j] === target) sets.push([D[i], D[j]]);
+          for (let k = j; k < D.length; k++) if (D[i] + D[j] + D[k] === target) sets.push([D[i], D[j], D[k]]);
+        }
+      }
+      sets.forEach((s) => {
+        const pad = 3 - s.length;
+        perms(s.concat(new Array(pad).fill('BAR'))).forEach(add);
+        if (hasNext && pad >= 1) perms(s.concat(['NEXT']).concat(new Array(pad - 1).fill('BAR'))).forEach(add);
+        if (hasNext && pad >= 2) perms(s.concat(['NEXT', 'NEXT'])).forEach(add);
+      });
+    }
+    // 念のため、読み取り結果が target と一致するものだけを残す
+    const ok = out.filter((c) => readReels(stage, c) === target);
+    comboCache[key] = ok;
+    return ok;
+  }
+  /* 最後に止まるリール idx に「別の絵柄」を入れたとき、その段の正規の結果（0・各金額・NEXT）になる絵柄の一覧
+     （止まりかけで見せる「惜しい」絵柄の候補）。actual と同じ読みになるものは除く */
+  function reelAlternatives(stage, combo, idx) {
+    const d = STAGE_DEFS[stage - 1];
+    const valid = d.values.concat(d.hasNext ? ['NEXT'] : []);
+    const actual = readReels(stage, combo);
+    const cands = ['BAR'].concat(REEL_SYMS[stage]).concat(d.hasNext ? ['NEXT'] : []);
+    return cands.filter((s) => {
+      if (s === combo[idx]) return false;
+      const c = combo.slice(); c[idx] = s;
+      const v = readReels(stage, c);
+      return v !== actual && valid.indexOf(v) >= 0;
+    });
+  }
   function pathFor(stage) {
     const p = [];
     for (let i = 1; i <= stage; i++) p.push(i);
@@ -324,6 +396,7 @@
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
     probKeys, defaultProbs, validateProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys,
+    REEL_SYMS, readReels, reelCombos, reelAlternatives,
     sha256, makePin, checkPin,
   };
 });
