@@ -6,7 +6,7 @@ const TV = (function () {
   'use strict';
   const isTV = /casaTV/.test(navigator.userAgent);
   const FOCUSABLE = 'button, input, select, [data-act], [data-k], [data-r], #crest';
-  let on = false, cur = null, curKey = '', editing = false, menuTaps = [], pending = 0, backHold = 0;
+  let on = false, cur = null, curKey = '', editing = false, menuTaps = [], pending = 0, backHold = 0, logoTaps = [];
 
   const rect = (el) => el.getBoundingClientRect();
   function visible(el) {
@@ -81,7 +81,12 @@ const TV = (function () {
     if (!cur) return;
     if (isNum(cur)) { editing = !editing; cur.classList.toggle('tvedit', editing); return; }
     if (cur.tagName === 'SELECT') { cur.focus(); return; }
-    if (cur.id === 'crest') return settings(); // 左上のロゴに枠を合わせて決定 → 設定（PIN）
+    if (cur.id === 'crest') { // 左上のロゴに枠を合わせて決定を5回（2.5秒以内）→ 設定（PIN）
+      const now = Date.now();
+      logoTaps = logoTaps.filter((x) => now - x < 2500).concat(now);
+      if (logoTaps.length >= 5) { logoTaps = []; settings(); }
+      return;
+    }
     cur.click();
   }
   /* 戻る: 編集モード → ダイアログのキャンセル → 設定を閉じる。ゲーム画面では何もしない（アプリは終了しない） */
