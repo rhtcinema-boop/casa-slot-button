@@ -1,4 +1,9 @@
-/* クラウド同期の設定。Firebase の設定オブジェクトを入れると店舗モードになる（未設定 = 1台運用）。
-   例: window.CASA_CLOUD = { apiKey: '...', authDomain: '...', projectId: '...', appId: '...' };
-   動作確認用: window.CASA_CLOUD = 'local'; */
-window.CASA_CLOUD = null;
+/* クラウド同期の設定（Firebase プロジェクト casa-ruretto）。null にすると1台運用に戻る。動作確認用は 'local'。 */
+window.CASA_CLOUD = {
+  apiKey: 'AIzaSyBSS4h_xOQexdi2BM89NSz8yFuAPH18ch4',
+  authDomain: 'casa-ruretto.firebaseapp.com',
+  projectId: 'casa-ruretto',
+  storageBucket: 'casa-ruretto.firebasestorage.app',
+  messagingSenderId: '1027705113401',
+  appId: '1:1027705113401:web:894294277dacd96b6536e8',
+};
