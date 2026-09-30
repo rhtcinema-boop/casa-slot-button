@@ -949,3 +949,4 @@ const Game = (function () {
   document.addEventListener('DOMContentLoaded', init);
   return { refresh, applyPerf, openSettings: () => openSettings && openSettings() };
 })();
+window.Game = Game;
