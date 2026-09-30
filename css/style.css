@@ -1348,3 +1348,30 @@ body.tv #crest:focus { outline: 5px solid #fff; outline-offset: 5px; border-radi
 /* 最下段: 最大金額だけ */
 .paytable .ps span i { font: 700 15px/1 var(--font-label); font-style: normal; letter-spacing: .2em; color: #a89f89; margin-right: 4px; }
 .paytable .ps b, .paytable .ps[data-s="3"] b { font-size: 32px; }
+
+/* ---------- 店舗モード ---------- */
+.store-list, .preset-list { display: flex; flex-wrap: wrap; gap: 14px; }
+.store-btn, .preset-btn { min-width: 220px; height: 84px; font-size: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.preset-btn small { font-size: 14px; letter-spacing: .2em; opacity: .8; }
+
+/* ---------- プチュン（ブラウン管が消えるような暗転） ---------- */
+#crt { position: absolute; inset: 0; z-index: 3; pointer-events: none; display: none; background: #000; }
+#crt i { position: absolute; left: 0; right: 0; top: 50%; height: 100%; transform: translateY(-50%); background: #fff; opacity: 0; }
+#crt.off { display: block; animation: crt-bg .95s linear both; }
+#crt.off i { animation: crt-line-off .95s cubic-bezier(.2, .9, .3, 1) both; }
+#crt.on { display: block; animation: crt-bg .7s linear reverse both; }
+#crt.on i { animation: crt-line-on .7s cubic-bezier(.6, 0, .8, .2) both; }
+#crt.dark { display: block; }
+@keyframes crt-bg { 0% { background: rgba(0, 0, 0, 0); } 60% { background: rgba(0, 0, 0, 1); } 100% { background: #000; } }
+@keyframes crt-line-off { 0% { height: 100%; opacity: 0; left: 0; right: 0; } 40% { height: 6px; opacity: 1; left: 0; right: 0; } 80% { height: 3px; opacity: 1; left: 45%; right: 45%; } 100% { height: 2px; opacity: 0; left: 50%; right: 50%; } }
+@keyframes crt-line-on { 0% { height: 2px; opacity: 0; left: 50%; right: 50%; } 30% { height: 4px; opacity: 1; left: 0; right: 0; } 100% { height: 100%; opacity: 0; left: 0; right: 0; } }
+body.lite #crt.off, body.lite #crt.on { animation-duration: .6s; }
+body.lite #crt i { display: none; }
+
+/* フラッシュ（白飛び）版 */
+#crt.white-in { display: block; background: #fff; animation: white-in .6s linear both; }
+#crt.white { display: block; background: #fff; }
+#crt.white-out { display: block; background: #fff; animation: white-out 1s ease-out both; }
+#crt.white-in i, #crt.white i, #crt.white-out i { display: none; }
+@keyframes white-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes white-out { from { opacity: 1; } to { opacity: 0; } }
