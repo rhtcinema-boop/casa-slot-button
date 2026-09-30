@@ -201,11 +201,34 @@
     });
     return { sums, reach, outcome, ev, win };
   }
-  function drawProb(p, rng) {
+  /* 24時間の当たり本数制限。limits = { on, total, max: { 'stage:value': n } }
+     total = 直近24時間の当たり本数（合計）の上限、max = 金額ごとの上限（任意）。0 は無制限。hits = [{ ts, key }]。
+     上限に達した金額は、その分の確率をそのステージの「0」に回す（他の当たりは増えない）。 */
+  const DAY = 24 * 60 * 60 * 1000;
+  function pruneHits(hits, now) { return (hits || []).filter((h) => now - h.ts < DAY); }
+  function hitCounts(hits, now) {
+    const c = { total: 0 };
+    pruneHits(hits, now).forEach((h) => { c[h.key] = (c[h.key] || 0) + 1; c.total += 1; });
+    return c;
+  }
+  function blockedKeys(limits, hits, now) {
+    if (!limits || !limits.on) return [];
+    const c = hitCounts(hits, now), out = [];
+    const total = Number(limits.total) || 0;
+    OUTCOMES.forEach((o) => {
+      if (!(o.value > 0)) return;
+      const m = Number(limits.max && limits.max[o.key]) || 0;
+      if ((total > 0 && c.total >= total) || (m > 0 && (c[o.key] || 0) >= m)) out.push(o.key);
+    });
+    return out;
+  }
+  function drawProb(p, rng, blocked) {
     rng = rng || secureRandomInt;
+    blocked = blocked || [];
     for (let i = 0; i < STAGE_DEFS.length; i++) {
       const d = STAGE_DEFS[i], row = p[d.stage], keys = probKeys(d);
       const w = keys.map((k) => Math.max(0, units(row[k]) || 0));
+      keys.forEach((k, j) => { if (k !== '0' && k !== 'NEXT' && blocked.indexOf(d.stage + ':' + k) >= 0) { w[0] += w[j]; w[j] = 0; } });
       const total = w.reduce((a, b) => a + b, 0);
       let pick = '0';
       if (total > 0) {
@@ -293,7 +316,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, probStats, drawProb,
+    probKeys, defaultProbs, validateProbs, probStats, drawProb, pruneHits, hitCounts, blockedKeys,
     sha256, makePin, checkPin,
   };
 });
