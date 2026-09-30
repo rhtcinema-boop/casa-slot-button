@@ -1108,7 +1108,7 @@ const Game = (function () {
       if (busy || opening || !Store.state.pins || Admin.isOpen()) return;
       opening = true;
       Sfx.play('button');
-      const role = await UI.auth('PINを入力', ['admin'], '設定画面', '管理者PIN');
+      const role = await UI.auth(storeMode() ? '設定を開く' : 'PINを入力', ['admin'], '設定画面', storeMode() ? '店舗のパスワード' : '管理者PIN');
       opening = false;
       if (!role || busy) return;
       try { Store.transact(() => Store.log('ADMIN_LOGIN', {}, role)); } catch (err) { /* ログのみ */ }
