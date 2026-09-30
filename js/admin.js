@@ -183,11 +183,12 @@ const Admin = (function () {
   const TYPES = {
     PLAY: ['play', 'プレイ'], OVERFLOW_PLAY: ['over', '超過プレイ'],
     SESSION_START: ['ops', '営業開始'], SESSION_END: ['ops', '営業終了'], NEXT_PLAY: ['ops', '次のプレイ'], CREDIT_ADD: ['ops', 'クレジット追加'], CREDIT_SET: ['ops', 'クレジット変更'], TOTAL: ['ops', 'クレジット終了'],
+    PROB_SET: ['cfg', '確率変更'], STATS_RESET: ['ops', '集計リセット'],
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
   };
-  const GROUPS = [['all', 'すべて'], ['play', 'プレイ'], ['over', '超過プレイ'], ['ops', '営業'], ['cfg', '設定変更'], ['pin', 'PIN・認証']];
+  const GROUPS = [['all', 'すべて'], ['play', 'プレイ'], ['ops', '営業'], ['cfg', '設定変更'], ['pin', 'PIN・認証']];
 
   let el = null, role = null, tab = 'ops';
   let form = null;      // 営業開始前の編集中設定 { total, counts }
@@ -196,9 +197,35 @@ const Admin = (function () {
   let hist = { all: null, group: 'all', session: 'all', page: 0 };
 
   const tabsFor = (r) => r === 'admin'
-    ? [['ops', '営業設定'], ['history', '全履歴'], ['changes', '設定変更履歴'], ['caps', 'プライズ上限ルール'], ['pins', 'PIN管理'], ['misc', 'その他']]
-    : [['ops', '営業設定']];
-  const TITLES = { ops: '営業設定', history: '全履歴', changes: '設定変更履歴', caps: 'プライズ上限ルール', pins: 'PIN管理', misc: 'その他' };
+    ? [['ops', '確率設定'], ['history', '全履歴'], ['changes', '設定変更履歴'], ['pins', 'PIN管理'], ['misc', 'その他']]
+    : [['ops', '確率設定']];
+  const TITLES = { ops: '確率設定', history: '全履歴', changes: '設定変更履歴', caps: 'プライズ上限ルール', pins: 'PIN管理', misc: 'その他' };
+  let probForm = null;  // 編集中の確率 { stage: { key: % } }
+  const copyProbs = (p) => JSON.parse(JSON.stringify(p));
+  const probLabel = (k) => (k === 'NEXT' ? 'NEXT STAGE' : fmtN(+k));
+  const pct = (x) => (Math.round(x * 1000000) / 10000) + '%';
+
+  function probSummary() {
+    const v = Engine.validateProbs(probForm), st = Engine.probStats(probForm);
+    const changed = JSON.stringify(probForm) !== JSON.stringify(Store.state.probs);
+    return '<div class="summary">' +
+      Engine.STAGE_DEFS.map((d) => stat('STAGE ' + d.stage + ' の合計', st.sums[d.stage] + '%', st.sums[d.stage] === 100 ? 'ok' : 'ng')).join('') +
+      stat('当選する確率（0以外）', pct(st.win)) + stat('STAGE 2 に進む確率', pct(st.reach[2])) + stat('STAGE 3 に進む確率', pct(st.reach[3])) +
+      stat('1プレイの平均当選額', fmtN(Math.round(st.ev))) + '</div>' +
+      errorsHtml(v.errors, changed ? '入力内容に問題はありません。保存すると次のプレイから反映されます。' : '') +
+      '<div class="acts"><button class="btn ghost" data-act="prob-reset" ' + (changed ? '' : 'disabled') + '>元に戻す</button>' +
+      '<button class="btn" data-act="prob-save" ' + (v.ok && changed ? '' : 'disabled') + '>確率を保存</button></div>';
+  }
+  function viewProbs() {
+    const s = Store.state, ses = s.session;
+    return '<div class="panel"><h4>各ステージの確率</h4><p class="hint">ステージごとに、それぞれの目で止まる確率（％）を入力します。各ステージの合計をちょうど 100% にしてください。NEXT STAGE は次のステージに進む確率です。プレイヤー画面には確率は表示されません。</p></div>' +
+      '<div class="cols3">' + Engine.STAGE_DEFS.map((d) =>
+        '<div class="panel"><h4>STAGE ' + d.stage + '</h4>' +
+        Engine.probKeys(d).map((k) => '<div class="row"><div class="lbl">' + probLabel(k) + '</div><div class="stepper"><input class="num" type="number" inputmode="decimal" min="0" max="100" step="0.01" value="' + probForm[d.stage][k] + '" data-p="' + d.stage + ':' + k + '"><span style="font-size:20px;color:#a89f89">%</span></div></div>').join('') +
+        '</div>').join('') + '</div>' +
+      '<div id="live">' + probSummary() + '</div>' +
+      '<div class="panel"><h4>集計</h4><div class="summary">' + stat('プレイ回数', fmtN(ses.playNo)) + stat('当選額の合計', fmtN(ses.awarded)) + '</div><div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="stats-reset">集計をリセット</button></div></div>';
+  }
 
   function loadForm() {
     const d = Store.state.draft;
@@ -209,6 +236,7 @@ const Admin = (function () {
   function open(r) {
     role = r; tab = 'ops';
     loadForm();
+    probForm = copyProbs(Store.state.probs);
     capForm = null;
     hist = { all: null, group: 'all', session: 'all', page: 0 };
     if (!el) {
@@ -237,12 +265,12 @@ const Admin = (function () {
       '<nav class="adm-nav"><h2>SETTINGS</h2><div class="role">' + ROLE_JP[role] + 'PINでログイン中</div>' + nav +
       '<div class="sp"></div><button class="btn ghost" data-act="close">閉じる</button></nav>' +
       '<section class="adm-main"><div class="adm-head"><h3>' + TITLES[tab] + '</h3>' +
-      '<span class="pill ' + (s.session ? 'on">営業中 ' + sessLabel(s.session.id) : 'off">営業終了（未開始）') + '</span></div>' +
+      '<span class="pill on">プレイ ' + fmtN(s.session ? s.session.playNo : 0) + ' 回</span></div>' +
       '<div class="adm-body">' + body() + '</div></section>';
     el.querySelector('.adm-body').scrollTop = keepScroll;
   }
   function body() {
-    if (tab === 'ops') return Store.state.session ? (adjust ? viewAdjust() : viewSession()) : viewSetup();
+    if (tab === 'ops') return viewProbs();
     if (tab === 'history' || tab === 'changes') return viewHistory();
     if (tab === 'caps') return viewCaps();
     if (tab === 'pins') return viewPins();
@@ -335,7 +363,12 @@ const Admin = (function () {
     const counts = (c) => Engine.OUTCOMES.filter((o) => c[o.key] > 0).map((o) => keyLabel(o.key) + ' ×' + c[o.key]).join('、') || 'なし';
     switch (e.type) {
       case 'PLAY':
-        return 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + '｜残本数 ' + d.remainBefore + ' → ' + d.remainAfter;
+        return 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ');
+      case 'PROB_SET': {
+        const f = (p) => Engine.STAGE_DEFS.map((x) => 'STAGE ' + x.stage + '［' + Engine.probKeys(x).map((k) => probLabel(k) + ' ' + p[x.stage][k] + '%').join('、') + '］').join(' ');
+        return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after);
+      }
+      case 'STATS_RESET': return 'プレイ ' + d.plays + ' 回・当選額合計 ' + fmtN(d.awarded) + ' をリセット';
       case 'OVERFLOW_PLAY':
         return 'プレイ #' + d.playNo + '｜<b>超過プレイ / 0</b>（STAGE ' + d.stage + ' で終了）｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + '｜残本数 ' + d.remainBefore + ' → ' + d.remainAfter + '（在庫消費なし）';
       case 'SESSION_START':
@@ -360,7 +393,7 @@ const Admin = (function () {
         const f = (r) => r.ranges.map((x) => x.from + '〜' + x.to + ': ' + fmtN(x.cap)).join('、') + '、以降 ' + r.beyond.step + ' エントリーごとに +' + fmtN(r.beyond.inc);
         return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after);
       }
-      case 'PIN_SETUP': return '営業設定PIN・管理者PINを初期登録';
+      case 'PIN_SETUP': return '管理者PINを初期登録';
       case 'PIN_STAFF_REISSUE': return '営業設定PINを再発行（旧PINは即時無効）';
       case 'PIN_ADMIN_CHANGE': return '管理者PINを変更';
       case 'AUTH_LOCKOUT': return 'PIN入力を5回連続で失敗（60秒ロック）｜場面: ' + esc(d.context || '');
@@ -438,8 +471,7 @@ const Admin = (function () {
   }
 
   function viewPins() {
-    return '<div class="panel"><h4>営業設定PIN</h4><p class="hint">再発行すると、古い営業設定PINは即時に無効になります。</p><div class="acts" style="justify-content:flex-start"><button class="btn" data-act="pin-staff">営業設定PINを再発行</button></div></div>' +
-      '<div class="panel"><h4>管理者PIN</h4><p class="hint">管理者PINを忘れると履歴閲覧・上限ルール編集・PIN再発行ができなくなります。厳重に管理してください。</p><div class="acts" style="justify-content:flex-start"><button class="btn ghost" data-act="pin-admin">管理者PINを変更</button></div></div>';
+    return '<div class="panel"><h4>管理者PIN</h4><p class="hint">設定画面を開くためのPINです。忘れると設定画面を開けなくなります。厳重に管理してください。</p><div class="acts" style="justify-content:flex-start"><button class="btn ghost" data-act="pin-admin">管理者PINを変更</button></div></div>';
   }
   function viewMisc() {
     const fs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
@@ -459,7 +491,8 @@ const Admin = (function () {
   function refreshLive() {
     const live = el.querySelector('#live');
     if (!live) return;
-    if (tab === 'caps') live.innerHTML = capErrors();
+    if (tab === 'ops') live.innerHTML = probSummary();
+    else if (tab === 'caps') live.innerHTML = capErrors();
     else if (adjust) live.innerHTML = adjustSummary();
     else live.innerHTML = setupSummary();
   }
@@ -470,7 +503,8 @@ const Admin = (function () {
     if (t.dataset.vol !== undefined) { Sfx.setVolume(t.value / 100); return; }
     if (!t.classList.contains('num')) return;
     const v = parseNum(t.value);
-    if (t.dataset.f === 'total') form.total = v;
+    if (t.dataset.p) { const pk = t.dataset.p.split(':'); probForm[pk[0]][pk[1]] = v; }
+    else if (t.dataset.f === 'total') form.total = v;
     else if (t.dataset.k) form.counts[t.dataset.k] = v;
     else if (t.dataset.a) adjust.counts[t.dataset.a] = v;
     else if (t.dataset.c) {
@@ -505,6 +539,20 @@ const Admin = (function () {
           if (b.dataset.f === 'total') form.total = bump(form.total);
           else if (b.dataset.k) form.counts[b.dataset.k] = bump(form.counts[b.dataset.k]);
           else if (b.dataset.a) adjust.counts[b.dataset.a] = bump(adjust.counts[b.dataset.a]);
+          return render();
+        }
+        case 'prob-reset': probForm = copyProbs(Store.state.probs); return render();
+        case 'prob-save': {
+          if (!Engine.validateProbs(probForm).ok) return;
+          Store.transact((st) => { const before = st.probs; st.probs = copyProbs(probForm); Store.log('PROB_SET', { before, after: st.probs }, role); });
+          UI.toast('確率を保存しました。次のプレイから反映されます。', 'ok');
+          return render();
+        }
+        case 'stats-reset': {
+          const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・合計当選額・画面右の「直近の当選」を 0 に戻します。履歴は消えません。</p>', ok: 'リセットする' });
+          if (!ok) return;
+          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.recent = []; });
+          UI.toast('集計をリセットしました。', 'ok');
           return render();
         }
         case 'fit-total': form.total = Engine.sumCounts(form.counts) || 0; return render();
@@ -668,7 +716,7 @@ const Admin = (function () {
     UI.toast('営業設定PINを再発行しました。古いPINは無効です。', 'ok');
   }
   async function changeAdminPin() {
-    const pin = await UI.askNewPin('新しい管理者PIN', { differFrom: Store.state.pins.staff, differMsg: '営業設定PINと同じ番号は使用できません。' });
+    const pin = await UI.askNewPin('新しい管理者PIN', {});
     if (pin === null) return;
     Store.transact((st) => { st.pins.admin = Engine.makePin(pin); Store.log('PIN_ADMIN_CHANGE', {}, role); });
     UI.toast('管理者PINを変更しました。', 'ok');
