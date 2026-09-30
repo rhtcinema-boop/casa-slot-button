@@ -70,19 +70,28 @@ public class MainActivity extends Activity {
         if (hasFocus) hideSystemUi();
     }
 
-    /* リモコンの「戻る」はダイアログ／設定を閉じるだけ（アプリは終了しない。終了はホームボタン）。
-       「メニュー」は Web 側で3回押しの判定に使う。 */
+    /* リモコンのキーは WebView に渡る前に横取りする（メニューはリモコンによって WebView が握って Web 側へ届かないことがある）。
+       戻る: 短押しで閉じる、長押し（約2秒）で設定。メニュー: 3回で設定。アプリは戻るでは終了しない（終了はホームボタン）。 */
+    private int backHold = 0;
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (event.getRepeatCount() == 0) web.evaluateJavascript("window.TV && TV.back()", null);
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_BACK) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) backHold = 0;
+                backHold += 1;
+                if (backHold == 12) web.evaluateJavascript("window.TV && TV.settings()", null);
+            } else if (event.getAction() == KeyEvent.ACTION_UP) {
+                if (backHold < 12) web.evaluateJavascript("window.TV && TV.back()", null);
+                backHold = 0;
+            }
             return true;
         }
-        if (keyCode == KeyEvent.KEYCODE_MENU) {
-            if (event.getRepeatCount() == 0) web.evaluateJavascript("window.TV && TV.menu()", null);
+        if (code == KeyEvent.KEYCODE_MENU) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) web.evaluateJavascript("window.TV && TV.menu()", null);
             return true;
         }
-        return super.onKeyDown(keyCode, event);
+        return super.dispatchKeyEvent(event);
     }
 
     @Override
