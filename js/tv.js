@@ -5,8 +5,8 @@
 const TV = (function () {
   'use strict';
   const isTV = /casaTV/.test(navigator.userAgent);
-  const FOCUSABLE = 'button, input, select, [data-act], [data-k], [data-r]';
-  let on = false, cur = null, curKey = '', editing = false, menuTaps = [], pending = 0;
+  const FOCUSABLE = 'button, input, select, [data-act], [data-k], [data-r], #crest';
+  let on = false, cur = null, curKey = '', editing = false, menuTaps = [], pending = 0, backHold = 0;
 
   const rect = (el) => el.getBoundingClientRect();
   function visible(el) {
@@ -81,6 +81,7 @@ const TV = (function () {
     if (!cur) return;
     if (isNum(cur)) { editing = !editing; cur.classList.toggle('tvedit', editing); return; }
     if (cur.tagName === 'SELECT') { cur.focus(); return; }
+    if (cur.id === 'crest') return settings(); // 左上のロゴに枠を合わせて決定 → 設定（PIN）
     cur.click();
   }
   /* 戻る: 編集モード → ダイアログのキャンセル → 設定を閉じる。ゲーム画面では何もしない（アプリは終了しない） */
@@ -92,11 +93,15 @@ const TV = (function () {
     if (b) { b.click(); return true; }
     return false;
   }
+  /* 設定を開く（PIN 入力へ）。ロゴで決定／メニュー3回／戻る長押し のどれからでも */
+  function settings() {
+    if (typeof Game !== 'undefined' && Game.openSettings) Game.openSettings();
+  }
   /* メニューボタン3回で設定 */
   function menu() {
     const now = Date.now();
     menuTaps = menuTaps.filter((t) => now - t < 1500).concat(now);
-    if (menuTaps.length >= 3) { menuTaps = []; if (typeof Game !== 'undefined' && Game.openSettings) Game.openSettings(); }
+    if (menuTaps.length >= 3) { menuTaps = []; settings(); }
   }
   function enable() {
     if (on) return;
@@ -114,6 +119,8 @@ const TV = (function () {
     if (!(isEnter || isBack || isMenu || isArrow)) return;
     if (e.target && e.target.tagName === 'SELECT' && isArrow) return; // ネイティブの選択に任せる
     e.preventDefault();
+    if (e.repeat && isBack) { backHold += 1; if (backHold === 12) settings(); return; }
+    if (!e.repeat) backHold = 0;
     if (e.repeat && !isArrow) return;
     enable();
     if (isMenu) return menu();
@@ -141,5 +148,5 @@ const TV = (function () {
     mo.observe(document.getElementById('lockbar'), { childList: true, attributes: true, attributeFilter: ['class'] });
   }
   document.addEventListener('DOMContentLoaded', init);
-  return { isTV, back, menu, get enabled() { return on; } };
+  return { isTV, back, menu, settings, get enabled() { return on; } };
 })();
