@@ -155,7 +155,7 @@ const Game = (function () {
   }
   function showCredits() {
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
-    $('total').textContent = fmtN(shownTotal());
+    { const st = Store.state, p = st.play; $('total').textContent = fmtN(st.session.awarded - (p && p.phase === 'drawn' ? p.value : 0)); } // 合計当選額（演出中の分は結果が出てから）
   }
   /* クレジットを使い切ったとき: 合計当選額を大きく見せる */
   async function totalFx(total) {
