@@ -1327,3 +1327,4 @@ body.is-tv .help-btn { opacity: .5; }
 .paytable { padding: 0; box-sizing: border-box; }
 .credit-box, .recent, .lockbar .res, .rung { box-sizing: border-box; }
 .ladder { transform: none; }
+body.tv #crest.tvfocus { border-radius: 22px; }
