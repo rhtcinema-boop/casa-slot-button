@@ -1330,11 +1330,18 @@ body.is-tv .help-btn { opacity: .5; }
 body.tv #crest.tvfocus { border-radius: 22px; }
 
 /* ---------- テレビ版の軽量化: 常時動く飾りを止める（一回きりの演出は残す） ---------- */
-body.is-tv .bulbs i, body.is-tv .led, body.is-tv .pointer, body.is-tv .rung.on, body.is-tv .vignette, body.is-tv .sheen::before, body.is-tv .rim,
-body.is-tv .lockbar .side .btn, body.is-tv .rail i, body.is-tv .plate.idle .plate-main, body.is-tv .rays, body.is-tv .rays2, body.is-tv .beam, body.is-tv .spot, body.is-tv .tline { animation: none !important; }
-body.is-tv .rays, body.is-tv .rays2, body.is-tv .beams, body.is-tv .sheen, body.is-tv .rim, body.is-tv .lattice { display: none !important; }
-body.is-tv .frame, body.is-tv .rung, body.is-tv .recent, body.is-tv .credit-box, body.is-tv .lockbar .res, body.is-tv .paytable .ps { filter: none !important; }
-body.is-tv .bulbs { opacity: .35; }
+body.lite .bulbs i, body.lite .led, body.is-tv .pointer, body.is-tv .rung.on, body.is-tv .vignette, body.is-tv .sheen::before, body.is-tv .rim,
+body.lite .lockbar .side .btn, body.lite .rail i, body.lite .plate.idle .plate-main, body.lite .rays, body.lite .rays2, body.lite .beam, body.lite .spot, body.lite .tline { animation: none !important; }
+body.lite .rays, body.lite .rays2, body.lite .beams, body.lite .sheen, body.lite .rim, body.lite .lattice, body.lite .speedlines, body.lite .spot, body.lite .shutter-rays, body.lite .seam { display: none !important; }
+body.lite .frame, body.lite .rung, body.lite .recent, body.lite .credit-box, body.lite .lockbar .res, body.lite .paytable .ps { filter: none !important; }
+body.lite .bulbs { opacity: .35; }
+/* 軽量モード: ぼかし付きの影を全廃（枠線だけ残す） */
+body.lite .credit-box, body.lite .recent, body.lite .lockbar .res, body.lite .paytable .ps, body.lite .rung { box-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000 !important; }
+body.lite .rung.on { box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 0 5px #000 !important; }
+body.lite .frame { box-shadow: 0 0 0 2px #241803 !important; }
+body.lite .lockbar .side .btn { box-shadow: 0 0 0 2px #f6e3a1, 0 0 0 4px #1a1408 !important; }
+body.lite .plate, body.lite .window, body.lite .door { box-shadow: none !important; }
+body.lite .rc b, body.lite .paytable .ps b { text-shadow: none; }
 body.is-tv #content, body.is-tv #fxwrap { transform-origin: 770px 420px; }
 #crest:focus, .lockbar .btn:focus, .help-btn:focus { outline: none; }
 body.tv #crest:focus { outline: 5px solid #fff; outline-offset: 5px; border-radius: 22px; }
