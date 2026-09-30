@@ -206,7 +206,7 @@ const Admin = (function () {
   const TYPES = {
     PLAY: ['play', 'プレイ'], OVERFLOW_PLAY: ['over', '超過プレイ'],
     SESSION_START: ['ops', '営業開始'], SESSION_END: ['ops', '営業終了'], NEXT_PLAY: ['ops', '次のプレイ'], CREDIT_ADD: ['ops', 'クレジット追加'], CREDIT_SET: ['ops', 'クレジット変更'], TOTAL: ['ops', 'クレジット終了'],
-    PROB_SET: ['cfg', '確率変更'], STATS_RESET: ['ops', '集計リセット'], PRESET_SAVE: ['cfg', 'プリセット保存'], PRESET_DELETE: ['cfg', 'プリセット削除'], LIMITS_SET: ['cfg', '本数制限変更'],
+    PROB_SET: ['cfg', '確率変更'], PRESET_APPLY: ['cfg', 'プリセット適用'], STORE_LOGIN: ['pin', '店舗ログイン'], STORE_LOGOUT: ['pin', '店舗ログアウト'], STATS_RESET: ['ops', '集計リセット'], PRESET_SAVE: ['cfg', 'プリセット保存'], PRESET_DELETE: ['cfg', 'プリセット削除'], LIMITS_SET: ['cfg', '本数制限変更'],
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
@@ -219,10 +219,12 @@ const Admin = (function () {
   let capForm = null;
   let hist = { all: null, group: 'all', session: 'all', page: 0 };
 
-  const tabsFor = (r) => r === 'admin'
+  const tabsFor = (r) => (typeof Game !== 'undefined' && Game.storeMode && Game.storeMode())
+    ? [['preset', 'プリセット'], ['history', '全履歴'], ['misc', 'その他']] // 店舗モード: 確率の中身は見せない
+    : r === 'admin'
     ? [['ops', '確率設定'], ['history', '全履歴'], ['changes', '設定変更履歴'], ['pins', 'PIN管理'], ['misc', 'その他']]
     : [['ops', '確率設定']];
-  const TITLES = { ops: '確率設定', history: '全履歴', changes: '設定変更履歴', caps: 'プライズ上限ルール', pins: 'PIN管理', misc: 'その他' };
+  const TITLES = { preset: 'プリセット', ops: '確率設定', history: '全履歴', changes: '設定変更履歴', caps: 'プライズ上限ルール', pins: 'PIN管理', misc: 'その他' };
   let probForm = null;  // 編集中の確率 { stage: { key: % } }
   const copyProbs = (p) => JSON.parse(JSON.stringify(p));
   const probLabel = (k) => (k === 'NEXT' ? 'NEXT STAGE' : fmtN(+k));
@@ -261,6 +263,16 @@ const Admin = (function () {
       Engine.OUTCOMES.filter((o) => o.value > 0).map((o) => { const m = Number(limForm.max[o.key]) || 0, c = counts[o.key] || 0; return '<tr><td>' + keyLabel(o.key) + '</td><td class="n"><div class="stepper pstep" style="justify-content:flex-end"><button data-act="lim-step" data-d="-1" data-k="' + o.key + '">◀</button><span class="pv">' + (m ? m + '<i>回</i>' : '<i>なし</i>') + '</span><button data-act="lim-step" data-d="1" data-k="' + o.key + '">▶</button></div></td><td class="n" style="' + (m && c >= m ? 'color:#ff9d8c' : '') + '">' + c + ' 回' + (m && c >= m ? '（上限）' : '') + '</td></tr>'; }).join('') + '</table></details>' +
       '<div class="acts"><button class="btn ghost" data-act="lim-reset" ' + (changed ? '' : 'disabled') + '>元に戻す</button><button class="btn" data-act="lim-save" ' + (changed ? '' : 'disabled') + '>制限を保存</button></div></div>';
   }
+  /* 店舗モード: 配布されたプリセットの名前だけを並べる（確率の中身は表示しない） */
+  function viewPreset() {
+    const info = Game.storeInfo(), s = Store.state, ses = s.session;
+    const now = Date.now(), counts = Engine.hitCounts(s.hits, now, s.limits && s.limits.resetHour);
+    return '<div class="panel"><h4>店舗</h4><div class="summary">' + stat('店舗名', esc(info.store ? info.store.name : '—')) + stat('使用中のプリセット', esc((info.presets.find((p) => p.id === info.activeId) || {}).name || '（未設定）')) + '</div></div>' +
+      '<div class="panel"><h4>プリセットを選ぶ</h4><p class="hint">マスターから配られたプリセットの中から選びます。選ぶと次のプレイから反映されます。</p>' +
+      (info.presets.length ? '<div class="preset-list">' + info.presets.map((p) => '<button class="btn ' + (p.id === info.activeId ? '' : 'ghost') + ' preset-btn" data-act="preset-use" data-id="' + esc(p.id) + '">' + esc(p.name) + (p.id === info.activeId ? '<small>使用中</small>' : '') + '</button>').join('') + '</div>' : '<p class="hint">まだプリセットが配られていません。マスター画面で配布してください。</p>') + '</div>' +
+      '<div class="panel"><h4>今日の集計</h4><div class="summary">' + stat('プレイ回数（累計）', fmtN(ses.playNo)) + stat('当選額の合計（累計）', fmtN(ses.awarded)) + stat('今日の当たり本数', fmtN(counts.total) + (s.limits && s.limits.on && s.limits.total ? ' / ' + s.limits.total : '')) + '</div>' +
+      '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="stats-reset">画面の集計をリセット</button></div></div>';
+  }
   function viewProbs() {
     const s = Store.state, ses = s.session;
     return '<div class="panel"><h4>各ステージの確率</h4><p class="hint">ステージごとに、それぞれの目で止まる確率（％）を ◀ ▶ で増減します。各ステージの合計をちょうど 100% にしてください。NEXT STAGE は次のステージに進む確率です。プレイヤー画面には確率は表示されません。</p></div>' +
@@ -280,7 +292,7 @@ const Admin = (function () {
   }
 
   function open(r) {
-    role = r; tab = 'ops';
+    role = r; tab = (typeof Game !== 'undefined' && Game.storeMode && Game.storeMode()) ? 'preset' : 'ops';
     loadForm();
     probForm = copyProbs(Store.state.probs);
     limForm = copyLimits(Store.state.limits);
@@ -309,7 +321,7 @@ const Admin = (function () {
     const nav = tabsFor(role).map(([k, n]) => '<button class="tab ' + (k === tab ? 'on' : '') + '" data-act="tab" data-tab="' + k + '">' + n + '</button>').join('');
     const keepScroll = el.querySelector('.adm-body') ? el.querySelector('.adm-body').scrollTop : 0;
     el.innerHTML =
-      '<nav class="adm-nav"><h2>SETTINGS</h2><div class="role">' + ROLE_JP[role] + 'PINでログイン中</div>' + nav +
+      '<nav class="adm-nav"><h2>SETTINGS</h2><div class="role">' + (Game.storeMode && Game.storeMode() ? esc(Store.state.store.name) : ROLE_JP[role] + 'PINでログイン中') + '</div>' + nav +
       '<div class="sp"></div><button class="btn ghost" data-act="close">閉じる</button></nav>' +
       '<section class="adm-main"><div class="adm-head"><h3>' + TITLES[tab] + '</h3>' +
       '<span class="pill on">プレイ ' + fmtN(s.session ? s.session.playNo : 0) + ' 回</span></div>' +
@@ -317,6 +329,7 @@ const Admin = (function () {
     el.querySelector('.adm-body').scrollTop = keepScroll;
   }
   function body() {
+    if (tab === 'preset') return viewPreset();
     if (tab === 'ops') return viewProbs();
     if (tab === 'history' || tab === 'changes') return viewHistory();
     if (tab === 'caps') return viewCaps();
@@ -415,6 +428,9 @@ const Admin = (function () {
         const f = (p) => Engine.STAGE_DEFS.map((x) => 'STAGE ' + x.stage + '［' + Engine.probKeys(x).map((k) => probLabel(k) + ' ' + p[x.stage][k] + '%').join('、') + '］').join(' ');
         return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after);
       }
+      case 'PRESET_APPLY': return 'プリセット「' + esc(d.name || d.id) + '」を適用';
+      case 'STORE_LOGIN': return '店舗「' + esc(d.name) + '」としてログイン';
+      case 'STORE_LOGOUT': return '店舗からログアウト';
       case 'PRESET_SAVE': return 'プリセット「' + esc(d.name) + '」を保存';
       case 'PRESET_DELETE': return 'プリセット「' + esc(d.name) + '」を削除';
       case 'LIMITS_SET': { const f = (l) => (l.on ? 'ON' : 'OFF') + '｜リセット ' + (Number.isInteger(l.resetHour) ? l.resetHour : 19) + ':00｜合計 ' + (l.total ? l.total + '回' : 'なし') + '｜' + (Engine.OUTCOMES.filter((o) => l.max && l.max[o.key]).map((o) => keyLabel(o.key) + ' ' + l.max[o.key] + '回').join('、') || '金額ごとの上限なし'); return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after); }
@@ -455,6 +471,7 @@ const Admin = (function () {
     const fixed = tab === 'changes' ? 'cfg' : hist.group;
     return (hist.all || []).filter((e) => {
       const g = (TYPES[e.type] || ['etc'])[0];
+      if (typeof Game !== 'undefined' && Game.storeMode && Game.storeMode() && g === 'cfg') return false; // 店舗モード: 確率の中身が入る記録は見せない
       if (fixed !== 'all' && g !== fixed) return false;
       if (hist.session !== 'all' && String(e.sessionId) !== hist.session) return false;
       return true;
@@ -645,6 +662,10 @@ const Admin = (function () {
           UI.toast('制限を保存しました。次のプレイから反映されます。', 'ok');
           return render();
         }
+        case 'preset-use': {
+          if (await Game.choosePreset(b.dataset.id)) UI.toast('プリセットを切り替えました。次のプレイから反映されます。', 'ok');
+          return render();
+        }
         case 'prob-reset': probForm = copyProbs(Store.state.probs); return render();
         case 'prob-save': {
           if (!Engine.validateProbs(probForm).ok) return;
@@ -826,5 +847,6 @@ const Admin = (function () {
     UI.toast('管理者PINを変更しました。', 'ok');
   }
 
-  return { open, close, isOpen };
+  function rerender() { if (role) render(); }
+  return { open, close, isOpen, rerender };
 })();
