@@ -24,16 +24,17 @@ const Game = (function () {
     stageEl.style.height = H + 'px';
     stageEl.style.transform = 'translate(' + (w - 1600 * scale) / 2 + 'px,' + (h - H * scale) / 2 + 'px) scale(' + scale + ')';
     // 縦に余裕がある画面（4:3 の iPad など）では全体を最大15%拡大して上下の余白を減らす
-    const t = (H - 900) / 300, f = 1 + 0.10 * t; // 4:3 では最大10%まで（中央を優先し左右を詰める）
+    // 4:3 では縮めずに行の間隔を広げて縦を使い切る（CSS の --t で各行が下へずれる。最下段は 110px 下がる）。横は 6% だけ拡大
+    const t = (H - 900) / 300, f = 1 + 0.06 * t;
     [$('content'), $('fxwrap')].forEach((el) => {
       el.style.left = 30 * (1 - f) + 'px';            // 拡大の基準点（リール中心）のずれを補正して中央に保つ
-      el.style.top = (H - 900) / 2 + 30 * (1 - f) + 'px';
+      el.style.top = (H - 900) / 2 - 55 * t + 30 * (1 - f) + 'px';
       el.style.scale = String(f);
       el.style.setProperty('--t', t.toFixed(3));
     });
     scale *= f;
     stageH = H;
-    if (typeof FX !== 'undefined') FX.setGround(450 + H / 2 / (1 + 0.10 * (H - 900) / 300) + 6, () => Sfx.play('chip'));
+    if (typeof FX !== 'undefined') FX.setGround(450 + H / 2 / (1 + 0.06 * (H - 900) / 300) + 6, () => Sfx.play('chip'));
   }
 
   /* 時間の速さを from → to へ指数関数的に変える（粒子と画面上のアニメーション全体が対象）。
