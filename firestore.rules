@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // マスター（オーナー）のメールアドレス。Firebase Authentication に登録したものに合わせる
+    function isMaster() { return request.auth != null && request.auth.token.email == 'rhtcinema@gmail.com'; }
+    function signedIn() { return request.auth != null; }
+
+    // プリセット: 店舗端末は読むだけ、書けるのはマスターだけ
+    match /presets/{id} {
+      allow read: if signedIn();
+      allow write: if isMaster();
+    }
+    // 店舗: 端末が変えられるのは「使用中のプリセット」「最終起動」だけ
+    match /stores/{id} {
+      allow read: if signedIn();
+      allow create, delete: if isMaster();
+      allow update: if isMaster()
+        || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activePresetId', 'lastSeen', 'deviceVersion']));
+      match /plays/{p} { allow read: if isMaster(); allow create: if signedIn(); }
+      match /days/{d} { allow read: if isMaster(); allow create, update: if signedIn(); }
+    }
+  }
+}
