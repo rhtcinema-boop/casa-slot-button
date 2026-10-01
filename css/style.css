@@ -1523,3 +1523,11 @@ body.tv:not(.lite) .lockbar .side .btn.tvfocus.pressed { box-shadow: inset 0 3px
 .rc small i { font-size: 14px; letter-spacing: .06em; color: #9a917b; }
 /* 起動画面: アップデートしたときの知らせ */
 #splash .upd { margin: 18px 0 0; font: 700 26px/1.3 var(--font-ui); letter-spacing: .04em; color: #7ee2a0; text-align: center; }
+
+/* ---------- 電飾の帯（リールの箱の左右）は、テレビ版でも消さない ----------
+   「背景の光のアニメを止める」設定（テレビ版の初期値）では帯ごと非表示にしていたが、流れる動きだけ止めて、点いたまま表示する。
+   大きな演出の最中（fxmode）だけは今までどおり隠す。 */
+#stage.no-bg .led { visibility: visible; }
+#stage.no-bg.fxmode .led { visibility: hidden; }
+#stage.no-bg .led::before, body.lite .led::before { animation: none; }
+body.lite .led { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--accent-dim); }
