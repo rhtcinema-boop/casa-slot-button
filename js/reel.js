@@ -265,7 +265,7 @@ const Reel = (function () {
     const cfg = TIMING[st];
     const V = cfg.speed;
     const type = o.type || 'plain';
-    const decT = o.attract ? 0.55 : o.quick ? 1.0 : o.decel || cfg.decel, pauseT = o.attract ? 0.1 : o.quick ? 0.35 : cfg.pause; // attract: 待機中の見せ回し（短く回ってすぐ止まる）
+    const decT = o.attract ? 1.6 : o.quick ? 1.0 : o.decel || cfg.decel, pauseT = o.attract ? 0.3 : o.quick ? 0.35 : cfg.pause; // attract: 待機中の見せ回し（ゆっくり減速して止まる）
     const TW = 0.2, AW = 0.11;                 // 始動時の「溜め」（わずかに逆方向へ引く）
     const vW = (AW * Math.PI) / TW;
     const vP = 0.2, vPk = 1.55, vL = 1.15;     // 止まりかけ速度 / 倒れ込み最高速 / デテントに落ちる速度
@@ -365,11 +365,12 @@ const Reel = (function () {
     if (live) { const t = (performance.now() - live.t0) / 1000; reels.forEach((rl, i) => { rl.pos = live.profs[i].at(t); }); live = null; }
     if (attractDone) { const r = attractDone; attractDone = null; r(false); }
   }
-  /* 待機中の見せ回し: 3本が短く回って READY / TO / SPIN で止まる。音は鳴らさない。最後まで回れば true、途中で切り替わったら false */
+  /* 待機中の見せ回し: 3本が約5秒回り、ゆっくり減速して READY / TO / SPIN で止まる（1本ずつ 0.6 秒おき）。音は鳴らさない。
+     最後まで回れば true、途中で切り替わったら false */
   function attract() {
     interrupt();
     return new Promise((res) => {
-      spin(stage, ['READY', 'TO', 'SPIN'], [0, 1, 2], [2.2, 2.5, 2.8], { type: 'plain', attract: true }, {}).then(() => { if (attractDone === res) { attractDone = null; res(true); } });
+      spin(stage, ['READY', 'TO', 'SPIN'], [0, 1, 2], [3.8, 4.4, 5.0], { type: 'plain', attract: true }, {}).then(() => { if (attractDone === res) { attractDone = null; res(true); } });
       attractDone = res;
     });
   }
