@@ -3,7 +3,7 @@ name: Build Fire TV app
 on:
   push:
     branches: [main]
-    paths: ['tv/**', 'index.html', 'sw.js', 'manifest.webmanifest', 'css/**', 'js/**', '*.png', '.github/workflows/tv.yml']
+    paths: ['tv/**', 'index.html', 'sw.js', 'manifest.webmanifest', 'cloud-config.js', 'css/**', 'js/**', '*.png', '.github/workflows/tv.yml']
   workflow_dispatch:
 
 permissions:
@@ -26,7 +26,7 @@ jobs:
       - name: Bundle web app into assets
         run: |
           rm -rf tv/app/src/main/assets/www && mkdir -p tv/app/src/main/assets/www/css tv/app/src/main/assets/www/js
-          cp index.html manifest.webmanifest *.png tv/app/src/main/assets/www/
+          cp index.html manifest.webmanifest cloud-config.js *.png tv/app/src/main/assets/www/
           cp css/*.css tv/app/src/main/assets/www/css/ && cp js/*.js tv/app/src/main/assets/www/js/
           echo "APP_VERSION_NAME=$(grep -o 'id=\"ver\">[^<]*' index.html | sed 's/.*>//')" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
