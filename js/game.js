@@ -227,6 +227,20 @@ const Game = (function () {
   }
   /* 結果を出したまま 10 秒たったら、最初の待機画面（STAGE 1・READY TO SPIN）へ自動で戻す。
      設定やダイアログを開いている間は数えない（閉じてから 10 秒）。 */
+  /* 待機中の見せ回し: 待機画面（STAGE 1・READY TO SPIN）で 5 秒止まっているたびに、リールが短く回って READY TO SPIN で止まる。
+     音は鳴らさない。NEXT GAME を押せばすぐ本番の回転に切り替わる。設定やダイアログを開いている間・画面が隠れている間は回さない。 */
+  const ATTRACT_REST_MS = 5000;
+  let attractAt = 0, attracting = false;
+  function attractWatch() {
+    const s = Store.state;
+    const idle = !busy && !pressing && s && s.pins && !s.play && curStage === 1 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && !document.hidden;
+    if (!idle) { attractAt = 0; return; }
+    if (attracting) return;
+    if (!attractAt) { attractAt = Date.now() + ATTRACT_REST_MS; return; }
+    if (Date.now() < attractAt) return;
+    attracting = true;
+    Reel.attract().then(() => { attracting = false; attractAt = 0; });
+  }
   const IDLE_BACK_MS = 10000;
   let resultSince = 0;
   async function idleWatch() {
@@ -1312,7 +1326,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { idleWatch().catch(() => {}); }, 1000);
+    setInterval(() => { idleWatch().catch(() => {}); attractWatch(); }, 500);
     if (window.ResizeObserver) new ResizeObserver(layout).observe($('viewport'));
     if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
     window.addEventListener('orientationchange', () => setTimeout(layout, 300));
