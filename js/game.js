@@ -508,7 +508,8 @@ const Game = (function () {
 
   /* 3本リールを回す。結果 sym（金額 / 0 / 'NEXT'）は確定済み。ここで決めるのは見せ方だけ:
        組み合わせ … その結果になる3本の並びから、直近20回と被らないものを選ぶ
-       止まる順番 … 6通りからランダム。ただし「最後の1本で結果が変わる」順番を優先（最後まで分からない）
+       止まる順番 … 6通りからランダム。ただし「最後の1本で結果が変わる」順番を優先（最後まで分からない）。
+                    NEXT STAGE が1〜2本入る並びでは、NEXT STAGE のリールを先に止める
        惜しい絵柄 … 最後の1本が止まりかけで見せる絵柄は、先に止まった2本との合計が別の正規の結果になるもの
        停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに 1.3 倍 */
   const ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
@@ -526,8 +527,11 @@ const Game = (function () {
       if (!pool.length) pool = combos;
     }
     const combo = pool[Math.floor(Math.random() * pool.length)];
-    const deciding = ORDERS.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
-    const ordPool = deciding.length ? deciding : ORDERS;
+    // NEXT STAGE が1〜2本入る並びでは、NEXT STAGE のリールを先に止める（最初に 0 が見えてしまわないように）
+    const nx = [0, 1, 2].filter((i) => combo[i] === 'NEXT');
+    const cand = nx.length && nx.length < 3 ? ORDERS.filter((o) => o.slice(0, nx.length).every((i) => nx.indexOf(i) >= 0)) : ORDERS;
+    const deciding = cand.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
+    const ordPool = deciding.length ? deciding : cand;
     const order = ordPool[Math.floor(Math.random() * ordPool.length)];
     const alts = Engine.reelAlternatives(st, combo, order[2]);
     const nb = pat.type === 'seq' ? pat.pre + (pat.over ? 1 : 0) : pat.type === 'slip2' ? 2 : pat.type === 'slip' || pat.type === 'back' ? 1 : 0;
@@ -977,9 +981,9 @@ const Game = (function () {
         html:
           '<div class="help">' +
           '<h5>リールの見方</h5><ul>' +
-          '<li>リールは3本。止まった<b>3本の金額を足した合計</b>が当選額です（例: 100 + 400 + BAR = 500）。</li>' +
-          '<li><b>BAR</b> は 0 円。3本とも BAR ならハズレです。</li>' +
-          '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0（BAR と同じ）として合計します。</li>' +
+          '<li>リールは3本。止まった<b>3本の金額を足した合計</b>が当選額です（例: 100 + 400 + 0 = 500）。</li>' +
+          '<li>3本とも <b>0</b> ならハズレです。</li>' +
+          '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
           '<li>止まる順番は毎回変わります。3本目は少し長く回ります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
           '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
@@ -1042,12 +1046,14 @@ const Game = (function () {
       return;
     }
   }
-  function unbindStore(msg) {
+  function unbindStore(msg, kind) {
     if (unwatch) { unwatch(); unwatch = null; }
     try { Store.transact((s) => { s.store = null; s.pins = null; Store.log('STORE_LOGOUT', {}); }); } catch (err) { /* 保存のみ */ }
-    UI.toast(msg || 'マスターからログアウトされました。', 'err');
+    UI.toast(msg || 'マスターからログアウトされました。', kind || 'err');
     setTimeout(() => location.reload(), 1500);
   }
+  /* 店舗の設定画面から自分でログアウト（店舗のパスワードで設定を開いた人だけが押せる）。再読み込み後は店舗選択に戻る */
+  const logoutStore = () => unbindStore('ログアウトしました。店舗を選び直します。', 'ok');
   /* 配布されたプリセットを端末の確率・制限に反映（結果には「次のプレイから」効く） */
   function applyPreset(p) {
     if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
@@ -1207,6 +1213,6 @@ const Game = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset };
+  return { refresh, applyPerf, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore };
 })();
 window.Game = Game;
