@@ -9,9 +9,9 @@ const Reel = (function () {
   const BLUR_S = 0.5, PAD = 80;
   // 回転中に流れる絵柄の帯（見た目用。止まる絵柄は位置指定で差し替えるので、帯の並びは結果に影響しない）
   const STRIPS = {
-    1: [100, 'BAR', 500, 'NEXT', 300, 'BAR', 200, 400, 'NEXT', 500, 'BAR', 100, 300, 'BAR', 200, 400],
-    2: [500, 'BAR', 5000, 'NEXT', 2000, 'BAR', 1000, 3000, 'NEXT', 5000, 'BAR', 500, 2000, 'BAR', 1000, 3000],
-    3: [5000, 'BAR', 100000, 20000, 'BAR', 10000, 50000, 'BAR', 30000, 5000, 'BAR', 10000, 20000, 'BAR', 50000, 30000],
+    1: [100, 'BAR', 500, 'NEXT', 300, 'FREE', 200, 400, 'NEXT', 500, 'BAR', 100, 300, 'BAR', 200, 400],
+    2: [500, 'BAR', 5000, 'NEXT', 2000, 'FREE', 1000, 3000, 'NEXT', 5000, 'BAR', 500, 2000, 'BAR', 1000, 3000],
+    3: [5000, 'BAR', 100000, 20000, 'FREE', 10000, 50000, 'BAR', 30000, 5000, 'BAR', 10000, 20000, 'BAR', 50000, 30000],
   };
   /* ステージ別の回転設定（ここを変えると止まるまでの時間を調整できる）
        speed  : 最高速（1秒あたりのコマ数）
@@ -42,6 +42,8 @@ const Reel = (function () {
     nextRed: { face: ['#ffffff', '#ffdcd0', '#ff7a62', '#b3261a', '#3d0604', '#a8221a', '#ff8e76', '#ffe9e0'], ext: ['#1a0302', '#d0402c'], edge: '#0d0101', rim: '#ffffff', glow: 'rgba(255,80,50,.85)' },
   };
   PAL.next = PAL.nextBlue;
+  // FREE SPIN ×1 はピンク（金額や NEXT STAGE と見分けやすい色）
+  PAL.free = { face: ['#ffffff', '#ffd9f1', '#ff72cb', '#b81a7e', '#47052e', '#ad1975', '#ff8fd8', '#ffe8f7'], ext: ['#1c0212', '#d43d9d'], edge: '#0d0108', rim: '#ffffff', glow: 'rgba(255,90,200,.8)' };
   /* 金額ごとの素材色: 500=ブロンズ / 1,000=ゴールド / 2,000=エメラルド / 3,000=サファイア / 5,000=アメジスト
      / 10,000=ルビー / 50,000=ダイヤモンド / 100,000=レインボー */
   const PAL_BY_VALUE = {
@@ -145,6 +147,9 @@ const Reel = (function () {
     } else if (sym === 'NEXT') {
       metalText(x, 'NEXT', cx, CH / 2 - 34, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
       metalText(x, 'STAGE', cx, CH / 2 + 38, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
+    } else if (sym === 'FREE') {
+      metalText(x, 'FREE SPIN', cx, CH / 2 - 44, 52, LBL_FONT, PAL.free, COLW - 26, true);
+      metalText(x, '\u00d71', cx, CH / 2 + 34, 92, NUM_FONT, PAL.free, COLW - 30);
     } else if (sym === 'BAR') {
       // ハズレの目（内部名は BAR のまま）: 銀色の「0」
       metalText(x, '0', cx, CH / 2, 96, NUM_FONT, PAL.silver, COLW - 22);
