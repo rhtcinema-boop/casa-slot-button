@@ -184,6 +184,47 @@ const Reel = (function () {
     }));
   }
 
+  /* casa ロゴの絵柄（待機中の見せ回しで、たまに真ん中に止める）。エンブレム＋「casa」の文字を、金の金属色で1コマに描く。
+     画像（透過の型抜き）を読み込めたときだけ用意される。 */
+  function buildLogo() {
+    const srcs = ['logo-emblem.png', 'logo-casa.png'], ims = [];
+    let left = srcs.length, failed = false;
+    const done = () => {
+      if (failed) return;
+      const c = document.createElement('canvas');
+      c.width = COLW * S; c.height = CH * S;
+      // 1) ロゴの形（アルファ）を並べる
+      const shape = document.createElement('canvas');
+      shape.width = c.width; shape.height = c.height;
+      const sx = shape.getContext('2d');
+      sx.scale(S, S);
+      const eh = 132, ew = eh * ims[0].width / ims[0].height;   // エンブレム
+      const ww = 168, wh = ww * ims[1].height / ims[1].width;   // 「casa」
+      const top = (CH - (eh + 12 + wh)) / 2;
+      sx.drawImage(ims[0], (COLW - ew) / 2, top, ew, eh);
+      sx.drawImage(ims[1], (COLW - ww) / 2, top + eh + 12, ww, wh);
+      // 2) 形を色で塗る（source-in）
+      const tint = (fill) => {
+        const t = document.createElement('canvas');
+        t.width = c.width; t.height = c.height;
+        const tx = t.getContext('2d');
+        tx.drawImage(shape, 0, 0);
+        tx.globalCompositeOperation = 'source-in';
+        tx.fillStyle = fill(tx);
+        tx.fillRect(0, 0, t.width, t.height);
+        return t;
+      };
+      const gold = tint((tx) => { const g = tx.createLinearGradient(0, top * S, 0, (top + eh + 12 + wh) * S); STOPS.forEach((s, i) => g.addColorStop(s, PAL.gold.face[i])); return g; });
+      const dark = tint(() => '#0d0700');
+      // 3) 黒い縁と落ち影の上に、金の面を重ねる
+      const x = c.getContext('2d');
+      [[0, 7], [-2, 0], [2, 0], [0, -2], [0, 2], [0, 4]].forEach((o) => x.drawImage(dark, o[0] * S, o[1] * S));
+      x.drawImage(gold, 0, 0);
+      imgs.LOGO = { sharp: c, mid: renderBlur(c, 20, 9), heavy: renderBlur(c, 70, 19) };
+    };
+    srcs.forEach((src, i) => { const im = new Image(); im.onload = () => { ims[i] = im; if (--left === 0) done(); }; im.onerror = () => { failed = true; }; im.src = src; });
+  }
+
   function drawLayer(img, blurred, xc, y, k, alpha) {
     if (alpha <= 0.01) return;
     ctx.globalAlpha = alpha;
@@ -366,11 +407,12 @@ const Reel = (function () {
     if (attractDone) { const r = attractDone; attractDone = null; r(false); }
   }
   /* 待機中の見せ回し: 3本が約5秒回り、ゆっくり減速して READY / TO / SPIN で止まる（1本ずつ 0.6 秒おき）。音は鳴らさない。
-     最後まで回れば true、途中で切り替わったら false */
-  function attract() {
+     kind が 'logo' のときは、左右が空で真ん中に casa ロゴが止まる。最後まで回れば true、途中で切り替わったら false */
+  function attract(kind) {
     interrupt();
+    const combo = kind === 'logo' && imgs.LOGO ? ['BLANK', 'LOGO', 'BLANK'] : ['READY', 'TO', 'SPIN']; // logo: 左右は空で、真ん中に casa ロゴ
     return new Promise((res) => {
-      spin(stage, ['READY', 'TO', 'SPIN'], [0, 1, 2], [3.8, 4.4, 5.0], { type: 'plain', attract: true }, {}).then(() => { if (attractDone === res) { attractDone = null; res(true); } });
+      spin(stage, combo, [0, 1, 2], [3.8, 4.4, 5.0], { type: 'plain', attract: true }, {}).then(() => { if (attractDone === res) { attractDone = null; res(true); } });
       attractDone = res;
     });
   }
@@ -455,6 +497,7 @@ const Reel = (function () {
     ctx = cv.getContext('2d');
     ctx.setTransform(S, 0, 0, S, 0, 0);
     build();
+    buildLogo();
     setStage(1);
   }
 
