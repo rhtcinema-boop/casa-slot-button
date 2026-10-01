@@ -1,9 +1,9 @@
 {
- "v": "b35",
+ "v": "b36",
  "files": [
   {
    "path": "index.html",
-   "sha256": "9a7d459d7d1884bd63b6615a4ad1ef886829339a1854f603de42742478d5b680"
+   "sha256": "c5b18588a673d085505b5599703ed60aa201e080f54a5943d7e50a5d6609f6b2"
   },
   {
    "path": "manifest.webmanifest",
@@ -55,7 +55,7 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "dc90f76ee05c4b5bf9911d9992fd95ba963228ed1b3b4ec43c5849f7bdfa8385"
+   "sha256": "2bef6bf1fc4625e648cac99756eaeceeae2c776e27faae4937f5cf9b52dc0a52"
   },
   {
    "path": "js/master.js",
