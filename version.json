@@ -1,0 +1,77 @@
+{
+ "v": "b31",
+ "files": [
+  {
+   "path": "index.html",
+   "sha256": "b03a1a562027ceee8eca52fe350b4b4aac9e792a87cf0f4c8610527341fc5dda"
+  },
+  {
+   "path": "manifest.webmanifest",
+   "sha256": "7bc3adcd2b7f40bb2281e0ab8314e50784f4ec1bca864f249ae7899180eac3bd"
+  },
+  {
+   "path": "cloud-config.js",
+   "sha256": "1db9d4c7f995643099955ae46b5e460799fc317fff21cb2f227be5b01a308889"
+  },
+  {
+   "path": "icon-180.png",
+   "sha256": "288124e9fbcb3d1bf92eff591c8802ef856076bf1404b23d297a6abe0fe5e022"
+  },
+  {
+   "path": "icon-512.png",
+   "sha256": "21cf3ee27731c1f7ef97c06c666b4b785bd4cac1413bd9609b037ed38612313c"
+  },
+  {
+   "path": "logo-casa.png",
+   "sha256": "47814dc53f614ad71b8d73b468be8b3d7f2fde9be1c5cc36adad06fb6f8f9024"
+  },
+  {
+   "path": "logo-emblem.png",
+   "sha256": "968aef11f5ee2206ac63bfc6fda709e58678115138f7504b42bec16a65b2599d"
+  },
+  {
+   "path": "css/style.css",
+   "sha256": "f9db978bc853d89b93e65483339cafbc1854cecf91039f3535117e5c8bd27b6b"
+  },
+  {
+   "path": "js/admin.js",
+   "sha256": "a33e86ebb60240de5934f2a1eb4c612d6641821f6062d3c7d6b046784188620b"
+  },
+  {
+   "path": "js/audio.js",
+   "sha256": "214ab87318263c04ed1d12333c82f5995f45a87e577d415bd007d6ad3b0cf7f3"
+  },
+  {
+   "path": "js/cloud.js",
+   "sha256": "5b4d9e794d92569d9363b21ca0423cf7ece959720709098e1448ff7027ceacd0"
+  },
+  {
+   "path": "js/engine.js",
+   "sha256": "d31045d1bf394112e26bf4361d17f4a51feaf77465bf2773d2de458a09b20ef7"
+  },
+  {
+   "path": "js/fx.js",
+   "sha256": "96bedc870a2228b81c7b48a134f172d00fde49cf9976dc21e5139ed8fad6b03e"
+  },
+  {
+   "path": "js/game.js",
+   "sha256": "d20661d02095a18ce7644fcfdafe49e24ad79b8ea446f10f583ed78e76178a4f"
+  },
+  {
+   "path": "js/master.js",
+   "sha256": "013b84c7a7f23fa541acfa621477ae150f3c55bcb9c28252a5f6c694593cece9"
+  },
+  {
+   "path": "js/reel.js",
+   "sha256": "b0cc59889bb4e0be68ed275b1b72b143f5316f6feff2e86580aa32dff0392bda"
+  },
+  {
+   "path": "js/store.js",
+   "sha256": "88390dc5045ca37c9159579c5f933049622ab36733d5aaf575319e996ff4fd4a"
+  },
+  {
+   "path": "js/tv.js",
+   "sha256": "91c399d1fb411a9db223415f60f3a47ee2dcbf8c5b95d62d8ecf0aceba7c155b"
+  }
+ ]
+}
