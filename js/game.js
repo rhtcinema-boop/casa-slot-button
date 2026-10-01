@@ -654,7 +654,7 @@ const Game = (function () {
        止まる順番 … 6通りからランダム。ただし「最後の1本で結果が変わる」順番を優先（最後まで分からない）。
                     NEXT STAGE が1〜2本入る並びでは、NEXT STAGE のリールを先に止める
        惜しい絵柄 … 最後の1本が止まりかけで見せる絵柄は、先に止まった2本との合計が別の正規の結果になるもの
-       停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに全体が 1.4 倍 */
+       停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに全体が 1.5 倍 */
   const ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
   function spinReel(st, sym, pat, extra) {
     const beats = [];
@@ -682,10 +682,11 @@ const Game = (function () {
     const bait = [];
     for (let i = 0; i < nb; i++) bait.push(alts.length && Math.random() < 0.85 ? alts[Math.floor(Math.random() * alts.length)] : null);
     const p = Object.assign({}, pat, { bait });
-    // ステージが上がるごとに、回る時間は全体で 1.4 倍（3本目が止まるまで: STAGE 1 約8.2秒 / STAGE 2 約11.5秒 / STAGE 3 約16.1秒）
-    const k = Math.pow(1.4, st - 1);
-    const iv = (pat.quick ? 0.7 : 2.0) * k;
-    const first = (pat.quick ? 1.4 : 3.2) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
+    // 回る時間: STAGE 1 は 1本目 4.8秒 → 2本目 +3秒 → 3本目 +4.5秒（計 約12.3秒）。ステージが上がるごとに全体が 1.5 倍
+    // （3本目が止まるまで: STAGE 1 約12.3秒 / STAGE 2 約18.5秒 / STAGE 3 約27.7秒）
+    const k = Math.pow(1.5, st - 1);
+    const iv = (pat.quick ? 0.7 : 3.0) * k;
+    const first = (pat.quick ? 1.4 : 4.8) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
     const stops = [first, first + iv, first + iv + iv * 1.5];
     lastCombo = { st, read: sym, combo };
     try { Store.transact((s) => { s.comboHist = (s.comboHist || []).concat(st + ':' + combo.join('/')).slice(-20); }); } catch (err) { /* 記録のみ */ }
