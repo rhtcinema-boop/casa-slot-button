@@ -115,7 +115,10 @@ const TV = (function () {
     cur.click();
   }
   /* 戻る: 編集モード → ダイアログのキャンセル → 設定を閉じる。ゲーム画面では何もしない（アプリは終了しない） */
+  let capture = null; // 画面サイズ調整など、キーを丸ごと受け取るモード
+  const setCapture = (fn) => { capture = fn || null; };
   function back() {
+    if (capture) { capture('Back', false); return true; }
     if (editing) { editing = false; cur.classList.remove('tvedit'); return true; }
     const top = layer();
     if (top.id === 'content') return false;
@@ -125,10 +128,12 @@ const TV = (function () {
   }
   /* 設定を開く（PIN 入力へ）。ロゴで決定／メニュー3回／戻る長押し のどれからでも */
   function settings() {
+    if (capture) return;
     if (typeof Game !== 'undefined' && Game.openSettings) Game.openSettings();
   }
   /* メニューボタン3回で設定 */
   function menu() {
+    if (capture) return capture('Menu', false);
     const now = Date.now();
     menuTaps = menuTaps.filter((t) => now - t < 1500).concat(now);
     if (menuTaps.length >= 3) { menuTaps = []; settings(); }
@@ -152,6 +157,12 @@ const TV = (function () {
     if (!(isEnter || isBack || isMenu || isArrow)) return;
     if (e.target && e.target.tagName === 'SELECT' && isArrow) return; // ネイティブの選択に任せる
     e.preventDefault();
+    if (capture) {
+      if (isMenu) { if (!e.repeat) capture('Menu', false); }
+      else if (isBack) { if (!e.repeat) capture('Back', false); }
+      else capture(isEnter ? 'Enter' : k, !!e.repeat);
+      return;
+    }
     if (e.repeat && isBack) { backHold += 1; if (backHold === 12) settings(); return; }
     if (!e.repeat) backHold = 0;
     if (e.repeat && !isArrow) return;
@@ -190,6 +201,6 @@ const TV = (function () {
     mo.observe(document.getElementById('lockbar'), { childList: true, attributes: true, attributeFilter: ['class'] });
   }
   document.addEventListener('DOMContentLoaded', init);
-  return { isTV, back, menu, settings, press, get enabled() { return on; } };
+  return { isTV, back, menu, settings, press, setCapture, get enabled() { return on; } };
 })();
 window.TV = TV; // Android（Fire TV）側は window.TV 経由で呼ぶ（const は window に載らないため明示する）
