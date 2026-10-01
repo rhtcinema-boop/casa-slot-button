@@ -418,12 +418,14 @@ const Game = (function () {
      DRAMA はその演出が出る割合（ステージ別）。 */
   const DRAMA = { lose: [0, 0.55, 0.7, 0.9], win: [0, 0.5, 0.65, 0.85] };
   /* FREE SPIN ×1: リールに FREE SPIN が3本そろい、自動でもう一度回る。演出だけで、結果（確率で確定済み）や回転数は変わらない。
-     出る割合は、最終結果がハズレのスピンで 6%、当たり・NEXT STAGE のスピンで 12%。1回のスピンにつき1回まで。 */
-  const FREE_RATE = { lose: 0.06, win: 0.12 };
+     出る割合（1スピンあたりの %）はプリセットごとにマスター画面で決める（state.freeRate。未設定は 8%）。1回のスピンにつき1回まで。
+     0% のときは FREE SPIN の絵柄そのものを出さない（そろわない絵柄で期待させないため）。 */
+  const FREE_DEFAULT = 8;
+  const freeRate = () => { const r = Number(Store.state.freeRate); return isFinite(r) && Store.state.freeRate !== null && Store.state.freeRate !== undefined ? Math.max(0, Math.min(50, r)) : FREE_DEFAULT; };
   let freeSpun = false; // FREE SPIN のあとの回り直し中
-  function rollFree(sym) {
+  function rollFree() {
     if (window.__fxTest && window.__fxTest.free !== undefined) return !!window.__fxTest.free; // 演出確認用
-    return Math.random() < (sym === 0 ? FREE_RATE.lose : FREE_RATE.win);
+    return Math.random() < freeRate() / 100;
   }
   const RESPIN_RATE = [0, 0.1, 0.12, 0.15]; // 当たりのとき ONE MORE CHANCE になる割合（ステージ別）
 
@@ -555,7 +557,7 @@ const Game = (function () {
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
     const afterFree = freeSpun; freeSpun = false;
-    const free = !oneMore && !afterFree && rollFree(sym);
+    const free = !oneMore && !afterFree && rollFree();
     const pat = oneMore || free ? { type: 'plain' } : pickPattern(st, sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
     if (!oneMore && !free && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
     const warpTo = oneMore || free || afterFree ? 0 : pickWarp(play, st);
@@ -659,7 +661,8 @@ const Game = (function () {
     const beats = [];
     extra = extra || {};
     pat = pat || { type: 'plain' };
-    const combos = Engine.reelCombos(st, sym);
+    const noFree = sym !== 'FREE' && freeRate() <= 0; // FREE SPIN を 0% にしているプリセットでは、絵柄も出さない
+    const combos = noFree ? Engine.reelCombos(st, sym).filter((c) => c.indexOf('FREE') < 0) : Engine.reelCombos(st, sym);
     const usedC = Store.state.comboHist || [];
     let pool = combos.filter((c) => usedC.indexOf(st + ':' + c.join('/')) < 0);
     if (!pool.length) { // 候補が少なくて20回ぶん避けきれないときは、同じ結果の直近ぶん（候補数の半分まで）だけ避ける
@@ -675,7 +678,7 @@ const Game = (function () {
     const deciding = cand.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
     const ordPool = deciding.length ? deciding : cand;
     const order = ordPool[Math.floor(Math.random() * ordPool.length)];
-    const alts = Engine.reelAlternatives(st, combo, order[2]);
+    const alts = Engine.reelAlternatives(st, combo, order[2]).filter((s) => !noFree || s !== 'FREE');
     const nb = pat.type === 'seq' ? pat.pre + (pat.over ? 1 : 0) : pat.type === 'slip2' ? 2 : pat.type === 'slip' || pat.type === 'back' ? 1 : 0;
     const bait = [];
     for (let i = 0; i < nb; i++) bait.push(alts.length && Math.random() < 0.85 ? alts[Math.floor(Math.random() * alts.length)] : null);
@@ -1205,12 +1208,14 @@ const Game = (function () {
   function applyPreset(p) {
     if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
     const same = JSON.stringify(Store.state.probs) === JSON.stringify(p.probs) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
-    if (same && Store.state.presetId === p.id) return;
+    const fr = typeof p.freeRate === 'number' ? p.freeRate : FREE_DEFAULT;
+    if (same && Store.state.presetId === p.id && Store.state.freeRate === fr) return;
     try {
       Store.transact((s) => {
         s.probs = JSON.parse(JSON.stringify(p.probs));
         s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
         s.presetId = p.id;
+        s.freeRate = fr;
         Store.log('PRESET_APPLY', { id: p.id, name: p.name });
       });
     } catch (err) { /* 保存のみ */ }
