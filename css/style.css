@@ -1496,3 +1496,30 @@ body.lite .lockbar .side::before { box-shadow: inset 0 5px 0 rgba(0, 0, 0, .9), 
 /* リモコンの枠が付いているときも NEXT GAME の厚みを残す（枠の光で側面が消えないように） */
 body.tv:not(.lite) .lockbar .side .btn.tvfocus { box-shadow: inset 0 3px 0 #fffbe6, inset 0 -6px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #fbeeb8, inset 0 0 0 5px rgba(150, 100, 15, .45), 0 0 0 3px #1a1408, 0 14px 0 #8a5f16, 0 14px 0 3px #1a1408, 0 0 34px rgba(255, 255, 255, .9) !important; }
 body.tv:not(.lite) .lockbar .side .btn.tvfocus.pressed { box-shadow: inset 0 3px 0 #fff3c4, inset 0 -4px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #f3dc98, inset 0 0 0 5px rgba(150, 100, 15, .5), 0 0 0 3px #1a1408, 0 4px 0 #8a5f16, 0 4px 0 3px #1a1408, 0 0 34px rgba(255, 255, 255, .9) !important; }
+
+/* ---------- 左右対称の配置: リールの箱を画面の左右中央（x = 800）に置く ----------
+   左列 48–332 ／ リールの箱 395–1205（中心 800）／ 右列 1268–1552。電飾の帯（箱の外側 34px）と左右の列の間は 29px ずつ。
+   NEXT GAME（土台を含む）はリールの箱と同じ幅 395–1205。 */
+#content, #fxwrap, body.is-tv #content, body.is-tv #fxwrap { transform-origin: 800px 420px; }
+.rays, .rays2, .spot, .banner { left: 800px; }
+.cabinet { left: 395px; }
+.marquee { left: 465px; }
+.help-btn { left: 1206px; }
+.ladder { width: 284px; }
+.credit-box { left: 1268px; width: 284px; padding: 6px 16px; }
+.credit-box small { font-size: 20px; }
+.recent { left: 1268px; width: 284px; }
+.recent-view { margin: 0 14px; }
+.lockbar { left: 48px; width: 1157px; }
+.lockbar .res { width: 284px; }
+.lockbar .side, .lockbar .side.solo { left: 356px; width: 792px; }
+.plate { left: 395px; width: 810px; }
+.paytable { width: 1504px; }
+/* 配当履歴: 日付（曜日つき）を大きく、時刻は小さく */
+.rc { padding: 0 10px; }
+.rc small { gap: 3px; }
+.rc small span { font: 700 25px/1 var(--font-ui); letter-spacing: .01em; color: #f3ead0; white-space: nowrap; text-shadow: var(--ink); }
+.rc small span em { font-style: normal; font-size: 17px; margin-left: 2px; color: #cfc6ad; }
+.rc small i { font-size: 14px; letter-spacing: .06em; color: #9a917b; }
+/* 起動画面: アップデートしたときの知らせ */
+#splash .upd { margin: 18px 0 0; font: 700 26px/1.3 var(--font-ui); letter-spacing: .04em; color: #7ee2a0; text-align: center; }
