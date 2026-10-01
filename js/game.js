@@ -3,7 +3,7 @@ const Game = (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const CX = 765, CY = 420;          // リール窓の中心（#content 座標）
+  const CX = 800, CY = 420;          // リール窓の中心（#content 座標。左右は画面の中央）
   /* ステージごとのテーマカラー（粒子・稲妻・衝撃波の色）: 1=ゴールド / 2=サファイア / 3=ルビー */
   const STAGE_COL = { 1: ['gold', 'gold', 'white'], 2: ['blue', 'cyan', 'white', 'violet'], 3: ['red', 'gold', 'white', 'red'] };
   const STAGE_ACC = { 1: 'gold', 2: 'cyan', 3: 'red' };
@@ -37,7 +37,7 @@ const Game = (function () {
     // 4:3 では縮めずに行の間隔を広げて縦を使い切る（CSS の --t で各行が下へずれる。最下段は 110px 下がる）。横は 6% だけ拡大
     const t = (H - 900) / 300, f = 1 + 0.06 * t;
     [$('content'), $('fxwrap')].forEach((el) => {
-      el.style.left = 30 * (1 - f) + 'px';            // 拡大の基準点（リール中心）のずれを補正して中央に保つ
+      el.style.left = '0px';                          // 拡大の基準点（リール中心）は画面の左右中央なので、横の補正は不要
       el.style.top = (H - 900) / 2 - 55 * t + 30 * (1 - f) + 'px';
       el.style.transform = 'scale(' + f + ')'; // scale プロパティは古い WebView が非対応なので transform を使う
       el.style.setProperty('--t', t.toFixed(3));
@@ -227,6 +227,41 @@ const Game = (function () {
   }
   /* 結果を出したまま 10 秒たったら、最初の待機画面（STAGE 1・READY TO SPIN）へ自動で戻す。
      設定やダイアログを開いている間は数えない（閉じてから 10 秒）。 */
+  /* ---------- 自動アップデート ----------
+     起動時（テレビ版は index.html の先頭のスクリプト）と、アプリに戻ってきたとき（画面が再び表示されたとき）に新しい版を確認する。
+     テレビ版はアプリ本体が公開サイトから取り込み（/__update）、ブラウザ版は読み直すだけ。
+     読み直すのは起動画面か待機中だけ（ゲームの途中・設定中は待つ）。読み直したあとは起動画面を自動で閉じて、待機画面に戻る。 */
+  const APP_V = ((document.getElementById('ver') || {}).textContent || '').trim();
+  const verNum = (v) => parseInt(String(v).replace(/\D/g, ''), 10) || 0;
+  let updChecking = false, updLast = 0, updPending = false;
+  const newerOnDisk = (st) => !!st && (st.state === 'done' || (st.state === 'latest' && verNum(st.v) > verNum(APP_V)));
+  async function autoUpdate() {
+    if (updChecking || Date.now() - updLast < 60000) return;
+    updChecking = true; updLast = Date.now();
+    try {
+      if (location.hostname === 'appassets.androidplatform.net') {
+        let st = await (await fetch('/__update?t=' + Date.now(), { cache: 'no-store' })).json();
+        for (let i = 0; i < 180 && st.state === 'running'; i++) { await wait(1000); st = await (await fetch('/__update_status?t=' + Date.now(), { cache: 'no-store' })).json(); }
+        if (newerOnDisk(st)) updPending = true;
+      } else if (/^https?:$/.test(location.protocol)) {
+        const man = await (await fetch('version.json?t=' + Date.now(), { cache: 'no-store' })).json();
+        if (man && verNum(man.v) > verNum(APP_V)) {
+          try { const ks = await caches.keys(); await Promise.all(ks.filter((k) => k.indexOf('casa-slot-button-') === 0).map((k) => caches.delete(k))); } catch (err) { /* キャッシュ無しの環境 */ }
+          updPending = true;
+        }
+      }
+    } catch (err) { /* 圏外・更新に未対応の古いアプリなど: 何もしない（手動の「最新版に更新」は別に使える） */ }
+    updChecking = false;
+  }
+  function updWatch() {
+    if (!updPending) return;
+    const onSplash = !!document.getElementById('splash');
+    if (!onSplash && (busy || pressing || (Store.state && Store.state.play) || $('ui').children.length || $('calib'))) return; // ゲーム中・設定中は待つ
+    updPending = false;
+    try { if (!onSplash) sessionStorage.setItem('casa.skipSplash', '1'); } catch (err) { /* 保存できない環境では起動画面を出す */ }
+    location.reload();
+  }
+
   /* 待機中の見せ回し: 待機画面（STAGE 1）で、リールが約5秒回る → ゆっくり止まって READY TO SPIN を3秒見せる → また回る、を繰り返す。
      音は鳴らさない。NEXT GAME を押せばすぐ本番の回転に切り替わる。設定やダイアログを開いている間・画面が隠れている間は回さない。 */
   const ATTRACT_REST_MS = 3000; // READY TO SPIN で止まっている時間
@@ -271,7 +306,9 @@ const Game = (function () {
     if (!s.pins) { lockbar.classList.remove('show'); return setPlate('idle', 'WELCOME', ''); }
     idleBar();
   }
-  const hhmm = (ts) => { const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return '<i>' + d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + '</i>' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
+  const WDAY = ['日', '月', '火', '水', '木', '金', '土'];
+  // 配当履歴の日時: 日付（曜日つき）を大きく、時刻は小さく
+  const hhmm = (ts) => { const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return '<span>' + (d.getMonth() + 1) + '/' + d.getDate() + '<em>(' + WDAY[d.getDay()] + ')</em></span><i>' + p(d.getHours()) + ':' + p(d.getMinutes()) + '</i>'; };
   /* 画面右: 配当の履歴（日付・時刻と金額。新しい順、直近200件）。はみ出す数になったら自動でゆっくり上下にスクロールする */
   let recentShown = -1;
   function renderRecent() {
@@ -1328,7 +1365,9 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { idleWatch().catch(() => {}); attractWatch(); }, 500);
+    setInterval(() => { idleWatch().catch(() => {}); attractWatch(); updWatch(); }, 500);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) autoUpdate(); }); // アプリに戻ってきたときに新しい版を確認
+    if (window.__autoUpdate) window.__autoUpdate.then((st) => { if (newerOnDisk(st)) updPending = true; });
     if (window.ResizeObserver) new ResizeObserver(layout).observe($('viewport'));
     if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
     window.addEventListener('orientationchange', () => setTimeout(layout, 300));
@@ -1359,16 +1398,28 @@ const Game = (function () {
     applyPerf();
     setStage(1);
     refresh();
+    // 前回起動したときより版が上がっていたら知らせる（自動・手動どちらのアップデートでも）
+    let updated = false;
+    try { const k = 'casa-slot-button.ver', prev = localStorage.getItem(k); updated = !!prev && verNum(APP_V) > verNum(prev); localStorage.setItem(k, APP_V); } catch (err) { /* 保存できない環境 */ }
     await new Promise((resolve) => {
       const sp = $('splash');
-      sp.addEventListener('click', () => {
-        Sfx.unlock();
-        Sfx.play('ok');
+      if (updated) { const m = document.createElement('p'); m.className = 'upd'; m.textContent = '✓ 新しいバージョン ' + APP_V + ' にアップデートしました'; sp.querySelector('.splash-in').appendChild(m); }
+      let gone = false;
+      const go = (byUser) => {
+        if (gone) return;
+        gone = true;
+        if (byUser) { Sfx.unlock(); Sfx.play('ok'); }
         sp.classList.add('bye');
         setTimeout(() => sp.remove(), 600);
         resolve();
-      }, { once: true });
+      };
+      sp.addEventListener('click', () => go(true));
+      // 待機中に自動アップデートで読み直したときは、起動画面を自動で閉じて待機画面に戻る
+      let skip = false;
+      try { skip = sessionStorage.getItem('casa.skipSplash') === '1'; sessionStorage.removeItem('casa.skipSplash'); } catch (err) { /* 保存できない環境 */ }
+      if (skip) setTimeout(() => go(false), 2200);
     });
+    if (updated) UI.toast('新しいバージョン ' + APP_V + ' にアップデートしました。', 'ok');
     if (Cloud.enabled) {
       try { await Cloud.ready(); } catch (err) { cloudDown = true; UI.toast('クラウドに接続できません。端末内の設定で動作します。', 'err'); }
       if (!cloudDown && !Store.state.store) { await chooseStore(); refresh(); }
