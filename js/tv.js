@@ -30,13 +30,21 @@ const TV = (function () {
   }
   const keyOf = (el) => el ? [el.tagName, el.dataset.act, el.dataset.tab, el.dataset.k, el.dataset.r, el.dataset.p, el.dataset.f, el.dataset.d, el.dataset.g, (el.textContent || '').trim().slice(0, 20)].join('|') : '';
 
+  /* 設定やダイアログの本文だけをスクロールして、選んだ場所を見える位置へ（scrollIntoView は画面全体まで動かしてしまうので使わない） */
+  function reveal(el) {
+    const box = el.closest('.adm-body, .dialog .body');
+    if (!box || box.scrollHeight <= box.clientHeight + 4) return;
+    const r = rect(el), b = rect(box), k = (b.height / box.clientHeight) || 1, m = 14 * k;
+    if (r.top < b.top + m) box.scrollTop -= (b.top + m - r.top) / k;
+    else if (r.bottom > b.bottom - m) box.scrollTop += (r.bottom - b.bottom + m) / k;
+  }
   function setFocus(el) {
     if (cur && cur !== el) { cur.classList.remove('tvfocus', 'tvedit'); editing = false; }
     cur = el;
     curKey = keyOf(el);
     if (!el) return;
     el.classList.add('tvfocus');
-    if (el.closest('#ui')) { try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { /* 古いWebView */ } } // ゲーム画面は固定（スクロールで位置がズレないように）
+    reveal(el);
   }
   /* 今の層の中で既定のボタン: NEXT GAME → 決定 → OK → 最初の要素 */
   function defaultOf(list) {
@@ -164,6 +172,12 @@ const TV = (function () {
   function init() {
     if (isTV) { document.body.classList.add('tv', 'is-tv'); setTimeout(enable, 800); }
     document.addEventListener('keydown', onKey, true);
+    // 画面全体（#stage）は絶対にスクロールさせない。フォーカス移動などで動いてしまったら即座に戻す（位置ズレ防止）
+    document.addEventListener('scroll', (e) => {
+      const t = e.target;
+      if (t && t.id === 'stage' && (t.scrollTop || t.scrollLeft)) { t.scrollTop = 0; t.scrollLeft = 0; }
+      else if (t === document && (window.scrollX || window.scrollY)) window.scrollTo(0, 0);
+    }, true);
     document.addEventListener('focusin', (e) => { const el = e.target; if (el && el !== document.body && el.matches && el.matches(FOCUSABLE)) { enable(); setFocus(el); } }, true);
     // ロゴ（div）でのブラウザ標準の決定（keydown が届く環境向け）
     document.getElementById('crest').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); enable(); setFocus(e.currentTarget); activate(); } });
