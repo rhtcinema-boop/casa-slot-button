@@ -36,7 +36,7 @@ const TV = (function () {
     curKey = keyOf(el);
     if (!el) return;
     el.classList.add('tvfocus');
-    try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { /* 古いWebView */ }
+    if (el.closest('#ui')) { try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { /* 古いWebView */ } } // ゲーム画面は固定（スクロールで位置がズレないように）
   }
   /* 今の層の中で既定のボタン: NEXT GAME → 決定 → OK → 最初の要素 */
   function defaultOf(list) {
@@ -46,6 +46,12 @@ const TV = (function () {
   function ensure() {
     if (cur && visible(cur) && layer().contains(cur)) return;
     const list = candidates();
+    // ゲーム画面で NEXT GAME が消えている間（回転中）は、枠をロゴなどへ移さない。戻ってきたら NEXT GAME に付け直す
+    if (layer().id === 'content' && !list.some((e) => e.dataset.act === 'next')) {
+      if (cur) cur.classList.remove('tvfocus', 'tvedit');
+      cur = null; curKey = ''; editing = false;
+      return;
+    }
     setFocus((curKey && list.find((e) => keyOf(e) === curKey)) || defaultOf(list));
   }
   // ゲーム画面の固定ルート: NEXT GAME →(上)→ ? →(上)→ casa ロゴ →(下)→ ? →(下)→ NEXT GAME
