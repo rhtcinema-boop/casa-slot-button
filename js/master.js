@@ -50,6 +50,7 @@
     if (tab === 'stores') main.innerHTML = editStore ? viewStoreEdit() : viewStores();
     else if (tab === 'presets') main.innerHTML = editPreset ? viewPresetEdit() : viewPresets();
     else main.innerHTML = viewStats();
+    main.classList.toggle('wide', tab === 'presets' && !!editPreset);
   }
 
   /* ---------- 店舗 ---------- */
@@ -87,33 +88,44 @@
   const PKEYS = (d) => Engine.probKeys(d);
   const probLabel = (k) => (k === 'NEXT' ? 'NEXT STAGE' : fmtN(+k));
   const pct = (x) => (Math.round(x * 1000000) / 10000) + '%';
+  const FREE_DEFAULT = 8; // FREE SPIN ×1 が出る割合の初期値（%）
+  const freeOf = (p) => (typeof p.freeRate === 'number' ? p.freeRate : FREE_DEFAULT);
+  const r2 = (x) => Math.round(x * 100) / 100;
   function viewPresets() {
     return '<div class="panel"><h3>プリセット</h3><p class="hint">確率のセットです。店舗には名前だけが見えます。</p>' +
-      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name">' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + '</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
+      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name">' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + '｜FREE SPIN ' + freeOf(p) + '%</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
       '<div class="acts"><button class="btn" data-act="preset-new">プリセットを作る</button></div></div>';
   }
   function probSummary(p) {
     const v = Engine.validateProbs(p.probs), st = Engine.probStats(p.probs);
-    return '<div class="summary">' + Engine.STAGE_DEFS.map((d) => '<div class="stat ' + (st.sums[d.stage] === 100 ? 'ok' : 'ng') + '"><small>STAGE ' + d.stage + ' の合計</small><b>' + st.sums[d.stage] + '%</b></div>').join('') +
-      '<div class="stat"><small>当選する確率（0以外）</small><b>' + pct(st.win) + '</b></div><div class="stat"><small>STAGE 2 / 3 に進む確率</small><b>' + pct(st.reach[2]) + ' / ' + pct(st.reach[3]) + '</b></div>' +
-      '<div class="stat" style="grid-column:1/-1"><small>最終期待値（1回あたりの平均当選額）</small><b>' + fmtN(Math.round(st.ev)) + '</b></div></div>' +
-      (v.ok ? '<div class="okmsg">保存できます。</div>' : '<div class="err">' + v.errors.map(esc).join('<br>') + '</div>');
+    return '<div class="summary"><div class="stat"><small>当選する確率（0以外）</small><b>' + pct(st.win) + '</b></div><div class="stat"><small>STAGE 2 / 3 に進む確率</small><b>' + pct(st.reach[2]) + ' / ' + pct(st.reach[3]) + '</b></div>' +
+      '<div class="stat"><small>最終期待値（1回あたりの平均当選額）</small><b>' + fmtN(Math.round(st.ev)) + '</b></div></div>' +
+      (v.ok ? '' : '<div class="err">' + v.errors.map(esc).join('<br>') + '</div>');
   }
+  // 各ステージの見出しに出す合計（ちょうど 100% で緑）
+  function sumBadge(p, stage) {
+    const s = r2(Engine.probStats(p.probs).sums[stage]);
+    return '<span class="sum ' + (s === 100 ? 'ok' : 'ng') + '" data-sum="' + stage + '">合計 ' + s + '%' + (s === 100 ? ' ✓' : s < 100 ? '（あと ' + r2(100 - s) + '%）' : '（' + r2(s - 100) + '% 多い）') + '</span>';
+  }
+  const saveMsg = (p) => (Engine.validateProbs(p.probs).ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">各ステージの合計を 100% にしてください</span>');
   function viewPresetEdit() {
     const p = editPreset, L = p.limits;
-    const stepRow = (label, val, attr, unit) => '<div class="row"><div class="lbl">' + label + '</div><div class="stepper"><button data-act="step" data-d="-1" ' + attr + '>◀</button><span class="pv">' + val + '<i>' + unit + '</i></span><button data-act="step" data-d="1" ' + attr + '>▶</button></div></div>';
+    const stepRow = (label, val, attr, unit, hint) => '<div class="row"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="stepper"><button data-act="step" data-d="-1" ' + attr + ' aria-label="減らす">◀</button><span class="pv">' + val + '<i>' + unit + '</i></span><button data-act="step" data-d="1" ' + attr + ' aria-label="増やす">▶</button></div></div>';
     return '<div class="panel"><h3>' + (p.id ? 'プリセットを編集' : 'プリセットを作る') + '</h3>' +
       '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label></div>' +
-      '<div class="panel"><h3>各ステージの確率</h3><p class="hint">◀ ▶ で 1% ずつ。各ステージの合計をちょうど 100% にしてください。</p><div class="cols">' +
-      Engine.STAGE_DEFS.map((d) => '<div class="stage"><h4>STAGE ' + d.stage + '</h4>' + PKEYS(d).map((k) => stepRow(probLabel(k), p.probs[d.stage][k], 'data-p="' + d.stage + ':' + k + '"', '%')).join('') + '</div>').join('') + '</div>' +
+      '<div class="panel"><h3>各ステージの確率</h3><p class="hint">◀ ▶ で 1% ずつ（押しっぱなしで連続）。各ステージの合計をちょうど 100% にしてください。</p><div class="cols">' +
+      Engine.STAGE_DEFS.map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span>' + sumBadge(p, d.stage) + '</h4>' + PKEYS(d).map((k) => stepRow(probLabel(k), p.probs[d.stage][k], 'data-p="' + d.stage + ':' + k + '"', '%')).join('') + '</div>').join('') + '</div>' +
       '<div id="psum">' + probSummary(p) + '</div></div>' +
+      '<div class="panel"><h3>FREE SPIN ×1</h3><p class="hint">リールに FREE SPIN が3本そろって、自動でもう1回まわる演出が出る割合です。演出なので、当選確率・期待値・回転数は変わりません。0% にすると FREE SPIN の絵柄は出なくなります。</p>' +
+      stepRow('FREE SPIN が出る割合', freeOf(p), 'data-f="1"', '%', '1回のスピンあたり（0〜50%）') + '</div>' +
       '<div class="panel"><h3>1日の当たり本数制限</h3><p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
       '<div class="row"><div class="lbl">制限を使う</div><button class="btn sm ' + (L.on ? '' : 'ghost') + '" data-act="lim-on">' + (L.on ? 'ON' : 'OFF') + '</button></div>' +
-      stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00') +
-      stepRow('1日の当たり本数の上限（合計・0で無制限）', L.total, 'data-l="total"', '本') +
-      '<p class="hint" style="margin:18px 0 6px"><b>金額ごとの上限</b>（任意。0 は制限なし）</p>' + Engine.OUTCOMES.filter((o) => o.value > 0).map((o) => stepRow('STAGE ' + o.stage + ' / ' + fmtN(o.value), L.max[o.key] || 0, 'data-l="' + o.key + '"', '回')).join('') + '</div>' +
-      '<div class="err" id="perr"></div>' +
-      '<div class="acts">' + (p.id ? '<button class="btn danger" data-act="preset-del">削除</button>' : '') + '<button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save">保存</button></div>';
+      stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
+      stepRow('1日の当たり本数の上限（合計）', L.total, 'data-l="total"', '本', '0 は無制限') +
+      '<p class="hint" style="margin:18px 0 8px"><b style="color:var(--text)">金額ごとの上限</b>（任意。0 は制限なし）</p><div class="cols">' +
+      Engine.STAGE_DEFS.map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + Engine.OUTCOMES.filter((o) => o.stage === d.stage && o.value > 0).map((o) => stepRow(fmtN(o.value), L.max[o.key] || 0, 'data-l="' + o.key + '"', '回')).join('') + '</div>').join('') + '</div></div>' +
+      (p.id ? '<div class="panel"><h3>このプリセットを削除</h3><p class="hint">配布中の店舗からも消えます。</p><div class="acts" style="justify-content:flex-start"><button class="btn danger" data-act="preset-del">削除する</button></div></div>' : '') +
+      '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save">保存</button></div>';
   }
   async function savePreset() {
     const p = editPreset, name = $('pname').value.trim(), err = $('perr');
@@ -121,7 +133,7 @@
     if (!name) { err.textContent = '名前を入力してください。'; return; }
     const v = Engine.validateProbs(p.probs);
     if (!v.ok) { err.textContent = v.errors.join(' / '); return; }
-    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits });
+    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeOf(p) });
     toast('保存しました。配布中の店舗には自動で反映されます');
     editPreset = null; await reload(); render();
   }
@@ -148,6 +160,19 @@
 
   /* ---------- 操作 ---------- */
   main.addEventListener('change', (e) => { if (e.target.id === 'stsel') loadStats(e.target.value); });
+  main.addEventListener('input', (e) => { if (e.target.id === 'pname' && editPreset) editPreset.name = e.target.value; }); // 途中で画面を作り直しても名前が消えないように
+  // ◀ ▶ を押しっぱなしにすると連続で増減する
+  let holdT = 0, holdI = 0;
+  const holdStop = () => { clearTimeout(holdT); clearInterval(holdI); };
+  main.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('[data-act="step"]');
+    holdStop();
+    if (!b) return;
+    holdT = setTimeout(() => { holdI = setInterval(() => { if (!document.contains(b)) return holdStop(); b.click(); }, 70); }, 420);
+  });
+  ['pointerup', 'pointercancel', 'blur'].forEach((ev) => window.addEventListener(ev, holdStop));
+  main.addEventListener('pointerleave', holdStop);
+  main.addEventListener('contextmenu', (e) => { if (e.target.closest('[data-act="step"]')) e.preventDefault(); });
   main.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -160,20 +185,30 @@
         case 'store-save': return saveStore();
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。集計も消えます。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
-        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 } }; return render();
-        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}) })); return render(); }
+        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULT }; return render();
+        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeOf(p) })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
         case 'preset-save': return savePreset();
         case 'preset-del': if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
         case 'lim-on': editPreset.limits.on = !editPreset.limits.on; return render();
         case 'step': {
-          const d = +b.dataset.d;
-          if (b.dataset.p) { const pk = b.dataset.p.split(':'); const v = Number(editPreset.probs[pk[0]][pk[1]]) || 0; editPreset.probs[pk[0]][pk[1]] = Math.max(0, Math.min(100, Math.round((v + d) * 100) / 100)); $('psum').innerHTML = probSummary(editPreset); b.parentNode.querySelector('.pv').innerHTML = editPreset.probs[pk[0]][pk[1]] + '<i>%</i>'; return; }
+          const d = +b.dataset.d, pv = b.parentNode.querySelector('.pv');
+          const show = (v, unit) => { pv.innerHTML = v + '<i>' + unit + '</i>'; };
+          if (b.dataset.p) {
+            const pk = b.dataset.p.split(':'); const v = Number(editPreset.probs[pk[0]][pk[1]]) || 0;
+            editPreset.probs[pk[0]][pk[1]] = Math.max(0, Math.min(100, Math.round((v + d) * 100) / 100));
+            show(editPreset.probs[pk[0]][pk[1]], '%');
+            $('psum').innerHTML = probSummary(editPreset);
+            const badge = main.querySelector('[data-sum="' + pk[0] + '"]'); if (badge) badge.outerHTML = sumBadge(editPreset, +pk[0]);
+            $('pstate').innerHTML = saveMsg(editPreset);
+            return;
+          }
+          if (b.dataset.f) { editPreset.freeRate = Math.max(0, Math.min(50, freeOf(editPreset) + d)); return show(editPreset.freeRate, '%'); }
           const k = b.dataset.l, L = editPreset.limits;
-          if (k === 'hour') L.resetHour = (L.resetHour + d + 24) % 24;
-          else if (k === 'total') L.total = Math.max(0, Math.min(999, (L.total || 0) + d));
-          else { const v = Math.max(0, Math.min(99, (Number(L.max[k]) || 0) + d)); if (v) L.max[k] = v; else delete L.max[k]; }
-          return render();
+          if (k === 'hour') { L.resetHour = (L.resetHour + d + 24) % 24; return show(L.resetHour, ':00'); }
+          if (k === 'total') { L.total = Math.max(0, Math.min(999, (L.total || 0) + d)); return show(L.total, '本'); }
+          const v = Math.max(0, Math.min(99, (Number(L.max[k]) || 0) + d)); if (v) L.max[k] = v; else delete L.max[k];
+          return show(v, '回');
         }
       }
     } catch (err) { toast('失敗しました: ' + err.message); }
