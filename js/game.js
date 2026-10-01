@@ -654,8 +654,7 @@ const Game = (function () {
        止まる順番 … 6通りからランダム。ただし「最後の1本で結果が変わる」順番を優先（最後まで分からない）。
                     NEXT STAGE が1〜2本入る並びでは、NEXT STAGE のリールを先に止める
        惜しい絵柄 … 最後の1本が止まりかけで見せる絵柄は、先に止まった2本との合計が別の正規の結果になるもの
-       停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに 1.3 倍。
-                    ただし2本目までで負けが決まっているときは、3本目は 0.6 秒後にすぐ止める */
+       停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに全体が 1.4 倍 */
   const ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
   function spinReel(st, sym, pat, extra) {
     const beats = [];
@@ -682,15 +681,12 @@ const Game = (function () {
     const nb = pat.type === 'seq' ? pat.pre + (pat.over ? 1 : 0) : pat.type === 'slip2' ? 2 : pat.type === 'slip' || pat.type === 'back' ? 1 : 0;
     const bait = [];
     for (let i = 0; i < nb; i++) bait.push(alts.length && Math.random() < 0.85 ? alts[Math.floor(Math.random() * alts.length)] : null);
-    // 負け確定の早止め: 2本目が止まった時点でハズレが決まっている（NEXT STAGE / FREE SPIN が2本そろっていない）ときは、3本目をすぐ止める
-    const s1 = combo[order[0]], s2 = combo[order[1]];
-    const reach = s1 === s2 && (s1 === 'NEXT' || s1 === 'FREE');
-    const dead = sym === 0 && !reach && !puchunPlan;
-    const p = dead ? { type: 'plain', decel: 1.2 } : Object.assign({}, pat, { bait });
-    const k = Math.pow(1.3, st - 1);
+    const p = Object.assign({}, pat, { bait });
+    // ステージが上がるごとに、回る時間は全体で 1.4 倍（3本目が止まるまで: STAGE 1 約8.2秒 / STAGE 2 約11.5秒 / STAGE 3 約16.1秒）
+    const k = Math.pow(1.4, st - 1);
     const iv = (pat.quick ? 0.7 : 2.0) * k;
-    const first = (pat.quick ? 1.4 : 3.2) * Math.pow(1.12, st - 1); // 1本目が止まるまで（回り出し＋減速ぶんを含む）
-    const stops = [first, first + iv, first + iv + (dead ? 0.6 : iv * 1.5)];
+    const first = (pat.quick ? 1.4 : 3.2) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
+    const stops = [first, first + iv, first + iv + iv * 1.5];
     lastCombo = { st, read: sym, combo };
     try { Store.transact((s) => { s.comboHist = (s.comboHist || []).concat(st + ':' + combo.join('/')).slice(-20); }); } catch (err) { /* 記録のみ */ }
     return Reel.spin(st, combo, order, stops, p, {
@@ -1134,7 +1130,7 @@ const Game = (function () {
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
           '<li><b>FREE SPIN ×1 が3本そろう</b>と、自動でもう1回まわります。1〜2本だけのときは 0 として合計します。</li>' +
-          '<li>止まる順番は毎回変わります。3本目は少し長く回ります（2本目までで結果が決まったときは、すぐ止まります）。</li></ul>' +
+          '<li>止まる順番は毎回変わります。3本目は少し長く回ります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
           '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
           '<li>STAGE 1 → STAGE 2 → STAGE 3 の順に上がり、上のステージほど大きな金額が出ます。STAGE 3 が最後です。</li>' +
