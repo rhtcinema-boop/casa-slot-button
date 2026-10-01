@@ -146,11 +146,8 @@ const Reel = (function () {
       metalText(x, 'NEXT', cx, CH / 2 - 34, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
       metalText(x, 'STAGE', cx, CH / 2 + 38, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
     } else if (sym === 'BAR') {
-      // 昔ながらの BAR: 黒い板に銀の文字
-      x.fillStyle = '#0b0b0d'; x.strokeStyle = '#9aa3ad'; x.lineWidth = 4;
-      const bw = COLW - 40, bh = 78;
-      x.beginPath(); x.roundRect ? x.roundRect(cx - bw / 2, CH / 2 - bh / 2, bw, bh, 10) : x.rect(cx - bw / 2, CH / 2 - bh / 2, bw, bh); x.fill(); x.stroke();
-      metalText(x, 'BAR', cx + 3, CH / 2, 64, LBL_FONT, PAL.silver, bw - 30, false); // 斜体にせず、板の中央にそろえる
+      // ハズレの目（内部名は BAR のまま）: 銀色の「0」
+      metalText(x, '0', cx, CH / 2, 96, NUM_FONT, PAL.silver, COLW - 22);
     } else {
       const pal = PAL_BY_VALUE[sym] || PAL.gold;
       metalText(x, fmt(sym), cx, CH / 2, 96, NUM_FONT, pal, COLW - 22);
