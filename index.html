@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-180.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="css/style.css?v=b40">
+<link rel="stylesheet" href="css/style.css?v=b41">
 </head>
 <body>
 <div id="viewport">
@@ -107,7 +107,7 @@
     <div id="toast"></div>
     <div id="meter"></div>
     <!-- 最初のタップで音声を有効化する（ブラウザ/OSの自動再生制限への対応） -->
-    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p class="tap">TAP TO START</p><p class="ok">決定ボタンでスタート</p></div><small id="ver">b40</small></div>
+    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p class="tap">TAP TO START</p><p class="ok">決定ボタンでスタート</p></div><small id="ver">b41</small></div>
   </div>
   <div id="rotate"><div>端末を横向きにしてご利用ください</div></div>
 </div>
@@ -117,18 +117,32 @@
 window.addEventListener('error', function (e) {
   var d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal' }));
   d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;padding:10px 14px;border-radius:10px;background:#7a211a;color:#fff;font:14px/1.5 sans-serif;white-space:pre-wrap';
-  d.textContent = 'エラー (b40): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
+  d.textContent = 'エラー (b41): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
 });
 </script>
-<script src="js/engine.js?v=b40"></script>
-<script src="js/store.js?v=b40"></script>
-<script src="cloud-config.js?v=b40"></script>
-<script src="js/cloud.js?v=b40"></script>
-<script src="js/audio.js?v=b40"></script>
-<script src="js/reel.js?v=b40"></script>
-<script src="js/fx.js?v=b40"></script>
-<script src="js/admin.js?v=b40"></script>
-<script src="js/tv.js?v=b40"></script>
-<script src="js/game.js?v=b40"></script>
+<script>
+/* 起動時の自動アップデート（テレビ版）。アプリ本体のスクリプトより先に動かす（本体に不具合があっても、直った版を取り込めるように）。
+   新しい版を取り込めたら、まだ起動画面のうちはすぐ読み直す。ゲーム開始後だった場合は、アプリ本体が待機中に読み直す。 */
+(function () {
+  if (location.hostname !== 'appassets.androidplatform.net' || !window.fetch) return;
+  var get = function (u) { return fetch(u + '?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }); };
+  var poll = function (st) { return st.state !== 'running' ? st : new Promise(function (res) { setTimeout(res, 800); }).then(function () { return get('/__update_status'); }).then(poll); };
+  window.__autoUpdate = get('/__update').then(poll).then(function (st) {
+    var again = false; try { again = sessionStorage.getItem('casa.reloaded') === st.v; } catch (e) {}
+    if (st.state === 'done' && document.getElementById('splash') && !again) { try { sessionStorage.setItem('casa.reloaded', st.v); } catch (e) {} location.reload(); }
+    return st;
+  }).catch(function () { return null; });
+})();
+</script>
+<script src="js/engine.js?v=b41"></script>
+<script src="js/store.js?v=b41"></script>
+<script src="cloud-config.js?v=b41"></script>
+<script src="js/cloud.js?v=b41"></script>
+<script src="js/audio.js?v=b41"></script>
+<script src="js/reel.js?v=b41"></script>
+<script src="js/fx.js?v=b41"></script>
+<script src="js/admin.js?v=b41"></script>
+<script src="js/tv.js?v=b41"></script>
+<script src="js/game.js?v=b41"></script>
 </body>
 </html>
