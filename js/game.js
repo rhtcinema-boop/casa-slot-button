@@ -17,12 +17,22 @@ const Game = (function () {
   let stageEl, cabinet, win, plate, lockbar, banner;
 
   /* ---------- レイアウト（16:9 基準・上下は背景で埋める） ---------- */
+  /* 表示範囲: 画面サイズ調整で決めた四角（左上と右下の角。画面に対する割合 0〜1）。未設定なら全画面 */
+  const FULL = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  let calib = null; // 調整中の値
+  function screenRect() {
+    if (calib) return calib;
+    let s = null;
+    try { s = Store.state && Store.state.settings && Store.state.settings.screen; } catch (err) { /* 起動直後 */ }
+    return s && s.x1 - s.x0 >= 0.3 && s.y1 - s.y0 >= 0.3 ? s : FULL;
+  }
   function layout() {
-    const w = window.innerWidth, h = window.innerHeight;
+    const vw = window.innerWidth, vh = window.innerHeight, sr = screenRect();
+    const w = Math.max(1, (sr.x1 - sr.x0) * vw), h = Math.max(1, (sr.y1 - sr.y0) * vh);
     const H = Math.min(1200, Math.max(900, Math.round(1600 * h / w)));
     scale = Math.min(w / 1600, h / H);
     stageEl.style.height = H + 'px';
-    stageEl.style.transform = 'translate(' + (w - 1600 * scale) / 2 + 'px,' + (h - H * scale) / 2 + 'px) scale(' + scale + ')';
+    stageEl.style.transform = 'translate(' + (sr.x0 * vw + (w - 1600 * scale) / 2) + 'px,' + (sr.y0 * vh + (h - H * scale) / 2) + 'px) scale(' + scale + ')';
     // 縦に余裕がある画面（4:3 の iPad など）では全体を最大15%拡大して上下の余白を減らす
     // 4:3 では縮めずに行の間隔を広げて縦を使い切る（CSS の --t で各行が下へずれる。最下段は 110px 下がる）。横は 6% だけ拡大
     const t = (H - 900) / 300, f = 1 + 0.06 * t;
@@ -36,6 +46,89 @@ const Game = (function () {
     stageH = H;
     if (typeof FX !== 'undefined') FX.setGround(450 + H / 2 / (1 + 0.06 * (H - 900) / 300) + 6, () => Sfx.play('chip'));
   }
+
+  /* ---------- 画面サイズ調整 ----------
+     テレビによっては画面の端が切れて映る。左上と右下の角を動かして「見えている範囲」を決めると、その中に全体が収まる。
+     十字キー: 角を動かす / 決定: 動かす角を切り替え / メニュー: 全画面に戻す / 戻る: 保存して終了。タッチは角をドラッグ。 */
+  function calibrate() {
+    return new Promise((resolve) => {
+      const before = Object.assign({}, screenRect());
+      calib = Object.assign({}, before);
+      let active = 0; // 0 = 左上, 1 = 右下
+      const MIN = 0.5; // 幅・高さは画面の半分より小さくしない
+      const cl = (v, a, b) => Math.min(b, Math.max(a, v));
+      const el = document.createElement('div');
+      el.id = 'calib';
+      el.innerHTML = '<div class="cal-frame"><i class="cal-c tl" data-c="0"></i><i class="cal-c br" data-c="1"></i>' +
+        '<div class="cal-panel"><h3>画面サイズ調整</h3>' +
+        '<p>白い枠の<b>角</b>が、画面のふちにちょうど見える位置に合わせてください。枠の中に全体が収まります。</p>' +
+        '<ul><li><b>十字キー</b>：角を動かす（押しっぱなしで速く）</li><li><b>決定</b>：動かす角を切り替え（左上 ⇄ 右下）</li><li><b>メニュー（≡）</b>：全画面に戻す</li><li><b>戻る</b>：保存して終了</li><li>タッチの場合は、角を指で動かせます</li></ul>' +
+        '<div class="cal-val"></div>' +
+        '<div class="cal-btns"><button data-b="tl">左上の角</button><button data-b="br">右下の角</button><button data-b="reset">全画面に戻す</button><button data-b="cancel">キャンセル</button><button data-b="save" class="go">保存して閉じる</button></div></div></div>';
+      const frame = el.firstChild, val = el.querySelector('.cal-val');
+      const pct = (v) => (Math.round(v * 1000) / 10).toFixed(1) + '%';
+      function draw() {
+        const vw = window.innerWidth, vh = window.innerHeight;
+        frame.style.left = calib.x0 * vw + 'px'; frame.style.top = calib.y0 * vh + 'px';
+        frame.style.width = (calib.x1 - calib.x0) * vw + 'px'; frame.style.height = (calib.y1 - calib.y0) * vh + 'px';
+        el.querySelector('.tl').classList.toggle('on', active === 0);
+        el.querySelector('.br').classList.toggle('on', active === 1);
+        el.querySelector('[data-b="tl"]').classList.toggle('on', active === 0);
+        el.querySelector('[data-b="br"]').classList.toggle('on', active === 1);
+        val.textContent = 'いま動かす角: ' + (active === 0 ? '左上' : '右下') + '　｜　左上 ' + pct(calib.x0) + ', ' + pct(calib.y0) + '　右下 ' + pct(calib.x1) + ', ' + pct(calib.y1);
+        layout();
+      }
+      function setCorner(c, x, y) { // x, y は画面に対する割合
+        if (c === 0) { calib.x0 = cl(x, 0, calib.x1 - MIN); calib.y0 = cl(y, 0, calib.y1 - MIN); }
+        else { calib.x1 = cl(x, calib.x0 + MIN, 1); calib.y1 = cl(y, calib.y0 + MIN, 1); }
+        draw();
+      }
+      function nudge(dx, dy, fast) {
+        const d = fast ? 4 : 1;
+        if (active === 0) setCorner(0, calib.x0 + dx * d / window.innerWidth, calib.y0 + dy * d / window.innerHeight);
+        else setCorner(1, calib.x1 + dx * d / window.innerWidth, calib.y1 + dy * d / window.innerHeight);
+      }
+      function finish(save) {
+        const v = calib, full = v.x0 <= 0 && v.y0 <= 0 && v.x1 >= 1 && v.y1 >= 1;
+        calib = null;
+        if (save) { try { Store.transact((s) => { s.settings.screen = full ? null : { x0: v.x0, y0: v.y0, x1: v.x1, y1: v.y1 }; }); } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); } }
+        if (window.TV) TV.setCapture(null);
+        window.removeEventListener('resize', draw);
+        el.remove();
+        layout();
+        if (save) UI.toast(full ? '全画面に戻しました。' : '画面サイズを保存しました。', 'ok');
+        resolve(save);
+      }
+      function onKey(k, repeat) {
+        if (k === 'ArrowLeft') nudge(-1, 0, repeat); else if (k === 'ArrowRight') nudge(1, 0, repeat);
+        else if (k === 'ArrowUp') nudge(0, -1, repeat); else if (k === 'ArrowDown') nudge(0, 1, repeat);
+        else if (k === 'Enter') { if (!repeat) { active = 1 - active; Sfx.play('button'); draw(); } }
+        else if (k === 'Menu') { calib = Object.assign({}, FULL); draw(); }
+        else if (k === 'Back') finish(true);
+      }
+      el.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-b]');
+        if (!b) return;
+        Sfx.play('button');
+        const k = b.dataset.b;
+        if (k === 'tl') { active = 0; draw(); } else if (k === 'br') { active = 1; draw(); }
+        else if (k === 'reset') { calib = Object.assign({}, FULL); draw(); }
+        else if (k === 'cancel') { calib = before; finish(false); }
+        else if (k === 'save') finish(true);
+      });
+      // 角を指（マウス）でつかんで動かす
+      let drag = -1;
+      el.addEventListener('pointerdown', (e) => { const c = e.target.closest('.cal-c'); if (!c) return; drag = +c.dataset.c; active = drag; try { c.setPointerCapture(e.pointerId); } catch (err) { /* 古い環境 */ } e.preventDefault(); draw(); });
+      el.addEventListener('pointermove', (e) => { if (drag >= 0) setCorner(drag, e.clientX / window.innerWidth, e.clientY / window.innerHeight); });
+      const up = () => { drag = -1; };
+      el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+      window.addEventListener('resize', draw);
+      $('viewport').appendChild(el);
+      if (window.TV) TV.setCapture(onKey);
+      draw();
+    });
+  }
+  const screenInfo = () => { const s = screenRect(); return s === FULL ? null : s; };
 
   /* 時間の速さを from → to へ指数関数的に変える（粒子と画面上のアニメーション全体が対象）。
      例: bulletTime(0.15, 0.5) … 0.15秒ほぼ止まり、0.5秒かけて指数的に等速へ戻る */
@@ -1167,7 +1260,7 @@ const Game = (function () {
     if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
     window.addEventListener('orientationchange', () => setTimeout(layout, 300));
     guardGestures();
-    try { Store.init(); }
+    try { Store.init(); layout(); } // 保存してある表示範囲（画面サイズ調整）を反映
     catch (err) {
       document.body.innerHTML = '<p style="color:#ff9d8c;padding:40px;font-size:20px">保存領域を利用できないため起動できません。プライベートブラウズを解除するか、ブラウザの設定を確認してください。<br>' + esc(err.message) + '</p>';
       return;
@@ -1213,6 +1306,6 @@ const Game = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore };
+  return { refresh, applyPerf, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo };
 })();
 window.Game = Game;
