@@ -1403,3 +1403,96 @@ body.lite #crt i { display: none; }
 #calib .cal-btns button { font: 700 2.3vmin/1 var(--font-ui); color: #ece7da; padding: 1.5vmin 2vmin; border-radius: 1.2vmin; border: .25vmin solid #4a4a54; background: #1b1b20; }
 #calib .cal-btns button.on { border-color: #ffd24a; color: #ffd24a; }
 #calib .cal-btns button.go { margin-left: auto; color: #111; background: linear-gradient(180deg, #F3D675, #A77A1F); border-color: #f6e3a1; }
+
+/* ---------- 立体的な質感＋光沢（動きは付けない） ----------
+   光沢は「上のフチ付近」と「左上の角」に集める。文字が乗る中央〜下は暗いままにして、文字には濃い影を付ける（視認性を落とさない）。 */
+#stage { /* --accent-dim は #stage に定義されているので、ここで組み立てる */
+  /* 光沢: 上端で強く、38% あたりでスッと切れる映り込み ＋ 左上の角の照り返し ＋ 下端のわずかな反射 */
+  --gloss: linear-gradient(180deg, rgba(255, 255, 255, .34) 0%, rgba(255, 255, 255, .13) 22%, rgba(255, 255, 255, .05) 37%, rgba(255, 255, 255, 0) 38%),
+    radial-gradient(70% 90% at 8% 0%, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(0deg, rgba(255, 255, 255, .07) 0%, rgba(255, 255, 255, 0) 16%);
+  --plate-base: linear-gradient(180deg, #30303a 0%, #1c1c22 34%, #101013 72%, #08080a 100%);
+  /* 上から: 上端の光 / 下端の陰 / 色の縁 / 黒の溝 / 縁の返し / 厚み（側面） / 厚みの下の反射 / 落ち影 */
+  --plate-3d: inset 0 2px 0 rgba(255, 255, 255, .42), inset 0 -4px 0 rgba(0, 0, 0, .6), inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px rgba(0, 0, 0, .9),
+    0 2px 0 #5c4f2c, 0 8px 0 #050506, 0 9px 0 rgba(255, 255, 255, .09), 0 18px 26px rgba(0, 0, 0, .65);
+  --plate-3d-on: inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -4px 0 rgba(0, 0, 0, .5), inset 0 0 0 2px var(--accent), inset 0 0 0 5px rgba(0, 0, 0, .9),
+    0 2px 0 var(--accent-dim), 0 8px 0 #050506, 0 9px 0 rgba(255, 255, 255, .1), 0 18px 26px rgba(0, 0, 0, .65);
+  --well-3d: inset 0 4px 9px rgba(0, 0, 0, .95), inset 0 0 0 1px rgba(0, 0, 0, .95), 0 1px 0 rgba(255, 255, 255, .16);
+  --ink: 0 2px 0 rgba(0, 0, 0, .95), 0 0 6px rgba(0, 0, 0, .8); /* 文字の影（光沢の上でも読めるように） */
+}
+/* 箱（合計・配当履歴・LAST・最下段） */
+.credit-box, .recent, .lockbar .res, .paytable .ps, .paytable .ps:first-child, .paytable .ps:last-child { background: var(--gloss), var(--plate-base); box-shadow: var(--plate-3d); }
+#stage[data-stage="1"] .paytable .ps[data-s="1"], #stage[data-stage="2"] .paytable .ps[data-s="2"], #stage[data-stage="3"] .paytable .ps[data-s="3"] {
+  background: var(--gloss), linear-gradient(180deg, rgba(var(--acc), .30), rgba(var(--acc), .10) 60%, rgba(var(--acc), .04)), var(--plate-base); box-shadow: var(--plate-3d-on);
+}
+/* 文字: 光沢の上でも沈まないように濃い影 */
+.credit-box span, .credit-box small, .credit-box em, .paytable .ps em, .paytable .ps i, .lockbar .res small, .recent h6, .rung small { text-shadow: var(--ink); }
+.rc b, .paytable .ps b, .paytable .ps[data-s="3"] b { text-shadow: var(--ink); }
+/* 配当履歴: 光沢のある箱の中に、へこんだ表示窓（中は暗いままなので読みやすい） */
+.recent-view { background: rgba(0, 0, 0, .62); border-radius: 12px; box-shadow: var(--well-3d); }
+.rc { padding: 0 12px; border-bottom: 1px solid rgba(0, 0, 0, .8); box-shadow: 0 1px 0 rgba(255, 255, 255, .07); }
+.rc:last-child { border-bottom: 0; box-shadow: none; }
+/* STAGE の箱 */
+.rung { background: var(--gloss), linear-gradient(180deg, #2a3534 0%, #18201f 45%, #0c1110 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .3), inset 0 -4px 0 rgba(0, 0, 0, .55), inset 0 0 0 2px rgba(180, 180, 160, .3), inset 0 0 0 5px rgba(0, 0, 0, .8), 0 2px 0 #2b2f2c, 0 7px 0 #050506, 0 14px 22px rgba(0, 0, 0, .55); opacity: .5; }
+.rung.done { background: var(--gloss), linear-gradient(180deg, #3d3722 0%, #262213 45%, #14120a 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .34), inset 0 -4px 0 rgba(0, 0, 0, .55), inset 0 0 0 2px rgba(181, 163, 107, .6), inset 0 0 0 5px rgba(0, 0, 0, .8), 0 2px 0 #5c4f2c, 0 7px 0 #050506, 0 14px 22px rgba(0, 0, 0, .55); }
+.rung.on { background: var(--gloss), var(--rung-bg);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .65), inset 0 -5px 0 rgba(0, 0, 0, .5), inset 0 0 0 3px var(--accent), inset 0 0 0 6px rgba(0, 0, 0, .85), inset 0 0 30px var(--glow),
+  0 2px 0 var(--accent-dim), 0 7px 0 #050506, 0 0 40px var(--glow), 0 16px 26px rgba(0, 0, 0, .6); }
+/* NEXT GAME: 鏡面のような金のボタン（上半分に強い映り込み、両端に斜めの照り返し、下端に反射、下に側面） */
+.lockbar .side .btn, .lockbar .side.solo .btn {
+  color: #160e02; text-shadow: 0 1px 0 rgba(255, 255, 255, .8), 0 -1px 0 rgba(90, 55, 5, .4);
+  background:
+    linear-gradient(112deg, rgba(255, 255, 255, 0) 6%, rgba(255, 255, 255, .5) 10%, rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, 0) 84%, rgba(255, 255, 255, .38) 89%, rgba(255, 255, 255, 0) 93%),
+    linear-gradient(180deg, rgba(255, 255, 255, .88) 0%, rgba(255, 255, 255, .36) 30%, rgba(255, 255, 255, .16) 47%, rgba(255, 255, 255, 0) 48%, rgba(0, 0, 0, .10) 82%, rgba(255, 255, 255, .22) 100%),
+    linear-gradient(180deg, #ffe9a0 0%, #efc960 42%, #c9992f 72%, #9a6f1a 100%);
+  box-shadow: inset 0 2px 0 #fffbe6, inset 0 -5px 0 rgba(90, 55, 5, .6), inset 0 0 0 2px #fbeeb8, 0 0 0 3px #1a1408, 0 8px 0 #7a5413, 0 8px 0 3px #1a1408, 0 20px 26px rgba(0, 0, 0, .65);
+}
+/* ? ボタン: 丸いドーム状の光沢 */
+.help-btn { background: radial-gradient(60% 46% at 50% 20%, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, 0) 100%), radial-gradient(circle at 50% 30%, #4a4a54 0%, #1c1c21 58%, #0a0a0c 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, .45), inset 0 -3px 0 rgba(0, 0, 0, .65), inset 0 0 0 2px var(--accent-dim), 0 4px 0 #050506, 0 9px 12px rgba(0, 0, 0, .65); text-shadow: var(--ink); }
+/* 回転中の表示プレート（NEXT GAME の位置に出る） */
+.plate { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .3), inset 0 -4px 0 rgba(0, 0, 0, .6), inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px rgba(0, 0, 0, .9), 0 2px 0 #5c4f2c, 0 8px 0 #050506, 0 18px 26px rgba(0, 0, 0, .65); }
+/* 軽量モード（テレビ）: ぼかし無しの同じ立体感（硬い影と静止したグラデーションだけなので負荷は増えない） */
+body.lite .credit-box, body.lite .recent, body.lite .lockbar .res, body.lite .paytable .ps { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .42), inset 0 -4px 0 rgba(0, 0, 0, .6), inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000, 0 2px 0 #5c4f2c, 0 8px 0 #050506 !important; }
+body.lite #stage[data-stage="1"] .paytable .ps[data-s="1"], body.lite #stage[data-stage="2"] .paytable .ps[data-s="2"], body.lite #stage[data-stage="3"] .paytable .ps[data-s="3"] { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -4px 0 rgba(0, 0, 0, .5), inset 0 0 0 2px var(--accent), inset 0 0 0 5px #000, 0 2px 0 var(--accent-dim), 0 8px 0 #050506 !important; }
+body.lite .rung { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .3), inset 0 -4px 0 rgba(0, 0, 0, .55), inset 0 0 0 2px rgba(180, 180, 160, .3), inset 0 0 0 5px #000, 0 2px 0 #2b2f2c, 0 7px 0 #050506 !important; }
+body.lite .rung.on { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .65), inset 0 -5px 0 rgba(0, 0, 0, .5), inset 0 0 0 3px var(--accent), inset 0 0 0 6px #000, 0 2px 0 var(--accent-dim), 0 7px 0 #050506 !important; }
+body.lite .lockbar .side .btn { box-shadow: inset 0 2px 0 #fffbe6, inset 0 -5px 0 rgba(90, 55, 5, .6), inset 0 0 0 2px #fbeeb8, 0 0 0 3px #1a1408, 0 8px 0 #7a5413, 0 8px 0 3px #1a1408 !important; }
+body.lite .recent-view { box-shadow: inset 0 3px 0 rgba(0, 0, 0, .85), inset 0 0 0 1px #000, 0 1px 0 rgba(255, 255, 255, .16); }
+body.lite .plate { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .3), inset 0 -4px 0 rgba(0, 0, 0, .6), inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000, 0 2px 0 #5c4f2c, 0 8px 0 #050506 !important; }
+body.lite .rc b, body.lite .paytable .ps b { text-shadow: 0 2px 0 rgba(0, 0, 0, .95); }
+/* 光沢の帯は箱の高さに合わせる（背の高い箱は上のフチだけ、低い箱は文字の上端にかからない高さ） */
+.credit-box, .recent, .lockbar .res, .paytable .ps, .rung { background-repeat: no-repeat; }
+.recent { background-size: 100% 112px, 100% 300px, 100% 100%, 100% 100%; }
+.paytable .ps, .paytable .ps:first-child, .paytable .ps:last-child { background-size: 100% 78%, 100% 100%, 100% 100%, 100% 100%; }
+#stage[data-stage="1"] .paytable .ps[data-s="1"], #stage[data-stage="2"] .paytable .ps[data-s="2"], #stage[data-stage="3"] .paytable .ps[data-s="3"] { background-size: 100% 78%, 100% 100%, 100% 100%, 100% 100%, 100% 100%; }
+
+/* ---------- NEXT GAME: 土台にはまった厚いボタン。押すと面が土台へ沈む（土台の位置は動かない） ---------- */
+.lockbar .side::before { content: ""; position: absolute; left: -9px; right: -9px; top: -7px; bottom: -15px; border-radius: 27px; z-index: 0;
+  background: linear-gradient(180deg, #020203 0%, #101014 70%, #1c1c22 100%);
+  box-shadow: inset 0 6px 10px rgba(0, 0, 0, .95), inset 0 0 0 2px #000, 0 2px 0 rgba(255, 255, 255, .16), 0 -1px 0 rgba(0, 0, 0, .7); }
+.lockbar .side .btn, .lockbar .side.solo .btn {
+  position: relative; z-index: 1; height: 76px; border-radius: 20px;
+  transition: transform .07s ease-out, box-shadow .07s ease-out, filter .07s;
+  box-shadow: inset 0 3px 0 #fffbe6, inset 0 -6px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #fbeeb8, inset 0 0 0 5px rgba(150, 100, 15, .45),
+    0 0 0 3px #1a1408, 0 14px 0 #8a5f16, 0 14px 0 3px #1a1408, 0 15px 0 3px rgba(255, 255, 255, .10), 0 24px 18px rgba(0, 0, 0, .7);
+}
+/* 側面にも金属の縦グラデーションを見せるための帯（面のすぐ下） */
+.lockbar .side .btn::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 14px; border-radius: 0 0 20px 20px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(60, 35, 0, .55) 0%, rgba(255, 220, 130, .28) 45%, rgba(40, 22, 0, .5) 100%); transition: height .07s ease-out; }
+/* 押したとき: 面が 10px 沈み、側面は 4px だけ残る */
+.lockbar .side .btn.pressed, .lockbar .side .btn:active {
+  transform: translateY(10px); filter: brightness(.93); animation: none;
+  box-shadow: inset 0 3px 0 #fff3c4, inset 0 -4px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #f3dc98, inset 0 0 0 5px rgba(150, 100, 15, .5), inset 0 8px 14px rgba(90, 55, 5, .35),
+    0 0 0 3px #1a1408, 0 4px 0 #8a5f16, 0 4px 0 3px #1a1408, 0 5px 0 3px rgba(255, 255, 255, .10), 0 8px 8px rgba(0, 0, 0, .7);
+}
+.lockbar .side .btn.pressed::after, .lockbar .side .btn:active::after { height: 4px; }
+body.lite .lockbar .side .btn { box-shadow: inset 0 3px 0 #fffbe6, inset 0 -6px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #fbeeb8, inset 0 0 0 5px rgba(150, 100, 15, .45), 0 0 0 3px #1a1408, 0 14px 0 #8a5f16, 0 14px 0 3px #1a1408 !important; }
+body.lite .lockbar .side .btn.pressed, body.lite .lockbar .side .btn:active { box-shadow: inset 0 3px 0 #fff3c4, inset 0 -4px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #f3dc98, inset 0 0 0 5px rgba(150, 100, 15, .5), 0 0 0 3px #1a1408, 0 4px 0 #8a5f16, 0 4px 0 3px #1a1408 !important; }
+body.lite .lockbar .side::before { box-shadow: inset 0 5px 0 rgba(0, 0, 0, .9), inset 0 0 0 2px #000, 0 2px 0 rgba(255, 255, 255, .16); }
+
+/* リモコンの枠が付いているときも NEXT GAME の厚みを残す（枠の光で側面が消えないように） */
+body.tv:not(.lite) .lockbar .side .btn.tvfocus { box-shadow: inset 0 3px 0 #fffbe6, inset 0 -6px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #fbeeb8, inset 0 0 0 5px rgba(150, 100, 15, .45), 0 0 0 3px #1a1408, 0 14px 0 #8a5f16, 0 14px 0 3px #1a1408, 0 0 34px rgba(255, 255, 255, .9) !important; }
+body.tv:not(.lite) .lockbar .side .btn.tvfocus.pressed { box-shadow: inset 0 3px 0 #fff3c4, inset 0 -4px 0 rgba(90, 55, 5, .62), inset 0 0 0 2px #f3dc98, inset 0 0 0 5px rgba(150, 100, 15, .5), 0 0 0 3px #1a1408, 0 4px 0 #8a5f16, 0 4px 0 3px #1a1408, 0 0 34px rgba(255, 255, 255, .9) !important; }
