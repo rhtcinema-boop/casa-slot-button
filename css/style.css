@@ -1381,3 +1381,25 @@ body.lite #crt i { display: none; }
 .lockbar .side .btn, .lockbar .side.solo .btn { animation: nextglow 2.2s ease-in-out infinite; transform: none; }
 .lockbar .btn:active { transform: none; }
 @keyframes nextglow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.08); } }
+
+/* ---------- 画面サイズ調整（#viewport 直下。拡大縮小の外に置くので単位は vmin） ---------- */
+#calib { position: fixed; inset: 0; z-index: 60; touch-action: none; font-family: var(--font-ui); color: #ece7da; }
+#calib .cal-frame { position: absolute; box-shadow: inset 0 0 0 .5vmin #fff, 0 0 0 200vmax rgba(140, 20, 20, .55); }
+#calib .cal-c { position: absolute; width: 14vmin; height: 14vmin; cursor: grab; }
+#calib .cal-c::before { content: ""; position: absolute; width: 9vmin; height: 9vmin; border: 0 solid #fff; }
+#calib .cal-c.tl { left: 0; top: 0; }
+#calib .cal-c.tl::before { left: 0; top: 0; border-left-width: 1.6vmin; border-top-width: 1.6vmin; }
+#calib .cal-c.br { right: 0; bottom: 0; }
+#calib .cal-c.br::before { right: 0; bottom: 0; border-right-width: 1.6vmin; border-bottom-width: 1.6vmin; }
+#calib .cal-c.on::before { border-color: #ffd24a; animation: calblink 1s steps(2, start) infinite; }
+@keyframes calblink { 50% { border-color: #fff; } }
+#calib .cal-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 78vmin; max-width: 86%; padding: 3vmin 3.6vmin; border-radius: 2vmin; background: rgba(10, 10, 12, .92); box-shadow: 0 0 0 .3vmin #6b5a2a, 0 2vmin 6vmin rgba(0, 0, 0, .7); font-size: 2.5vmin; line-height: 1.6; }
+#calib h3 { margin: 0 0 1vmin; font-size: 3.6vmin; color: #f3d675; letter-spacing: .06em; }
+#calib p { margin: 0 0 1vmin; }
+#calib ul { margin: 0 0 1.4vmin; padding-left: 3vmin; color: #c9c1ad; font-size: 2.2vmin; }
+#calib b { color: #fff1b8; }
+#calib .cal-val { padding: 1vmin 1.4vmin; border-radius: 1vmin; background: #000; color: #f3d675; font-size: 2.2vmin; font-variant-numeric: tabular-nums; }
+#calib .cal-btns { display: flex; flex-wrap: wrap; gap: 1.2vmin; margin-top: 1.6vmin; }
+#calib .cal-btns button { font: 700 2.3vmin/1 var(--font-ui); color: #ece7da; padding: 1.5vmin 2vmin; border-radius: 1.2vmin; border: .25vmin solid #4a4a54; background: #1b1b20; }
+#calib .cal-btns button.on { border-color: #ffd24a; color: #ffd24a; }
+#calib .cal-btns button.go { margin-left: auto; color: #111; background: linear-gradient(180deg, #F3D675, #A77A1F); border-color: #f6e3a1; }
