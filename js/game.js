@@ -227,9 +227,9 @@ const Game = (function () {
   }
   /* 結果を出したまま 10 秒たったら、最初の待機画面（STAGE 1・READY TO SPIN）へ自動で戻す。
      設定やダイアログを開いている間は数えない（閉じてから 10 秒）。 */
-  /* 待機中の見せ回し: 待機画面（STAGE 1・READY TO SPIN）で 5 秒止まっているたびに、リールが短く回って READY TO SPIN で止まる。
+  /* 待機中の見せ回し: 待機画面（STAGE 1）で、リールが約5秒回る → ゆっくり止まって READY TO SPIN を3秒見せる → また回る、を繰り返す。
      音は鳴らさない。NEXT GAME を押せばすぐ本番の回転に切り替わる。設定やダイアログを開いている間・画面が隠れている間は回さない。 */
-  const ATTRACT_REST_MS = 5000;
+  const ATTRACT_REST_MS = 3000; // READY TO SPIN で止まっている時間
   let attractAt = 0, attracting = false;
   function attractWatch() {
     const s = Store.state;
