@@ -1,9 +1,9 @@
 {
- "v": "b31",
+ "v": "b32",
  "files": [
   {
    "path": "index.html",
-   "sha256": "b03a1a562027ceee8eca52fe350b4b4aac9e792a87cf0f4c8610527341fc5dda"
+   "sha256": "e9dfdd4fc444f65601ea866d82b7c7e66e76f94284f589c20f81d2826e5d76ca"
   },
   {
    "path": "manifest.webmanifest",
@@ -71,7 +71,7 @@
   },
   {
    "path": "js/tv.js",
-   "sha256": "91c399d1fb411a9db223415f60f3a47ee2dcbf8c5b95d62d8ecf0aceba7c155b"
+   "sha256": "dcf4bba919b82a6393041ecd627acc1bd4f7d108a3db609031429d2269e01245"
   }
  ]
 }
