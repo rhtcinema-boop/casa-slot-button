@@ -216,10 +216,26 @@ const Game = (function () {
 
   /* ---------- 状態 → 画面 ---------- */
   /* 待機中: 下の大きな NEXT GAME ボタンだけを出す */
+  const lastBox = (v) => '<div class="res"><small>LAST</small><b class="' + (v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + fmtN(v) + '</b></div>';
   function idleBar() {
     plate.classList.add('hidden');
-    lockbar.innerHTML = '<div class="side solo"><button class="btn" data-act="next">NEXT GAME</button></div>';
+    const lv = Store.state.lastValue; // 直前のゲームの結果（自動で待機画面に戻ったあとも LAST に残す）
+    const has = typeof lv === 'number';
+    lockbar.innerHTML = (has ? lastBox(lv) : '') + '<div class="side' + (has ? '' : ' solo') + '"><button class="btn" data-act="next">NEXT GAME</button></div>';
     lockbar.classList.add('show');
+    resultSince = 0;
+  }
+  /* 結果を出したまま 10 秒たったら、最初の待機画面（STAGE 1・READY TO SPIN）へ自動で戻す。
+     設定やダイアログを開いている間は数えない（閉じてから 10 秒）。 */
+  const IDLE_BACK_MS = 10000;
+  let resultSince = 0;
+  async function idleWatch() {
+    const p = Store.state && Store.state.play;
+    if (!resultSince || busy || pressing || !p || p.phase !== 'shown') return;
+    if ($('ui').children.length || $('calib') || document.getElementById('splash')) { resultSince = Date.now(); return; }
+    if (Date.now() - resultSince < IDLE_BACK_MS) return;
+    resultSince = 0;
+    if (await clearShown()) refresh();
   }
   function refresh() {
     if (busy) return;
@@ -318,9 +334,8 @@ const Game = (function () {
   }
   function renderLockbar() {
     const p = Store.state.play;
-    lockbar.innerHTML =
-      '<div class="res"><small>LAST</small><b class="' + (p.value === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= p.value).length)) + '">' + fmtN(p.value) + '</b></div>' +
-      '<div class="side"><button class="btn" data-act="next">NEXT GAME</button></div>';
+    lockbar.innerHTML = lastBox(p.value) + '<div class="side"><button class="btn" data-act="next">NEXT GAME</button></div>';
+    resultSince = Date.now(); // ここから 10 秒で待機画面へ戻す
   }
   /* 結果表示中のプレイを片付けて STAGE 1 に戻す */
   async function clearShown() {
@@ -328,6 +343,7 @@ const Game = (function () {
     try {
       Store.transact((s) => {
         Store.log('NEXT_PLAY', { playNo: s.play ? s.play.playNo : null, credits: s.credits });
+        if (s.play) s.lastValue = s.play.value;
         s.play = null; s.locked = false;
       });
     } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); return false; }
@@ -342,12 +358,19 @@ const Game = (function () {
     busy = false;
     return true;
   }
+  let pressing = false;
   /* ボタンは NEXT GAME の1個だけ。押すと1回で最後のステージまで自動で進む */
   async function onLockbar(e) {
     const b = e.target.closest('[data-act]');
-    if (!b || busy) return;
+    if (!b || busy || pressing) return;
     Sfx.unlock();
     Sfx.play('button');
+    // 押し込んだ見た目を一瞬見せてから進む（面が土台に沈む。土台の位置は動かない）
+    pressing = true;
+    b.classList.add('pressed');
+    await wait(190);
+    pressing = false;
+    if (busy) return;
     const s = Store.state;
     if (s.play && s.play.phase === 'drawn') { lockbar.classList.remove('show'); return runStage(s.play, s.play.cur || 1); }
     if (!(await clearShown())) return;
@@ -382,7 +405,7 @@ const Game = (function () {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
       return refresh();
     }
-    oneMore = false;
+    oneMore = false; freeSpun = false;
     showCredits();
     lockbar.classList.remove('show');
     if (storeMode()) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
@@ -394,6 +417,14 @@ const Game = (function () {
      当たり・NEXT で止まるとき …「ハズレと思いきや当たり」: 0 で止まりかけて滑る／0 に行きかけて戻る／0 で一度止まって再始動
      DRAMA はその演出が出る割合（ステージ別）。 */
   const DRAMA = { lose: [0, 0.55, 0.7, 0.9], win: [0, 0.5, 0.65, 0.85] };
+  /* FREE SPIN ×1: リールに FREE SPIN が3本そろい、自動でもう一度回る。演出だけで、結果（確率で確定済み）や回転数は変わらない。
+     出る割合は、最終結果がハズレのスピンで 6%、当たり・NEXT STAGE のスピンで 12%。1回のスピンにつき1回まで。 */
+  const FREE_RATE = { lose: 0.06, win: 0.12 };
+  let freeSpun = false; // FREE SPIN のあとの回り直し中
+  function rollFree(sym) {
+    if (window.__fxTest && window.__fxTest.free !== undefined) return !!window.__fxTest.free; // 演出確認用
+    return Math.random() < (sym === 0 ? FREE_RATE.lose : FREE_RATE.win);
+  }
   const RESPIN_RATE = [0, 0.1, 0.12, 0.15]; // 当たりのとき ONE MORE CHANCE になる割合（ステージ別）
 
   /* 停止パターンのカタログ（100通り）。止まりかけ回数(1〜3) × 各回の間(短/普通/長) × 行き過ぎて戻る × じわじわ入る の
@@ -523,9 +554,11 @@ const Game = (function () {
     busy = true;
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
-    const pat = oneMore ? { type: 'plain' } : pickPattern(st, sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
-    if (!oneMore && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
-    const warpTo = oneMore ? 0 : pickWarp(play, st);
+    const afterFree = freeSpun; freeSpun = false;
+    const free = !oneMore && !afterFree && rollFree(sym);
+    const pat = oneMore || free ? { type: 'plain' } : pickPattern(st, sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    if (!oneMore && !free && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
+    const warpTo = oneMore || free || afterFree ? 0 : pickWarp(play, st);
     if (warpTo) { // いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
       setPlate('spin', 'GOOD LUCK', 'STAGE ' + st);
@@ -548,6 +581,21 @@ const Game = (function () {
       // ワンモアチャンス後の引き直し: 短めの回転で本当の結果へ
       oneMore = false;
       await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain' }, extra); // 回り直しも通常と同じ速さ・間隔
+    } else if (free) {
+      // FREE SPIN ×1 が3本そろう → 自動でもう一度回る（結果は確定済み。再抽選はしない）
+      await spinReel(st, 'FREE', { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
+      win.classList.add('win');
+      Sfx.play('revive');
+      flash(false);
+      FX.ring(CX, CY, 'gold', 1100, 0.8);
+      FX.burst(CX, CY, 140, { max: 1200, life: 1.5 });
+      showBanner('next omc', '', 'FREE SPIN');
+      await wait(1800);
+      await hideBanner();
+      freeSpun = true;
+      win.classList.remove('win', 'lose');
+      await wait(300);
+      return runStage(play, st);
     } else if (pat.type === 'respin') {
       // ハズレと思いきや当たり: 0 で完全に止まる → 暗転 → ONE MORE CHANCE → もう一度レバーを引かせる
       await spinReel(st, 0, { type: 'plain' }, extra);
@@ -604,7 +652,8 @@ const Game = (function () {
        止まる順番 … 6通りからランダム。ただし「最後の1本で結果が変わる」順番を優先（最後まで分からない）。
                     NEXT STAGE が1〜2本入る並びでは、NEXT STAGE のリールを先に止める
        惜しい絵柄 … 最後の1本が止まりかけで見せる絵柄は、先に止まった2本との合計が別の正規の結果になるもの
-       停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに 1.3 倍 */
+       停止時刻   … 1本目 → 2本目は一定間隔、3本目はその 1.5 倍。ステージが上がるごとに 1.3 倍。
+                    ただし2本目までで負けが決まっているときは、3本目は 0.6 秒後にすぐ止める */
   const ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
   function spinReel(st, sym, pat, extra) {
     const beats = [];
@@ -620,9 +669,9 @@ const Game = (function () {
       if (!pool.length) pool = combos;
     }
     const combo = pool[Math.floor(Math.random() * pool.length)];
-    // NEXT STAGE が1〜2本入る並びでは、NEXT STAGE のリールを先に止める（最初に 0 が見えてしまわないように）
-    const nx = [0, 1, 2].filter((i) => combo[i] === 'NEXT');
-    const cand = nx.length && nx.length < 3 ? ORDERS.filter((o) => o.slice(0, nx.length).every((i) => nx.indexOf(i) >= 0)) : ORDERS;
+    // NEXT STAGE や FREE SPIN が入る並びでは、それを先に止める（最初に 0 が見えてしまわないように）。順番は NEXT STAGE → FREE SPIN → それ以外
+    const rank = (s) => (s === 'NEXT' ? 0 : s === 'FREE' ? 1 : 2);
+    const cand = ORDERS.filter((o) => rank(combo[o[0]]) <= rank(combo[o[1]]) && rank(combo[o[1]]) <= rank(combo[o[2]]));
     const deciding = cand.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
     const ordPool = deciding.length ? deciding : cand;
     const order = ordPool[Math.floor(Math.random() * ordPool.length)];
@@ -630,11 +679,15 @@ const Game = (function () {
     const nb = pat.type === 'seq' ? pat.pre + (pat.over ? 1 : 0) : pat.type === 'slip2' ? 2 : pat.type === 'slip' || pat.type === 'back' ? 1 : 0;
     const bait = [];
     for (let i = 0; i < nb; i++) bait.push(alts.length && Math.random() < 0.85 ? alts[Math.floor(Math.random() * alts.length)] : null);
-    const p = Object.assign({}, pat, { bait });
+    // 負け確定の早止め: 2本目が止まった時点でハズレが決まっている（NEXT STAGE / FREE SPIN が2本そろっていない）ときは、3本目をすぐ止める
+    const s1 = combo[order[0]], s2 = combo[order[1]];
+    const reach = s1 === s2 && (s1 === 'NEXT' || s1 === 'FREE');
+    const dead = sym === 0 && !reach && !puchunPlan;
+    const p = dead ? { type: 'plain', decel: 1.2 } : Object.assign({}, pat, { bait });
     const k = Math.pow(1.3, st - 1);
     const iv = (pat.quick ? 0.7 : 2.0) * k;
     const first = (pat.quick ? 1.4 : 3.2) * Math.pow(1.12, st - 1); // 1本目が止まるまで（回り出し＋減速ぶんを含む）
-    const stops = [first, first + iv, first + iv + iv * 1.5];
+    const stops = [first, first + iv, first + iv + (dead ? 0.6 : iv * 1.5)];
     lastCombo = { st, read: sym, combo };
     try { Store.transact((s) => { s.comboHist = (s.comboHist || []).concat(st + ':' + combo.join('/')).slice(-20); }); } catch (err) { /* 記録のみ */ }
     return Reel.spin(st, combo, order, stops, p, {
@@ -1077,7 +1130,8 @@ const Game = (function () {
           '<li>リールは3本。止まった<b>3本の金額を足した合計</b>が当選額です（例: 100 + 400 + 0 = 500）。</li>' +
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
-          '<li>止まる順番は毎回変わります。3本目は少し長く回ります。</li></ul>' +
+          '<li><b>FREE SPIN ×1 が3本そろう</b>と、自動でもう1回まわります。1〜2本だけのときは 0 として合計します。</li>' +
+          '<li>止まる順番は毎回変わります。3本目は少し長く回ります（2本目までで結果が決まったときは、すぐ止まります）。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
           '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
           '<li>STAGE 1 → STAGE 2 → STAGE 3 の順に上がり、上のステージほど大きな金額が出ます。STAGE 3 が最後です。</li>' +
@@ -1256,6 +1310,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
+    setInterval(() => { idleWatch().catch(() => {}); }, 1000);
     if (window.ResizeObserver) new ResizeObserver(layout).observe($('viewport'));
     if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
     window.addEventListener('orientationchange', () => setTimeout(layout, 300));
