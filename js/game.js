@@ -230,7 +230,8 @@ const Game = (function () {
   /* 待機中の見せ回し: 待機画面（STAGE 1）で、リールが約5秒回る → ゆっくり止まって READY TO SPIN を3秒見せる → また回る、を繰り返す。
      音は鳴らさない。NEXT GAME を押せばすぐ本番の回転に切り替わる。設定やダイアログを開いている間・画面が隠れている間は回さない。 */
   const ATTRACT_REST_MS = 3000; // READY TO SPIN で止まっている時間
-  let attractAt = 0, attracting = false;
+  const ATTRACT_LOGO_EVERY = 5; // 5回に1回は、READY TO SPIN の代わりに casa ロゴ（真ん中だけ）で止まる
+  let attractAt = 0, attracting = false, attractN = 0;
   function attractWatch() {
     const s = Store.state;
     const idle = !busy && !pressing && s && s.pins && !s.play && curStage === 1 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && !document.hidden;
@@ -239,7 +240,8 @@ const Game = (function () {
     if (!attractAt) { attractAt = Date.now() + ATTRACT_REST_MS; return; }
     if (Date.now() < attractAt) return;
     attracting = true;
-    Reel.attract().then(() => { attracting = false; attractAt = 0; });
+    attractN += 1;
+    Reel.attract(attractN % ATTRACT_LOGO_EVERY === 0 ? 'logo' : '').then(() => { attracting = false; attractAt = 0; });
   }
   const IDLE_BACK_MS = 10000;
   let resultSince = 0;
