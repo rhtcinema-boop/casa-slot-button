@@ -1166,6 +1166,7 @@ const Game = (function () {
       document.body.innerHTML = '<p style="color:#ff9d8c;padding:40px;font-size:20px">保存領域を利用できないため起動できません。プライベートブラウズを解除するか、ブラウザの設定を確認してください。<br>' + esc(err.message) + '</p>';
       return;
     }
+    { const v = $('ver'); if (v) v.textContent += Cloud.enabled ? (Cloud.isLocal ? ' · 店舗モード(模擬)' : ' · 店舗モード') : ' · 1台運用'; } // 起動画面でモードが分かるように
     if (window.TV && TV.isTV) { const m = /Chrome\/(\d+)/.exec(navigator.userAgent); const v = $('ver'); if (v && m) v.textContent += ' · TV/Chrome ' + m[1]; }
     // 軽量モード: テレビ版は常にON。iPad でも設定→その他でONにできる（各モジュールは window.LITE を見る）
     window.LITE = !!((window.TV && TV.isTV) || (Store.state.settings.perf && Store.state.settings.perf.lite));
