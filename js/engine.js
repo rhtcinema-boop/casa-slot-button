@@ -255,9 +255,10 @@
     3: [5000, 10000, 20000, 30000, 50000, 100000],
   };
   function readReels(stage, syms) {
-    let nexts = 0, sum = 0;
-    syms.forEach((s) => { if (s === 'NEXT') nexts++; else if (typeof s === 'number') sum += s; });
+    let nexts = 0, frees = 0, sum = 0;
+    syms.forEach((s) => { if (s === 'NEXT') nexts++; else if (s === 'FREE') frees++; else if (typeof s === 'number') sum += s; });
     if (nexts >= 3 && STAGE_DEFS[stage - 1].hasNext) return 'NEXT';
+    if (frees >= 3) return 'FREE'; // FREE SPIN ×1 が3本: もう一度回る（演出。結果は確定済み）
     return sum;
   }
   // 配列の要素の並び替え（重複を除く）
@@ -277,11 +278,15 @@
     const D = REEL_SYMS[stage], hasNext = STAGE_DEFS[stage - 1].hasNext;
     const out = [], seen = {};
     const add = (c) => { const k = c.join('|'); if (!seen[k]) { seen[k] = true; out.push(c); } };
+    const fill = hasNext ? ['NEXT', 'FREE'] : ['FREE']; // そろわなければ 0 扱いの絵柄（1〜2本だけ混ぜる）
     if (target === 'NEXT') {
       if (hasNext) add(['NEXT', 'NEXT', 'NEXT']); // 次のステージは3本そろいだけ
+    } else if (target === 'FREE') {
+      add(['FREE', 'FREE', 'FREE']);
     } else if (target === 0) {
       add(['BAR', 'BAR', 'BAR']);
-      if (hasNext) { perms(['NEXT', 'BAR', 'BAR']).forEach(add); perms(['NEXT', 'NEXT', 'BAR']).forEach(add); }
+      fill.forEach((a) => { perms([a, 'BAR', 'BAR']).forEach(add); perms([a, a, 'BAR']).forEach(add); });
+      if (hasNext) { perms(['NEXT', 'FREE', 'BAR']).forEach(add); perms(['NEXT', 'NEXT', 'FREE']).forEach(add); perms(['NEXT', 'FREE', 'FREE']).forEach(add); }
     } else {
       // 金額を 1〜3 個の絵柄の和で作る（同じ絵柄の繰り返し可）。残りは BAR、または NEXT（1〜2本。3本そろわなければ 0 扱い）
       const sets = [];
@@ -295,8 +300,8 @@
       sets.forEach((s) => {
         const pad = 3 - s.length;
         perms(s.concat(new Array(pad).fill('BAR'))).forEach(add);
-        if (hasNext && pad >= 1) perms(s.concat(['NEXT']).concat(new Array(pad - 1).fill('BAR'))).forEach(add);
-        if (hasNext && pad >= 2) perms(s.concat(['NEXT', 'NEXT'])).forEach(add);
+        if (pad >= 1) fill.forEach((a) => perms(s.concat([a]).concat(new Array(pad - 1).fill('BAR'))).forEach(add));
+        if (pad >= 2) { fill.forEach((a) => perms(s.concat([a, a])).forEach(add)); if (hasNext) perms(s.concat(['NEXT', 'FREE'])).forEach(add); }
       });
     }
     // 念のため、読み取り結果が target と一致するものだけを残す
@@ -308,9 +313,9 @@
      （止まりかけで見せる「惜しい」絵柄の候補）。actual と同じ読みになるものは除く */
   function reelAlternatives(stage, combo, idx) {
     const d = STAGE_DEFS[stage - 1];
-    const valid = d.values.concat(d.hasNext ? ['NEXT'] : []);
+    const valid = d.values.concat(d.hasNext ? ['NEXT'] : []).concat(['FREE']);
     const actual = readReels(stage, combo);
-    const cands = ['BAR'].concat(REEL_SYMS[stage]).concat(d.hasNext ? ['NEXT'] : []);
+    const cands = ['BAR'].concat(REEL_SYMS[stage]).concat(d.hasNext ? ['NEXT'] : []).concat(['FREE']);
     return cands.filter((s) => {
       if (s === combo[idx]) return false;
       const c = combo.slice(); c[idx] = s;
