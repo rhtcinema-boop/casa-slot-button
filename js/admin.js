@@ -267,7 +267,8 @@ const Admin = (function () {
   function viewPreset() {
     const info = Game.storeInfo(), s = Store.state, ses = s.session;
     const now = Date.now(), counts = Engine.hitCounts(s.hits, now, s.limits && s.limits.resetHour);
-    return '<div class="panel"><h4>店舗</h4><div class="summary">' + stat('店舗名', esc(info.store ? info.store.name : '—')) + stat('使用中のプリセット', esc((info.presets.find((p) => p.id === info.activeId) || {}).name || '（未設定）')) + '</div></div>' +
+    return '<div class="panel"><h4>店舗</h4><div class="summary">' + stat('店舗名', esc(info.store ? info.store.name : '—')) + stat('使用中のプリセット', esc((info.presets.find((p) => p.id === info.activeId) || {}).name || '（未設定）')) + '</div>' +
+      '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="store-logout">この店舗からログアウト</button></div></div>' +
       '<div class="panel"><h4>プリセットを選ぶ</h4><p class="hint">マスターから配られたプリセットの中から選びます。選ぶと次のプレイから反映されます。</p>' +
       (info.presets.length ? '<div class="preset-list">' + info.presets.map((p) => '<button class="btn ' + (p.id === info.activeId ? '' : 'ghost') + ' preset-btn" data-act="preset-use" data-id="' + esc(p.id) + '">' + esc(p.name) + (p.id === info.activeId ? '<small>使用中</small>' : '') + '</button>').join('') + '</div>' : '<p class="hint">まだプリセットが配られていません。マスター画面で配布してください。</p>') + '</div>' +
       '<div class="panel"><h4>今日の集計</h4><div class="summary">' + stat('プレイ回数（累計）', fmtN(ses.playNo)) + stat('当選額の合計（累計）', fmtN(ses.awarded)) + stat('今日の当たり本数', fmtN(counts.total) + (s.limits && s.limits.on && s.limits.total ? ' / ' + s.limits.total : '')) + '</div>' +
@@ -551,8 +552,48 @@ const Admin = (function () {
           sw('noBg', '背景の光のアニメを止める', '回転する光条・サーチライト・外周の光・LED・電球の点滅を止めます') +
           sw('noFx', '粒子を止める', '火花・チップ・紙吹雪などを出しません') +
           sw('lite', '軽量モード', '残響・扉の枚数・粒子・影を減らして軽くします（テレビ版は常にON。切り替えると再読み込みします）') + '</div>'; })() +
+      '<div class="panel"><h4>アップデート</h4><dl class="kv"><dt>今のバージョン</dt><dd>' + esc(verNow()) + '</dd></dl>' +
+      '<p class="hint" style="margin-top:10px">新しい版が公開されていれば、その場で取り込んで再読み込みします（入れ直し不要。インターネット接続が必要です）。</p>' +
+      '<div class="acts" style="justify-content:flex-start"><button class="btn sm" data-act="update">最新版に更新</button></div></div>' +
       '<div class="panel"><h4>データ</h4><dl class="kv"><dt>履歴件数</dt><dd>' + Store.state.logSeq + ' 件（営業終了しても削除されません）</dd><dt>保存先</dt><dd>この端末のブラウザ内ストレージ</dd></dl>' +
       '<p class="hint" style="margin-top:14px">ホーム画面に追加したアプリとして使用すると、データが自動削除されにくくなります。ブラウザの「履歴とWebサイトデータを消去」を行うと全データが失われます。</p></div>';
+  }
+
+  /* ---------- アップデート ----------
+     テレビ版（APK）: アプリ本体が公開サイトから中身を取り込む（/__update）。ブラウザ／iPad: キャッシュを捨てて読み直す。 */
+  const APP_VER = ((document.getElementById('ver') || {}).textContent || '').trim(); // 起動直後に控える（起動画面はあとで消えるため）
+  const verNow = () => APP_VER || '—';
+  const verNum = (v) => parseInt(String(v).replace(/\D/g, ''), 10) || 0;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let updating = false;
+  async function runUpdate(btn) {
+    if (updating) return;
+    updating = true;
+    if (btn) { btn.disabled = true; btn.textContent = '確認しています…'; }
+    const done = (msg, kind) => { updating = false; UI.toast(msg, kind); if (el && el.isConnected) render(); };
+    const reload = (v) => { UI.toast(v + ' に更新しました。再読み込みします…', 'ok'); setTimeout(() => location.reload(), 1300); };
+    try {
+      if (location.hostname === 'appassets.androidplatform.net') {
+        let st;
+        try { st = await (await fetch('/__update?t=' + Date.now(), { cache: 'no-store' })).json(); }
+        catch (err) { return done('このアプリは更新ボタンに対応していません。一度だけ入れ直してください。', 'err'); }
+        for (let i = 0; i < 180 && st.state === 'running'; i++) { await wait(1000); st = await (await fetch('/__update_status?t=' + Date.now(), { cache: 'no-store' })).json(); }
+        if (st.state === 'done') return reload(st.v);
+        if (st.state === 'latest') return done('最新版です（' + st.v + '）。', 'ok');
+        return done(st.error === 'stale' ? '新しい版の配信準備中です。数分後にもう一度お試しください。' : '更新できませんでした。インターネット接続を確認してください。' + (st.error ? '（' + st.error + '）' : ''), 'err');
+      }
+      let man;
+      try { man = await (await fetch('version.json?t=' + Date.now(), { cache: 'no-store' })).json(); }
+      catch (err) { return done('確認できませんでした。インターネット接続を確認してください。', 'err'); }
+      if (!man || verNum(man.v) <= verNum(APP_VER)) return done('最新版です（' + verNow() + '）。', 'ok');
+      try {
+        const ks = await caches.keys();
+        await Promise.all(ks.filter((k) => k.indexOf('casa-slot-button-') === 0).map((k) => caches.delete(k)));
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.update();
+      } catch (err) { /* キャッシュが使えない環境はそのまま読み直す */ }
+      reload(man.v);
+    } catch (err) { done('更新できませんでした: ' + (err && err.message || ''), 'err'); }
   }
 
   /* ---------- 操作 ---------- */
@@ -666,6 +707,12 @@ const Admin = (function () {
           if (await Game.choosePreset(b.dataset.id)) UI.toast('プリセットを切り替えました。次のプレイから反映されます。', 'ok');
           return render();
         }
+        case 'store-logout': {
+          const ok = await UI.confirm({ title: 'ログアウトしますか？', html: '<p>この端末を店舗から切り離して、店舗を選ぶ画面に戻ります。もう一度使うには、店舗を選んでパスワードを入れ直します。</p><p style="color:#8e8672;font-size:15px">この端末の履歴は消えません。</p>', ok: 'ログアウト' });
+          if (ok) Game.logoutStore();
+          return;
+        }
+        case 'update': return runUpdate(b);
         case 'prob-reset': probForm = copyProbs(Store.state.probs); return render();
         case 'prob-save': {
           if (!Engine.validateProbs(probForm).ok) return;
