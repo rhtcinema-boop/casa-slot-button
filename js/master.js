@@ -111,7 +111,7 @@
       '<div class="row"><div class="lbl">制限を使う</div><button class="btn sm ' + (L.on ? '' : 'ghost') + '" data-act="lim-on">' + (L.on ? 'ON' : 'OFF') + '</button></div>' +
       stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00') +
       stepRow('1日の当たり本数の上限（合計・0で無制限）', L.total, 'data-l="total"', '本') +
-      '<details><summary class="hint" style="cursor:pointer">金額ごとの上限（任意）</summary>' + Engine.OUTCOMES.filter((o) => o.value > 0).map((o) => stepRow('STAGE ' + o.stage + ' / ' + fmtN(o.value), L.max[o.key] || 0, 'data-l="' + o.key + '"', '回')).join('') + '</details></div>' +
+      '<p class="hint" style="margin:18px 0 6px"><b>金額ごとの上限</b>（任意。0 は制限なし）</p>' + Engine.OUTCOMES.filter((o) => o.value > 0).map((o) => stepRow('STAGE ' + o.stage + ' / ' + fmtN(o.value), L.max[o.key] || 0, 'data-l="' + o.key + '"', '回')).join('') + '</div>' +
       '<div class="err" id="perr"></div>' +
       '<div class="acts">' + (p.id ? '<button class="btn danger" data-act="preset-del">削除</button>' : '') + '<button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save">保存</button></div>';
   }
