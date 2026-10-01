@@ -1375,3 +1375,9 @@ body.lite #crt i { display: none; }
 #crt.white-in i, #crt.white i, #crt.white-out i { display: none; }
 @keyframes white-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes white-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* ---------- NEXT GAME は動かさない（出てくるとき・押したとき・待機中、どれも位置と大きさを変えない） ---------- */
+.lockbar, .lockbar.show { transform: none; animation: none; }
+.lockbar .side .btn, .lockbar .side.solo .btn { animation: nextglow 2.2s ease-in-out infinite; transform: none; }
+.lockbar .btn:active { transform: none; }
+@keyframes nextglow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.08); } }
