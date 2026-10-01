@@ -265,7 +265,7 @@ const Reel = (function () {
     const cfg = TIMING[st];
     const V = cfg.speed;
     const type = o.type || 'plain';
-    const decT = o.quick ? 1.0 : o.decel || cfg.decel, pauseT = o.quick ? 0.35 : cfg.pause;
+    const decT = o.attract ? 0.55 : o.quick ? 1.0 : o.decel || cfg.decel, pauseT = o.attract ? 0.1 : o.quick ? 0.35 : cfg.pause; // attract: 待機中の見せ回し（短く回ってすぐ止まる）
     const TW = 0.2, AW = 0.11;                 // 始動時の「溜め」（わずかに逆方向へ引く）
     const vW = (AW * Math.PI) / TW;
     const vP = 0.2, vPk = 1.55, vL = 1.15;     // 止まりかけ速度 / 倒れ込み最高速 / デテントに落ちる速度
@@ -346,6 +346,7 @@ const Reel = (function () {
     Object.keys(ov).forEach((k) => { if (Math.abs(k - p0) > 2) delete ov[k]; });
     [T - 3, T - 2, T - 1, T, T + 1].forEach((i) => delete ov[i]);
     ov[T] = sym; // 止まる絵柄は必ず位置指定で置く（帯は見た目用）
+    if (o.attract) { ov[T - 1] = 'BLANK'; ov[T + 1] = 'BLANK'; } // READY / TO / SPIN の上下は空ける（待機表示と同じ）
     if (type === 'seq') { const pre = Math.max(1, Math.min(3, o.pre | 0)); for (let i = 0; i < pre; i++) put(T - pre + i, bait[i]); if (o.over) put(T + 1, bait[pre]); }
     else if (type === 'slip') put(T - 1, bait[0]);
     else if (type === 'slip2') { put(T - 2, bait[0]); put(T - 1, bait[1]); }
@@ -356,17 +357,35 @@ const Reel = (function () {
   /* 3本を回す。combo = 左中右の止まる絵柄、order = 止まる順（リール番号の並び）、
      stops = 止まる順ごとの目標停止秒 [1本目, 2本目, 3本目]、pat = 最後に止まるリールの停止パターン（bait 含む）。
      hooks: onStart, onTick(speedNorm), onSpeed(speedNorm), onTease(sec), onNear（最後の停止1秒前）, onReelStop(reelIdx, k), onStop */
+  /* 回転の途中で別の回転や静止表示に切り替わるとき: いまの位置を覚えてから止める（見せ回し中に NEXT GAME が押された場合など）。
+     見せ回しの Promise は false で解決する（待っている側が止まったままにならないように） */
+  let live = null, attractDone = null;
+  function interrupt() {
+    cancelAnimationFrame(raf);
+    if (live) { const t = (performance.now() - live.t0) / 1000; reels.forEach((rl, i) => { rl.pos = live.profs[i].at(t); }); live = null; }
+    if (attractDone) { const r = attractDone; attractDone = null; r(false); }
+  }
+  /* 待機中の見せ回し: 3本が短く回って READY / TO / SPIN で止まる。音は鳴らさない。最後まで回れば true、途中で切り替わったら false */
+  function attract() {
+    interrupt();
+    return new Promise((res) => {
+      spin(stage, ['READY', 'TO', 'SPIN'], [0, 1, 2], [2.2, 2.5, 2.8], { type: 'plain', attract: true }, {}).then(() => { if (attractDone === res) { attractDone = null; res(true); } });
+      attractDone = res;
+    });
+  }
   function spin(st, combo, order, stops, pat, hooks) {
     hooks = hooks || {};
+    if (!(pat && pat.attract)) interrupt();
     return new Promise((resolve) => {
       const profs = [];
       order.forEach((ri, k) => {
         const last = k === NR - 1;
-        const o = last ? (pat || { type: 'plain' }) : { type: 'plain', decel: Math.min(1.4, TIMING[st].decel * 0.6), quick: pat && pat.quick };
+        const o = last ? (pat || { type: 'plain' }) : { type: 'plain', decel: Math.min(1.4, TIMING[st].decel * 0.6), quick: pat && pat.quick, attract: pat && pat.attract };
         profs[ri] = buildProfile(reels[ri], st, combo[ri], o, stops[k]);
       });
       const lastRi = order[NR - 1], lastProf = profs[lastRi];
       const t0 = performance.now();
+      const me = live = { profs, t0 };
       const lastP = reels.map((rl) => rl.pos), lastCell = reels.map((rl) => Math.round(rl.pos));
       const stoppedR = [false, false, false];
       let lastT = 0, lastNow = t0, frameNo = 0, lastDrawn = 0;
@@ -397,6 +416,7 @@ const Reel = (function () {
         if (t >= lastProf.total) {
           for (let i = 0; i < NR; i++) reels[i].pos = profs[i].T;
           drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
+          if (live === me) live = null;
           resolve();
           return;
         }
@@ -414,7 +434,7 @@ const Reel = (function () {
 
   /* ステージ切替。show を指定するとその絵柄を中央に静止表示する。 */
   function setStage(st, combo) {
-    cancelAnimationFrame(raf);
+    interrupt();
     stage = st;
     strip = STRIPS[st];
     const words = ['READY', 'TO', 'SPIN'];
@@ -446,5 +466,5 @@ const Reel = (function () {
     metalText(x, text, SW / 2, CH / 2, 190, NUM_FONT, pal, 640, true);
   }
 
-  return { init, spin, setStage, drawText, get stage() { return stage; }, NR };
+  return { init, spin, attract, setStage, drawText, get stage() { return stage; }, NR };
 })();
