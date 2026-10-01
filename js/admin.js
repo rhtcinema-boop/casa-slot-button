@@ -545,6 +545,10 @@ const Admin = (function () {
     const fs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
     return '<div class="panel"><h4>効果音の音量</h4><div class="row"><input class="vol" type="range" min="0" max="100" value="' + Math.round(Store.state.settings.volume * 100) + '" data-vol>' +
       '<button class="btn sm ghost" data-act="test-sound">テスト再生</button></div></div>' +
+      (function () { const s = Game.screenInfo(), p = (v) => (Math.round(v * 1000) / 10).toFixed(1) + '%';
+        return '<div class="panel"><h4>画面サイズ調整</h4><dl class="kv"><dt>いまの表示範囲</dt><dd>' + (s ? '左上 ' + p(s.x0) + ', ' + p(s.y0) + ' ／ 右下 ' + p(s.x1) + ', ' + p(s.y1) : '全画面（調整なし）') + '</dd></dl>' +
+          '<p class="hint" style="margin-top:10px">テレビで画面の端が切れるときに使います。角の位置を決めると、その範囲に全体が収まるようにレイアウトが動きます。</p>' +
+          '<div class="acts" style="justify-content:flex-start"><button class="btn sm" data-act="calibrate">画面サイズを調整する</button></div></div>'; })() +
       (fs ? '<div class="panel"><h4>表示</h4><div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="fullscreen">フルスクリーン切替</button></div></div>' : '') +
       (function () { const p = Store.state.settings.perf || {}; const sw = (k, label, hint) => '<div class="row"><div class="lbl" style="font-family:var(--font-ui);font-size:19px">' + label + '<small>' + hint + '</small></div><button class="btn sm ' + (p[k] ? '' : 'ghost') + '" data-act="perf" data-k="' + k + '">' + (p[k] ? 'ON' : 'OFF') + '</button></div>';
         return '<div class="panel"><h4>動作が重いときの診断</h4><p class="hint">どれをONにすると軽くなるかで、重さの原因を切り分けられます。</p>' +
@@ -760,6 +764,13 @@ const Admin = (function () {
           const k = b.dataset.k;
           Store.transact((st) => { st.settings.perf = Object.assign({}, st.settings.perf); st.settings.perf[k] = !st.settings.perf[k]; });
           Game.applyPerf();
+          return render();
+        }
+        case 'calibrate': { // 設定を一度閉じてゲーム画面を見ながら調整し、終わったら「その他」に戻る
+          const r = role;
+          close();
+          await Game.calibrate();
+          open(r); tab = 'misc';
           return render();
         }
         case 'fullscreen': {
