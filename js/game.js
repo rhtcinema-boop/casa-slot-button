@@ -228,9 +228,11 @@ const Game = (function () {
   /* 結果を出したまま 10 秒たったら、最初の待機画面（STAGE 1・READY TO SPIN）へ自動で戻す。
      設定やダイアログを開いている間は数えない（閉じてから 10 秒）。 */
   /* ---------- 自動アップデート ----------
-     起動時（テレビ版は index.html の先頭のスクリプト）と、アプリに戻ってきたとき（画面が再び表示されたとき）に新しい版を確認する。
+     開きっぱなしでも 1 時間に 1 回、新しい版があるか確認する（起動時と、アプリに戻ってきたときにも確認する）。
      テレビ版はアプリ本体が公開サイトから取り込み（/__update）、ブラウザ版は読み直すだけ。
-     読み直すのは起動画面か待機中だけ（ゲームの途中・設定中は待つ）。読み直したあとは起動画面を自動で閉じて、待機画面に戻る。 */
+     新しい版があれば、ゲームが終わり次第（結果を 2 秒見せてから）読み直す。回転中・設定中は待つ。
+     読み直したあとは起動画面を自動で閉じて元の画面に戻る（CREDIT が残っていれば、続きから自動で回る）。 */
+  const UPDATE_CHECK_MS = 60 * 60 * 1000;
   const APP_V = ((document.getElementById('ver') || {}).textContent || '').trim();
   const verNum = (v) => parseInt(String(v).replace(/\D/g, ''), 10) || 0;
   let updChecking = false, updLast = 0, updPending = false;
@@ -256,7 +258,12 @@ const Game = (function () {
   function updWatch() {
     if (!updPending) return;
     const onSplash = !!document.getElementById('splash');
-    if (!onSplash && (busy || pressing || (Store.state && Store.state.play) || $('ui').children.length || $('calib'))) return; // ゲーム中・設定中は待つ
+    if (!onSplash) {
+      if (busy || pressing || $('ui').children.length || $('calib')) return;               // 回転中・設定中は待つ
+      const p = Store.state && Store.state.play;
+      if (p && p.phase !== 'shown') return;                                                  // ゲームの途中
+      if (p && resultSince && Date.now() - resultSince < 2000) return;                       // 結果は 2 秒見せてから
+    }
     updPending = false;
     try { if (!onSplash) sessionStorage.setItem('casa.skipSplash', '1'); } catch (err) { /* 保存できない環境では起動画面を出す */ }
     location.reload();
@@ -284,6 +291,7 @@ const Game = (function () {
   let creditAt = 0;
   function creditWatch() {
     const s = Store.state;
+    if (updPending) { creditAt = 0; return; } // アップデート待ちのときは、次の FREE SPIN を始めずに読み直しを先にする（CREDIT は残る）
     if (busy || pressing || !s || !s.pins || !(s.credits > 0) || (s.play && s.play.phase !== 'shown')) { creditAt = 0; return; }
     if ($('ui').children.length || $('calib') || document.getElementById('splash')) { creditAt = 0; return; }
     if (!creditAt) { creditAt = Date.now() + CREDIT_NEXT_MS; return; }
@@ -1489,6 +1497,7 @@ const Game = (function () {
     window.addEventListener('resize', layout);
     setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); }, 500);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) autoUpdate(); }); // アプリに戻ってきたときに新しい版を確認
+    setInterval(() => { autoUpdate(); }, UPDATE_CHECK_MS);                                          // 開きっぱなしでも 1 時間に 1 回確認
     if (window.__autoUpdate) window.__autoUpdate.then((st) => { if (newerOnDisk(st)) updPending = true; });
     if (window.ResizeObserver) new ResizeObserver(layout).observe($('viewport'));
     if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
