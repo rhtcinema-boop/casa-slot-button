@@ -1531,3 +1531,7 @@ body.tv:not(.lite) .lockbar .side .btn.tvfocus.pressed { box-shadow: inset 0 3px
 #stage.no-bg.fxmode .led { visibility: hidden; }
 #stage.no-bg .led::before, body.lite .led::before { animation: none; }
 body.lite .led { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--accent-dim); }
+
+/* テスト用プリセットで動いているときの表示（結果は記録されない） */
+#stage.testmode .marquee::after { content: "TEST  この設定の結果は記録されません"; position: absolute; left: 50%; top: 96px; transform: translateX(-50%); white-space: nowrap;
+  padding: 5px 18px 4px; border-radius: 999px; font: 700 17px/1 var(--font-ui); letter-spacing: .12em; color: #fff; background: #b3261a; box-shadow: 0 0 0 2px #000, 0 0 0 4px #ff8e76; }
