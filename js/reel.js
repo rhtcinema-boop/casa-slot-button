@@ -550,5 +550,5 @@ const Reel = (function () {
     metalText(x, text, SW / 2, CH / 2, 190, NUM_FONT, pal, 640, true);
   }
 
-  return { init, spin, attract, setStage, drawText, get stage() { return stage; }, NR };
+  return { init, spin, attract, setStage, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
