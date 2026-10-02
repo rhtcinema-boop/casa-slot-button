@@ -329,7 +329,11 @@ const Game = (function () {
   }
   function showCredits() {
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
-    { const st = Store.state, p = st.play; $('total').textContent = fmtN(st.session.awarded - (p && p.phase === 'drawn' && !p.test ? p.value : 0)); stageEl.classList.toggle('testmode', !!st.testMode); } // 合計当選額（演出中の分は結果が出てから）
+    { const st = Store.state, p = st.play; $('total').textContent = fmtN(st.session.awarded - (p && p.phase === 'drawn' && !p.test ? p.value : 0)); stageEl.classList.toggle('testmode', !!st.testMode);
+      // CREDIT: 残っている FREE SPIN（本物の追加プレイ）＋ いま回り直し中の FREE SPIN の残り
+      const cr = $('crd'), n = String((st.credits || 0) + freeLeft);
+      if (cr && cr.textContent !== n) { const up = +n > +cr.textContent; cr.textContent = n; if (up) restart(cr, 'bump'); }
+      stageEl.classList.toggle('has-info', logoOn()); } // 合計当選額（演出中の分は結果が出てから）
   }
   /* クレジットを使い切ったとき: 合計当選額を大きく見せる */
   async function totalFx(total) {
@@ -461,17 +465,18 @@ const Game = (function () {
         }
         s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
         if (test) s.play.test = true;
+        else if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す
         s.locked = true;
-        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined });
+        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
       });
     } catch (err) {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
       return refresh();
     }
-    oneMore = false; freeLeft = 0; freeTotal = 0;
+    oneMore = false; freeLeft = 0; freeTotal = 0; skipSpecial = false;
     showCredits();
     lockbar.classList.remove('show');
-    if (storeMode() && !Store.state.play.test) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
+    if (storeMode() && !Store.state.play.test) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
     runStage(Store.state.play, 1);
   }
 
@@ -488,6 +493,16 @@ const Game = (function () {
   const FREE_SYM = { 1: 'FREE', 2: 'FREE2', 3: 'FREE3' };
   const freeRates = () => ['freeRate', 'freeRate2', 'freeRate3'].map((k, i) => { const v = Store.state[k]; return typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(FREE_MAX[i], v)) : FREE_DEFAULTS[i]; });
   let freeLeft = 0, freeTotal = 0; // FREE SPIN の回り直しの残り回数と、全部で何回か
+  /* casa ロゴが3本そろうと 10 FREE SPIN を獲得: こちらは本物の追加プレイ（CREDIT が 10 増え、NEXT GAME を押すたびに 1 使って普通に抽選する）。
+     予算が増える機能なので、出る割合（1スピンあたりの %。state.logoRate）は未設定なら 0 = 出ない。マスター画面のプリセットで決める。 */
+  const LOGO_SPINS = 10, LOGO_MAX = 5;
+  const logoRate = () => { const v = Store.state && Store.state.logoRate; return typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(LOGO_MAX, v)) : 0; };
+  const logoOn = () => logoRate() > 0 && Reel.hasLogo;
+  let skipSpecial = false; // casa ロゴがそろった直後の回り直しでは、FREE SPIN やロゴをもう一度出さない
+  function rollLogo() {
+    if (window.__fxTest && window.__fxTest.logo !== undefined) return !!window.__fxTest.logo && Reel.hasLogo; // 演出確認用
+    return logoOn() && Math.random() * 100 < logoRate();
+  }
   /* このスピンで FREE SPIN を出すか。0 = 出さない、1〜3 = ×1〜×3 */
   function rollFree() {
     if (window.__fxTest && window.__fxTest.free !== undefined) return window.__fxTest.free === true ? 1 : (+window.__fxTest.free || 0); // 演出確認用
@@ -640,12 +655,15 @@ const Game = (function () {
     const inFree = freeLeft > 0;
     if (inFree) freeLeft -= 1;
     const midFree = inFree && freeLeft > 0;
-    const freeN = !oneMore && !inFree ? rollFree() : 0;
+    const noSp = skipSpecial; skipSpecial = false;
+    const logoHit = !oneMore && !inFree && !noSp && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN
+    const freeN = !oneMore && !inFree && !noSp && !logoHit ? rollFree() : 0;
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
-    const rev = !oneMore && !freeN && !midFree && sym !== 'NEXT' && play.value > 0 && rollReverse();
-    const pat = oneMore || freeN ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
-    if (!oneMore && !freeN && !midFree && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
-    const warpTo = oneMore || freeN || inFree ? 0 : pickWarp(play, st);
+    const rev = !oneMore && !freeN && !logoHit && !midFree && sym !== 'NEXT' && play.value > 0 && rollReverse();
+    const pat = oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    if (!oneMore && !freeN && !logoHit && !midFree && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
+    const warpTo = oneMore || freeN || logoHit || inFree || noSp ? 0 : pickWarp(play, st);
+    showCredits();
     if (warpTo) { // 普通に回り始めて 5 秒たったところで、いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
       setPlate('spin', 'GOOD LUCK', 'STAGE ' + st);
@@ -664,6 +682,7 @@ const Game = (function () {
       return runStage(play, warpTo);
     }
     if (inFree) setPlate('spin', 'FREE SPIN', (freeTotal - freeLeft) + ' / ' + freeTotal); // いま何回目か
+    else if (play.free && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + (Store.state.credits || 0)); // CREDIT を使って回している
     else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
     const extra = {};
@@ -674,6 +693,31 @@ const Game = (function () {
       // ワンモアチャンス後の引き直し: 短めの回転で本当の結果へ
       oneMore = false;
       await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain' }, extra); // 回り直しも通常と同じ速さ・間隔
+    } else if (logoHit) {
+      // casa ロゴが3本そろう → 10 FREE SPIN（本物の追加プレイ）を獲得。CREDIT が増える。このゲームは続けて回り、結果を出す
+      await spinReel(st, 'LOGO', { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
+      win.classList.add('win');
+      Sfx.play('revive');
+      Sfx.play('kyuin');
+      flash(true);
+      quake();
+      FX.ring(CX, CY, 'gold', 1200, 0.9);
+      FX.burst(CX, CY, 260, { max: 1400, life: 1.7 });
+      showBanner('next omc', '', LOGO_SPINS + ' FREE SPIN');
+      await wait(1300);
+      if (!play.test) { // テスト用プリセットでは CREDIT を増やさない（演出だけ）
+        const before = Store.state.credits || 0;
+        try { Store.transact((s) => { s.credits = (s.credits || 0) + LOGO_SPINS; Store.log('CREDIT_ADD', { amount: LOGO_SPINS, before, after: s.credits, by: 'LOGO' }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
+        const after = Store.state.credits || 0, cr = $('crd');
+        for (let n = before + 1; n <= after; n++) { if (cr) { cr.textContent = String(n); restart(cr, 'bump'); } Sfx.play('count'); await wait(110); } // 1 ずつ増える
+      }
+      await wait(900);
+      await hideBanner();
+      skipSpecial = true;
+      win.classList.remove('win', 'lose');
+      showCredits();
+      await wait(300);
+      return runStage(play, st);
     } else if (freeN) {
       // FREE SPIN ×N が3本そろう → その回数だけ自動で回り直す（結果は確定済み。再抽選はしない）
       await spinReel(st, FREE_SYM[freeN], { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
@@ -686,6 +730,7 @@ const Game = (function () {
       await wait(1800);
       await hideBanner();
       freeLeft = freeN; freeTotal = freeN;
+      showCredits(); // CREDIT の数字が増える（回り直すたびに減る）
       win.classList.remove('win', 'lose');
       await wait(300);
       return runStage(play, st);
@@ -761,7 +806,7 @@ const Game = (function () {
     extra = extra || {};
     pat = pat || { type: 'plain' };
     // 0% にしている FREE SPIN の種類は、絵柄も出さない（いま止めようとしている絵柄そのものは除く）
-    const fr = freeRates(), off = Engine.FREE_SYMS.filter((s, i) => fr[i] <= 0 && s !== sym);
+    const fr = freeRates().concat([logoOn() ? 1 : 0]), off = Engine.FREE_SYMS.filter((s, i) => fr[i] <= 0 && s !== sym);
     const combos = off.length ? Engine.reelCombos(st, sym).filter((c) => !c.some((x) => off.indexOf(x) >= 0)) : Engine.reelCombos(st, sym);
     const usedC = Store.state.comboHist || [];
     let pool = combos.filter((c) => usedC.indexOf(st + ':' + c.join('/')) < 0);
@@ -1238,6 +1283,7 @@ const Game = (function () {
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
           '<li><b>FREE SPIN ×1・×2・×3 が3本そろう</b>と、その回数だけ自動でまわります。そろわなかったときは 0 として合計します。</li>' +
+          '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、NEXT GAME を押すと FREE SPIN として回せます（1回ごとに 1 減ります）。</li>' +
           '<li>止まる順番は毎回変わります。3本目は少し長く回ります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
           '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
@@ -1314,15 +1360,15 @@ const Game = (function () {
     if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
     const same = JSON.stringify(Store.state.probs) === JSON.stringify(p.probs) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
     const num = (v, d) => (typeof v === 'number' ? v : d);
-    const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test;
+    const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0);
     const st0 = Store.state;
-    if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test) return;
+    if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test && (st0.logoRate || 0) === lg) return;
     try {
       Store.transact((s) => {
         s.probs = JSON.parse(JSON.stringify(p.probs));
         s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
         s.presetId = p.id;
-        s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2];
+        s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2]; s.logoRate = lg;
         s.testMode = test;
         Store.log('PRESET_APPLY', { id: p.id, name: p.name });
       });
