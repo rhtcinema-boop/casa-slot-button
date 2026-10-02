@@ -1535,3 +1535,27 @@ body.lite .led { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--accent-dim); }
 /* テスト用プリセットで動いているときの表示（結果は記録されない） */
 #stage.testmode .marquee::after { content: "TEST  この設定の結果は記録されません"; position: absolute; left: 50%; top: 96px; transform: translateX(-50%); white-space: nowrap;
   padding: 5px 18px 4px; border-radius: 999px; font: 700 17px/1 var(--font-ui); letter-spacing: .12em; color: #fff; background: #b3261a; box-shadow: 0 0 0 2px #000, 0 0 0 4px #ff8e76; }
+
+/* ---------- CREDIT（FREE SPIN の残り回数）: 右上の箱を3段にする ---------- */
+.credit-box { height: 122px; top: 12px; padding: 4px 16px; }
+.credit-box > div { height: 37px; }
+.credit-box small { font-size: 19px; }
+.credit-box b { font-size: 30px; }
+.credit-box .cr small { color: #ff9ad8; letter-spacing: .12em; }
+.credit-box .cr b { background: none; -webkit-text-fill-color: #ff9ad8; color: #ff9ad8; text-shadow: var(--ink); }
+.credit-box .cr b.bump { animation: crflash .5s ease-out; }
+@keyframes crflash { 0% { -webkit-text-fill-color: #fff; text-shadow: 0 0 16px #ff72cb, 0 2px 0 #000; } 100% { -webkit-text-fill-color: #ff9ad8; } }
+/* ---------- casa ロゴ3つ = 10 FREE SPIN の説明（画面上部。割合が入っているプリセットのときだけ） ---------- */
+.info10 { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); height: 56px; padding: 0 30px 0 22px; display: none; align-items: center; gap: 16px; white-space: nowrap;
+  border-radius: 16px; background: var(--gloss), var(--plate-base); background-repeat: no-repeat; box-shadow: var(--plate-3d-on); }
+#stage.has-info .info10 { display: flex; }
+#stage.has-info .marquee { top: 8px; height: 70px; transform: scale(.82); transform-origin: 50% 0; }
+.info10 .logos { display: flex; gap: 8px; }
+.info10 .logos i { width: 36px; height: 42px; background: linear-gradient(180deg, #fffef5 0%, #ffe9a3 22%, #f2c34f 45%, #b07a1a 52%, #a86f18 60%, #f0c65a 82%, #fff3c4 100%);
+  -webkit-mask: url(../logo-emblem.png) center / contain no-repeat; mask: url(../logo-emblem.png) center / contain no-repeat; }
+.info10 .eq { font: 700 30px/1 var(--font-num); color: #cfc6ad; text-shadow: var(--ink); }
+.info10 b { font: 700 34px/1 var(--font-num); letter-spacing: .04em; background: linear-gradient(180deg, #fff, #ffd9f1 30%, #ff72cb 55%, #b81a7e 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+.info10 b em { font-style: normal; font-size: 46px; margin-right: 8px; background: linear-gradient(180deg, #fffef5, #ffe9a3 30%, #f2c34f 55%, #b07a1a 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+body.lite .info10 { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -4px 0 rgba(0, 0, 0, .5), inset 0 0 0 2px var(--accent), inset 0 0 0 5px #000, 0 2px 0 var(--accent-dim), 0 8px 0 #050506; }
+/* テスト中の表示は、説明の帯と重ならないよう左上（ロゴの右）へ */
+#stage.testmode .marquee::after { content: "TEST（記録されません）"; left: -170px; top: 34px; }
