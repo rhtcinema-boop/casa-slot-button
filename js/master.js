@@ -98,8 +98,11 @@
   const logoOf = (p) => (typeof p.logoRate === 'number' ? p.logoRate : 0);
   // 10 FREE SPIN を含めた期待値。ロゴの抽選はスピンごと（1プレイで STAGE 2・3 に進むと、そのぶん回数が増える）なので、
   // 1プレイあたりの割合 = 割合 × 平均スピン数。追加プレイの中でもまたロゴがそろうので、全体は 1 / (1 - 10 × それ) 倍になる
+  const noRetrig = (p) => p.noRetrigger !== false; // FREE SPIN で回っているゲームでは FREE SPIN を出さない（未設定は ON）
   function logoCost(p) {
-    const st = Engine.probStats(p.probs), ev = st.ev, r = (logoOf(p) / 100) * (1 + st.reach[2] + st.reach[3]), k = 1 - LOGO_SPINS * r;
+    const st = Engine.probStats(p.probs), ev = st.ev, r = (logoOf(p) / 100) * (1 + st.reach[2] + st.reach[3]);
+    // FREE SPIN 中に FREE SPIN を出さないなら、増えるのは 10 回ぶんだけ。出すなら、その中でもまたそろうので 1 / (1 - 10r) 倍
+    const k = noRetrig(p) ? 1 / (1 + LOGO_SPINS * r) : 1 - LOGO_SPINS * r;
     if (r <= 0) return '<span class="okmsg">オフ（casa ロゴはリールに出ません。予算は変わりません）</span>';
     if (k <= 0) return '<span class="err">割合が高すぎます（FREE SPIN が終わらなくなります）</span>';
     return '<span class="err" style="color:var(--gold)">予算の目安: 1回の有料プレイあたりの期待値が <b>' + fmtN(Math.round(ev)) + ' → ' + fmtN(Math.round(ev / k)) + '</b>（約 ' + (Math.round(1000 / k) / 10) + '%）になります。ロゴがそろうのは平均 ' + fmtN(Math.round(1 / r)) + ' プレイに1回です。</span>';
@@ -141,7 +144,8 @@
       stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'もう3回まわる（0〜25%）') + '</div>' +
       '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます（1回ごとに普通に抽選します）。上の ×1〜×3 と違って<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
       stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
-      '<div id="logoCost" style="margin-top:8px;font-size:14px">' + logoCost(p) + '</div></div>' +
+      '<div id="logoCost" style="margin-top:8px;font-size:14px">' + logoCost(p) + '</div>' +
+      '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>ON: 獲得した 10 FREE SPIN で回っているゲームでは、FREE SPIN ×1〜×3 も casa ロゴも出ません（絵柄も出ません）。OFF: FREE SPIN 中にも、さらに FREE SPIN を獲得できます（そのぶん予算が増えます）</small></div><button class="btn sm ' + (noRetrig(p) ? '' : 'ghost') + '" data-act="retrig-on">' + (noRetrig(p) ? 'ON' : 'OFF') + '</button></div></div>' +
       '<div class="panel"><h3>1日の当たり本数制限</h3><p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
       '<div class="row"><div class="lbl">制限を使う</div><button class="btn sm ' + (L.on ? '' : 'ghost') + '" data-act="lim-on">' + (L.on ? 'ON' : 'OFF') + '</button></div>' +
       stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
@@ -161,7 +165,7 @@
     if (!name) { err.textContent = '名前を入力してください。'; return; }
     const v = Engine.validateProbs(p.probs);
     if (!v.ok) { err.textContent = v.errors.join(' / '); return; }
-    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), test: !!p.test });
+    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test });
     toast('保存しました。配布中の店舗には自動で反映されます');
     editPreset = null; await reload(); render();
   }
@@ -213,12 +217,13 @@
         case 'store-save': return await saveStore();   // 失敗したときに下の catch でメッセージを出すため await する
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。集計も消えます。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
-        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], logoRate: 0, test: false }; return render();
-        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), test: !!p.test })); return render(); }
+        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], logoRate: 0, noRetrigger: true, test: false }; return render();
+        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
         case 'preset-save': return await savePreset();
         case 'preset-del': if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
         case 'test-on': editPreset.test = !editPreset.test; return render();
+        case 'retrig-on': { const top = window.scrollY; editPreset.noRetrigger = !noRetrig(editPreset); render(); window.scrollTo(0, top); return; }
         case 'lim-on': editPreset.limits.on = !editPreset.limits.on; return render();
         case 'early-on': { const top = window.scrollY; editPreset.limits.early = earlyOf(editPreset.limits); editPreset.limits.early.on = !editPreset.limits.early.on; render(); window.scrollTo(0, top); return; }
         case 'step': {
