@@ -496,6 +496,8 @@ const Game = (function () {
     for (let i = 0; i < 3; i++) { acc += rates[i]; if (r < acc) return i + 1; }
     return 0;
   }
+  /* 確定演出（WARP・逆回転）は、普通に回り始めてからこの時間がたってから出す（いきなり出さない） */
+  const EFFECT_DELAY_MS = 3000;
   /* 逆回転（当たり確定の演出）: 金額が当たるプレイの最後のステージで、たまに、回っている途中で突然3本とも逆回転を始める */
   const REVERSE_RATE = 0.12;
   function rollReverse() {
@@ -644,10 +646,15 @@ const Game = (function () {
     const pat = oneMore || freeN ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
     if (!oneMore && !freeN && !midFree && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
     const warpTo = oneMore || freeN || inFree ? 0 : pickWarp(play, st);
-    if (warpTo) { // いきなり上のステージへ（途中のステージは回さない）
+    if (warpTo) { // 普通に回り始めて 3 秒たったところで、いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
       setPlate('spin', 'GOOD LUCK', 'STAGE ' + st);
-      await wait(350);
+      if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
+      Sfx.play('shuffle');
+      // 止まる前にワープするので、停止時刻はずっと先にしておく（画面が消えている間に setStage が回転を止める）
+      Reel.spin(st, ['BAR', 'BAR', 'BAR'], [0, 1, 2], [60, 61, 62], { type: 'plain' }, { onStart: () => Sfx.play('reelStart'), onTick: (n) => Sfx.tick(n), onSpeed: (n) => Sfx.spin(n) });
+      await wait(EFFECT_DELAY_MS);
+      Sfx.spin(0);
       await blink(pickFx(), 1800, async () => { setStage(warpTo); });
       try { Store.transact((s) => { if (s.play) s.play.cur = warpTo; }); } catch (err) { /* 進行位置のみ */ }
       Sfx.play('stageReady');
@@ -781,8 +788,12 @@ const Game = (function () {
     const k = Math.pow(1.5, st - 1);
     const iv = (pat.quick ? 0.7 : 3.0) * k;
     const first = (pat.quick ? 1.4 : 4.8) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
-    const stops = [first, first + iv, first + iv + iv * 1.5];
-    if (pat.reverse) p.reverse = Math.min(first * 0.42, first - 2.9); // 逆回転を始める時刻（1本目が減速に入る前）
+    let stops = [first, first + iv, first + iv + iv * 1.5];
+    if (pat.reverse) { // 逆回転は回り始めて 3 秒後。反転してから 1本目が止まるまでに約 2.9 秒要るので、足りない分だけ全体を後ろへずらす
+      p.reverse = EFFECT_DELAY_MS / 1000;
+      const late = Math.max(0, p.reverse + 2.9 - first);
+      stops = stops.map((x) => x + late);
+    }
     lastCombo = { st, read: sym, combo };
     try { Store.transact((s) => { s.comboHist = (s.comboHist || []).concat(st + ':' + combo.join('/')).slice(-20); }); } catch (err) { /* 記録のみ */ }
     return Reel.spin(st, combo, order, stops, p, {
