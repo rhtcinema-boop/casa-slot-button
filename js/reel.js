@@ -43,6 +43,9 @@ const Reel = (function () {
   };
   PAL.next = PAL.nextBlue;
   // FREE SPIN ×1 はピンク（金額や NEXT STAGE と見分けやすい色）
+  // ×2 は紫、×3 は虹色（めったに出ない特別な絵柄）
+  PAL.free2 = { face: ['#fbf2ff', '#e5c6ff', '#b86ff7', '#6a22b0', '#2a0650', '#6a24a8', '#c78ef9', '#f5e8ff'], ext: ['#14022a', '#8a3fd6'], edge: '#0a0612', rim: '#ffffff', glow: 'rgba(190,110,255,.8)' };
+  PAL.free3 = { face: ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'], ext: ['#1c1002', '#f0c65a'], edge: '#0a0603', rim: '#ffffff', glow: 'rgba(255,255,255,.95)', rainbow: true };
   PAL.free = { face: ['#ffffff', '#ffd9f1', '#ff72cb', '#b81a7e', '#47052e', '#ad1975', '#ff8fd8', '#ffe8f7'], ext: ['#1c0212', '#d43d9d'], edge: '#0d0108', rim: '#ffffff', glow: 'rgba(255,90,200,.8)' };
   /* 金額ごとの素材色: 500=ブロンズ / 1,000=ゴールド / 2,000=エメラルド / 3,000=サファイア / 5,000=アメジスト
      / 10,000=ルビー / 50,000=ダイヤモンド / 100,000=レインボー */
@@ -147,9 +150,10 @@ const Reel = (function () {
     } else if (sym === 'NEXT') {
       metalText(x, 'NEXT', cx, CH / 2 - 34, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
       metalText(x, 'STAGE', cx, CH / 2 + 38, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
-    } else if (sym === 'FREE') {
-      metalText(x, 'FREE SPIN', cx, CH / 2 - 44, 52, LBL_FONT, PAL.free, COLW - 26, true);
-      metalText(x, '\u00d71', cx, CH / 2 + 34, 92, NUM_FONT, PAL.free, COLW - 30);
+    } else if (sym === 'FREE' || sym === 'FREE2' || sym === 'FREE3') {
+      const n = sym === 'FREE' ? 1 : sym === 'FREE2' ? 2 : 3, pal = n === 1 ? PAL.free : n === 2 ? PAL.free2 : PAL.free3;
+      metalText(x, 'FREE SPIN', cx, CH / 2 - 44, 52, LBL_FONT, pal, COLW - 26, true);
+      metalText(x, '\u00d7' + n, cx, CH / 2 + 34, 92, NUM_FONT, pal, COLW - 30);
     } else if (sym === 'BAR') {
       // ハズレの目（内部名は BAR のまま）: 銀色の「0」
       metalText(x, '0', cx, CH / 2, 96, NUM_FONT, PAL.silver, COLW - 22);
@@ -182,6 +186,7 @@ const Reel = (function () {
       seen[key] = true;
       imgs[key] = mk(sym, k === '1' ? PAL.nextBlue : PAL.nextRed);
     }));
+    ['FREE', 'FREE2', 'FREE3'].forEach((s) => { if (!imgs[s]) imgs[s] = mk(s); }); // ×2・×3 は流れる帯には入れず、止まる絵柄としてだけ出す
   }
 
   /* casa ロゴの絵柄（待機中の見せ回しで、たまに真ん中に止める）。エンブレム＋「casa」の文字を、金の金属色で1コマに描く。
@@ -301,7 +306,41 @@ const Reel = (function () {
        back  : 目標を通り過ぎて次の絵柄に行きかけ → 引き戻されて止まる
      o.bait  : 止まりかけた位置に見せる絵柄（slip: [手前], slip2: [2つ手前, 手前], back: [次]）
      o.quick : 再始動用の短い回転 */
+  /* 逆回転（当たり確定の演出）: 普通に回り始め、o.reverse 秒の時点で3本そろって急ブレーキ → 逆向きに加速し、
+     そのまま逆向きで回り続けて目標に止まる（絵柄が上へ流れる） */
+  function buildReverse(rl, st, sym, o, stopAt) {
+    const p0 = rl.pos, ov = rl.ov, cfg = TIMING[st], V = cfg.speed;
+    const TW = 0.2, AW = 0.11, vW = (AW * Math.PI) / TW, vL = 1.15;
+    const decT = o.decel || cfg.decel, pauseT = cfg.pause;
+    const accel = { d: 0.6, v0: vW, v1: V, g: 3.4 };
+    const c1 = Math.max(0.3, o.reverse - TW - accel.d);                                        // 順方向で回る時間
+    const head = [accel, seg(c1, V, V), seg(0.16, V, 0), seg(0.22, 0, -V)];                     // 急ブレーキ → 逆向きに加速
+    const tail = [{ d: decT + pauseT, v0: -V, v1: -(vL + 0.5), e: 3.8 }, seg(0.45, -(vL + 0.5), -vL)];
+    let headD = 0, headT = TW, tailD = 0, tailT = 0;
+    head.forEach((s) => { headD += segDist(s, 1); headT += s.d; });
+    tail.forEach((s) => { tailD += segDist(s, 1); tailT += s.d; });
+    const c2 = Math.max(0.3, (stopAt || 0) - headT - tailT);                                    // 逆方向で回る時間
+    let T = Math.round(p0 + headD + tailD - V * c2);
+    if (Math.abs(T - p0) <= 3) T -= 7; // 回り始めの位置の近くには止めない（前の絵柄が隣に残らないように）
+    const cruise = seg((p0 + headD + tailD - T) / V, -V, -V);
+    const segs = head.concat([cruise]).concat(tail);
+    let t = TW, p = p0;
+    segs.forEach((s) => { s.t0 = t; s.p0 = p; t += s.d; p += segDist(s, 1); });
+    const tStop = t, SET = 0.75, OM = 19, ZE = 7, vEnd = -vL;
+    function at(time) {
+      if (time <= 0) return p0;
+      if (time < TW) return p0 - AW * Math.sin((Math.PI * time) / TW);
+      if (time >= tStop) { const u = time - tStop; return u >= SET ? T : T + (vEnd / OM) * Math.exp(-ZE * u) * Math.sin(OM * u) * (1 - u / SET); }
+      for (let i = segs.length - 1; i >= 0; i--) { const s = segs[i]; if (time >= s.t0) return s.p0 + segDist(s, Math.min(1, (time - s.t0) / s.d)); }
+      return p0;
+    }
+    Object.keys(ov).forEach((k) => { if (Math.abs(k - p0) > 2) delete ov[k]; });
+    [T - 1, T, T + 1, T + 2, T + 3].forEach((i) => delete ov[i]);
+    ov[T] = sym;
+    return { at, T, V, tStop, total: tStop + SET, startAt: TW, teaseAt: -1, teaseDur: 0, reverseAt: TW + accel.d + c1 };
+  }
   function buildProfile(rl, st, sym, o, stopAt) {
+    if (o.reverse) return buildReverse(rl, st, sym, o, stopAt);
     const p0 = rl.pos, ov = rl.ov;
     const cfg = TIMING[st];
     const V = cfg.speed;
@@ -423,7 +462,7 @@ const Reel = (function () {
       const profs = [];
       order.forEach((ri, k) => {
         const last = k === NR - 1;
-        const o = last ? (pat || { type: 'plain' }) : { type: 'plain', decel: Math.min(1.4, TIMING[st].decel * 0.6), quick: pat && pat.quick, attract: pat && pat.attract };
+        const o = last ? (pat || { type: 'plain' }) : { type: 'plain', decel: Math.min(1.4, TIMING[st].decel * 0.6), quick: pat && pat.quick, attract: pat && pat.attract, reverse: pat && pat.reverse };
         profs[ri] = buildProfile(reels[ri], st, combo[ri], o, stops[k]);
       });
       const lastRi = order[NR - 1], lastProf = profs[lastRi];
@@ -432,7 +471,7 @@ const Reel = (function () {
       const lastP = reels.map((rl) => rl.pos), lastCell = reels.map((rl) => Math.round(rl.pos));
       const stoppedR = [false, false, false];
       let lastT = 0, lastNow = t0, frameNo = 0, lastDrawn = 0;
-      let started = false, teased = false, neared = false, stopped = false;
+      let started = false, teased = false, neared = false, stopped = false, reversed = false;
       cancelAnimationFrame(raf);
       function frame(now) {
         const t = (now - t0) / 1000;
@@ -450,6 +489,7 @@ const Reel = (function () {
           lastP[i] = p;
         }
         if (!started && t >= lastProf.startAt) { started = true; hooks.onStart && hooks.onStart(); }
+        if (!reversed && lastProf.reverseAt >= 0 && t >= lastProf.reverseAt) { reversed = true; hooks.onReverse && hooks.onReverse(); } // 逆回転が始まった瞬間
         if (ticked) hooks.onTick && hooks.onTick(maxNorm);
         if (started && !stopped) hooks.onSpeed && hooks.onSpeed(maxNorm);
         if (!teased && lastProf.teaseAt >= 0 && t >= lastProf.teaseAt) { teased = true; hooks.onTease && hooks.onTease(lastProf.teaseDur); }
