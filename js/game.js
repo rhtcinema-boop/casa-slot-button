@@ -445,7 +445,12 @@ const Game = (function () {
         const now = Date.now();
         s.hits = Engine.pruneHits(s.hits, now, s.limits && s.limits.resetHour);
         const blocked = Engine.blockedKeys(s.limits, s.hits, now);
+        // 開始直後の高額制限: その営業日の最初の X 回は、Y 以上の金額を出さない（回数は毎日のリセット時刻から数え直す）
+        const from = Engine.windowStart(now, s.limits && s.limits.resetHour);
+        if (!s.dayPlays || s.dayPlays.from !== from) s.dayPlays = { from, n: 0 };
+        Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
         res = Engine.drawProb(s.probs, undefined, blocked);
+        s.dayPlays.n += 1;
         if (res.value > 0) s.hits.push({ ts: now, key: res.key });
         ses.playNo += 1;
         ses.awarded += res.value;
