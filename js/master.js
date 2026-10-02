@@ -89,7 +89,9 @@
   const probLabel = (k) => (k === 'NEXT' ? 'NEXT STAGE' : fmtN(+k));
   const pct = (x) => (Math.round(x * 1000000) / 10000) + '%';
   const FREE_DEFAULT = 8; // FREE SPIN ×1 が出る割合の初期値（%）
-  const freeOf = (p) => (typeof p.freeRate === 'number' ? p.freeRate : FREE_DEFAULT);
+  const FREE_KEYS = ['freeRate', 'freeRate2', 'freeRate3'], FREE_DEFAULTS = [8, 3, 1], FREE_MAX = [50, 25, 25]; // ×1 / ×2 / ×3
+  const freeN = (p, n) => (typeof p[FREE_KEYS[n - 1]] === 'number' ? p[FREE_KEYS[n - 1]] : FREE_DEFAULTS[n - 1]);
+  const freeOf = (p) => freeN(p, 1);
   const r2 = (x) => Math.round(x * 100) / 100;
   // 開始直後の高額制限（最初の X 回は Y 以上を出さない）。Y は実際に出る金額の中から選ぶ
   const AMOUNTS = Engine.OUTCOMES.map((o) => o.value).filter((v, i, a) => v > 0 && a.indexOf(v) === i).sort((a, b) => a - b);
@@ -97,7 +99,7 @@
   const earlyOf = (L) => Object.assign({}, EARLY_DEFAULT, (L && L.early) || {});
   function viewPresets() {
     return '<div class="panel"><h3>プリセット</h3><p class="hint">確率のセットです。店舗には名前だけが見えます。</p>' +
-      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name">' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeOf(p) + '%</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
+      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name">' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeN(p, 1) + '/' + freeN(p, 2) + '/' + freeN(p, 3) + '%' + (p.test ? '｜<b style="color:var(--ng)">テスト用（記録しない）</b>' : '') + '</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
       '<div class="acts"><button class="btn" data-act="preset-new">プリセットを作る</button></div></div>';
   }
   function probSummary(p) {
@@ -117,12 +119,15 @@
     L.early = earlyOf(L);
     const stepRow = (label, val, attr, unit, hint) => '<div class="row"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="stepper"><button data-act="step" data-d="-1" ' + attr + ' aria-label="減らす">◀</button><span class="pv">' + val + '<i>' + unit + '</i></span><button data-act="step" data-d="1" ' + attr + ' aria-label="増やす">▶</button></div></div>';
     return '<div class="panel"><h3>' + (p.id ? 'プリセットを編集' : 'プリセットを作る') + '</h3>' +
-      '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label></div>' +
+      '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label>' +
+      '<div class="row"><div class="lbl">テスト用プリセット<small>ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます</small></div><button class="btn sm ' + (p.test ? '' : 'ghost') + '" data-act="test-on">' + (p.test ? 'ON' : 'OFF') + '</button></div></div>' +
       '<div class="panel"><h3>各ステージの確率</h3><p class="hint">◀ ▶ で 1% ずつ（押しっぱなしで連続）。各ステージの合計をちょうど 100% にしてください。</p><div class="cols">' +
       Engine.STAGE_DEFS.map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span>' + sumBadge(p, d.stage) + '</h4>' + PKEYS(d).map((k) => stepRow(probLabel(k), p.probs[d.stage][k], 'data-p="' + d.stage + ':' + k + '"', '%')).join('') + '</div>').join('') + '</div>' +
       '<div id="psum">' + probSummary(p) + '</div></div>' +
-      '<div class="panel"><h3>FREE SPIN ×1</h3><p class="hint">リールに FREE SPIN が3本そろって、自動でもう1回まわる演出が出る割合です。演出なので、当選確率・期待値・回転数は変わりません。0% にすると FREE SPIN の絵柄は出なくなります。</p>' +
-      stepRow('FREE SPIN が出る割合', freeOf(p), 'data-f="1"', '%', '1回のスピンあたり（0〜50%）') + '</div>' +
+      '<div class="panel"><h3>FREE SPIN</h3><p class="hint">リールに同じ FREE SPIN が3本そろって、その回数だけ自動で回り直す演出が出る割合です（1回のスピンあたり）。演出なので、当選確率・期待値・回転数は変わりません。本当の結果は最後の回に出ます（×2・×3 の途中の回は 0 で止まります）。0% にした種類は、絵柄も出なくなります。</p>' +
+      stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'もう1回まわる（0〜50%）') +
+      stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'もう2回まわる（0〜25%）') +
+      stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'もう3回まわる（0〜25%）') + '</div>' +
       '<div class="panel"><h3>1日の当たり本数制限</h3><p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
       '<div class="row"><div class="lbl">制限を使う</div><button class="btn sm ' + (L.on ? '' : 'ghost') + '" data-act="lim-on">' + (L.on ? 'ON' : 'OFF') + '</button></div>' +
       stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
@@ -142,7 +147,7 @@
     if (!name) { err.textContent = '名前を入力してください。'; return; }
     const v = Engine.validateProbs(p.probs);
     if (!v.ok) { err.textContent = v.errors.join(' / '); return; }
-    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeOf(p) });
+    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), test: !!p.test });
     toast('保存しました。配布中の店舗には自動で反映されます');
     editPreset = null; await reload(); render();
   }
@@ -194,11 +199,12 @@
         case 'store-save': return await saveStore();   // 失敗したときに下の catch でメッセージを出すため await する
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。集計も消えます。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
-        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULT }; return render();
-        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeOf(p) })); return render(); }
+        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], test: false }; return render();
+        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), test: !!p.test })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
         case 'preset-save': return await savePreset();
         case 'preset-del': if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
+        case 'test-on': editPreset.test = !editPreset.test; return render();
         case 'lim-on': editPreset.limits.on = !editPreset.limits.on; return render();
         case 'early-on': { const top = window.scrollY; editPreset.limits.early = earlyOf(editPreset.limits); editPreset.limits.early.on = !editPreset.limits.early.on; render(); window.scrollTo(0, top); return; }
         case 'step': {
@@ -219,7 +225,7 @@
             const i = Math.max(0, AMOUNTS.indexOf(E.min)); E.min = AMOUNTS[Math.max(0, Math.min(AMOUNTS.length - 1, i + d))];
             return show(fmtN(E.min), '以上');
           }
-          if (b.dataset.f) { editPreset.freeRate = Math.max(0, Math.min(50, freeOf(editPreset) + d)); return show(editPreset.freeRate, '%'); }
+          if (b.dataset.f) { const n = +b.dataset.f, key = FREE_KEYS[n - 1]; editPreset[key] = Math.max(0, Math.min(FREE_MAX[n - 1], freeN(editPreset, n) + d)); return show(editPreset[key], '%'); }
           const k = b.dataset.l, L = editPreset.limits;
           if (k === 'hour') { L.resetHour = (L.resetHour + d + 24) % 24; return show(L.resetHour, ':00'); }
           if (k === 'total') { L.total = Math.max(0, Math.min(999, (L.total || 0) + d)); return show(L.total, '本'); }
