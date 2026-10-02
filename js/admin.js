@@ -424,7 +424,7 @@ const Admin = (function () {
     const counts = (c) => Engine.OUTCOMES.filter((o) => c[o.key] > 0).map((o) => keyLabel(o.key) + ' ×' + c[o.key]).join('、') || 'なし';
     switch (e.type) {
       case 'PLAY':
-        return 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + (d.blocked ? '｜本数制限で除外: ' + d.blocked.map(keyLabel).join('、') : '');
+        return (d.test ? '<b style="color:#ff9d8c">【テスト・記録なし】</b> ' : '') + 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + (d.blocked ? '｜本数制限で除外: ' + d.blocked.map(keyLabel).join('、') : '');
       case 'PROB_SET': {
         const f = (p) => Engine.STAGE_DEFS.map((x) => 'STAGE ' + x.stage + '［' + Engine.probKeys(x).map((k) => probLabel(k) + ' ' + p[x.stage][k] + '%').join('、') + '］').join(' ');
         return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after);
