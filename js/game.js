@@ -670,8 +670,10 @@ const Game = (function () {
     if (inFree) freeLeft -= 1;
     const midFree = inFree && freeLeft > 0;
     const noSp = skipSpecial; skipSpecial = false;
-    const logoHit = !oneMore && !inFree && !noSp && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN
-    const freeN = !oneMore && !inFree && !noSp && !logoHit ? rollFree() : 0;
+    // 獲得した FREE SPIN（CREDIT）で回しているゲームでは、さらに FREE SPIN を出さない設定（プリセットで ON/OFF。未設定は ON）
+    const lockFree = !!play.free && Store.state.noRetrigger !== false;
+    const logoHit = !oneMore && !inFree && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN
+    const freeN = !oneMore && !inFree && !noSp && !logoHit && !lockFree ? rollFree() : 0;
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
     const rev = !oneMore && !freeN && !logoHit && !midFree && sym !== 'NEXT' && play.value > 0 && rollReverse();
     const pat = oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
@@ -699,7 +701,7 @@ const Game = (function () {
     else if (play.free && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + (Store.state.credits || 0)); // CREDIT を使って回している
     else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
-    const extra = { fast: inFree || !!play.free }; // FREE SPIN で回る分は、どのステージでも STAGE 1 と同じ速さ
+    const extra = { fast: inFree || !!play.free, noFree: lockFree }; // FREE SPIN で回る分は、どのステージでも STAGE 1 と同じ速さ。noFree: FREE SPIN の絵柄も出さない
     if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
     Sfx.play('shuffle');
 
@@ -820,7 +822,7 @@ const Game = (function () {
     extra = extra || {};
     pat = pat || { type: 'plain' };
     // 0% にしている FREE SPIN の種類は、絵柄も出さない（いま止めようとしている絵柄そのものは除く）
-    const fr = freeRates().concat([logoOn() ? 1 : 0]), off = Engine.FREE_SYMS.filter((s, i) => fr[i] <= 0 && s !== sym);
+    const fr = extra.noFree ? [0, 0, 0, 0] : freeRates().concat([logoOn() ? 1 : 0]), off = Engine.FREE_SYMS.filter((s, i) => fr[i] <= 0 && s !== sym);
     const combos = off.length ? Engine.reelCombos(st, sym).filter((c) => !c.some((x) => off.indexOf(x) >= 0)) : Engine.reelCombos(st, sym);
     const usedC = Store.state.comboHist || [];
     let pool = combos.filter((c) => usedC.indexOf(st + ':' + c.join('/')) < 0);
@@ -1376,15 +1378,15 @@ const Game = (function () {
     if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
     const same = JSON.stringify(Store.state.probs) === JSON.stringify(p.probs) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
     const num = (v, d) => (typeof v === 'number' ? v : d);
-    const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0);
+    const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0), noRe = p.noRetrigger !== false;
     const st0 = Store.state;
-    if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test && (st0.logoRate || 0) === lg) return;
+    if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test && (st0.logoRate || 0) === lg && (st0.noRetrigger !== false) === noRe) return;
     try {
       Store.transact((s) => {
         s.probs = JSON.parse(JSON.stringify(p.probs));
         s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
         s.presetId = p.id;
-        s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2]; s.logoRate = lg;
+        s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2]; s.logoRate = lg; s.noRetrigger = noRe;
         s.testMode = test;
         Store.log('PRESET_APPLY', { id: p.id, name: p.name });
       });
