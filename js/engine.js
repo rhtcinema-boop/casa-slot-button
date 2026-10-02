@@ -262,7 +262,7 @@
     2: [500, 1000, 2000, 3000, 5000],
     3: [5000, 10000, 20000, 30000, 50000, 100000],
   };
-  const FREES = ['FREE', 'FREE2', 'FREE3']; // FREE SPIN ×1 / ×2 / ×3
+  const FREES = ['FREE', 'FREE2', 'FREE3', 'LOGO']; // FREE SPIN ×1 / ×2 / ×3、casa ロゴ（3本そろうと 10 FREE SPIN を獲得）
   function readReels(stage, syms) {
     let nexts = 0, sum = 0;
     syms.forEach((s) => { if (s === 'NEXT') nexts++; else if (typeof s === 'number') sum += s; });
