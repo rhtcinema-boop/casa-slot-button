@@ -325,11 +325,11 @@ const Game = (function () {
   /* 画面に出す合計当選額。演出中のプレイの分は、結果が出るまで含めない */
   function shownTotal() {
     const s = Store.state;
-    return (s.wonTotal || 0) - (s.play && s.play.phase === 'drawn' ? s.play.value : 0);
+    return (s.wonTotal || 0) - (s.play && s.play.phase === 'drawn' && !s.play.test ? s.play.value : 0);
   }
   function showCredits() {
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
-    { const st = Store.state, p = st.play; $('total').textContent = fmtN(st.session.awarded - (p && p.phase === 'drawn' ? p.value : 0)); } // 合計当選額（演出中の分は結果が出てから）
+    { const st = Store.state, p = st.play; $('total').textContent = fmtN(st.session.awarded - (p && p.phase === 'drawn' && !p.test ? p.value : 0)); stageEl.classList.toggle('testmode', !!st.testMode); } // 合計当選額（演出中の分は結果が出てから）
   }
   /* クレジットを使い切ったとき: 合計当選額を大きく見せる */
   async function totalFx(total) {
@@ -450,23 +450,28 @@ const Game = (function () {
         if (!s.dayPlays || s.dayPlays.from !== from) s.dayPlays = { from, n: 0 };
         Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
         res = Engine.drawProb(s.probs, undefined, blocked);
-        s.dayPlays.n += 1;
-        if (res.value > 0) s.hits.push({ ts: now, key: res.key });
-        ses.playNo += 1;
-        ses.awarded += res.value;
-        s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
+        // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
+        const test = !!s.testMode;
+        if (!test) {
+          s.dayPlays.n += 1;
+          if (res.value > 0) s.hits.push({ ts: now, key: res.key });
+          ses.playNo += 1;
+          ses.awarded += res.value;
+          s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
+        }
         s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
+        if (test) s.play.test = true;
         s.locked = true;
-        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined });
+        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined });
       });
     } catch (err) {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
       return refresh();
     }
-    oneMore = false; freeSpun = false;
+    oneMore = false; freeLeft = 0; freeTotal = 0;
     showCredits();
     lockbar.classList.remove('show');
-    if (storeMode()) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
+    if (storeMode() && !Store.state.play.test) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
     runStage(Store.state.play, 1);
   }
 
@@ -475,15 +480,27 @@ const Game = (function () {
      当たり・NEXT で止まるとき …「ハズレと思いきや当たり」: 0 で止まりかけて滑る／0 に行きかけて戻る／0 で一度止まって再始動
      DRAMA はその演出が出る割合（ステージ別）。 */
   const DRAMA = { lose: [0, 0.55, 0.7, 0.9], win: [0, 0.5, 0.65, 0.85] };
-  /* FREE SPIN ×1: リールに FREE SPIN が3本そろい、自動でもう一度回る。演出だけで、結果（確率で確定済み）や回転数は変わらない。
-     出る割合（1スピンあたりの %）はプリセットごとにマスター画面で決める（state.freeRate。未設定は 8%）。1回のスピンにつき1回まで。
-     0% のときは FREE SPIN の絵柄そのものを出さない（そろわない絵柄で期待させないため）。 */
-  const FREE_DEFAULT = 8;
-  const freeRate = () => { const r = Number(Store.state.freeRate); return isFinite(r) && Store.state.freeRate !== null && Store.state.freeRate !== undefined ? Math.max(0, Math.min(50, r)) : FREE_DEFAULT; };
-  let freeSpun = false; // FREE SPIN のあとの回り直し中
+  /* FREE SPIN ×1 / ×2 / ×3: リールに同じ FREE SPIN が3本そろい、その回数だけ自動で回り直す。演出だけで、結果（確率で確定済み）や回転数は変わらない。
+     本当の結果は最後の回に出る（×2・×3 の途中の回は 0 で止まる）。
+     出る割合（1スピンあたりの %）はプリセットごとにマスター画面で決める（state.freeRate / freeRate2 / freeRate3。未設定は 8 / 3 / 1 %）。
+     0% の種類は、絵柄そのものを出さない（そろわない絵柄で期待させないため）。 */
+  const FREE_DEFAULTS = [8, 3, 1], FREE_MAX = [50, 25, 25];
+  const FREE_SYM = { 1: 'FREE', 2: 'FREE2', 3: 'FREE3' };
+  const freeRates = () => ['freeRate', 'freeRate2', 'freeRate3'].map((k, i) => { const v = Store.state[k]; return typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(FREE_MAX[i], v)) : FREE_DEFAULTS[i]; });
+  let freeLeft = 0, freeTotal = 0; // FREE SPIN の回り直しの残り回数と、全部で何回か
+  /* このスピンで FREE SPIN を出すか。0 = 出さない、1〜3 = ×1〜×3 */
   function rollFree() {
-    if (window.__fxTest && window.__fxTest.free !== undefined) return !!window.__fxTest.free; // 演出確認用
-    return Math.random() < freeRate() / 100;
+    if (window.__fxTest && window.__fxTest.free !== undefined) return window.__fxTest.free === true ? 1 : (+window.__fxTest.free || 0); // 演出確認用
+    const r = Math.random() * 100, rates = freeRates();
+    let acc = 0;
+    for (let i = 0; i < 3; i++) { acc += rates[i]; if (r < acc) return i + 1; }
+    return 0;
+  }
+  /* 逆回転（当たり確定の演出）: 金額が当たるプレイの最後のステージで、たまに、回っている途中で突然3本とも逆回転を始める */
+  const REVERSE_RATE = 0.12;
+  function rollReverse() {
+    if (window.__fxTest && window.__fxTest.reverse !== undefined) return !!window.__fxTest.reverse; // 演出確認用
+    return Math.random() < REVERSE_RATE;
   }
   const RESPIN_RATE = [0, 0.1, 0.12, 0.15]; // 当たりのとき ONE MORE CHANCE になる割合（ステージ別）
 
@@ -617,11 +634,16 @@ const Game = (function () {
     busy = true;
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
-    const afterFree = freeSpun; freeSpun = false;
-    const free = !oneMore && !afterFree && rollFree();
-    const pat = oneMore || free ? { type: 'plain' } : pickPattern(st, sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
-    if (!oneMore && !free && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
-    const warpTo = oneMore || free || afterFree ? 0 : pickWarp(play, st);
+    // FREE SPIN の回り直し中（この回を含めてあと freeLeft 回）。最後の1回で本当の結果を出し、それまでの回は 0 で止まる
+    const inFree = freeLeft > 0;
+    if (inFree) freeLeft -= 1;
+    const midFree = inFree && freeLeft > 0;
+    const freeN = !oneMore && !inFree ? rollFree() : 0;
+    // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
+    const rev = !oneMore && !freeN && !midFree && sym !== 'NEXT' && play.value > 0 && rollReverse();
+    const pat = oneMore || freeN ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    if (!oneMore && !freeN && !midFree && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
+    const warpTo = oneMore || freeN || inFree ? 0 : pickWarp(play, st);
     if (warpTo) { // いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
       setPlate('spin', 'GOOD LUCK', 'STAGE ' + st);
@@ -634,7 +656,8 @@ const Game = (function () {
       await hideBanner();
       return runStage(play, warpTo);
     }
-    setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
+    if (inFree) setPlate('spin', 'FREE SPIN', (freeTotal - freeLeft) + ' / ' + freeTotal); // いま何回目か
+    else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
     const extra = {};
     if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
@@ -644,20 +667,29 @@ const Game = (function () {
       // ワンモアチャンス後の引き直し: 短めの回転で本当の結果へ
       oneMore = false;
       await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain' }, extra); // 回り直しも通常と同じ速さ・間隔
-    } else if (free) {
-      // FREE SPIN ×1 が3本そろう → 自動でもう一度回る（結果は確定済み。再抽選はしない）
-      await spinReel(st, 'FREE', { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
+    } else if (freeN) {
+      // FREE SPIN ×N が3本そろう → その回数だけ自動で回り直す（結果は確定済み。再抽選はしない）
+      await spinReel(st, FREE_SYM[freeN], { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
       win.classList.add('win');
       Sfx.play('revive');
       flash(false);
       FX.ring(CX, CY, 'gold', 1100, 0.8);
-      FX.burst(CX, CY, 140, { max: 1200, life: 1.5 });
-      showBanner('next omc', '', 'FREE SPIN');
+      FX.burst(CX, CY, 140 + 60 * (freeN - 1), { max: 1200, life: 1.5 });
+      showBanner('next omc', '', 'FREE SPIN \u00d7' + freeN);
       await wait(1800);
       await hideBanner();
-      freeSpun = true;
+      freeLeft = freeN; freeTotal = freeN;
       win.classList.remove('win', 'lose');
       await wait(300);
+      return runStage(play, st);
+    } else if (midFree) {
+      // FREE SPIN の途中の回: 0 で止まり、すぐ次の回へ（本当の結果は最後の回）
+      await spinReel(st, 0, pat, extra);
+      win.classList.add('lose');
+      Sfx.play('zero');
+      await wait(1100);
+      win.classList.remove('lose');
+      await wait(250);
       return runStage(play, st);
     } else if (pat.type === 'respin') {
       // ハズレと思いきや当たり: 0 で完全に止まる → 暗転 → ONE MORE CHANCE → もう一度レバーを引かせる
@@ -702,7 +734,7 @@ const Game = (function () {
     await resultFx(play);
     clearSure();
     const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
-    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
     if (out) await totalFx(Store.state.wonTotal || 0);
@@ -721,8 +753,9 @@ const Game = (function () {
     const beats = [];
     extra = extra || {};
     pat = pat || { type: 'plain' };
-    const noFree = sym !== 'FREE' && freeRate() <= 0; // FREE SPIN を 0% にしているプリセットでは、絵柄も出さない
-    const combos = noFree ? Engine.reelCombos(st, sym).filter((c) => c.indexOf('FREE') < 0) : Engine.reelCombos(st, sym);
+    // 0% にしている FREE SPIN の種類は、絵柄も出さない（いま止めようとしている絵柄そのものは除く）
+    const fr = freeRates(), off = Engine.FREE_SYMS.filter((s, i) => fr[i] <= 0 && s !== sym);
+    const combos = off.length ? Engine.reelCombos(st, sym).filter((c) => !c.some((x) => off.indexOf(x) >= 0)) : Engine.reelCombos(st, sym);
     const usedC = Store.state.comboHist || [];
     let pool = combos.filter((c) => usedC.indexOf(st + ':' + c.join('/')) < 0);
     if (!pool.length) { // 候補が少なくて20回ぶん避けきれないときは、同じ結果の直近ぶん（候補数の半分まで）だけ避ける
@@ -733,12 +766,12 @@ const Game = (function () {
     }
     const combo = pool[Math.floor(Math.random() * pool.length)];
     // NEXT STAGE や FREE SPIN が入る並びでは、それを先に止める（最初に 0 が見えてしまわないように）。順番は NEXT STAGE → FREE SPIN → それ以外
-    const rank = (s) => (s === 'NEXT' ? 0 : s === 'FREE' ? 1 : 2);
+    const rank = (s) => (s === 'NEXT' ? 0 : Engine.FREE_SYMS.indexOf(s) >= 0 ? 1 : 2);
     const cand = ORDERS.filter((o) => rank(combo[o[0]]) <= rank(combo[o[1]]) && rank(combo[o[1]]) <= rank(combo[o[2]]));
     const deciding = cand.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
     const ordPool = deciding.length ? deciding : cand;
     const order = ordPool[Math.floor(Math.random() * ordPool.length)];
-    const alts = Engine.reelAlternatives(st, combo, order[2]).filter((s) => !noFree || s !== 'FREE');
+    const alts = Engine.reelAlternatives(st, combo, order[2]).filter((s) => off.indexOf(s) < 0);
     const nb = pat.type === 'seq' ? pat.pre + (pat.over ? 1 : 0) : pat.type === 'slip2' ? 2 : pat.type === 'slip' || pat.type === 'back' ? 1 : 0;
     const bait = [];
     for (let i = 0; i < nb; i++) bait.push(alts.length && Math.random() < 0.85 ? alts[Math.floor(Math.random() * alts.length)] : null);
@@ -749,6 +782,7 @@ const Game = (function () {
     const iv = (pat.quick ? 0.7 : 3.0) * k;
     const first = (pat.quick ? 1.4 : 4.8) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
     const stops = [first, first + iv, first + iv + iv * 1.5];
+    if (pat.reverse) p.reverse = Math.min(first * 0.42, first - 2.9); // 逆回転を始める時刻（1本目が減速に入る前）
     lastCombo = { st, read: sym, combo };
     try { Store.transact((s) => { s.comboHist = (s.comboHist || []).concat(st + ':' + combo.join('/')).slice(-20); }); } catch (err) { /* 記録のみ */ }
     return Reel.spin(st, combo, order, stops, p, {
@@ -756,6 +790,7 @@ const Game = (function () {
       onTick: (n) => Sfx.tick(n),
       onSpeed: (n) => Sfx.spin(n),
       onNear: () => { extra.onNear && extra.onNear(); },
+      onReverse: () => { Sfx.play('kyuin'); flash(true); quake(); stageEl.classList.add('reach'); setPlate('spin', 'REVERSE', '当選確定'); }, // 突然の逆回転（当たり確定）
       onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
       onTease: (dur) => {
         Sfx.play('tease', dur);
@@ -1191,7 +1226,7 @@ const Game = (function () {
           '<li>リールは3本。止まった<b>3本の金額を足した合計</b>が当選額です（例: 100 + 400 + 0 = 500）。</li>' +
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
-          '<li><b>FREE SPIN ×1 が3本そろう</b>と、自動でもう1回まわります。1〜2本だけのときは 0 として合計します。</li>' +
+          '<li><b>FREE SPIN ×1・×2・×3 が3本そろう</b>と、その回数だけ自動でまわります。そろわなかったときは 0 として合計します。</li>' +
           '<li>止まる順番は毎回変わります。3本目は少し長く回ります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
           '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
@@ -1202,6 +1237,7 @@ const Game = (function () {
           '<h5>演出について</h5><ul>' +
           '<li>止まりかけてから、もう1コマ滑ったり戻ったりすることがあります。最後の1本が止まるまで結果は分かりません。</li>' +
           '<li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li>' +
+          '<li><b>リールが突然、逆回転を始めたら当選が確定</b>です。</li>' +
           '<li><b>画面が突然消えたり白く光ったりしたら、当選が確定</b>です（必ず金額が当たります）。戻ったときに画面全体が虹色なら大きな当たりです。</li>' +
           '<li>ゲームの最初にいきなり <b>STAGE 2 / STAGE 3</b> から始まることがあります（<b>WARP</b>）。このときも当選が確定しています。</li></ul>' +
           '<h5>設定（お店の方へ）</h5><ul>' +
@@ -1266,14 +1302,17 @@ const Game = (function () {
   function applyPreset(p) {
     if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
     const same = JSON.stringify(Store.state.probs) === JSON.stringify(p.probs) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
-    const fr = typeof p.freeRate === 'number' ? p.freeRate : FREE_DEFAULT;
-    if (same && Store.state.presetId === p.id && Store.state.freeRate === fr) return;
+    const num = (v, d) => (typeof v === 'number' ? v : d);
+    const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test;
+    const st0 = Store.state;
+    if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test) return;
     try {
       Store.transact((s) => {
         s.probs = JSON.parse(JSON.stringify(p.probs));
         s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
         s.presetId = p.id;
-        s.freeRate = fr;
+        s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2];
+        s.testMode = test;
         Store.log('PRESET_APPLY', { id: p.id, name: p.name });
       });
     } catch (err) { /* 保存のみ */ }
