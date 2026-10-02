@@ -91,9 +91,13 @@
   const FREE_DEFAULT = 8; // FREE SPIN ×1 が出る割合の初期値（%）
   const freeOf = (p) => (typeof p.freeRate === 'number' ? p.freeRate : FREE_DEFAULT);
   const r2 = (x) => Math.round(x * 100) / 100;
+  // 開始直後の高額制限（最初の X 回は Y 以上を出さない）。Y は実際に出る金額の中から選ぶ
+  const AMOUNTS = Engine.OUTCOMES.map((o) => o.value).filter((v, i, a) => v > 0 && a.indexOf(v) === i).sort((a, b) => a - b);
+  const EARLY_DEFAULT = { on: false, plays: 10, min: 2000 };
+  const earlyOf = (L) => Object.assign({}, EARLY_DEFAULT, (L && L.early) || {});
   function viewPresets() {
     return '<div class="panel"><h3>プリセット</h3><p class="hint">確率のセットです。店舗には名前だけが見えます。</p>' +
-      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name">' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + '｜FREE SPIN ' + freeOf(p) + '%</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
+      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name">' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeOf(p) + '%</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
       '<div class="acts"><button class="btn" data-act="preset-new">プリセットを作る</button></div></div>';
   }
   function probSummary(p) {
@@ -110,6 +114,7 @@
   const saveMsg = (p) => (Engine.validateProbs(p.probs).ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">各ステージの合計を 100% にしてください</span>');
   function viewPresetEdit() {
     const p = editPreset, L = p.limits;
+    L.early = earlyOf(L);
     const stepRow = (label, val, attr, unit, hint) => '<div class="row"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="stepper"><button data-act="step" data-d="-1" ' + attr + ' aria-label="減らす">◀</button><span class="pv">' + val + '<i>' + unit + '</i></span><button data-act="step" data-d="1" ' + attr + ' aria-label="増やす">▶</button></div></div>';
     return '<div class="panel"><h3>' + (p.id ? 'プリセットを編集' : 'プリセットを作る') + '</h3>' +
       '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label></div>' +
@@ -124,6 +129,10 @@
       stepRow('1日の当たり本数の上限（合計）', L.total, 'data-l="total"', '本', '0 は無制限') +
       '<p class="hint" style="margin:18px 0 8px"><b style="color:var(--text)">金額ごとの上限</b>（任意。0 は制限なし）</p><div class="cols">' +
       Engine.STAGE_DEFS.map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + Engine.OUTCOMES.filter((o) => o.stage === d.stage && o.value > 0).map((o) => stepRow(fmtN(o.value), L.max[o.key] || 0, 'data-l="' + o.key + '"', '回')).join('') + '</div>').join('') + '</div></div>' +
+      (function () { const E = L.early; return '<div class="panel"><h3>開始直後の高額制限</h3><p class="hint">毎日のリセット時刻（上の設定）から数えて、<b style="color:var(--text)">最初の X 回のプレイでは、Y 以上の金額が当たらない</b>ようにします（その分の確率は、そのステージの 0 に回ります）。X 回を過ぎると通常どおりです。回数は端末ごとに数えます。</p>' +
+        '<div class="row"><div class="lbl">この制限を使う</div><button class="btn sm ' + (E.on ? '' : 'ghost') + '" data-act="early-on">' + (E.on ? 'ON' : 'OFF') + '</button></div>' +
+        stepRow('最初の何回まで（X）', E.plays, 'data-e="plays"', '回', '1〜999 回') +
+        stepRow('いくら以上を出さないか（Y）', fmtN(E.min), 'data-e="min"', '以上', '例: 2,000 にすると、2,000・3,000・5,000・10,000… が出ません') + '</div>'; })() +
       (p.id ? '<div class="panel"><h3>このプリセットを削除</h3><p class="hint">配布中の店舗からも消えます。</p><div class="acts" style="justify-content:flex-start"><button class="btn danger" data-act="preset-del">削除する</button></div></div>' : '') +
       '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save">保存</button></div>';
   }
@@ -182,15 +191,16 @@
         case 'store-new': editStore = { name: '', presetIds: [], activePresetId: null }; return render();
         case 'store-edit': editStore = Object.assign({}, stores.find((s) => s.id === b.dataset.id)); return render();
         case 'store-cancel': editStore = null; return render();
-        case 'store-save': return saveStore();
+        case 'store-save': return await saveStore();   // 失敗したときに下の catch でメッセージを出すため await する
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。集計も消えます。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
         case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULT }; return render();
         case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeOf(p) })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
-        case 'preset-save': return savePreset();
+        case 'preset-save': return await savePreset();
         case 'preset-del': if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
         case 'lim-on': editPreset.limits.on = !editPreset.limits.on; return render();
+        case 'early-on': { const top = window.scrollY; editPreset.limits.early = earlyOf(editPreset.limits); editPreset.limits.early.on = !editPreset.limits.early.on; render(); window.scrollTo(0, top); return; }
         case 'step': {
           const d = +b.dataset.d, pv = b.parentNode.querySelector('.pv');
           const show = (v, unit) => { pv.innerHTML = v + '<i>' + unit + '</i>'; };
@@ -202,6 +212,12 @@
             const badge = main.querySelector('[data-sum="' + pk[0] + '"]'); if (badge) badge.outerHTML = sumBadge(editPreset, +pk[0]);
             $('pstate').innerHTML = saveMsg(editPreset);
             return;
+          }
+          if (b.dataset.e) {
+            const E = editPreset.limits.early = earlyOf(editPreset.limits);
+            if (b.dataset.e === 'plays') { E.plays = Math.max(1, Math.min(999, (Number(E.plays) || 0) + d)); return show(E.plays, '回'); }
+            const i = Math.max(0, AMOUNTS.indexOf(E.min)); E.min = AMOUNTS[Math.max(0, Math.min(AMOUNTS.length - 1, i + d))];
+            return show(fmtN(E.min), '以上');
           }
           if (b.dataset.f) { editPreset.freeRate = Math.max(0, Math.min(50, freeOf(editPreset) + d)); return show(editPreset.freeRate, '%'); }
           const k = b.dataset.l, L = editPreset.limits;
