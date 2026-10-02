@@ -229,6 +229,14 @@
     });
     return out;
   }
+  /* 開始直後の高額制限: 営業日（毎日 resetHour 時から）の最初の plays 回は、min 以上の金額を出さない。
+     early = { on, plays, min }、played = その営業日にこの端末ですでに回した回数。止める目の一覧を返す（確率はそのステージの 0 に回る） */
+  function earlyBlocked(early, played) {
+    if (!early || !early.on) return [];
+    const n = Number(early.plays) || 0, min = Number(early.min) || 0;
+    if (n <= 0 || min <= 0 || (Number(played) || 0) >= n) return [];
+    return OUTCOMES.filter((o) => o.value >= min).map((o) => o.key);
+  }
   function drawProb(p, rng, blocked) {
     rng = rng || secureRandomInt;
     blocked = blocked || [];
@@ -400,7 +408,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys,
+    probKeys, defaultProbs, validateProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked,
     REEL_SYMS, readReels, reelCombos, reelAlternatives,
     sha256, makePin, checkPin,
   };
