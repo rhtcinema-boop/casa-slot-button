@@ -497,7 +497,7 @@ const Game = (function () {
     return 0;
   }
   /* 確定演出（WARP・逆回転）は、普通に回り始めてからこの時間がたってから出す（いきなり出さない） */
-  const EFFECT_DELAY_MS = 3000;
+  const EFFECT_DELAY_MS = 5000;
   /* 逆回転（当たり確定の演出）: 金額が当たるプレイの最後のステージで、たまに、回っている途中で突然3本とも逆回転を始める */
   const REVERSE_RATE = 0.12;
   function rollReverse() {
@@ -646,7 +646,7 @@ const Game = (function () {
     const pat = oneMore || freeN ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
     if (!oneMore && !freeN && !midFree && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
     const warpTo = oneMore || freeN || inFree ? 0 : pickWarp(play, st);
-    if (warpTo) { // 普通に回り始めて 3 秒たったところで、いきなり上のステージへ（途中のステージは回さない）
+    if (warpTo) { // 普通に回り始めて 5 秒たったところで、いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
       setPlate('spin', 'GOOD LUCK', 'STAGE ' + st);
       if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
@@ -789,7 +789,7 @@ const Game = (function () {
     const iv = (pat.quick ? 0.7 : 3.0) * k;
     const first = (pat.quick ? 1.4 : 4.8) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
     let stops = [first, first + iv, first + iv + iv * 1.5];
-    if (pat.reverse) { // 逆回転は回り始めて 3 秒後。反転してから 1本目が止まるまでに約 2.9 秒要るので、足りない分だけ全体を後ろへずらす
+    if (pat.reverse) { // 逆回転は回り始めて 5 秒後。反転してから 1本目が止まるまでに約 2.9 秒要るので、足りない分だけ全体を後ろへずらす
       p.reverse = EFFECT_DELAY_MS / 1000;
       const late = Math.max(0, p.reverse + 2.9 - first);
       stops = stops.map((x) => x + late);
