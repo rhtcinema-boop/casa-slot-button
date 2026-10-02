@@ -526,15 +526,17 @@ const Game = (function () {
      ハズレのプレイでは絶対に出ない。1プレイで1回まで。発生後は結果が出るまで虹色のまま。
      SURE_RATE はステージアップ1回あたりの発生率（たまに出る程度）。 */
   const SURE_RATE = 0.08;
-  /* プチュン: ブラウン管が消えるように突然暗転 → 復帰。
-       real … 2,000 以上の当たりが確定しているプレイで 1/2。復帰と同時に虹色モード（当選確定）
-       fake … それ以外でたまに（PUCHUN_FAKE）。色は変わらず、そのまま当たりにも 0 にもなる「じらし」 */
-  const PUCHUN_MIN = 2000, PUCHUN_REAL = 0.5, PUCHUN_FAKE = 0.06;
+  /* プチュン: ブラウン管が消えるように突然暗転（または白飛び）→ 復帰。
+     画面が消える演出は「金額が当たることが確定しているプレイ」でしか出さない（出たのに 0 で終わることは無い）。
+       real … 2,000 以上の当たりが確定しているプレイの、最後のステージで 1/2。復帰と同時に虹色モード
+       fake … それ以外の当たりのプレイでたまに（PUCHUN_FAKE）。色は変わらないが、最終的に必ず金額が当たる */
+  const PUCHUN_MIN = 2000, PUCHUN_REAL = 0.5, PUCHUN_FAKE = 0.15;
   let puchunPlan = null; // このステージのスピンで実行する予定 { kind:'real'|'fake', fx:'crt'|'flash' }
   const pickFx = () => (Math.random() < 0.5 ? 'crt' : 'flash'); // 暗転（プチュン）か白飛び（フラッシュ）か半々
   function planPuchun(play, st) {
     puchunPlan = null;
     if (window.__fxTest && window.__fxTest.puchun) { puchunPlan = { kind: window.__fxTest.puchun, fx: window.__fxTest.fx || pickFx() }; return; }
+    if (!(play.value > 0)) return; // ハズレで終わるプレイでは、画面が消える演出を出さない
     const finalStage = st === play.stage;
     if (finalStage && play.value >= PUCHUN_MIN && !sureShown && !play.overflow) { if (Math.random() < PUCHUN_REAL) puchunPlan = { kind: 'real', fx: pickFx() }; return; }
     if (Math.random() < PUCHUN_FAKE) puchunPlan = { kind: 'fake', fx: pickFx() };
@@ -572,10 +574,11 @@ const Game = (function () {
     await blink(plan.fx, plan.kind === 'real' ? 2200 : 1600);
     if (plan.kind === 'real') announceSure();
   }
-  /* ワープ開始: NEXT GAME 直後、結果が STAGE 2 以上のプレイでたまに、いきなり上のステージから始まる */
+  /* ワープ開始: NEXT GAME 直後、結果が STAGE 2 以上で「金額が当たる」プレイでたまに、いきなり上のステージから始まる。
+     画面が消える（白く飛ぶ）演出を使うので、ハズレで終わるプレイでは出さない */
   const WARP_RATE = 0.18;
   function pickWarp(play, st) {
-    if (st !== 1 || play.stage < 2 || play.overflow) return 0;
+    if (st !== 1 || play.stage < 2 || play.overflow || !(play.value > 0)) return 0;
     if (window.__fxTest && window.__fxTest.warp !== undefined) return window.__fxTest.warp;
     if (Math.random() >= WARP_RATE) return 0;
     return play.stage === 3 && Math.random() < 0.5 ? 3 : Math.min(play.stage, 2); // 3 まで行けるときは半々で 3 に直行
@@ -1199,8 +1202,8 @@ const Game = (function () {
           '<h5>演出について</h5><ul>' +
           '<li>止まりかけてから、もう1コマ滑ったり戻ったりすることがあります。最後の1本が止まるまで結果は分かりません。</li>' +
           '<li><b>ONE MORE CHANCE</b> が出たら、自動でもう一度回ります。</li>' +
-          '<li>画面が突然消えたり白く光ったりすることがあります。戻ったときに<b>画面全体が虹色</b>なら当選が確定しています（そのまま戻ることもあります）。</li>' +
-          '<li>ゲームの最初にいきなり <b>STAGE 2 / STAGE 3</b> から始まることがあります（<b>WARP</b>）。</li></ul>' +
+          '<li><b>画面が突然消えたり白く光ったりしたら、当選が確定</b>です（必ず金額が当たります）。戻ったときに画面全体が虹色なら大きな当たりです。</li>' +
+          '<li>ゲームの最初にいきなり <b>STAGE 2 / STAGE 3</b> から始まることがあります（<b>WARP</b>）。このときも当選が確定しています。</li></ul>' +
           '<h5>設定（お店の方へ）</h5><ul>' +
           '<li>左上の casa ロゴを続けて5回タップ → パスワードで設定画面が開きます。</li>' +
           '<li>お客さまの画面に確率は表示されません。</li></ul>' +
