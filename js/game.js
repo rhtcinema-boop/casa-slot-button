@@ -278,6 +278,20 @@ const Game = (function () {
     attractN += 1;
     Reel.attract(attractN % ATTRACT_LOGO_EVERY === 0 ? 'logo' : '').then(() => { attracting = false; attractAt = 0; });
   }
+  /* CREDIT（獲得した FREE SPIN）が残っている間は、自動で回り続ける。結果を 2.5 秒見せてから、NEXT GAME を押したのと同じ動きで次へ進む。
+     設定やダイアログを開いている間は止まる（閉じると再開）。 */
+  const CREDIT_NEXT_MS = 2500;
+  let creditAt = 0;
+  function creditWatch() {
+    const s = Store.state;
+    if (busy || pressing || !s || !s.pins || !(s.credits > 0) || (s.play && s.play.phase !== 'shown')) { creditAt = 0; return; }
+    if ($('ui').children.length || $('calib') || document.getElementById('splash')) { creditAt = 0; return; }
+    if (!creditAt) { creditAt = Date.now() + CREDIT_NEXT_MS; return; }
+    if (Date.now() < creditAt) return;
+    creditAt = 0;
+    const b = lockbar.classList.contains('show') && lockbar.querySelector('[data-act="next"]');
+    if (b) b.click();
+  }
   const IDLE_BACK_MS = 10000;
   let resultSince = 0;
   async function idleWatch() {
@@ -465,7 +479,7 @@ const Game = (function () {
         }
         s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
         if (test) s.play.test = true;
-        else if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す
+        if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
         s.locked = true;
         Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
       });
@@ -685,7 +699,7 @@ const Game = (function () {
     else if (play.free && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + (Store.state.credits || 0)); // CREDIT を使って回している
     else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
-    const extra = {};
+    const extra = { fast: inFree || !!play.free }; // FREE SPIN で回る分は、どのステージでも STAGE 1 と同じ速さ
     if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
     Sfx.play('shuffle');
 
@@ -705,7 +719,7 @@ const Game = (function () {
       FX.burst(CX, CY, 260, { max: 1400, life: 1.7 });
       showBanner('next omc', '', LOGO_SPINS + ' FREE SPIN');
       await wait(1300);
-      if (!play.test) { // テスト用プリセットでは CREDIT を増やさない（演出だけ）
+      { // テスト用プリセットでも CREDIT は増える（動きを確認できるように。回した結果が記録されないのは同じ）
         const before = Store.state.credits || 0;
         try { Store.transact((s) => { s.credits = (s.credits || 0) + LOGO_SPINS; Store.log('CREDIT_ADD', { amount: LOGO_SPINS, before, after: s.credits, by: 'LOGO' }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
         const after = Store.state.credits || 0, cr = $('crd');
@@ -830,7 +844,9 @@ const Game = (function () {
     const p = Object.assign({}, pat, { bait });
     // 回る時間: STAGE 1 は 1本目 4.8秒 → 2本目 +3秒 → 3本目 +4.5秒（計 約12.3秒）。ステージが上がるごとに全体が 1.5 倍
     // （3本目が止まるまで: STAGE 1 約12.3秒 / STAGE 2 約18.5秒 / STAGE 3 約27.7秒）
-    const k = Math.pow(1.5, st - 1);
+    const kst = extra.fast ? 1 : st; // FREE SPIN は STAGE 1 の速さ
+    p.timingStage = kst;
+    const k = Math.pow(1.5, kst - 1);
     const iv = (pat.quick ? 0.7 : 3.0) * k;
     const first = (pat.quick ? 1.4 : 4.8) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
     let stops = [first, first + iv, first + iv + iv * 1.5];
@@ -1283,7 +1299,7 @@ const Game = (function () {
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
           '<li><b>FREE SPIN ×1・×2・×3 が3本そろう</b>と、その回数だけ自動でまわります。そろわなかったときは 0 として合計します。</li>' +
-          '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、NEXT GAME を押すと FREE SPIN として回せます（1回ごとに 1 減ります）。</li>' +
+          '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、<b>自動で回り続けます</b>（1回ごとに 1 減ります）。FREE SPIN はどのステージでも STAGE 1 と同じ速さで回ります。</li>' +
           '<li>止まる順番は毎回変わります。3本目は少し長く回ります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
           '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
@@ -1469,7 +1485,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { idleWatch().catch(() => {}); attractWatch(); updWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); }, 500);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) autoUpdate(); }); // アプリに戻ってきたときに新しい版を確認
     if (window.__autoUpdate) window.__autoUpdate.then((st) => { if (newerOnDisk(st)) updPending = true; });
     if (window.ResizeObserver) new ResizeObserver(layout).observe($('viewport'));
