@@ -458,12 +458,13 @@ const Reel = (function () {
   function spin(st, combo, order, stops, pat, hooks) {
     hooks = hooks || {};
     if (!(pat && pat.attract)) interrupt();
+    const ts = (pat && pat.timingStage) || st; // 速さ・減速の設定に使うステージ（FREE SPIN はどのステージでも 1）
     return new Promise((resolve) => {
       const profs = [];
       order.forEach((ri, k) => {
         const last = k === NR - 1;
-        const o = last ? (pat || { type: 'plain' }) : { type: 'plain', decel: Math.min(1.4, TIMING[st].decel * 0.6), quick: pat && pat.quick, attract: pat && pat.attract, reverse: pat && pat.reverse };
-        profs[ri] = buildProfile(reels[ri], st, combo[ri], o, stops[k]);
+        const o = last ? (pat || { type: 'plain' }) : { type: 'plain', decel: Math.min(1.4, TIMING[ts].decel * 0.6), quick: pat && pat.quick, attract: pat && pat.attract, reverse: pat && pat.reverse };
+        profs[ri] = buildProfile(reels[ri], ts, combo[ri], o, stops[k]);
       });
       const lastRi = order[NR - 1], lastProf = profs[lastRi];
       const t0 = performance.now();
