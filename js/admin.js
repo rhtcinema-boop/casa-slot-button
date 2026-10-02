@@ -424,7 +424,7 @@ const Admin = (function () {
     const counts = (c) => Engine.OUTCOMES.filter((o) => c[o.key] > 0).map((o) => keyLabel(o.key) + ' ×' + c[o.key]).join('、') || 'なし';
     switch (e.type) {
       case 'PLAY':
-        return (d.test ? '<b style="color:#ff9d8c">【テスト・記録なし】</b> ' : '') + 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + (d.blocked ? '｜本数制限で除外: ' + d.blocked.map(keyLabel).join('、') : '');
+        return (d.test ? '<b style="color:#ff9d8c">【テスト・記録なし】</b> ' : '') + (d.free ? '<b style="color:#ff9ad8">【FREE SPIN】</b> ' : '') + 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + (d.blocked ? '｜本数制限で除外: ' + d.blocked.map(keyLabel).join('、') : '');
       case 'PROB_SET': {
         const f = (p) => Engine.STAGE_DEFS.map((x) => 'STAGE ' + x.stage + '［' + Engine.probKeys(x).map((k) => probLabel(k) + ' ' + p[x.stage][k] + '%').join('、') + '］').join(' ');
         return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after);
@@ -727,7 +727,7 @@ const Admin = (function () {
         case 'stats-reset': {
           const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・合計当選額・画面右の「直近の当選」を 0 に戻します。履歴は消えません。</p>', ok: 'リセットする' });
           if (!ok) return;
-          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.recent = []; st.lastValue = null; });
+          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.recent = []; st.lastValue = null; st.credits = 0; });
           UI.toast('集計をリセットしました。', 'ok');
           return render();
         }
