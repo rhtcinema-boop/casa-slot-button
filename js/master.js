@@ -139,7 +139,7 @@
       stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'もう1回まわる（0〜50%）') +
       stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'もう2回まわる（0〜25%）') +
       stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'もう3回まわる（0〜25%）') + '</div>' +
-      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、NEXT GAME を押すたびに 1 使って普通に抽選します。上の ×1〜×3 と違って<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
+      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます（1回ごとに普通に抽選します）。上の ×1〜×3 と違って<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
       stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
       '<div id="logoCost" style="margin-top:8px;font-size:14px">' + logoCost(p) + '</div></div>' +
       '<div class="panel"><h3>1日の当たり本数制限</h3><p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
