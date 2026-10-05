@@ -379,7 +379,7 @@ const Game = (function () {
   const WDAY = ['日', '月', '火', '水', '木', '金', '土'];
   // 配当履歴の日時: 日付（曜日つき）を大きく、時刻は小さく
   const hhmm = (ts) => { const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return '<span>' + (d.getMonth() + 1) + '/' + d.getDate() + '<em>(' + WDAY[d.getDay()] + ')</em></span><i>' + p(d.getHours()) + ':' + p(d.getMinutes()) + '</i>'; };
-  /* 画面右: 配当の履歴（日付・時刻と金額。新しい順に 10 件）。
+  /* 画面右: 配当の履歴（日付・時刻と金額。新しい順に 40 件。1 ページ 10 件で、待機中に自動でスライドして切り替わる）。
      店舗モードでは全店舗ぶん（Cloud の feed）を店舗名つきで出す。読めないとき（圏外・データベースの決まりが古い・1台運用）は、この端末の履歴を出す */
   let recentShown = -1, feed = null, feedTop = 0, unFeed = null;
   const escH = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -393,20 +393,55 @@ const Game = (function () {
     if (feed) { // 全店舗ぶん
       const top = feed.length ? feed[0].ts : 0, grew = feedTop > 0 && top > feedTop;
       feedTop = top || feedTop;
-      list.innerHTML = feed.length ? feed.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>';
-      return;
+      return putRecent(list, feed.length ? feed.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>', feed.length);
     }
     const all = Store.state.recent || [];
-    const r = all.slice(-10).reverse();
+    const r = all.slice(-RECENT_MAX).reverse();
     const grew = recentShown >= 0 && all.length > recentShown;
     recentShown = all.length;
-    list.innerHTML = r.length ? r.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>';
+    putRecent(list, r.length ? r.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>', r.length);
+  }
+  /* 配当履歴のページ送り（b68）: 40 件は一度に入らないので、1 ページぶん（10 件）ずつ上へスライドして見せる。
+     動くのは待機画面のときだけ。ゲーム中と結果を見せている間は、いちばん新しいページ（先頭）に戻して止める。
+     中身が変わったとき（新しい当たりが入ったとき）も先頭に戻す。最後のページは、下に空きが出ないように末尾でそろえる */
+  const RECENT_MAX = 40, RECENT_FIRST_MS = 10000, RECENT_PAGE_MS = 7000;
+  let recentHtml = null, recentN = 0, recentPage = 0, recentAt = 0;
+  function putRecent(list, html, n) {
+    recentN = n;
+    if (html === recentHtml) return; // 同じ内容なら描き直さない（ページ送りの途中で先頭に戻さないため）
+    recentHtml = html;
+    list.innerHTML = html;
+    setRecentPage(0);
+  }
+  function recentPages() {
+    const list = $('recentList'), view = list.parentNode, first = list.firstElementChild;
+    const rowH = (first && first.offsetHeight) || 60, viewH = view.clientHeight || 600;
+    const per = Math.max(1, Math.floor((viewH + 4) / rowH));
+    return { rowH, viewH, per, pages: Math.max(1, Math.ceil(recentN / per)) };
+  }
+  function setRecentPage(pg) {
+    const list = $('recentList'), m = recentPages();
+    recentPage = Math.max(0, Math.min(m.pages - 1, pg));
+    recentAt = Date.now();
+    const y = Math.max(0, Math.min(recentPage * m.per * m.rowH, recentN * m.rowH - m.viewH));
+    list.style.setProperty('--ry', (-y) + 'px');
+    const tag = $('recentPg');
+    if (tag) tag.textContent = m.pages > 1 ? (recentPage + 1) + '/' + m.pages : '';
+  }
+  function recentWatch() {
+    const s = Store.state;
+    const idle = !busy && !pressing && s && s.pins && !s.play && !$('ui').children.length && !$('calib') && !document.getElementById('splash');
+    if (!idle) { if (recentPage !== 0) setRecentPage(0); else recentAt = Date.now(); return; }
+    const m = recentPages();
+    if (m.pages < 2) { if (recentPage !== 0) setRecentPage(0); return; }
+    if (Date.now() - recentAt < (recentPage === 0 ? RECENT_FIRST_MS : RECENT_PAGE_MS)) return;
+    setRecentPage(recentPage + 1 >= m.pages ? 0 : recentPage + 1);
   }
   function startFeed() {
     stopFeed();
     if (!storeMode()) return;
-    unFeed = Cloud.watchFeed(30, (listOrNull) => {
-      feed = Array.isArray(listOrNull) ? dedupeFeed(listOrNull.filter((x) => x && x.value > 0 && x.ts)).slice(0, 10) : null;
+    unFeed = Cloud.watchFeed(RECENT_MAX + 20, (listOrNull) => { // 二重の行をまとめると減るので、少し多めに読む
+      feed = Array.isArray(listOrNull) ? dedupeFeed(listOrNull.filter((x) => x && x.value > 0 && x.ts)).slice(0, RECENT_MAX) : null;
       if (feed) seedFeed();
       // 読めなかったら 10 分後にもう一度試す（データベースの決まりを変えたあと、端末を触らなくても全店舗の表示に切り替わる）
       if (!feed) { clearTimeout(feedRetry); feedRetry = setTimeout(startFeed, 10 * 60 * 1000); }
@@ -1742,7 +1777,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); }, 500);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) autoUpdate(); }); // アプリに戻ってきたときに新しい版を確認
     setInterval(() => { autoUpdate(); }, UPDATE_CHECK_MS);                                          // 開きっぱなしでも 1 時間に 1 回確認
     if (window.__autoUpdate) window.__autoUpdate.then((st) => { if (newerOnDisk(st)) updPending = true; });
