@@ -84,5 +84,52 @@ ok(E.reelCombos(1, 0).length > 0 && E.reelCombos(1, 'NEXT').length === 1, '金�
 E.setTable();
 eq(E.OUTCOMES.length, 12, 'setTable() で初期の表に戻る');
 
+/* ---- 5. b56: 始めるステージを指定した抽選 / CREDIT（ステージを下げない）の期待値 / 期待の段階化の判定 ---- */
+{
+  const cnt2 = {};
+  for (let r = 0; r < 10000; r++) { const res = E.drawProb(D, seqRng([r, 0, 0]), [], 2); const k = res.stage === 2 ? res.key : 'NEXT'; cnt2[k] = (cnt2[k] || 0) + 1; }
+  eq(cnt2, { '2:0': 5000, '2:1000': 2000, '2:2000': 1000, '2:3000': 600, '2:5000': 400, NEXT: 1000 }, 'STAGE 2 から始める抽選は STAGE 2 の確率どおり');
+  ok(E.drawProb(D, seqRng([9999, 0, 0]), [], 3).stage === 3 && E.drawProb(D, seqRng([0, 0, 0]), [], 9).stage === 3, 'STAGE 3 から始めると STAGE 3 で終わる（範囲外は最後のステージ）');
+  eq(E.drawProb(D, seqRng([0, 0, 0])), E.drawProb(D, seqRng([0, 0, 0]), [], 1), '始めるステージを省略すると STAGE 1 から');
+  const cs = E.creditStats(D, 10);
+  ok(Math.round(cs.one[1]) === 358 && Math.round(cs.one[2]) === 1580 && Math.round(cs.one[3]) === 8000, '1回ぶんの期待値（始めるステージ別）: ' + JSON.stringify(cs.one));
+  ok(Math.abs(cs.total[1] - 14977.80) < 0.01 && Math.abs(cs.total[2] - 38185.16) < 0.01 && Math.abs(cs.total[3] - 80000) < 0.01, 'ステージを下げない 10 回の期待値: ' + JSON.stringify(cs.total));
+  ok(Math.abs(E.creditStats(D, 1).total[1] - E.probStats(D).ev) < 1e-9, '1 回だけなら、ふつうの期待値と同じ');
+  // 実際に回して確かめる（ステージを引き継いで 10 回）
+  let sumAll = 0; const TR = 120000;
+  for (let i = 0; i < TR; i++) { let st = 1; for (let k = 0; k < 10; k++) { const res = E.drawProb(D, undefined, [], st); sumAll += res.value; st = res.stage; } }
+  ok(Math.abs(sumAll / TR - cs.total[1]) / cs.total[1] < 0.05, 'ステージを引き継いで回した平均が期待値と合う: ' + Math.round(sumAll / TR) + ' / ' + Math.round(cs.total[1]));
+
+  const T = (st, c, o) => E.tensionOf(st, c, o || [0, 1, 2]);
+  eq(T(1, ['NEXT', 'NEXT', 'NEXT']), { kind: 'next', cap: 2, hit: true, big: true }, '期待: NEXT 2本 → 3本目も NEXT');
+  eq(T(1, ['NEXT', 'NEXT', 'BAR']), { kind: 'next', cap: 2, hit: false, big: true }, '期待: NEXT 2本 → 来ない');
+  eq(T(2, ['NEXT', 'BAR', 'NEXT'], [0, 2, 1]), { kind: 'next', cap: 3, hit: false, big: true }, '期待: 止まる順で見る（STAGE 2 は 3 段階まで）');
+  eq(T(2, ['NEXT', 'BAR', 'NEXT']), null, '期待: 先の2本がそろっていなければ出さない');
+  eq(T(1, ['FREE', 'FREE', 'BAR']), { kind: 'free', cap: 1, hit: false, big: false }, '期待: FREE ×1 は控えめ（1 段階まで）');
+  eq(T(1, ['FREE2', 'FREE2', 'FREE2']), { kind: 'free', cap: 2, hit: true, big: false }, '期待: FREE ×2');
+  eq(T(1, ['FREE3', 'FREE3', 'FREE3']), { kind: 'free', cap: 3, hit: true, big: true }, '期待: FREE ×3 は大きな場面');
+  eq(T(2, ['LOGO', 'LOGO', 'LOGO']), { kind: 'logo', cap: 3, hit: true, big: true }, '期待: casa ロゴ');
+  eq(T(1, ['FREE', 'FREE2', 'BAR']), null, '期待: 種類の違う FREE は出さない');
+  eq(T(3, ['BAR', 30000, 20000]), { kind: 'sum', cap: 3, hit: false, big: true, sum: 30000 }, '期待: 合計が大きい（50,000 が当たる回）');
+  eq(T(3, ['BAR', 50000, 50000]), { kind: 'sum', cap: 3, hit: true, big: true, sum: 50000 }, '期待: 合計が大きい（最高額になる回）');
+  eq(T(3, ['BAR', 5000, 5000]), null, '期待: 下位の金額（10,000）では出さない');
+  eq(T(3, ['BAR', 'BAR', 100000]), null, '期待: 2本目までに金額が出ていなければ出さない');
+  eq(T(1, ['BAR', 500, 500]), { kind: 'sum', cap: 1, hit: true, big: false, sum: 500 }, '期待: STAGE 1 の合計は控えめ');
+  eq(T(2, ['BAR', 2000, 3000]), null, '期待: 2本の合計が当選額の半分に届かなければ出さない');
+  eq(T(2, ['BAR', 2000, 3000], [0, 2, 1]), { kind: 'sum', cap: 2, hit: true, big: true, sum: 3000 }, '期待: 同じ出目でも止まる順で変わる');
+  // どの出目・どの止まる順でも、判定が出目と食い違わない
+  let bad5 = 0;
+  const ORD = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+  E.STAGE_DEFS.forEach((d) => d.values.concat(d.hasNext ? ['NEXT'] : []).concat(E.FREE_SYMS).forEach((target) => E.reelCombos(d.stage, target).forEach((c) => ORD.forEach((o) => {
+    const t = E.tensionOf(d.stage, c, o);
+    if (!t) return;
+    if (t.cap < 1 || t.cap > 3) bad5++;
+    if (t.kind === 'next' && t.hit !== (target === 'NEXT')) bad5++;
+    if ((t.kind === 'free' || t.kind === 'logo') && t.hit !== (E.FREE_SYMS.indexOf(target) >= 0)) bad5++;
+    if (t.kind === 'sum' && !(typeof target === 'number' && target > 0 && t.sum * 2 >= target)) bad5++;
+  }))));
+  eq(bad5, 0, '期待の判定は、すべての出目・止まる順で出目と食い違わない');
+}
+
 console.log(fail ? fail + ' 件失敗 / ' + n + ' 件' : 'すべて成功（' + n + ' 件）');
 process.exit(fail ? 1 : 0);
