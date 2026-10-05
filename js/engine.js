@@ -227,31 +227,6 @@
     });
     return { sums, reach, outcome, ev, win };
   }
-  /* CREDIT のフリースピン（ステージを下げない）: ステージ s から始めて n 回まわしたときの、当選額の合計の期待値。
-     1回ごとに、そのステージの確率で抽選し、NEXT で上がったステージは次の回にも引き継ぐ。
-     返り値 { 1: 期待値, 2: …, 3: … }（始めるステージごと）と、1回ぶんの内訳 one / end */
-  function creditStats(p, n) {
-    const T = tableOf(p), N = T.length;
-    const pr = (st, k) => (Number(((p && p[st]) || {})[k]) || 0) / 100;
-    const one = {}, end = {}; // one[s] = s から始めた1回の期待値、end[s][t] = s から始めて t で終わる確率
-    for (let i = N - 1; i >= 0; i--) {
-      const d = T[i], s = d.stage, nx = d.hasNext && i + 1 < N ? pr(s, 'NEXT') : 0;
-      let ev = 0;
-      d.values.forEach((v) => { ev += pr(s, v) * v; });
-      one[s] = ev + (nx ? nx * one[T[i + 1].stage] : 0);
-      end[s] = {};
-      end[s][s] = 1 - nx;
-      if (nx) Object.keys(end[T[i + 1].stage]).forEach((t) => { end[s][t] = (end[s][t] || 0) + nx * end[T[i + 1].stage][t]; });
-    }
-    let F = {};
-    T.forEach((d) => { F[d.stage] = 0; });
-    for (let k = 0; k < (n || 0); k++) {
-      const G = {};
-      T.forEach((d) => { let x = one[d.stage]; Object.keys(end[d.stage]).forEach((t) => { x += end[d.stage][t] * F[t]; }); G[d.stage] = x; });
-      F = G;
-    }
-    return { total: F, one, end };
-  }
   /* 24時間の当たり本数制限。limits = { on, total, max: { 'stage:value': n } }
      total = 直近24時間の当たり本数（合計）の上限、max = 金額ごとの上限（任意）。0 は無制限。hits = [{ ts, key }]。
      上限に達した金額は、その分の確率をそのステージの「0」に回す（他の当たりは増えない）。 */
@@ -288,13 +263,11 @@
     if (n <= 0 || min <= 0 || (Number(played) || 0) >= n) return [];
     return (p ? outcomesOf(p) : OUTCOMES).filter((o) => o.value >= min).map((o) => o.key);
   }
-  /* startStage: 抽選を始めるステージ（省略は 1）。CREDIT のフリースピン中は、前の回が終わったステージから始める */
-  function drawProb(p, rng, blocked, startStage) {
+  function drawProb(p, rng, blocked) {
     rng = rng || secureRandomInt;
     blocked = blocked || [];
     const T = tableOf(p);
-    const from = Math.max(0, Math.min(T.length - 1, (Math.floor(Number(startStage)) || 1) - 1));
-    for (let i = from; i < T.length; i++) {
+    for (let i = 0; i < T.length; i++) {
       const d = T[i], row = p[d.stage], keys = probKeys(d);
       const w = keys.map((k) => Math.max(0, units(row[k]) || 0));
       keys.forEach((k, j) => { if (k !== '0' && k !== 'NEXT' && blocked.indexOf(d.stage + ':' + k) >= 0) { w[0] += w[j]; w[j] = 0; } });
@@ -529,7 +502,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, probStats, creditStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
+    probKeys, defaultProbs, validateProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
     REEL_SYMS, readReels, reelCombos, reelAlternatives, tensionOf,
     sha256, makePin, checkPin,
   };
