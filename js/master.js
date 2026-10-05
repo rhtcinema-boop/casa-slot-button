@@ -75,6 +75,8 @@
       '<label class="f"><span>店舗パスワード（4〜8桁の数字）' + (s.id ? '（変えないときは空のまま）' : '') + '</span><input type="text" id="spin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="' + (s.id ? '変更する場合だけ入力' : '例: 2580') + '"></label>' +
       '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">使えるプリセット</h3>' + (presets.length ? presets.map((p) => '<label class="check"><input type="checkbox" data-pid="' + esc(p.id) + '" ' + ((s.presetIds || []).indexOf(p.id) >= 0 ? 'checked' : '') + '> ' + esc(p.name) + ' <span class="chip">期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '</span></label>').join('') : '<div class="empty">先にプリセットを作ってください</div>') + '</div>' +
       '<label class="f"><span>いま使うプリセット（マスターから切り替え。店舗側でも選べます）</span><select id="sactive"><option value="">（未設定）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '" ' + (s.activePresetId === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></label>' +
+      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">待機中に左側に出す説明（3つまで）</h3><p class="hint">リールが回っていない待機中だけ、この店舗の画面の左（STAGE 1〜3 の場所）に出ます。<b style="color:var(--text)">入力した数だけ枠が分かれます</b>（1つなら大きく1枠、2つなら2分割、3つなら3分割）。ゲームが始まるとステージの表示に戻り、待機画面に戻るたびに、また説明が出ます。全部空にすると、今までどおりステージが出ます。文字は枠に収まる大きさに自動で調整されます（1枠 80 文字まで。改行もできます）。</p>' +
+      [0, 1, 2].map((i) => '<label class="f"><span>説明 ' + (i + 1) + '</span><textarea id="snote' + i + '" rows="2" maxlength="80">' + esc((s.notes || [])[i] || '') + '</textarea></label>').join('') + '</div>' +
       '<div class="err" id="serr"></div>' +
       '<div class="acts">' + (s.id ? '<button class="btn ghost" data-act="store-logout">端末を強制ログアウト</button><button class="btn danger" data-act="store-del">削除</button>' : '') + '<button class="btn ghost" data-act="store-cancel">戻る</button><button class="btn" data-act="store-save">保存</button></div></div>';
   }
@@ -86,7 +88,8 @@
     const presetIds = Array.from(document.querySelectorAll('[data-pid]:checked')).map((x) => x.dataset.pid);
     const active = $('sactive').value;
     if (active && presetIds.indexOf(active) < 0) presetIds.push(active);
-    const data = { name, presetIds, activePresetId: active || null };
+    const notes = [0, 1, 2].map((i) => $('snote' + i).value.trim().slice(0, 80)).filter(Boolean); // 待機中に左側に出す説明（入力されたものだけ）
+    const data = { name, presetIds, activePresetId: active || null, notes };
     if (pin) data.pin = Engine.makePin(pin);
     await Cloud.saveStore(s.id || null, data);
     toast('保存しました');
