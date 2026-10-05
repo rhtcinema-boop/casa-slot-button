@@ -341,18 +341,38 @@ const Game = (function () {
   const WDAY = ['日', '月', '火', '水', '木', '金', '土'];
   // 配当履歴の日時: 日付（曜日つき）を大きく、時刻は小さく
   const hhmm = (ts) => { const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return '<span>' + (d.getMonth() + 1) + '/' + d.getDate() + '<em>(' + WDAY[d.getDay()] + ')</em></span><i>' + p(d.getHours()) + ':' + p(d.getMinutes()) + '</i>'; };
-  /* 画面右: 配当の履歴（日付・時刻と金額。新しい順、直近200件）。はみ出す数になったら自動でゆっくり上下にスクロールする */
-  let recentShown = -1;
+  /* 画面右: 配当の履歴（日付・時刻と金額。新しい順に 10 件）。
+     店舗モードでは全店舗ぶん（Cloud の feed）を店舗名つきで出す。読めないとき（圏外・データベースの決まりが古い・1台運用）は、この端末の履歴を出す */
+  let recentShown = -1, feed = null, feedTop = 0, unFeed = null;
+  const escH = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function renderRecent() {
     const list = $('recentList');
+    const row = (x, isNew) => '<div class="rc' + (isNew ? ' new' : '') + '"><small>' + hhmm(x.ts).replace(/<\/i>$/, (x.store ? '<u>' + escH(x.store) + '</u>' : '') + '</i>') + '</small><b>' + fmtN(x.value) + '</b></div>'; // 店舗名は時刻の横に小さく
+    $('recent').classList.toggle('all', !!feed);
+    if (feed) { // 全店舗ぶん
+      const top = feed.length ? feed[0].ts : 0, grew = feedTop > 0 && top > feedTop;
+      feedTop = top || feedTop;
+      list.innerHTML = feed.length ? feed.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>';
+      return;
+    }
     const all = Store.state.recent || [];
     const r = all.slice(-10).reverse();
     const grew = recentShown >= 0 && all.length > recentShown;
     recentShown = all.length;
-    list.innerHTML = r.length
-      ? r.map((x, i) => '<div class="rc' + (grew && i === 0 ? ' new' : '') + '"><small>' + hhmm(x.ts) + '</small><b>' + fmtN(x.value) + '</b></div>').join('')
-      : '<div class="rc none">—</div>';
+    list.innerHTML = r.length ? r.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>';
   }
+  function startFeed() {
+    stopFeed();
+    if (!storeMode()) return;
+    unFeed = Cloud.watchFeed(10, (listOrNull) => {
+      feed = Array.isArray(listOrNull) ? listOrNull.filter((x) => x && x.value > 0 && x.ts) : null;
+      // 読めなかったら 10 分後にもう一度試す（データベースの決まりを変えたあと、端末を触らなくても全店舗の表示に切り替わる）
+      if (!feed) { clearTimeout(feedRetry); feedRetry = setTimeout(startFeed, 10 * 60 * 1000); }
+      renderRecent();
+    });
+  }
+  let feedRetry = 0;
+  function stopFeed() { clearTimeout(feedRetry); if (unFeed) { unFeed(); unFeed = null; } feed = null; feedTop = 0; }
 
   /* 画面に出す合計当選額。演出中のプレイの分は、結果が出るまで含めない */
   function shownTotal() {
@@ -836,6 +856,7 @@ const Game = (function () {
     try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
+    if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: Date.now(), value: play.value }).catch(() => {}); } // 全店舗の配当履歴へ
     if (out) await totalFx(Store.state.wonTotal || 0);
     busy = false;
     if (Store.state.play) showLocked(Store.state.play, true); else refresh();
@@ -1532,6 +1553,7 @@ const Game = (function () {
     if (!me) return;
     const beat = () => Cloud.updateStoreFields(me.id, { lastSeen: Date.now(), deviceVersion: ($('ver') && $('ver').textContent) || '' }).catch(() => {});
     beat(); setInterval(beat, 10 * 60 * 1000);
+    startFeed();
     unwatch = Cloud.watchStore(me.id, (doc) => {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
       if (doc.logoutAt && doc.logoutAt > me.boundAt) return unbindStore();
