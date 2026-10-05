@@ -105,20 +105,17 @@
   const freeN = (p, n) => (typeof p[FREE_KEYS[n - 1]] === 'number' ? p[FREE_KEYS[n - 1]] : FREE_DEFAULTS[n - 1]);
   const freeOf = (p) => freeN(p, 1);
   const r2 = (x) => Math.round(x * 100) / 100;
-  // casa ロゴ3つ = 10 FREE SPIN（本物の追加プレイ）が出る割合。予算が増えるので初期値は 0（出ない）
+  // casa ロゴ3つ = 10 FREE SPIN が出る割合。初期値は 0（出ない）。b66 から、この 10 回も当たりなしの回（予算は変わらない）
   const LOGO_SPINS = 10, LOGO_MAX = 5;
   const logoOf = (p) => (typeof p.logoRate === 'number' ? p.logoRate : 0);
   const noRetrig = (p) => p.noRetrigger !== false; // FREE SPIN で回っているゲームでは FREE SPIN を出さない（未設定は ON）
-  // casa ロゴの 10 FREE SPIN（本物の追加プレイ）を含めた期待値の目安。FREE SPIN ×1〜×3 は演出なので、予算には入らない。
+  // casa ロゴの 10 FREE SPIN も FREE SPIN ×1〜×3 も、当たりなしの回なので、予算には入らない。ここでは、ロゴがそろう頻度の目安だけを出す。
   // ロゴの抽選はスピンごとなので（1プレイで STAGE 2・3 に進むと回数が増える）、有料プレイ1回あたりは 平均スピン数 を掛ける
   function creditCost(p) {
-    const st = Engine.probStats(p.probs), ev = st.ev;
-    const r = (logoOf(p) * LOGO_SPINS / 100) * (1 + st.reach[2] + st.reach[3]);
-    if (r <= 0) return '<span class="okmsg">オフ（casa ロゴはリールに出ません。予算は変わりません）</span>';
-    // FREE SPIN 中に FREE SPIN を出さないなら、増えるのは 10 回ぶんだけ（1 + r 倍）。出すなら、その中でもまたそろうので 1 / (1 - r) 倍
-    if (!noRetrig(p) && r >= 1) return '<span class="err">割合が高すぎます（FREE SPIN が終わらなくなります）</span>';
-    const k = noRetrig(p) ? 1 + r : 1 / (1 - r);
-    return '<span class="err" style="color:var(--gold)">予算の目安: 1回の有料プレイあたりの期待値が <b>' + fmtN(Math.round(ev)) + ' → ' + fmtN(Math.round(ev * k)) + '</b>（約 ' + (Math.round(k * 1000) / 10) + '%）になります。ロゴがそろうのは平均 ' + fmtN(Math.round(LOGO_SPINS / r)) + ' プレイに1回です。</span>';
+    const st = Engine.probStats(p.probs);
+    const r = (logoOf(p) / 100) * (1 + st.reach[2] + st.reach[3]);
+    if (r <= 0) return '<span class="okmsg">オフ（casa ロゴはリールに出ません）</span>';
+    return '<span class="okmsg">予算は変わりません（この 10 回は当たりが出ません）。ロゴがそろうのは平均 ' + fmtN(Math.round(1 / r)) + ' プレイに1回です。</span>';
   }
   const refreshCost = () => { main.querySelectorAll('.ccost').forEach((el) => { el.innerHTML = creditCost(editPreset); }); };
   // 開始直後の高額制限（最初の X 回は Y 以上を出さない）。Y は実際に出る金額の中から選ぶ
@@ -174,10 +171,10 @@
       stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'CREDIT +1・当たりなし（0〜50%）') +
       stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'CREDIT +2・当たりなし（0〜25%）') +
       stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'CREDIT +3・当たりなし（0〜25%）') + '</div>' +
-      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます（1回ごとに普通に抽選します）。FREE SPIN は毎回 STAGE 1 から回ります。上の ×1〜×3 と違って<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
+      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN</b> を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます。上の ×1〜×3 と同じく、<b style="color:var(--text)">この 10 回は演出で、抽選しません。必ず 0 で止まります</b>（当たりは出ません。当選確率・期待値・集計の回転数は変わりません）。10 回まわりきるのに約 3 分かかります。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
       stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
       '<div class="ccost" style="margin-top:8px;font-size:14px">' + creditCost(p) + '</div>' +
-      '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>ON: 獲得した 10 FREE SPIN で回っているゲームでは、FREE SPIN ×1〜×3 も casa ロゴも出ません（絵柄も出ません）。OFF: FREE SPIN 中にも、さらに FREE SPIN を獲得できます（そのぶん予算が増えます）</small></div><button class="btn sm ' + (noRetrig(p) ? '' : 'ghost') + '" data-act="retrig-on">' + (noRetrig(p) ? 'ON' : 'OFF') + '</button></div></div>' +
+      '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>獲得した FREE SPIN（当たりなしの回）では、この設定に関係なく、FREE SPIN ×1〜×3 も casa ロゴも出ません。この設定が効くのは、スタッフが設定画面で入れたクレジットで回っているゲームだけです。ON: その間は出ません（絵柄も出ません）。OFF: その間にもそろうことがあります（予算は変わりません）</small></div><button class="btn sm ' + (noRetrig(p) ? '' : 'ghost') + '" data-act="retrig-on">' + (noRetrig(p) ? 'ON' : 'OFF') + '</button></div></div>' +
       '<div class="panel"><h3>1日の当たり本数制限</h3><p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
       '<div class="row"><div class="lbl">制限を使う</div><button class="btn sm ' + (L.on ? '' : 'ghost') + '" data-act="lim-on">' + (L.on ? 'ON' : 'OFF') + '</button></div>' +
       stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
