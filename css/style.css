@@ -950,7 +950,7 @@ input[type=range].vol { width: 380px; height: 44px; accent-color: #e9c25e; touch
 .credit-box { left: calc(1290px - 24px * var(--t)); }
 .help-btn { left: calc(1212px - 24px * var(--t)); }
 
-/* クレジットと合計当選額（右上・2段） */
+/* 右上の箱: 合計回転数・最高額配当・CREDIT */
 .credit-box { top: 14px; height: 104px; width: 250px; display: block; padding: 8px 18px 6px 18px; }
 .credit-box > div { display: flex; align-items: center; justify-content: space-between; height: 45px; }
 .credit-box > div + div { border-top: 1px solid rgba(var(--acc), .3); }
