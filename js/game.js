@@ -451,7 +451,7 @@ const Game = (function () {
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
     // 右上の2段目は「最高額配当」。回転中のプレイの分は、結果が出るまで反映しない（b53 で「合計当選額」から変更）
     { const st = Store.state, p = st.play; $('total').textContent = fmtN(p && p.phase === 'drawn' && !p.test && typeof p.bestBefore === 'number' ? p.bestBefore : bestOf(st)); stageEl.classList.toggle('testmode', !!st.testMode);
-      // CREDIT: 残っている FREE SPIN（casa ロゴの本物の追加プレイ ＋ FREE SPIN ×1〜×3 の当たりなしの回）
+      // CREDIT: 残っている FREE SPIN（casa ロゴの 10 回と FREE SPIN ×1〜×3 の、当たりなしの回 ＋ スタッフが入れたクレジット）
       const cr = $('crd'), n = String((st.credits || 0) + (st.dud || 0));
       if (cr && cr.textContent !== n) { const up = +n > +cr.textContent; cr.textContent = n; if (up) restart(cr, 'bump'); }
       stageEl.classList.toggle('has-info', logoOn()); } // 合計当選額（演出中の分は結果が出てから）
@@ -624,8 +624,8 @@ const Game = (function () {
   const FREE_DEFAULTS = [8, 3, 1], FREE_MAX = [50, 25, 25];
   const FREE_SYM = { 1: 'FREE', 2: 'FREE2', 3: 'FREE3' };
   const freeRates = () => ['freeRate', 'freeRate2', 'freeRate3'].map((k, i) => { const v = Store.state[k]; return typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(FREE_MAX[i], v)) : FREE_DEFAULTS[i]; });
-  /* casa ロゴが3本そろうと 10 FREE SPIN を獲得: こちらは本物の追加プレイ（CREDIT が 10 増え、NEXT GAME を押すたびに 1 使って普通に抽選する）。
-     予算が増える機能なので、出る割合（1スピンあたりの %。state.logoRate）は未設定なら 0 = 出ない。マスター画面のプリセットで決める。 */
+  /* casa ロゴが3本そろうと 10 FREE SPIN を獲得: CREDIT が 10 増え、自動で 10 回まわる。この 10 回は当たりなしの回（抽選しない。必ず 0。b66 から）。
+     出る割合（1スピンあたりの %。state.logoRate）は未設定なら 0 = 出ない。マスター画面のプリセットで決める。 */
   const LOGO_SPINS = 10, LOGO_MAX = 5;
   const logoRate = () => { const v = Store.state && Store.state.logoRate; return typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(LOGO_MAX, v)) : 0; };
   const logoOn = () => logoRate() > 0 && Reel.hasLogo;
@@ -790,12 +790,13 @@ const Game = (function () {
   }
 
   /* CREDIT を n 増やす。右上の数字が 1 ずつ増える。
-       by = 'LOGO'（casa ロゴ）… 本物の追加プレイ（state.credits。1回ごとに普通に抽選する）
-       by = 'FREE'（FREE SPIN ×1〜×3）… 当たりなしの FREE SPIN（state.dud。抽選せず、必ず 0 で止まる）
+       by = 'LOGO'（casa ロゴの 10 回）も、by = 'FREE'（FREE SPIN ×1〜×3）も、当たりなしの FREE SPIN（state.dud。抽選せず、必ず 0 で止まる）。
+       b65 までは、ロゴの 10 回だけ本物の追加プレイ（state.credits）だった。b66 でオーナーの指示により、ロゴも当たりなしに変更。
+       state.credits（本物の追加プレイ）に入るのは、スタッフが設定画面で入れたクレジットだけ。
      画面の CREDIT は、その2つの合計を出す。テスト用プリセットでも増える（動きを確認できるように） */
   const creditsLeft = () => (Store.state.credits || 0) + (Store.state.dud || 0);
   async function addCredits(n, by) {
-    const key = by === 'FREE' ? 'dud' : 'credits', before = creditsLeft();
+    const key = 'dud', before = creditsLeft();
     try { Store.transact((s) => { s[key] = (s[key] || 0) + n; Store.log('CREDIT_ADD', { amount: n, before, after: before + n, by }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
     const after = creditsLeft(), cr = $('crd');
     for (let k = before + 1; k <= after; k++) { if (cr) { cr.textContent = String(k); restart(cr, 'bump'); } Sfx.play('count'); await wait(n > 3 ? 110 : 260); } // 1 ずつ増える
@@ -811,7 +812,7 @@ const Game = (function () {
     const noSp = skipSpecial; skipSpecial = false;
     // 獲得した FREE SPIN（CREDIT）で回しているゲームでは、さらに FREE SPIN を出さない設定（プリセットで ON/OFF。未設定は ON）
     const lockFree = !!play.free && (!!play.dud || Store.state.noRetrigger !== false); // 当たりなしの FREE SPIN（dud）の回では、必ず出さない
-    const logoHit = !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（本物の追加プレイ）
+    const logoHit = !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
     const freeN = !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
     const rev = !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
@@ -848,7 +849,7 @@ const Game = (function () {
       oneMore = false;
       await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain' }, extra); // 回り直しも通常と同じ速さ・間隔
     } else if (logoHit) {
-      // casa ロゴが3本そろう → 10 FREE SPIN（本物の追加プレイ）を獲得。CREDIT が増える。このゲームは続けて回り、結果を出す
+      // casa ロゴが3本そろう → 10 FREE SPIN（当たりなしの回）を獲得。CREDIT が増える。このゲームは続けて回り、結果を出す
       await spinReel(st, 'LOGO', { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
       win.classList.add('win');
       Sfx.play('revive');
