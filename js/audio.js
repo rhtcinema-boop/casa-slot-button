@@ -310,6 +310,11 @@ const Sfx = (function () {
       tone({ f: hz(r - 12), f2: hz(r - 5), a: dur * 0.9, d: dur * 0.1, g: 0.14 });
       revCrash(Math.max(0, dur - 0.9), 0.85, 0.12);
     },
+    sumUp(k) { // 途中経過の合計が増えた（金額のリールが止まるたびに、1段ずつ高くなる）
+      const r = ROOT[stage] + 12 + k * 5;
+      [0, 4, 7].forEach((iv, i) => bell(hz(r + iv), 0.03 + i * 0.07, 0.6, 0.12, { pan: -0.25 + i * 0.25 }));
+      coin(0.02, 0.1);
+    },
     tenseUp(L) { // 期待の段階が上がる瞬間: 低い一打 ＋ せり上がり。段が上がるほど高く・強く
       const r = ROOT[stage];
       timp(hz(r - 24 + (L - 1) * 2), 0, 0.5, 0.3 + 0.1 * L);
@@ -650,7 +655,24 @@ const Sfx = (function () {
       const og = ctx.createGain(); og.gain.value = 0;
       o1.connect(lp); o2.connect(lp); lp.connect(og); og.connect(master);
       src.start(); o1.start(); o2.start();
-      spinNodes = { src, bp, ng, o1, o2, lp, og };
+      // ステージが上がるほど、回転中の音が厚くなる（b59〜）:
+      //   STAGE 2 … 高いところで揺れる層が1つ加わる / STAGE 3 … さらに、低く脈打つ層と、明るい層が加わる
+      const layers = [];
+      const addLayer = (type, mult, gain, tremHz) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type; o.frequency.value = hz(ROOT[stage] - 24) * mult; g.gain.value = 0;
+        let lfo = null;
+        if (tremHz) { // 音量をゆっくり揺らす
+          const t2 = ctx.createGain(); t2.gain.value = 0.55;
+          lfo = ctx.createOscillator(); const lg = ctx.createGain(); lfo.frequency.value = tremHz; lg.gain.value = 0.45;
+          lfo.connect(lg); lg.connect(t2.gain); o.connect(t2); t2.connect(g); lfo.start();
+        } else o.connect(g);
+        g.connect(master); o.start();
+        layers.push({ o, g, lfo, mult, gain });
+      };
+      if (stage >= 2) addLayer('triangle', 6, 0.05, 5);   // 2 オクターブと 5 度上の、揺れる層
+      if (stage >= 3) { addLayer('sine', 0.5, 0.16, 1.9); addLayer('triangle', 8, 0.03, 7.5); } // 低い脈打ち（鼓動くらいの速さ）＋ 3 オクターブ上の明るい層
+      spinNodes = { src, bp, ng, o1, o2, lp, og, layers };
     }
     const t = ctx.currentTime, n = spinNodes, base = hz(ROOT[stage] - 24);
     n.ng.gain.setTargetAtTime(0.07 * speed, t, 0.05); // ルーレット音を主役にするため控えめ
@@ -659,9 +681,11 @@ const Sfx = (function () {
     n.o1.frequency.setTargetAtTime(base * (0.6 + 1.4 * speed), t, 0.06);
     n.o2.frequency.setTargetAtTime(base * (0.6 + 1.4 * speed) * (stage === 3 ? 1.498 : 1.006), t, 0.06);
     n.lp.frequency.setTargetAtTime(300 + 1400 * speed, t, 0.06);
+    n.layers.forEach((y) => { y.g.gain.setTargetAtTime(y.gain * Math.min(1, speed * 1.4), t, 0.08); y.o.frequency.setTargetAtTime(base * y.mult * (0.8 + 0.2 * speed), t, 0.08); });
     if (speed <= 0) {
       spinNodes = null;
       n.src.stop(t + 0.3); n.o1.stop(t + 0.3); n.o2.stop(t + 0.3);
+      n.layers.forEach((y) => { y.o.stop(t + 0.3); if (y.lfo) y.lfo.stop(t + 0.3); });
     }
   }
 
