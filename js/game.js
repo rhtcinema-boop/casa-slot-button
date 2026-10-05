@@ -26,25 +26,32 @@ const Game = (function () {
     try { s = Store.state && Store.state.settings && Store.state.settings.screen; } catch (err) { /* 起動直後 */ }
     return s && s.x1 - s.x0 >= 0.3 && s.y1 - s.y0 >= 0.3 ? s : FULL;
   }
+  /* 上下の電飾（電球の列）のぶん、中身（#content）と演出の層（#fxwrap）を同じ倍率で少し内側へ寄せる。
+     EDGE_K = 縮める倍率、EDGE_DY = 上下の余白をそろえるための縦のずらし（px） */
+  const EDGE_K = 0.955, EDGE_DY = 4;
   function layout() {
     const vw = window.innerWidth, vh = window.innerHeight, sr = screenRect();
     const w = Math.max(1, (sr.x1 - sr.x0) * vw), h = Math.max(1, (sr.y1 - sr.y0) * vh);
-    const H = Math.min(1200, Math.max(900, Math.round(1600 * h / w)));
+    // 画面サイズ調整で枠を決めてあるとき: その枠にぴったり合わせて固定する（縦と横を別々に伸縮。自動の拡大・縮小や 4:3 用の行間調整はしない）
+    const fixed = !(sr.x0 <= 0 && sr.y0 <= 0 && sr.x1 >= 1 && sr.y1 >= 1);
+    const H = fixed ? 900 : Math.min(1200, Math.max(900, Math.round(1600 * h / w)));
     scale = Math.min(w / 1600, h / H);
     stageEl.style.height = H + 'px';
-    stageEl.style.transform = 'translate(' + (sr.x0 * vw + (w - 1600 * scale) / 2) + 'px,' + (sr.y0 * vh + (h - H * scale) / 2) + 'px) scale(' + scale + ')';
+    stageEl.style.transform = fixed
+      ? 'translate(' + sr.x0 * vw + 'px,' + sr.y0 * vh + 'px) scale(' + w / 1600 + ',' + h / 900 + ')'
+      : 'translate(' + (sr.x0 * vw + (w - 1600 * scale) / 2) + 'px,' + (sr.y0 * vh + (h - H * scale) / 2) + 'px) scale(' + scale + ')';
     // 縦に余裕がある画面（4:3 の iPad など）では全体を最大15%拡大して上下の余白を減らす
     // 4:3 では縮めずに行の間隔を広げて縦を使い切る（CSS の --t で各行が下へずれる。最下段は 110px 下がる）。横は 6% だけ拡大
-    const t = (H - 900) / 300, f = 1 + 0.06 * t;
+    const t = (H - 900) / 300, f = (1 + 0.06 * t) * EDGE_K;
     [$('content'), $('fxwrap')].forEach((el) => {
       el.style.left = '0px';                          // 拡大の基準点（リール中心）は画面の左右中央なので、横の補正は不要
-      el.style.top = (H - 900) / 2 - 55 * t + 30 * (1 - f) + 'px';
+      el.style.top = (H - 900) / 2 - 55 * t + 30 * (1 - f / EDGE_K) + EDGE_DY + 'px';
       el.style.transform = 'scale(' + f + ')'; // scale プロパティは古い WebView が非対応なので transform を使う
       el.style.setProperty('--t', t.toFixed(3));
     });
     scale *= f;
     stageH = H;
-    if (typeof FX !== 'undefined') FX.setGround(450 + H / 2 / (1 + 0.06 * (H - 900) / 300) + 6, () => Sfx.play('chip'));
+    if (typeof FX !== 'undefined') FX.setGround(420 + (30 + H / 2 / (1 + 0.06 * (H - 900) / 300) + 6 - EDGE_DY) / EDGE_K, () => Sfx.play('chip')); // 画面の下端のすぐ下（内側へ寄せたぶんを戻して計算）
   }
 
   /* ---------- 画面サイズ調整 ----------
@@ -54,39 +61,38 @@ const Game = (function () {
     return new Promise((resolve) => {
       const before = Object.assign({}, screenRect());
       calib = Object.assign({}, before);
-      let active = 0; // 0 = 左上, 1 = 右下
+      let active = 0; // 動かす角: 0 = 左上, 1 = 右上, 2 = 右下, 3 = 左下
+      const CN = ['左上', '右上', '右下', '左下'], CK = ['tl', 'tr', 'br', 'bl'];
       const MIN = 0.5; // 幅・高さは画面の半分より小さくしない
       const cl = (v, a, b) => Math.min(b, Math.max(a, v));
       const el = document.createElement('div');
       el.id = 'calib';
-      el.innerHTML = '<div class="cal-frame"><i class="cal-c tl" data-c="0"></i><i class="cal-c br" data-c="1"></i>' +
+      el.innerHTML = '<div class="cal-frame"><i class="cal-c tl" data-c="0"></i><i class="cal-c tr" data-c="1"></i><i class="cal-c br" data-c="2"></i><i class="cal-c bl" data-c="3"></i>' +
         '<div class="cal-panel"><h3>画面サイズ調整</h3>' +
-        '<p>白い枠の<b>角</b>が、画面のふちにちょうど見える位置に合わせてください。枠の中に全体が収まります。</p>' +
-        '<ul><li><b>十字キー</b>：角を動かす（押しっぱなしで速く）</li><li><b>決定</b>：動かす角を切り替え（左上 ⇄ 右下）</li><li><b>メニュー（≡）</b>：全画面に戻す</li><li><b>戻る</b>：保存して終了</li><li>タッチの場合は、角を指で動かせます</li></ul>' +
+        '<p>四隅の<b>「 マーク</b>が、画面の角にちょうど見える位置に合わせてください。決めた枠いっぱいに、<b>その大きさのまま固定</b>して映します（自動で拡大・縮小しません）。</p>' +
+        '<ul><li><b>十字キー</b>：角を動かす（押しっぱなしで速く）</li><li><b>決定</b>：動かす角を切り替え（左上 → 右上 → 右下 → 左下）</li><li><b>メニュー（≡）</b>：全画面に戻す</li><li><b>戻る</b>：保存して終了</li><li>タッチの場合は、角を指で動かせます</li></ul>' +
         '<div class="cal-val"></div>' +
-        '<div class="cal-btns"><button data-b="tl">左上の角</button><button data-b="br">右下の角</button><button data-b="reset">全画面に戻す</button><button data-b="cancel">キャンセル</button><button data-b="save" class="go">保存して閉じる</button></div></div></div>';
+        '<div class="cal-btns"><button data-b="c0">左上</button><button data-b="c1">右上</button><button data-b="c2">右下</button><button data-b="c3">左下</button><button data-b="reset">全画面に戻す</button><button data-b="cancel">キャンセル</button><button data-b="save" class="go">保存して閉じる</button></div></div></div>';
       const frame = el.firstChild, val = el.querySelector('.cal-val');
       const pct = (v) => (Math.round(v * 1000) / 10).toFixed(1) + '%';
       function draw() {
         const vw = window.innerWidth, vh = window.innerHeight;
         frame.style.left = calib.x0 * vw + 'px'; frame.style.top = calib.y0 * vh + 'px';
         frame.style.width = (calib.x1 - calib.x0) * vw + 'px'; frame.style.height = (calib.y1 - calib.y0) * vh + 'px';
-        el.querySelector('.tl').classList.toggle('on', active === 0);
-        el.querySelector('.br').classList.toggle('on', active === 1);
-        el.querySelector('[data-b="tl"]').classList.toggle('on', active === 0);
-        el.querySelector('[data-b="br"]').classList.toggle('on', active === 1);
-        val.textContent = 'いま動かす角: ' + (active === 0 ? '左上' : '右下') + '　｜　左上 ' + pct(calib.x0) + ', ' + pct(calib.y0) + '　右下 ' + pct(calib.x1) + ', ' + pct(calib.y1);
+        CK.forEach((k, i) => { el.querySelector('.cal-c.' + k).classList.toggle('on', active === i); el.querySelector('[data-b="c' + i + '"]').classList.toggle('on', active === i); });
+        val.textContent = 'いま動かす角: ' + CN[active] + '　｜　左上 ' + pct(calib.x0) + ', ' + pct(calib.y0) + '　右下 ' + pct(calib.x1) + ', ' + pct(calib.y1);
         layout();
       }
+      // 角ごとに、となり合う2辺を動かす（左上 = 左と上、右上 = 右と上、右下 = 右と下、左下 = 左と下）
+      const isLeft = (c) => c === 0 || c === 3, isTop = (c) => c === 0 || c === 1;
       function setCorner(c, x, y) { // x, y は画面に対する割合
-        if (c === 0) { calib.x0 = cl(x, 0, calib.x1 - MIN); calib.y0 = cl(y, 0, calib.y1 - MIN); }
-        else { calib.x1 = cl(x, calib.x0 + MIN, 1); calib.y1 = cl(y, calib.y0 + MIN, 1); }
+        if (isLeft(c)) calib.x0 = cl(x, 0, calib.x1 - MIN); else calib.x1 = cl(x, calib.x0 + MIN, 1);
+        if (isTop(c)) calib.y0 = cl(y, 0, calib.y1 - MIN); else calib.y1 = cl(y, calib.y0 + MIN, 1);
         draw();
       }
       function nudge(dx, dy, fast) {
-        const d = fast ? 4 : 1;
-        if (active === 0) setCorner(0, calib.x0 + dx * d / window.innerWidth, calib.y0 + dy * d / window.innerHeight);
-        else setCorner(1, calib.x1 + dx * d / window.innerWidth, calib.y1 + dy * d / window.innerHeight);
+        const d = fast ? 4 : 1, c = active;
+        setCorner(c, (isLeft(c) ? calib.x0 : calib.x1) + dx * d / window.innerWidth, (isTop(c) ? calib.y0 : calib.y1) + dy * d / window.innerHeight);
       }
       function finish(save) {
         const v = calib, full = v.x0 <= 0 && v.y0 <= 0 && v.x1 >= 1 && v.y1 >= 1;
@@ -102,7 +108,7 @@ const Game = (function () {
       function onKey(k, repeat) {
         if (k === 'ArrowLeft') nudge(-1, 0, repeat); else if (k === 'ArrowRight') nudge(1, 0, repeat);
         else if (k === 'ArrowUp') nudge(0, -1, repeat); else if (k === 'ArrowDown') nudge(0, 1, repeat);
-        else if (k === 'Enter') { if (!repeat) { active = 1 - active; Sfx.play('button'); draw(); } }
+        else if (k === 'Enter') { if (!repeat) { active = (active + 1) % 4; Sfx.play('button'); draw(); } }
         else if (k === 'Menu') { calib = Object.assign({}, FULL); draw(); }
         else if (k === 'Back') finish(true);
       }
@@ -111,7 +117,7 @@ const Game = (function () {
         if (!b) return;
         Sfx.play('button');
         const k = b.dataset.b;
-        if (k === 'tl') { active = 0; draw(); } else if (k === 'br') { active = 1; draw(); }
+        if (/^c[0-3]$/.test(k)) { active = +k.slice(1); draw(); }
         else if (k === 'reset') { calib = Object.assign({}, FULL); draw(); }
         else if (k === 'cancel') { calib = before; finish(false); }
         else if (k === 'save') finish(true);
@@ -164,6 +170,10 @@ const Game = (function () {
   function restart(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
   function flash(soft) { const f = $('flash'); f.className = ''; void f.offsetWidth; f.className = soft ? 'go-soft' : 'go'; }
 
+  /* 画面の上下の電飾（電球の列）。電球を 41 個ずつ並べる（光り方は CSS） */
+  function buildEdges() {
+    ['edgeT', 'edgeB'].forEach((id) => { const el = $(id); if (!el) return; let h = ''; for (let i = 0; i < 41; i++) h += '<i></i>'; el.innerHTML = h; });
+  }
   function buildBulbs() {
     const box = $('bulbs'), pts = [];
     // 筐体 810×540 の外周に沿って並べる（上下13個・左右8個）
@@ -1549,6 +1559,7 @@ const Game = (function () {
     if (window.TV && TV.isTV && !Store.state.settings.perf) { try { Store.transact((s) => { s.settings.perf = { noBg: true }; }); } catch (e) { /* 設定のみ */ } }
     Sfx.init(Store.state.settings.volume);
     buildBulbs();
+    buildEdges();
     FX.init($('fx'));
     Reel.init($('reel'));
     $('shutterLabel').innerHTML = '<div class="medal"><div class="face front"><small>STAGE</small><b>2</b><em></em></div></div>'; // 平面1枚（立体の層は重いので廃止）
