@@ -345,9 +345,12 @@ const Game = (function () {
      店舗モードでは全店舗ぶん（Cloud の feed）を店舗名つきで出す。読めないとき（圏外・データベースの決まりが古い・1台運用）は、この端末の履歴を出す */
   let recentShown = -1, feed = null, feedTop = 0, unFeed = null;
   const escH = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // 配当履歴の店舗名の横に付ける絵文字（店舗名に含まれる文字で決める）: 上野 = パンダ / 渋谷 = 犬 / 札幌 = 雪
+  const STORE_EMOJI = [['上野', '\u{1F43C}'], ['渋谷', '\u{1F436}'], ['札幌', '\u2744\uFE0F']];
+  const storeLabel = (name) => { const e = STORE_EMOJI.find((x) => String(name).indexOf(x[0]) >= 0); return (e ? '<em>' + e[1] + '</em>' : '') + escH(name); };
   function renderRecent() {
     const list = $('recentList');
-    const row = (x, isNew) => '<div class="rc' + (isNew ? ' new' : '') + '"><small>' + hhmm(x.ts).replace(/<\/i>$/, (x.store ? '<u>' + escH(x.store) + '</u>' : '') + '</i>') + '</small><b>' + fmtN(x.value) + '</b></div>'; // 店舗名は時刻の横に小さく
+    const row = (x, isNew) => '<div class="rc' + (isNew ? ' new' : '') + (x.value >= 1000000 ? ' wider' : x.value >= 100000 ? ' wide' : '') + '"><small>' + hhmm(x.ts).replace(/<\/i>$/, (x.store ? '<u>' + storeLabel(x.store) + '</u>' : '') + '</i>') + '</small><b>' + fmtN(x.value) + '</b></div>'; // 店舗名は時刻の横に小さく
     $('recent').classList.toggle('all', !!feed);
     if (feed) { // 全店舗ぶん
       const top = feed.length ? feed[0].ts : 0, grew = feedTop > 0 && top > feedTop;
