@@ -1628,3 +1628,8 @@ body.lite .tglow { box-shadow: 0 0 14px 2px rgba(var(--acc), .7); }
 /* ---------- 途中経過の合計（b59）: 金額のリールが止まるたびに、プレートの数字がぽんと出る ---------- */
 .plate-main.sumpop { animation: sumpop .32s cubic-bezier(.2, .9, .3, 1.3); }
 @keyframes sumpop { 0% { transform: scale(1.35); opacity: .4; } 100% { transform: scale(1); opacity: 1; } }
+
+/* ---------- 配当履歴（全店舗）: 時刻の横に店舗名（b60） ----------
+   2行目（時刻＋店舗名）は、1行目の日付と同じ幅までにして、はみ出す分は … で切る（行の幅は今までどおり日付で決まるので、金額と重ならない） */
+.rc small i { width: 0; min-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc small i u { margin-left: 7px; text-decoration: none; font-weight: 700; letter-spacing: .04em; color: var(--accent); }
