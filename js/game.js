@@ -334,8 +334,7 @@ const Game = (function () {
       return idleBar();
     }
     clearSure();
-    const idleSt = keepStageOf(s); // CREDIT が残っていれば、前の回が終わったステージのまま待つ
-    if (showingResult || curStage !== idleSt) { showingResult = false; setStage(idleSt); }
+    if (showingResult || curStage !== 1) { showingResult = false; setStage(1); }
     if (!s.pins) { lockbar.classList.remove('show'); return setPlate('idle', 'WELCOME', ''); }
     idleBar();
   }
@@ -433,11 +432,7 @@ const Game = (function () {
     lockbar.innerHTML = lastBox(p.value) + '<div class="side"><button class="btn" data-act="next">NEXT GAME</button></div>';
     resultSince = Date.now(); // ここから 10 秒で待機画面へ戻す
   }
-  /* CREDIT（獲得した FREE SPIN）が残っている間は、ステージを下げない: 前の回が終わったステージ（state.keepStage）から次の回を始める。
-     CREDIT が無ければ、いつもどおり STAGE 1 から */
-  const stageMax = () => Engine.STAGE_DEFS.length;
-  const keepStageOf = (s) => ((s.credits || 0) > 0 ? Math.max(1, Math.min(stageMax(), Math.floor(Number(s.keepStage)) || 1)) : 1);
-  /* 結果表示中のプレイを片付けて、次のプレイを始めるステージに戻す（ふつうは STAGE 1。CREDIT が残っていれば、いまのステージのまま） */
+  /* 結果表示中のプレイを片付けて STAGE 1 に戻す（CREDIT の FREE SPIN も、毎回 STAGE 1 から回す） */
   async function clearShown() {
     if (!Store.state.play) return true;
     try {
@@ -449,8 +444,7 @@ const Game = (function () {
     } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); return false; }
     busy = true;
     lockbar.classList.remove('show');
-    const to = keepStageOf(Store.state);
-    if (curStage !== to) await transition(to); else setStage(to);
+    if (curStage !== 1) await transition(1); else setStage(1);
     win.classList.remove('win', 'lose');
     showingResult = false;
     // 次のゲームの前に、リールに READY TO SPIN を一拍見せる
@@ -498,9 +492,7 @@ const Game = (function () {
         const from = Engine.windowStart(now, s.limits && s.limits.resetHour);
         if (!s.dayPlays || s.dayPlays.from !== from) s.dayPlays = { from, n: 0 };
         Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n, s.probs).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
-        // CREDIT で回す回は、前の回が終わったステージから抽選を始める（ステージを下げない）。それ以外は STAGE 1 から
-        const startSt = keepStageOf(s);
-        res = Engine.drawProb(s.probs, undefined, blocked, startSt);
+        res = Engine.drawProb(s.probs, undefined, blocked);
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
         const bestBefore = bestOf(s); // 今回の結果が出る前の最高額配当（回転中はこちらを表示する）
@@ -512,13 +504,11 @@ const Game = (function () {
           ses.awarded += res.value;
           s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
-        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: startSt, ts: Date.now() };
-        if (startSt > 1) s.play.from = startSt;
-        s.keepStage = 0;
+        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
         s.locked = true;
-        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage).filter((x) => x >= startSt), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
+        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
       });
     } catch (err) {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
@@ -528,9 +518,7 @@ const Game = (function () {
     showCredits();
     lockbar.classList.remove('show');
     if (storeMode() && !Store.state.play.test) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
-    const st0 = Store.state.play.cur || 1;
-    if (curStage !== st0) setStage(st0); // 読み直したあとなど、画面が別のステージになっているとき
-    runStage(Store.state.play, st0);
+    runStage(Store.state.play, 1);
   }
 
   /* ---------- 停止パターンの抽選（結果は確定済み。見せ方だけを変える） ----------
@@ -854,7 +842,7 @@ const Game = (function () {
     await resultFx(play);
     clearSure();
     const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
-    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; s.keepStage = (s.credits || 0) > 0 ? s.play.stage : 0; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
     if (out) await totalFx(Store.state.wonTotal || 0);
@@ -1412,7 +1400,7 @@ const Game = (function () {
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
           '<li><b>FREE SPIN ×1・×2・×3 が3本そろう</b>と、その回数だけ自動でまわります。そろわなかったときは 0 として合計します。</li>' +
-          '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、<b>自動で回り続けます</b>（1回ごとに 1 減ります）。その間は<b>ステージが下がりません</b>（上のステージに上がったら、残りの回もそのステージで回ります）。FREE SPIN はどのステージでも STAGE 1 と同じ速さで回ります。</li>' +
+          '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、<b>自動で回り続けます</b>（1回ごとに 1 減ります）。FREE SPIN は毎回 STAGE 1 から始まり、どのステージでも STAGE 1 と同じ速さで回ります。</li>' +
           '<li>金額が当たるときは、金額のリールが最後に止まります。3本目は少し長く回ります。</li>' +
           '<li>先に止まった2本がそろいかけた時や、合計が大きい時は、3本目が回っている間に<b>音と光が一段ずつ強くなり、回転がゆっくりになる</b>ことがあります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
