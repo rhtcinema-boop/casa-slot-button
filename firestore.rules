@@ -19,5 +19,14 @@ service cloud.firestore {
       match /plays/{p} { allow read: if isMaster(); allow create: if signedIn(); }
       match /days/{d} { allow read: if isMaster(); allow create, update: if signedIn(); }
     }
+    // 配当履歴（全店舗）: どの店舗の端末も読める。足せるのは「時刻・金額・店舗」の4項目だけ。書き換えと削除はマスターだけ
+    match /feed/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['ts', 'value', 'storeId', 'store'])
+        && request.resource.data.ts is number && request.resource.data.value is number
+        && request.resource.data.storeId is string && request.resource.data.store is string;
+      allow update, delete: if isMaster();
+    }
   }
 }
