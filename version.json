@@ -1,9 +1,9 @@
 {
- "v": "b57",
+ "v": "b58",
  "files": [
   {
    "path": "index.html",
-   "sha256": "9e2f529e240d67840e9c880c494871fb53d8a2a97a3d764f92a6fd4a5bb6600e"
+   "sha256": "6efb8ed504e6e0637b15ae69854ec7629755ef879868c6c246a539236c505395"
   },
   {
    "path": "manifest.webmanifest",
@@ -55,11 +55,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "84e0a812c00033ef0ca6d89a5f62ecbb55b62fb18f8592b4891beac5f064d25c"
+   "sha256": "3a9a07c1530d942a2c410bba049e7ed4b4ff813dd7f18649c13be67a51f96d90"
   },
   {
    "path": "js/master.js",
-   "sha256": "80e23868a2c8a2305b5f6892bf048d98e056b08dbeead404d73f30ee953b35ea"
+   "sha256": "e771bb1d690903d8de7c43a2b2df176b6c17228ed05238e3d346bec0652219b9"
   },
   {
    "path": "js/reel.js",
