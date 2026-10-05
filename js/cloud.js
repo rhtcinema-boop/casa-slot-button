@@ -4,8 +4,9 @@
    未設定なら無効（今までどおり端末内だけで動く1台運用）。
 
    データの形:
-     stores/{storeId}   { name, pin:{salt,hash}, presetIds:[..], activePresetId, logoutAt, lastSeen, deviceVersion }
-     presets/{presetId} { name, probs, limits, updatedAt }
+     stores/{storeId}   { name, pin:{salt,hash}, presetIds:[..], activePresetId, logoutAt, lastSeen, deviceVersion, updateAt }
+                        … updateAt = マスターが「全店舗をいますぐアップデート」を押した時刻（端末はこれが新しくなったら、すぐ新しい版を確認する）
+     presets/{presetId} { name, probs, limits, updatedAt, color }  … color = 端末に出すプリセット名の色
      stores/{storeId}/plays/{id} { ts, stage, value, key, playNo, presetId }
      stores/{storeId}/days/{yyyymmdd} { plays, awarded, wins }   … 営業日（リセット時刻区切り）ごとの集計
      feed/{id}          { ts, value, storeId, store }  … 配当履歴（全店舗）。当たりが出るたびに1件。どの店舗の端末も読める */
