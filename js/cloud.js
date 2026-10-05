@@ -165,6 +165,20 @@ const Cloud = (function () {
     const q = await db.collection('stores').doc(storeId).collection('days').orderBy(firebase.firestore.FieldPath.documentId(), 'desc').limit(n || 31).get();
     return q.docs.map((x) => Object.assign({ day: x.id }, x.data()));
   }
+  /* 営業日キー（yyyymmdd）の範囲で日別の集計を取る（両端を含む。新しい日が先） */
+  async function listDaysRange(storeId, fromKey, toKey) {
+    await ready();
+    if (isLocal) { const days = lread().days[storeId] || {}; return Object.keys(days).filter((k) => k >= fromKey && k <= toKey).sort().reverse().map((k) => Object.assign({ day: k }, days[k])); }
+    const q = await db.collection('stores').doc(storeId).collection('days').orderBy(firebase.firestore.FieldPath.documentId()).startAt(fromKey).endAt(toKey).get();
+    return q.docs.map((x) => Object.assign({ day: x.id }, x.data())).reverse();
+  }
+  /* 時刻の範囲（fromTs 以上 toTs 未満）のプレイを、新しい順に最大 n 件 */
+  async function listPlaysRange(storeId, fromTs, toTs, n) {
+    await ready();
+    if (isLocal) { return (lread().plays[storeId] || []).filter((x) => x.ts >= fromTs && x.ts < toTs).reverse().slice(0, n || 200); }
+    const q = await db.collection('stores').doc(storeId).collection('plays').where('ts', '>=', fromTs).where('ts', '<', toTs).orderBy('ts', 'desc').limit(n || 200).get();
+    return q.docs.map((x) => x.data());
+  }
   async function listPlays(storeId, n) {
     await ready();
     if (isLocal) { return (lread().plays[storeId] || []).slice().reverse().slice(0, n || 50); }
@@ -173,6 +187,6 @@ const Cloud = (function () {
   }
 
   return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay,
-    masterLogin, masterUser, masterLogout, saveStore, deleteStore, savePreset, deletePreset, listDays, listPlays, dayKey };
+    masterLogin, masterUser, masterLogout, saveStore, deleteStore, savePreset, deletePreset, listDays, listPlays, listDaysRange, listPlaysRange, dayKey };
 })();
 window.Cloud = Cloud;
