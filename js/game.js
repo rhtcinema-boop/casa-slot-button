@@ -349,9 +349,15 @@ const Game = (function () {
     const s = Store.state;
     return (s.wonTotal || 0) - (s.play && s.play.phase === 'drawn' && !s.play.test ? s.play.value : 0);
   }
+  /* 最高額配当（集計をリセットしてからの、1回の当たりの最高額）。まだ記録が無い端末は、配当履歴の中の最高額から始める */
+  function bestOf(s) {
+    if (typeof s.bestValue === 'number') return s.bestValue;
+    return (s.recent || []).reduce((m, r) => Math.max(m, Number(r.value) || 0), 0);
+  }
   function showCredits() {
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
-    { const st = Store.state, p = st.play; $('total').textContent = fmtN(st.session.awarded - (p && p.phase === 'drawn' && !p.test ? p.value : 0)); stageEl.classList.toggle('testmode', !!st.testMode);
+    // 右上の2段目は「最高額配当」。回転中のプレイの分は、結果が出るまで反映しない（b53 で「合計当選額」から変更）
+    { const st = Store.state, p = st.play; $('total').textContent = fmtN(p && p.phase === 'drawn' && !p.test && typeof p.bestBefore === 'number' ? p.bestBefore : bestOf(st)); stageEl.classList.toggle('testmode', !!st.testMode);
       // CREDIT: 残っている FREE SPIN（本物の追加プレイ）＋ いま回り直し中の FREE SPIN の残り
       const cr = $('crd'), n = String((st.credits || 0) + freeLeft);
       if (cr && cr.textContent !== n) { const up = +n > +cr.textContent; cr.textContent = n; if (up) restart(cr, 'bump'); }
@@ -479,7 +485,9 @@ const Game = (function () {
         res = Engine.drawProb(s.probs, undefined, blocked);
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
+        const bestBefore = bestOf(s); // 今回の結果が出る前の最高額配当（回転中はこちらを表示する）
         if (!test) {
+          if (res.value > bestBefore) s.bestValue = res.value; else s.bestValue = bestBefore;
           s.dayPlays.n += 1;
           if (res.value > 0) s.hits.push({ ts: now, key: res.key });
           ses.playNo += 1;
@@ -487,7 +495,7 @@ const Game = (function () {
           s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
         s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
-        if (test) s.play.test = true;
+        if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
         s.locked = true;
         Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
