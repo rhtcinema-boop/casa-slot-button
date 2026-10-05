@@ -13,6 +13,20 @@ const Reel = (function () {
     2: [500, 'BAR', 5000, 'NEXT', 2000, 'FREE', 1000, 3000, 'NEXT', 5000, 'BAR', 500, 2000, 'BAR', 1000, 3000],
     3: [5000, 'BAR', 100000, 20000, 'FREE', 10000, 50000, 'BAR', 30000, 5000, 'BAR', 10000, 20000, 'BAR', 50000, 30000],
   };
+  /* 配当表をマスター管理で変えたとき用。絵柄が初期値と同じステージは上の帯をそのまま使い、違うステージだけ同じリズムで作り直す（setTable） */
+  const DEFAULT_SYMS = { 1: [100, 200, 300, 400, 500], 2: [500, 1000, 2000, 3000, 5000], 3: [5000, 10000, 20000, 30000, 50000, 100000] };
+  const DEFAULT_STRIPS = { 1: STRIPS[1].slice(), 2: STRIPS[2].slice(), 3: STRIPS[3].slice() };
+  let PAYOUTS = {}; // いまの配当表で当たる金額（初期の色表に無い金額の色を、金額帯で決めるために使う）
+  function makeStrip(st, syms) {
+    if (syms.length === DEFAULT_SYMS[st].length && syms.every((s) => DEFAULT_SYMS[st].indexOf(s) >= 0)) return DEFAULT_STRIPS[st].slice();
+    const X = st < 3 ? 'NEXT' : null, n = syms.length;
+    if (!n) return ['BAR', X || 'BAR', 'BAR', 'FREE', 'BAR', 'BAR', X || 'BAR', 'BAR'];
+    // 小さい数字と大きい数字が交互に流れる並び
+    const asc = syms.slice().sort((a, b) => a - b), order = [];
+    for (let i = 0, j = n - 1; i <= j; i++, j--) { order.push(asc[i]); if (i !== j) order.push(asc[j]); }
+    const q = (i) => order[i % n];
+    return [q(0), 'BAR', q(1), X || q(10), q(2), 'FREE', q(3), q(4), X || q(11), q(5), 'BAR', q(6), q(7), 'BAR', q(8), q(9)];
+  }
   /* ステージ別の回転設定（ここを変えると止まるまでの時間を調整できる）
        speed  : 最高速（1秒あたりのコマ数）
        cruise : 最高速で回り続ける秒数 [最短, 最長]
@@ -59,6 +73,16 @@ const Reel = (function () {
     50000: { face: ["#ffffff","#f4fcff","#cfeaf8","#86aec6","#2f4a5c","#8ab4cc","#e2f5ff","#ffffff"], ext: ["#0c1a24","#9fd0ea"], edge: '#0a0603', rim: '#ffffff', glow: 'rgba(210,240,255,.9)' },
     100000: { face: ["#ffffff","#ffffff","#ffffff","#ffffff","#ffffff","#ffffff","#ffffff","#ffffff"], ext: ["#1c1002","#f0c65a"], edge: '#0a0603', rim: '#ffffff', glow: 'rgba(255,255,255,.95)', rainbow: true },
   };
+
+  // 数字の絵柄の色。初期の色表にある金額はその色。表に無い金額は、当たる金額ならすぐ下の金額帯の色、合計用の部品なら金
+  const PAL_KEYS = Object.keys(PAL_BY_VALUE).map(Number).sort((a, b) => a - b);
+  function palOf(v, isPayout) {
+    if (PAL_BY_VALUE[v]) return PAL_BY_VALUE[v];
+    if (!isPayout && !PAYOUTS[v]) return PAL.gold;
+    let k = PAL_KEYS[0];
+    PAL_KEYS.forEach((x) => { if (x <= v) k = x; });
+    return PAL_BY_VALUE[k];
+  }
 
   let frameMs = 16.7, slow = false; // リール描画のコマ間隔の平均と、30フレームに落としているか
   let cv, ctx, stage = 1, strip = STRIPS[1], raf = 0;
@@ -158,7 +182,7 @@ const Reel = (function () {
       // ハズレの目（内部名は BAR のまま）: 銀色の「0」
       metalText(x, '0', cx, CH / 2, 96, NUM_FONT, PAL.silver, COLW - 22);
     } else {
-      const pal = PAL_BY_VALUE[sym] || PAL.gold;
+      const pal = palOf(sym);
       metalText(x, fmt(sym), cx, CH / 2, 96, NUM_FONT, pal, COLW - 22);
     }
     return c;
@@ -176,8 +200,8 @@ const Reel = (function () {
     }
     return c;
   }
+  const mk = (sym, pal) => { const sharp = renderSharp(sym, pal); return { sharp, mid: renderBlur(sharp, 20, 9), heavy: renderBlur(sharp, 70, 19) }; };
   function build() {
-    const mk = (sym, pal) => { const sharp = renderSharp(sym, pal); return { sharp, mid: renderBlur(sharp, 20, 9), heavy: renderBlur(sharp, 70, 19) }; };
     [PAL.gold, PAL.nextBlue, PAL.nextRed].forEach((pal, i) => ['READY', 'TO', 'SPIN'].forEach((w) => { imgs[w + '@' + (i + 1)] = mk(w, pal); }));
     const seen = {};
     Object.keys(STRIPS).forEach((k) => STRIPS[k].forEach((sym) => {
@@ -547,9 +571,25 @@ const Reel = (function () {
     canvas.width = SW * S; canvas.height = CH * S; // 幅の再設定で全消去される
     const x = canvas.getContext('2d');
     x.scale(S, S);
-    const pal = value === 0 ? PAL.silver : PAL_BY_VALUE[value] || PAL.gold;
+    const pal = value === 0 ? PAL.silver : palOf(value, true);
     metalText(x, text, SW / 2, CH / 2, 190, NUM_FONT, pal, 640, true);
   }
 
-  return { init, spin, attract, setStage, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  /* 配当表が変わったとき（起動時・プリセットの切り替え時）に呼ぶ。symsByStage = { 1: [数字の絵柄], 2: [...], 3: [...] }、payouts = 当たる金額の一覧。
+     回転中に呼ばれても、いま回っている帯はそのまま（次に setStage されたときから新しい帯になる）。 */
+  function setTable(symsByStage, payouts) {
+    const before = JSON.stringify(PAYOUTS);
+    PAYOUTS = {};
+    (payouts || []).forEach((v) => { if (v > 0) PAYOUTS[v] = true; });
+    const recolor = before !== JSON.stringify(PAYOUTS);
+    [1, 2, 3].forEach((st) => {
+      const syms = (symsByStage && symsByStage[st]) || DEFAULT_SYMS[st];
+      STRIPS[st] = makeStrip(st, syms);
+      // 絵柄の画像を用意（新しい数字と、色が変わるかもしれない「色表に無い数字」だけ作る）
+      if (ctx) syms.forEach((sym) => { if (!imgs[sym] || (recolor && !PAL_BY_VALUE[sym])) imgs[sym] = mk(sym); });
+    });
+    if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
+  }
+
+  return { init, spin, attract, setStage, setTable, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
