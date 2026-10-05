@@ -871,6 +871,17 @@ const Game = (function () {
     }
     return steps > 0 ? { kind: t.kind, steps, hit: t.hit } : null;
   }
+  /* 途中経過の合計: 金額のリールが止まるたびに「ここまでの合計」をリールの下のプレートに出し、止まるたびに高くなる音を鳴らす。
+     合計方式（3本の金額を足す）をそのまま見せ場にする。金額がまだ出ていないとき（0 や NEXT STAGE だけ）は何も出さない */
+  function runningSum(combo, order, kk) {
+    if (typeof combo[order[kk]] !== 'number') return; // いま止まったのが金額のリールのときだけ
+    let sum = 0, nums = 0;
+    for (let i = 0; i <= kk; i++) { const x = combo[order[i]]; if (typeof x === 'number') { sum += x; nums++; } }
+    if (!(sum > 0)) return;
+    setPlate(sureShown ? 'spin sure' : 'spin', fmtN(sum), 'ここまでの合計');
+    restart($('plateMain'), 'sumpop'); // 数字がぽんと出る
+    Sfx.play('sumUp', nums - 1);
+  }
   let tenseLv = 0;
   function tense(lv) {
     if (lv === tenseLv) return;
@@ -944,7 +955,7 @@ const Game = (function () {
       onSpeed: (n) => Sfx.spin(n),
       onNear: () => { extra.onNear && extra.onNear(); },
       onReverse: () => { Sfx.play('kyuin'); flash(true); quake(); stageEl.classList.add('reach'); setPlate('spin', 'REVERSE', '当選確定'); }, // 突然の逆回転（当たり確定）
-      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; calm(); puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
+      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); runningSum(combo, order, kk); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; calm(); puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
       onGear: (g) => { if (tn) tense(g + 1); }, // 期待の段階が一段上がる（3本目が一段ゆっくりになる瞬間）
       onTease: (dur) => {
         Sfx.play('tease', dur);
@@ -1185,19 +1196,24 @@ const Game = (function () {
     banner.className = 'banner';
   }
 
-  /* 当選演出。金額ごとに1段ずつ強くなる（WIN_LEVELS の並び順がそのまま演出レベル 1〜8）。 */
+  /* 当選演出。金額ごとに1段ずつ強くなる（WIN_LEVELS の並び順がそのまま演出レベル 1〜8）。
+     b59〜 当選額の「格」: 長さと派手さを、金額の帯ではっきり分ける。
+       小（レベル 1〜2、〜1,000）   … ためなしで、あっさり約 2 秒
+       中（レベル 3〜5、2,000〜5,000）… ため 1 秒 ＋ 約 2.5 秒（b58 までと同じ）
+       大（レベル 6、10,000）        … ため 1.5 秒 ＋ 5.5 秒（約 7 秒）
+       特大（レベル 7〜8、50,000〜） … 長いため ＋ 長いカウントアップ ＋ 花火と衝撃波が続く（約 11 秒） */
   const WIN_LEVELS = [500, 1000, 2000, 3000, 5000, 10000, 50000, 100000];
   const CHIP_LV = [['red'], ['blue', 'red'], ['green', 'red', 'blue'], ['black', 'green', 'blue'], ['purple', 'black', 'red'], ['gold', 'black', 'purple'], ['gold', 'black', 'white', 'purple'], ['gold', 'gold', 'black', 'white']];
   const WIN_FX = [
-    //  秒数  ラベル        粒子  金粉  花火間隔(秒)  揺れ回数  カウントアップ(秒)
-    { dur: 1.8, label: 'WIN',       burst: 70,  rain: 0,   fire: 0,    shake: 0, count: 0 },
-    { dur: 2.0, label: 'WIN',       burst: 110, rain: 0,   fire: 0,    shake: 0, count: 0 },
-    { dur: 2.2, label: 'NICE WIN',  burst: 150, rain: 70,  fire: 0,    shake: 0, count: 0.5 },
-    { dur: 2.5, label: 'BIG WIN',   burst: 190, rain: 130, fire: 0.7,  shake: 0, count: 0.6 },
-    { dur: 2.8, label: 'BIG WIN',   burst: 230, rain: 200, fire: 0.5,  shake: 1, count: 0.7 },
-    { dur: 3.0, label: 'SUPER WIN', burst: 280, rain: 320, fire: 0.38, shake: 1, count: 0.9 },
-    { dur: 3.2, label: 'MEGA WIN',  burst: 340, rain: 480, fire: 0.3,  shake: 2, count: 1.1 },
-    { dur: 3.3, label: 'JACKPOT',   burst: 420, rain: 640, fire: 0.22, shake: 3, count: 1.3 },
+    //  ため(秒)    秒数  ラベル        粒子  金粉  花火間隔(秒)  揺れ回数  カウントアップ(秒)
+    { charge: 0,   dur: 1.8, label: 'WIN',       burst: 70,  rain: 0,   fire: 0,    shake: 0, count: 0 },
+    { charge: 0,   dur: 2.0, label: 'WIN',       burst: 110, rain: 0,   fire: 0,    shake: 0, count: 0 },
+    { charge: 1.0, dur: 2.2, label: 'NICE WIN',  burst: 150, rain: 70,  fire: 0,    shake: 0, count: 0.5 },
+    { charge: 1.0, dur: 2.5, label: 'BIG WIN',   burst: 190, rain: 130, fire: 0.7,  shake: 0, count: 0.6 },
+    { charge: 1.0, dur: 2.8, label: 'BIG WIN',   burst: 230, rain: 200, fire: 0.5,  shake: 1, count: 0.7 },
+    { charge: 1.5, dur: 5.5, label: 'SUPER WIN', burst: 280, rain: 420, fire: 0.45, shake: 2, count: 1.4 },
+    { charge: 2.2, dur: 8.3, label: 'MEGA WIN',  burst: 340, rain: 700, fire: 0.42, shake: 4, count: 2.2 },
+    { charge: 2.4, dur: 9.0, label: 'JACKPOT',   burst: 420, rain: 900, fire: 0.36, shake: 5, count: 2.6 },
   ];
 
   async function resultFx(res) {
@@ -1218,24 +1234,30 @@ const Game = (function () {
     await wait(200); // 一拍置いてから
     const colors = sureShown ? RAINBOW.concat(['white']) : ['gold', 'white'].concat(STAGE_COL[curStage]); // 金＋そのステージの色（確定中は虹）
 
-    // チャージ: 周囲が暗くなり、カメラがリールへ寄っていく（指数的に加速）。光が中心へ吸い込まれる
+    // ため（チャージ）: 周囲が暗くなり、カメラがリールへ寄っていく（指数的に加速）。光が中心へ吸い込まれる。
+    // 小さい当たり（レベル 1〜2）はためを入れず、すぐ結果を出す。高額ほど長くためる
+    const C = fx.charge;
     win.classList.add('win');
-    cabinet.classList.add('party', 'tremble');
-    $('dim').classList.add('on');
-    fxMode(true);
-    Sfx.play('riser', 1.0);
-    Sfx.play('warp');
-    FX.converge(CX, CY, 140 + L * 20, 1.0);
-    FX.streaks(CX, CY, 80 + L * 10, 0.9, { inward: true, colors });
-    [0.5, 0.75, 0.9].slice(0, L >= 6 ? 3 : L >= 3 ? 2 : 1).forEach((t) => later(t, () => { const an = Math.random() * 6.28; FX.lightning(CX + Math.cos(an) * 760, CY + Math.sin(an) * 460, CX, CY, 'white', 4); Sfx.play('zap'); }));
-    await wait(1000);
+    cabinet.classList.add('party');
+    if (C > 0) {
+      cabinet.classList.add('tremble');
+      $('dim').classList.add('on');
+      fxMode(true);
+      Sfx.play('riser', C);
+      Sfx.play('warp');
+      if (L >= 7) { Sfx.play('heartbeat'); later(0.7, () => Sfx.play('heartbeat')); } // 特大: 鼓動から始まる
+      FX.converge(CX, CY, 140 + L * 20, C);
+      FX.streaks(CX, CY, 80 + L * 10, C * 0.9, { inward: true, colors });
+      [0.5, 0.75, 0.9].slice(0, L >= 6 ? 3 : L >= 3 ? 2 : 1).forEach((u) => later(u * C, () => { const an = Math.random() * 6.28; FX.lightning(CX + Math.cos(an) * 760, CY + Math.sin(an) * 460, CX, CY, 'white', 4); Sfx.play('zap'); }));
+      await wait(C * 1000);
 
-    // 爆発: カメラが一瞬で引いて戻り、放射状の稲妻が走る
-    cabinet.classList.remove('tremble');
-    if (L < 6) $('dim').classList.remove('on');
-    quake();
-    for (let i = 0; i < 4 + L; i++) { const an = (i / (4 + L)) * 6.28 + Math.random() * 0.4; FX.lightning(CX, CY, CX + Math.cos(an) * 900, CY + Math.sin(an) * 560, i % 2 ? STAGE_ACC[curStage] : 'white', 5); }
-    FX.streaks(CX, CY, 100 + L * 12, 0.8, { colors });
+      // 爆発: カメラが一瞬で引いて戻り、放射状の稲妻が走る
+      cabinet.classList.remove('tremble');
+      if (L < 6) $('dim').classList.remove('on');
+      quake();
+      for (let i = 0; i < 4 + L; i++) { const an = (i / (4 + L)) * 6.28 + Math.random() * 0.4; FX.lightning(CX, CY, CX + Math.cos(an) * 900, CY + Math.sin(an) * 560, i % 2 ? STAGE_ACC[curStage] : 'white', 5); }
+      FX.streaks(CX, CY, 100 + L * 12, 0.8, { colors });
+    }
     stageEl.dataset.win = L;
     setPlate('spin', fx.label, '');
     showBanner('win lv' + L, fx.label, fx.count ? '0' : fmtN(v), v);
@@ -1277,16 +1299,18 @@ const Game = (function () {
     const chipCols = CHIP_LV[L - 1];
     Sfx.play('chipfall', fx.dur - 1.5);
     if (L <= 2) FX.chips(20 + L * 20, fx.dur - 1.4, chipCols);
-    else FX.chips(30 + L * 14, fx.dur - 1.6, chipCols, { land: true, size: 22 });
+    else FX.chips(Math.round((30 + L * 14) * Math.max(1, fx.dur / 3)), fx.dur - 1.6, chipCols, { land: true, size: 22 }); // 長い演出では、そのぶん枚数を増やす
     if (L >= 6) {
-      [0.5, fx.dur * 0.4, fx.dur * 0.68, fx.dur * 0.82].slice(0, L - 4).forEach((t) => later(t, () => {
+      const founts = [];
+      for (let t = 0.5; t < fx.dur - 1.2; t += L >= 7 ? 1.5 : 2.2) founts.push(t); // 大・特大: 演出の間じゅう、左右からチップが噴き上がる
+      founts.forEach((t) => later(t, () => {
         FX.chipFountain(240, 930, 22, 0.8, chipCols, { land: true, vx: 220 });
         FX.chipFountain(1360, 930, 22, 0.8, chipCols, { land: true, vx: -220 });
         Sfx.play('chipfall', 1.2);
       }));
     }
     if (L >= 3) FX.cards(6 + L * 2, 0.5, { x: CX, y: CY });
-    if (L >= 5) FX.flakes(L * 8, fx.dur - 1.5, colors);
+    if (L >= 5) FX.flakes(Math.round(L * 8 * Math.max(1, fx.dur / 3)), fx.dur - 1.5, colors);
     if (fx.fire) {
       for (let t = 0.6; t < fx.dur - 0.9; t += fx.fire) {
         later(t, () => {
@@ -1299,6 +1323,7 @@ const Game = (function () {
     // 追撃の衝撃波（SUPER WIN 以上）
     for (let i = 1; i < fx.shake; i++) {
       later((fx.dur / fx.shake) * i, () => {
+        Sfx.play('impact');
         flash(false);
         restart(cabinet, 'shake');
         FX.ring(CX, CY, 'white', 1300, 0.9);
@@ -1307,7 +1332,8 @@ const Game = (function () {
     }
 
     // 連続フラッシュ・途中の暗転 → 再点火・締めの一撃
-    if (L >= 4) for (let t = 1.0; t < fx.dur - 1.2; t += L >= 6 ? 0.5 : 0.8) later(t, () => flash(true));
+    if (L >= 4) for (let t = 1.0; t < fx.dur - 1.2; t += L >= 6 ? 1.1 : 0.8) later(t, () => flash(true)); // 長い演出では間隔を空ける（ちかちかさせない）
+    if (L === 7) later(5.0, () => Sfx.play('win', 6)); // 特大: ファンファーレをもう一度（レベル 8 は元の音が最後まで続く）
     if (L >= 5) later(fx.dur * 0.5, () => { // 中盤の追撃
       flash(false); quake(); bump(); Sfx.play('impact'); FX.ring(CX, CY, 'white', 1400, 1.0); FX.burst(CX, CY, 300, { max: 1700, life: 2, size: 26, colors }); strobe(3); bulletTime(0.1, 0.35);
     });
