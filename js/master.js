@@ -99,20 +99,13 @@
   // 10 FREE SPIN を含めた期待値。ロゴの抽選はスピンごと（1プレイで STAGE 2・3 に進むと、そのぶん回数が増える）なので、
   // 1プレイあたりの割合 = 割合 × 平均スピン数。追加プレイの中でもまたロゴがそろうので、全体は 1 / (1 - 10 × それ) 倍になる
   const noRetrig = (p) => p.noRetrigger !== false; // FREE SPIN で回っているゲームでは FREE SPIN を出さない（未設定は ON）
-  // b56〜: FREE SPIN（CREDIT）で回っている間はステージが下がらない。ロゴがそろったプレイが終わったステージから 10 回まわし、
-  // 途中で上のステージに上がったら、残りの回もそのステージで抽選する（Engine.creditStats がその期待値を出す）
   function logoCost(p) {
-    const st = Engine.probStats(p.probs), ev = st.ev, r1 = logoOf(p) / 100, r = r1 * (1 + st.reach[2] + st.reach[3]);
+    const st = Engine.probStats(p.probs), ev = st.ev, r = (logoOf(p) / 100) * (1 + st.reach[2] + st.reach[3]);
+    // FREE SPIN 中に FREE SPIN を出さないなら、増えるのは 10 回ぶんだけ。出すなら、その中でもまたそろうので 1 / (1 - 10r) 倍
+    const k = noRetrig(p) ? 1 / (1 + LOGO_SPINS * r) : 1 - LOGO_SPINS * r;
     if (r <= 0) return '<span class="okmsg">オフ（casa ロゴはリールに出ません。予算は変わりません）</span>';
-    const cs = Engine.creditStats(p.probs, LOGO_SPINS);
-    let add = 0; // 有料プレイ1回あたりに増える期待値 = Σ（ステージ s でロゴがそろう割合 × そのプレイが t で終わる割合 × t から 10 回ぶんの期待値）
-    Object.keys(cs.end).forEach((s) => Object.keys(cs.end[s]).forEach((t) => { add += (st.reach[s] || 0) * r1 * cs.end[s][t] * cs.total[t]; }));
-    // FREE SPIN 中にも FREE SPIN を出す設定なら、その中でもまたそろうので、さらに 1 / (1 - 10r) 倍
-    const m = noRetrig(p) ? 0 : LOGO_SPINS * r;
-    if (m >= 1) return '<span class="err">割合が高すぎます（FREE SPIN が終わらなくなります）</span>';
-    const to = ev + add / (1 - m);
-    return '<span class="err" style="color:var(--gold)">予算の目安: 1回の有料プレイあたりの期待値が <b>' + fmtN(Math.round(ev)) + ' → ' + fmtN(Math.round(to)) + '</b>（約 ' + (ev > 0 ? Math.round((to / ev) * 1000) / 10 : 0) + '%）になります。ロゴがそろうのは平均 ' + fmtN(Math.round(1 / r)) + ' プレイに1回です。' +
-      '<br><span style="color:var(--muted,#aaa)">FREE SPIN で回っている間はステージが下がりません（STAGE 2・3 に上がると、残りの回もそのステージで抽選します）。そのぶんを含めた目安です。10 回ぶんの期待値は、STAGE 1 から ' + fmtN(Math.round(cs.total[1] || 0)) + '、STAGE 2 から ' + fmtN(Math.round(cs.total[2] || 0)) + '、STAGE 3 から ' + fmtN(Math.round(cs.total[3] || 0)) + '。</span></span>';
+    if (k <= 0) return '<span class="err">割合が高すぎます（FREE SPIN が終わらなくなります）</span>';
+    return '<span class="err" style="color:var(--gold)">予算の目安: 1回の有料プレイあたりの期待値が <b>' + fmtN(Math.round(ev)) + ' → ' + fmtN(Math.round(ev / k)) + '</b>（約 ' + (Math.round(1000 / k) / 10) + '%）になります。ロゴがそろうのは平均 ' + fmtN(Math.round(1 / r)) + ' プレイに1回です。</span>';
   }
   // 開始直後の高額制限（最初の X 回は Y 以上を出さない）。Y は実際に出る金額の中から選ぶ
   const amountsOf = (p) => { const a = []; Engine.tableOf(p.probs).forEach((d) => d.values.forEach((v) => { if (v > 0 && a.indexOf(v) < 0) a.push(v); })); return a.sort((x, y) => x - y); };
@@ -163,7 +156,7 @@
       stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'もう1回まわる（0〜50%）') +
       stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'もう2回まわる（0〜25%）') +
       stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'もう3回まわる（0〜25%）') + '</div>' +
-      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます（1回ごとに普通に抽選します）。<b style="color:var(--text)">FREE SPIN で回っている間はステージが下がりません</b>（STAGE 2・3 に上がると、残りの回もそのステージの確率で抽選します）。上の ×1〜×3 と違って<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
+      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます（1回ごとに普通に抽選します）。FREE SPIN は毎回 STAGE 1 から回ります。上の ×1〜×3 と違って<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
       stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
       '<div id="logoCost" style="margin-top:8px;font-size:14px">' + logoCost(p) + '</div>' +
       '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>ON: 獲得した 10 FREE SPIN で回っているゲームでは、FREE SPIN ×1〜×3 も casa ロゴも出ません（絵柄も出ません）。OFF: FREE SPIN 中にも、さらに FREE SPIN を獲得できます（そのぶん予算が増えます）</small></div><button class="btn sm ' + (noRetrig(p) ? '' : 'ghost') + '" data-act="retrig-on">' + (noRetrig(p) ? 'ON' : 'OFF') + '</button></div></div>' +
