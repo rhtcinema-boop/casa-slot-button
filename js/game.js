@@ -334,7 +334,8 @@ const Game = (function () {
       return idleBar();
     }
     clearSure();
-    if (showingResult || curStage !== 1) { showingResult = false; setStage(1); }
+    const idleSt = keepStageOf(s); // CREDIT が残っていれば、前の回が終わったステージのまま待つ
+    if (showingResult || curStage !== idleSt) { showingResult = false; setStage(idleSt); }
     if (!s.pins) { lockbar.classList.remove('show'); return setPlate('idle', 'WELCOME', ''); }
     idleBar();
   }
@@ -432,7 +433,11 @@ const Game = (function () {
     lockbar.innerHTML = lastBox(p.value) + '<div class="side"><button class="btn" data-act="next">NEXT GAME</button></div>';
     resultSince = Date.now(); // ここから 10 秒で待機画面へ戻す
   }
-  /* 結果表示中のプレイを片付けて STAGE 1 に戻す */
+  /* CREDIT（獲得した FREE SPIN）が残っている間は、ステージを下げない: 前の回が終わったステージ（state.keepStage）から次の回を始める。
+     CREDIT が無ければ、いつもどおり STAGE 1 から */
+  const stageMax = () => Engine.STAGE_DEFS.length;
+  const keepStageOf = (s) => ((s.credits || 0) > 0 ? Math.max(1, Math.min(stageMax(), Math.floor(Number(s.keepStage)) || 1)) : 1);
+  /* 結果表示中のプレイを片付けて、次のプレイを始めるステージに戻す（ふつうは STAGE 1。CREDIT が残っていれば、いまのステージのまま） */
   async function clearShown() {
     if (!Store.state.play) return true;
     try {
@@ -444,7 +449,8 @@ const Game = (function () {
     } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); return false; }
     busy = true;
     lockbar.classList.remove('show');
-    if (curStage !== 1) await transition(1); else setStage(1);
+    const to = keepStageOf(Store.state);
+    if (curStage !== to) await transition(to); else setStage(to);
     win.classList.remove('win', 'lose');
     showingResult = false;
     // 次のゲームの前に、リールに READY TO SPIN を一拍見せる
@@ -492,7 +498,9 @@ const Game = (function () {
         const from = Engine.windowStart(now, s.limits && s.limits.resetHour);
         if (!s.dayPlays || s.dayPlays.from !== from) s.dayPlays = { from, n: 0 };
         Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n, s.probs).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
-        res = Engine.drawProb(s.probs, undefined, blocked);
+        // CREDIT で回す回は、前の回が終わったステージから抽選を始める（ステージを下げない）。それ以外は STAGE 1 から
+        const startSt = keepStageOf(s);
+        res = Engine.drawProb(s.probs, undefined, blocked, startSt);
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
         const bestBefore = bestOf(s); // 今回の結果が出る前の最高額配当（回転中はこちらを表示する）
@@ -504,11 +512,13 @@ const Game = (function () {
           ses.awarded += res.value;
           s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
-        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
+        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: startSt, ts: Date.now() };
+        if (startSt > 1) s.play.from = startSt;
+        s.keepStage = 0;
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
         s.locked = true;
-        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
+        Store.log('PLAY', { playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage).filter((x) => x >= startSt), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
       });
     } catch (err) {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
@@ -518,7 +528,9 @@ const Game = (function () {
     showCredits();
     lockbar.classList.remove('show');
     if (storeMode() && !Store.state.play.test) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
-    runStage(Store.state.play, 1);
+    const st0 = Store.state.play.cur || 1;
+    if (curStage !== st0) setStage(st0); // 読み直したあとなど、画面が別のステージになっているとき
+    runStage(Store.state.play, st0);
   }
 
   /* ---------- 停止パターンの抽選（結果は確定済み。見せ方だけを変える） ----------
@@ -586,14 +598,14 @@ const Game = (function () {
     try { Store.transact((s) => { s.patHist = (s.patHist || []).concat(p.id).slice(-20); }); } catch (err) { /* 記録のみ */ }
     return p;
   }
-  function pickPattern(st, sym) {
+  function pickPattern(st, sym, holdSt) { // holdSt: 止まりかけの間の長さに使うステージ（FREE SPIN で回る分は 1）
     if (window.__fxTest && window.__fxTest.pat) return window.__fxTest.pat; // 演出確認用（結果には影響しない）
     const isWin = sym !== 0;
     if (Math.random() > (isWin ? DRAMA.win : DRAMA.lose)[st]) return { type: 'plain' };
     if (isWin && Math.random() < RESPIN_RATE[st]) return { type: 'respin' };
     const p = pickCatalog();
     // 止まりかけで見せる「惜しい絵柄」は spinReel 側で、先に止まった2本との合計が別の結果になる絵柄から選ぶ
-    return { type: 'seq', pre: p.pre, holds: p.holds.map((h) => HOLD_SEC[h][st - 1]), over: p.over, crawl: p.crawl, id: p.id };
+    return { type: 'seq', pre: p.pre, holds: p.holds.map((h) => HOLD_SEC[h][(holdSt || st) - 1]), over: p.over, crawl: p.crawl, id: p.id };
   }
 
   /* ---------- 確定演出（虹） ----------
@@ -619,7 +631,10 @@ const Game = (function () {
   /* 画面が消える（crt）／白く飛ぶ（flash）。during() は真っ暗・真っ白の間に呼ばれる（ステージ切替などに使う）。
      freeze = true のとき、画面が消えている間はリールの時計を止め、消え始めた分も巻き戻して再開する
      （確定演出の時間を回転時間に数えない。画面が戻ってから、リールは本来の長さだけ回る）。 */
-  async function blink(fx, holdMs, during, freeze) {
+  /* afterSec を渡すと（freeze のときだけ）、画面が戻ってから afterSec 秒は3本目が回り続ける
+     （確定演出のあと、すぐに結果が決まってしまわないように、消えている間に3本目を回し直す）。 */
+  async function blink(fx, holdMs, during, freeze, afterSec) {
+    const back = (sec) => { if (!freeze) return; if (afterSec > 0) { Reel.relaunch(sec + afterSec); Reel.resume(0); } else Reel.resume(sec); };
     const crt = $('crt');
     // ゆっくり: 消えるのに約1秒、消えたまま holdMs、戻るのに約0.7秒
     if (fx === 'flash') {
@@ -631,7 +646,7 @@ const Game = (function () {
       if (freeze) Reel.hold();
       if (during) await during();
       await wait(holdMs);
-      if (freeze) Reel.resume(0.6);
+      back(1.0);
       crt.className = 'white-out';
       await wait(1000);
       crt.className = '';
@@ -645,15 +660,18 @@ const Game = (function () {
     if (freeze) Reel.hold();
     if (during) await during();
     await wait(holdMs);
-    if (freeze) Reel.resume(0.95);
+    back(0.7);
     Sfx.play('crtOn');
     crt.className = 'on';
     await wait(700);
     crt.className = '';
   }
+  /* 画面が戻ったあと、3本目は「確定の演出が落ち着くまで」＋「2本目から3本目までの本来の時間」をまるごと回ってから止まる */
+  let lastWindow = 4.5; // 直近のスピンで、2本目が止まってから3本目が止まるまでの秒数
   async function puchun(plan) {
-    await blink(plan.fx, plan.kind === 'real' ? 2200 : 1600, null, true);
-    if (plan.kind === 'real') announceSure();
+    const real = plan.kind === 'real';
+    await blink(plan.fx, real ? 2200 : 1600, null, true, (real ? 2.5 : 1.0) + lastWindow);
+    if (real) announceSure();
   }
   /* ワープ開始: NEXT GAME 直後、結果が STAGE 2 以上で「金額が当たる」プレイでたまに、いきなり上のステージから始まる。
      画面が消える（白く飛ぶ）演出を使うので、ハズレで終わるプレイでは出さない */
@@ -696,6 +714,7 @@ const Game = (function () {
   /* 1ステージ分の演出。NEXT STAGE なら次のステージへ移り、再びレバー待ちに戻る。 */
   async function runStage(play, st) {
     busy = true;
+    tense(0); // 念のため（前の回の期待の演出が残らないように）
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
     // FREE SPIN の回り直し中（この回を含めてあと freeLeft 回）。最後の1回で本当の結果を出し、それまでの回は 0 で止まる
@@ -709,7 +728,7 @@ const Game = (function () {
     const freeN = !oneMore && !inFree && !noSp && !logoHit && !lockFree ? rollFree() : 0;
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
     const rev = !oneMore && !freeN && !logoHit && !midFree && sym !== 'NEXT' && play.value > 0 && rollReverse();
-    const pat = oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    const pat = oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym, inFree || play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
     if (!oneMore && !freeN && !logoHit && !midFree && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
     const warpTo = oneMore || freeN || logoHit || inFree || noSp ? 0 : pickWarp(play, st);
     showCredits();
@@ -785,7 +804,7 @@ const Game = (function () {
       return runStage(play, st);
     } else if (midFree) {
       // FREE SPIN の途中の回: 0 で止まり、すぐ次の回へ（本当の結果は最後の回）
-      await spinReel(st, 0, pat, extra);
+      await spinReel(st, 0, pat, Object.assign({ noTension: true }, extra));
       win.classList.add('lose');
       Sfx.play('zero');
       await wait(1100);
@@ -794,7 +813,7 @@ const Game = (function () {
       return runStage(play, st);
     } else if (pat.type === 'respin') {
       // ハズレと思いきや当たり: 0 で完全に止まる → 暗転 → ONE MORE CHANCE → もう一度レバーを引かせる
-      await spinReel(st, 0, { type: 'plain' }, extra);
+      await spinReel(st, 0, { type: 'plain' }, Object.assign({ noTension: true }, extra));
       win.classList.add('lose');
       Sfx.play('zero');
       if (!sureShown) setPlate('result zero', '0', '');
@@ -829,18 +848,58 @@ const Game = (function () {
       // ボタン版: 次のステージは自動で回り始める
       if (!Store.state.play) { busy = false; return refresh(); }
       Sfx.play('stageReady');
-      await wait(500);
+      await wait(800);
       return runStage(Store.state.play, st + 1);
     }
     await resultFx(play);
     clearSure();
     const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
-    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; s.keepStage = (s.credits || 0) > 0 ? s.play.stage : 0; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
     if (out) await totalFx(Store.state.wonTotal || 0);
     busy = false;
     if (Store.state.play) showLocked(Store.state.play, true); else refresh();
+  }
+
+  /* ---------- 期待の段階化 ----------
+     先に止まった2本が「NEXT STAGE 2本」「同じ FREE SPIN 2本」「casa ロゴ 2本」、または2本の合計が大きいときだけ、
+     3本目が回っている間に、音・枠の光・減速を 1 → 2 → 3 段階と強くする（Engine.tensionOf が場面を判定）。
+     結果は確定済みで、ここで決めるのは見せ方だけ。来る時ほど高い段階まで上がりやすく、3段階目は来る時にしか出ない。
+     来ない時はほとんど出さない（出ても 1〜2 段階まで）。「惜しい」などの文字は出さない。
+     FREE SPIN ×1・×2 と STAGE 1 の合計は小さな場面なので、控えめに出す（出しすぎると効かなくなる）。 */
+  const TENSE_V = [0.72, 0.5, 0.3]; // 段階ごとの3本目の速さ（最高速に対する割合）
+  const TENSE_RATE = { // [出さない, 1段階, 2段階, 3段階] の割合。添字 = その場面で上がれる上限（cap）
+    big: { // NEXT STAGE・casa ロゴ・FREE SPIN ×3・STAGE 2 以上の合計
+      hit: { 1: [0.15, 0.85], 2: [0.08, 0.27, 0.65], 3: [0.06, 0.12, 0.30, 0.52] },
+      miss: { 1: [0.80, 0.20], 2: [0.76, 0.19, 0.05], 3: [0.76, 0.18, 0.06, 0] },
+    },
+    small: { // FREE SPIN ×1・×2、STAGE 1 の合計
+      hit: { 1: [0.60, 0.40], 2: [0.60, 0.25, 0.15], 3: [0.60, 0.20, 0.12, 0.08] },
+      miss: { 1: [0.93, 0.07], 2: [0.93, 0.06, 0.01], 3: [0.93, 0.06, 0.01, 0] },
+    },
+    sum: { 1: [0.50, 0.50], 2: [0.40, 0.45, 0.15], 3: [0.30, 0.40, 0.30, 0] }, // 合計が大きいが最高額ではない回（当たりではあるので、よく出す。3段階目は最高額の時だけ）
+  };
+  function planTension(st, combo, order) {
+    const t = Engine.tensionOf(st, combo, order);
+    if (!t) return null;
+    let steps = 0;
+    if (window.__fxTest && window.__fxTest.tension !== undefined) steps = Math.min(t.cap, +window.__fxTest.tension || 0); // 演出確認用
+    else {
+      const w = t.kind === 'sum' && t.big && !t.hit ? TENSE_RATE.sum[t.cap] : TENSE_RATE[t.big ? 'big' : 'small'][t.hit ? 'hit' : 'miss'][t.cap];
+      let r = Math.random();
+      for (let i = 0; i < w.length; i++) { if (r < w[i]) { steps = i; break; } r -= w[i]; }
+    }
+    return steps > 0 ? { kind: t.kind, steps, hit: t.hit } : null;
+  }
+  let tenseLv = 0;
+  function tense(lv) {
+    if (lv === tenseLv) return;
+    tenseLv = lv;
+    stageEl.classList.toggle('tense', lv > 0);
+    if (lv > 0) stageEl.dataset.tense = String(lv); else delete stageEl.dataset.tense;
+    Sfx.tension(lv);
+    if (lv > 0) { Sfx.play('tenseUp', lv); restart(cabinet, 'thud'); FX.ring(CX, CY, STAGE_ACC[curStage], 470 + 50 * lv, 0.55); } // 光の輪は筐体のまわりだけ（画面いっぱいには広げない）
   }
 
   /* 3本リールを回す。結果 sym（金額 / 0 / 'NEXT'）は確定済み。ここで決めるのは見せ方だけ:
@@ -866,8 +925,8 @@ const Game = (function () {
       if (!pool.length) pool = combos;
     }
     const combo = pool[Math.floor(Math.random() * pool.length)];
-    // NEXT STAGE や FREE SPIN が入る並びでは、それを先に止める（最初に 0 が見えてしまわないように）。順番は NEXT STAGE → FREE SPIN → それ以外
-    const rank = (s) => (s === 'NEXT' ? 0 : Engine.FREE_SYMS.indexOf(s) >= 0 ? 1 : 2);
+    // 止まる順番は NEXT STAGE → FREE SPIN → ハズレ（BAR）→ 金額。金額が当たる時は、金額のリールが最後に止まる（先にハズレ側が止まる）
+    const rank = (s) => (s === 'NEXT' ? 0 : Engine.FREE_SYMS.indexOf(s) >= 0 ? 1 : typeof s === 'number' ? 3 : 2);
     const cand = ORDERS.filter((o) => rank(combo[o[0]]) <= rank(combo[o[1]]) && rank(combo[o[1]]) <= rank(combo[o[2]]));
     const deciding = cand.filter((o) => Engine.reelAlternatives(st, combo, o[2]).length > 0);
     const ordPool = deciding.length ? deciding : cand;
@@ -890,6 +949,15 @@ const Game = (function () {
       const late = Math.max(0, p.reverse + 2.9 - first);
       stops = stops.map((x) => x + late);
     }
+    // 期待の段階化: 先に止まる2本が「来るかも」の形のときだけ、3本目が回っている間に一段ずつ盛り上げる（結果は変えない）。
+    // 確定演出（逆回転・画面が消える・虹）と重なる回では出さない
+    const tn = extra.noTension || pat.reverse || pat.quick || puchunPlan || sureShown ? null : planTension(st, combo, order);
+    if (tn) {
+      p.gears = { from: stops[1], v: TENSE_V.slice(0, tn.steps), minGap: 1.1 }; // 一段ごとに 1.1 秒以上（足りなければ、3本目が止まるのを少し遅らせる）
+      if (p.type === 'seq' && p.pre > 1) p.pre = 1; // 段階的な減速のあとの「止まりかけ」は 1 回だけ（重ねすぎると長く、くどくなる）
+    }
+    lastWindow = stops[2] - stops[1];
+    const calm = () => { beats.forEach(clearTimeout); beats.length = 0; stageEl.classList.remove('reach'); $('dim').classList.remove('on'); $('content').querySelector('.spot').style.opacity = ''; };
     lastCombo = { st, read: sym, combo };
     try { Store.transact((s) => { s.comboHist = (s.comboHist || []).concat(st + ':' + combo.join('/')).slice(-20); }); } catch (err) { /* 記録のみ */ }
     return Reel.spin(st, combo, order, stops, p, {
@@ -898,7 +966,8 @@ const Game = (function () {
       onSpeed: (n) => Sfx.spin(n),
       onNear: () => { extra.onNear && extra.onNear(); },
       onReverse: () => { Sfx.play('kyuin'); flash(true); quake(); stageEl.classList.add('reach'); setPlate('spin', 'REVERSE', '当選確定'); }, // 突然の逆回転（当たり確定）
-      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
+      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; calm(); puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
+      onGear: (g) => { if (tn) tense(g + 1); }, // 期待の段階が一段上がる（3本目が一段ゆっくりになる瞬間）
       onTease: (dur) => {
         Sfx.play('tease', dur);
         stageEl.classList.add('reach'); // 集中線で緊張感を出す
@@ -908,6 +977,7 @@ const Game = (function () {
       },
       onStop: () => {
         beats.forEach(clearTimeout);
+        tense(0);
         stageEl.classList.remove('reach');
         $('dim').classList.remove('on');
         $('content').querySelector('.spot').style.opacity = '';
@@ -927,7 +997,7 @@ const Game = (function () {
     setPlate('spin', 'NEXT STAGE', '');
     win.classList.add('win');
     cabinet.classList.add('party');
-    await wait(450);
+    await wait(650);
     pendingSure = pickSure(Store.state.play); // 当選確定のプレイでは、たまに到着の瞬間に虹色になる
     await stageTransition(to);
     win.classList.remove('win');
@@ -956,19 +1026,20 @@ const Game = (function () {
     stageEl.classList.add('named');
     stageEl.classList.toggle('fin', fin);
     Sfx.play('warp');
-    await wait(500);
+    await wait(760); // チップが飛んできて着地するまで（CSS の chip-in と同じ長さ）
     Sfx.play('stamp');
     quake();
     flash(true);
     FX.ring(800, 450, STAGE_ACC[to], 1000, 0.9);
-    FX.burst(800, 450, fin ? 260 : 180, { max: 1300, life: 1.4, colors: STAGE_COL[to] });
-    FX.streaks(800, 450, 100, 0.4, { colors: STAGE_COL[to] });
+    // 重い処理が同じ瞬間に重ならないよう、少しずつずらして出す
+    setTimeout(() => FX.burst(800, 450, fin ? 260 : 180, { max: 1300, life: 1.4, colors: STAGE_COL[to] }), 90);
+    setTimeout(() => FX.streaks(800, 450, 100, 0.4, { colors: STAGE_COL[to] }), 220);
     await wait(hold);
   }
   async function hideStamp() { // チップはカメラ手前へ飛び去る
     const label = $('shutterLabel');
     label.classList.add('out');
-    await wait(220);
+    await wait(340);
     label.classList.remove('show', 'stamp', 'out', 'rainbow');
     stageEl.classList.remove('named');
   }
@@ -977,20 +1048,22 @@ const Game = (function () {
   async function arrive(to, title) {
     const fin = to === 3, colors = STAGE_COL[to], ACC = STAGE_ACC[to];
     if (curStage !== to) setStage(to); else FX.setAmbient([0, 0, 14, 30][to], colors);
-    if (pendingSure) { pendingSure = false; announceSure(); }
+    const sure = pendingSure;
+    if (sure) { pendingSure = false; announceSure(); }
     Sfx.play('open', fin);
-    // 重い処理が同じ瞬間に重ならないよう、少しずつずらして出す
-    FX.ring(CX, CY, 'white', 1300, 1.0);
-    FX.burst(CX, CY, fin ? 160 : 120, { max: 1700, life: 1.6, size: 26, colors });
-    setTimeout(() => { FX.ring(CX, CY, ACC, 1500, 1.2); if (!window.LITE) FX.streaks(CX, CY, fin ? 70 : 50, 0.7, { colors }); }, 120);
+    // 重い処理が同じ瞬間に重ならないよう、間を空けて1つずつ出す（虹の演出が出る回は、それが落ち着いてから）
+    const d0 = sure ? 900 : 0, at = (ms, fn) => setTimeout(fn, d0 + ms);
+    at(0, () => FX.ring(CX, CY, 'white', 1300, 1.0));
+    at(200, () => FX.burst(CX, CY, fin ? 160 : 120, { max: 1700, life: 1.6, size: 26, colors }));
+    at(450, () => { FX.ring(CX, CY, ACC, 1500, 1.2); if (!window.LITE) FX.streaks(CX, CY, fin ? 70 : 50, 0.7, { colors }); });
     if (!window.LITE) { // 軽量モードでは噴水・紙吹雪を省略
-      setTimeout(() => [300, 1300].forEach((x) => FX.fountain(x, 930, fin ? 40 : 30, 0.6, colors)), 240);
-      setTimeout(() => FX.flakes(fin ? 60 : 40, 0.8, colors), 360);
+      at(720, () => [300, 1300].forEach((x) => FX.fountain(x, 930, fin ? 40 : 30, 0.6, colors)));
+      at(980, () => FX.flakes(fin ? 60 : 40, 0.8, colors));
     }
     const y1 = RUNG_Y[to];
-    setTimeout(() => { FX.ring(180, y1, ACC, 260, 0.6); FX.burst(180, y1, 50, { max: 600, colors }); }, 480);
+    at(1200, () => { FX.ring(180, y1, ACC, 260, 0.6); FX.burst(180, y1, 50, { max: 600, colors }); });
     if (title) { await wait(420); await stampStage(to, 380); await hideStamp(); await wait(80); }
-    else await wait(750);
+    else await wait(d0 + 1500); // 新しいステージの画面をしっかり見せてから、次の回転へ
     stageEl.classList.remove('fin');
   }
 
@@ -1025,8 +1098,9 @@ const Game = (function () {
     const fin = to === 3, rb = pendingSure;
     const colors = rb ? RAINBOW : STAGE_COL[to];
     const n = window.LITE ? 1 : rb ? 8 : fin ? 3 : 1; // 軽量モードは常に1組
-    const gap = n === 8 ? 170 : 300;
+    const gap = n === 8 ? 360 : 480; // 扉1枚ごとの間（扉が閉まり切るのを見せる）
     const layers = buildDoors(n, rb ? DOOR_RGB.rainbow : fin ? DOOR_RGB.fin : null);
+    $('doors').style.setProperty('--dt', n === 8 ? '.34s' : '.46s'); // 扉が閉まる速さ（8枚のときだけ少し速く）
     stageEl.classList.remove('opening', 'opening-slow', 'blast');
     stageEl.classList.toggle('fin', fin);
     await frame();
@@ -1036,22 +1110,25 @@ const Game = (function () {
     // 閉門: 1枚ずつ叩きつける。下に隠れた扉は描画から外す（同時に描くのは最大2組）
     for (let i = 0; i < n; i++) {
       layers[i].pair.forEach((d) => d.classList.add('in'));
-      if (i === 0) { Sfx.play('shutterClose'); await wait(440); } else { await wait(gap - 40); Sfx.play('slam', i / (n - 1)); await wait(40); }
+      if (i === 0) { Sfx.play('shutterClose'); await wait(480); } else { await wait(gap - 40); Sfx.play('slam', i / (n - 1)); await wait(40); }
       if (i >= 2) layers[i - 2].pair.forEach((d) => { d.style.display = 'none'; });
       quake();
       flash(true);
       seamSparks(layers[i].horiz, rb ? [RAINBOW[i % RAINBOW.length], 'white'] : colors);
     }
-    // 扉の裏を非表示にしてから色を切り替え、描き直しが落ち着くのを待つ
+    // 閉まった衝撃の演出が終わるのを待ってから、扉の裏を非表示にして色を切り替え、描き直しが落ち着くのを待つ
+    // （ステージの切り替えは重いので、ほかの演出と同じ瞬間に重ねない）
+    await wait(280);
     content.style.visibility = 'hidden';
     setStage(to);
     await raf2();
     stageEl.classList.add('ceremony');
     await raf2();
-    await stampStage(to, 300, rb);
+    await wait(260);
+    await stampStage(to, 700, rb);
 
     // 溜め（約2秒）: ドラムロール。継ぎ目の光が速く脈打ち、光が扉へ吸い込まれていく
-    const roll = 1.9;
+    const roll = 2.1;
     Sfx.play('roll', roll);
     stageEl.classList.add('rolling');
     FX.converge(800, 450, fin ? 60 : 40, roll);
@@ -1066,6 +1143,7 @@ const Game = (function () {
     await hideStamp();
     content.style.visibility = '';
     await raf2();
+    await wait(120);
     stageEl.classList.add('blast');
     stageEl.classList.remove('ceremony');
     for (let i = n - 1; i >= 1; i--) {
@@ -1082,7 +1160,7 @@ const Game = (function () {
     quake();
     fxMode(false);
     await arrive(to, false);
-    setTimeout(() => { stageEl.classList.remove('blast'); $('doors').innerHTML = ''; }, 700);
+    setTimeout(() => { stageEl.classList.remove('blast'); $('doors').innerHTML = ''; }, 1100);
   }
 
   /* 次のプレイへ戻るときの短いシャッター */
@@ -1334,8 +1412,9 @@ const Game = (function () {
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
           '<li><b>FREE SPIN ×1・×2・×3 が3本そろう</b>と、その回数だけ自動でまわります。そろわなかったときは 0 として合計します。</li>' +
-          '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、<b>自動で回り続けます</b>（1回ごとに 1 減ります）。FREE SPIN はどのステージでも STAGE 1 と同じ速さで回ります。</li>' +
-          '<li>止まる順番は毎回変わります。3本目は少し長く回ります。</li></ul>' +
+          '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、<b>自動で回り続けます</b>（1回ごとに 1 減ります）。その間は<b>ステージが下がりません</b>（上のステージに上がったら、残りの回もそのステージで回ります）。FREE SPIN はどのステージでも STAGE 1 と同じ速さで回ります。</li>' +
+          '<li>金額が当たるときは、金額のリールが最後に止まります。3本目は少し長く回ります。</li>' +
+          '<li>先に止まった2本がそろいかけた時や、合計が大きい時は、3本目が回っている間に<b>音と光が一段ずつ強くなり、回転がゆっくりになる</b>ことがあります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
           '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
           '<li>STAGE 1 → STAGE 2 → STAGE 3 の順に上がり、上のステージほど大きな金額が出ます。STAGE 3 が最後です。</li>' +
