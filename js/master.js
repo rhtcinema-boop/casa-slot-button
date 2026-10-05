@@ -96,17 +96,21 @@
   // casa ロゴ3つ = 10 FREE SPIN（本物の追加プレイ）が出る割合。予算が増えるので初期値は 0（出ない）
   const LOGO_SPINS = 10, LOGO_MAX = 5;
   const logoOf = (p) => (typeof p.logoRate === 'number' ? p.logoRate : 0);
-  // 10 FREE SPIN を含めた期待値。ロゴの抽選はスピンごと（1プレイで STAGE 2・3 に進むと、そのぶん回数が増える）なので、
-  // 1プレイあたりの割合 = 割合 × 平均スピン数。追加プレイの中でもまたロゴがそろうので、全体は 1 / (1 - 10 × それ) 倍になる
   const noRetrig = (p) => p.noRetrigger !== false; // FREE SPIN で回っているゲームでは FREE SPIN を出さない（未設定は ON）
-  function logoCost(p) {
-    const st = Engine.probStats(p.probs), ev = st.ev, r = (logoOf(p) / 100) * (1 + st.reach[2] + st.reach[3]);
-    // FREE SPIN 中に FREE SPIN を出さないなら、増えるのは 10 回ぶんだけ。出すなら、その中でもまたそろうので 1 / (1 - 10r) 倍
-    const k = noRetrig(p) ? 1 / (1 + LOGO_SPINS * r) : 1 - LOGO_SPINS * r;
-    if (r <= 0) return '<span class="okmsg">オフ（casa ロゴはリールに出ません。予算は変わりません）</span>';
-    if (k <= 0) return '<span class="err">割合が高すぎます（FREE SPIN が終わらなくなります）</span>';
-    return '<span class="err" style="color:var(--gold)">予算の目安: 1回の有料プレイあたりの期待値が <b>' + fmtN(Math.round(ev)) + ' → ' + fmtN(Math.round(ev / k)) + '</b>（約 ' + (Math.round(1000 / k) / 10) + '%）になります。ロゴがそろうのは平均 ' + fmtN(Math.round(1 / r)) + ' プレイに1回です。</span>';
+  // FREE SPIN ×1〜×3 と casa ロゴは、どちらも本物の追加プレイ（CREDIT）。その分を含めた期待値の目安。
+  // 1スピンあたりに増える CREDIT = ×1 の割合×1 + ×2 の割合×2 + ×3 の割合×3 + ロゴの割合×10。
+  // 抽選はスピンごとなので（1プレイで STAGE 2・3 に進むと回数が増える）、有料プレイ1回あたりは 平均スピン数 を掛ける
+  function creditCost(p) {
+    const st = Engine.probStats(p.probs), ev = st.ev;
+    const perSpin = (freeN(p, 1) + freeN(p, 2) * 2 + freeN(p, 3) * 3 + logoOf(p) * LOGO_SPINS) / 100;
+    const r = perSpin * (1 + st.reach[2] + st.reach[3]);
+    if (r <= 0) return '<span class="okmsg">オフ（FREE SPIN も casa ロゴも出ません。予算は変わりません）</span>';
+    // FREE SPIN 中に FREE SPIN を出さないなら、増えるのはその回数ぶんだけ（1 + r 倍）。出すなら、その中でもまたそろうので 1 / (1 - r) 倍
+    if (!noRetrig(p) && r >= 1) return '<span class="err">割合が高すぎます（FREE SPIN が終わらなくなります）</span>';
+    const k = noRetrig(p) ? 1 + r : 1 / (1 - r);
+    return '<span class="err" style="color:var(--gold)">予算の目安: 1回の有料プレイあたりの期待値が <b>' + fmtN(Math.round(ev)) + ' → ' + fmtN(Math.round(ev * k)) + '</b>（約 ' + (Math.round(k * 1000) / 10) + '%）になります。FREE SPIN（×1〜×3 と casa ロゴの合計）の追加プレイは、有料プレイ 100 回あたり約 ' + (Math.round((k - 1) * 1000) / 10) + ' 回ぶんです。</span>';
   }
+  const refreshCost = () => { main.querySelectorAll('.ccost').forEach((el) => { el.innerHTML = creditCost(editPreset); }); };
   // 開始直後の高額制限（最初の X 回は Y 以上を出さない）。Y は実際に出る金額の中から選ぶ
   const amountsOf = (p) => { const a = []; Engine.tableOf(p.probs).forEach((d) => d.values.forEach((v) => { if (v > 0 && a.indexOf(v) < 0) a.push(v); })); return a.sort((x, y) => x - y); };
   const EARLY_DEFAULT = { on: false, plays: 10, min: 2000 };
@@ -148,18 +152,19 @@
     return '<div class="panel"><h3>' + (p.id ? 'プリセットを編集' : 'プリセットを作る') + '</h3>' +
       '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label>' +
       '<div class="row"><div class="lbl">テスト用プリセット<small>ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます</small></div><button class="btn sm ' + (p.test ? '' : 'ghost') + '" data-act="test-on">' + (p.test ? 'ON' : 'OFF') + '</button></div></div>' +
-      '<div class="panel"><h3>各ステージの配当と確率</h3><p class="hint"><b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。各ステージの合計をちょうど 100% にしてください。下に、1回あたりの平均当選額（予算の目安）が出ます。</p><div class="cols pcols">' +
+      '<div class="panel"><h3>各ステージの配当と確率</h3><p class="hint"><b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。<b style="color:var(--text)">数字を押すと、直接入力もできます</b>（小数も可。ほかの欄の数字も同じです）。各ステージの合計をちょうど 100% にしてください。下に、1回あたりの平均当選額（予算の目安）が出ます。</p><div class="cols pcols">' +
       Engine.tableOf(p.probs).map((d) => probStage(p, d)).join('') + '</div>' +
       '<p class="hint" style="margin-top:10px">金額を増やしたり消したりしたプリセットは、店舗の端末が b52 以上になってから反映されます（端末は 1 時間以内に自動でアップデートします。店舗一覧で端末の版を確認できます）。</p>' +
       '<div id="psum">' + probSummary(p) + '</div></div>' +
-      '<div class="panel"><h3>FREE SPIN</h3><p class="hint">リールに同じ FREE SPIN が3本そろって、その回数だけ自動で回り直す演出が出る割合です（1回のスピンあたり）。演出なので、当選確率・期待値・回転数は変わりません。本当の結果は最後の回に出ます（×2・×3 の途中の回は 0 で止まります）。0% にした種類は、絵柄も出なくなります。</p>' +
-      stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'もう1回まわる（0〜50%）') +
-      stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'もう2回まわる（0〜25%）') +
-      stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'もう3回まわる（0〜25%）') + '</div>' +
-      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます（1回ごとに普通に抽選します）。FREE SPIN は毎回 STAGE 1 から回ります。上の ×1〜×3 と違って<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
+      '<div class="panel"><h3>FREE SPIN ×1・×2・×3</h3><p class="hint">リールに同じ FREE SPIN が3本そろうと、<b style="color:var(--text)">その回数ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します（b58 から。それまでは演出だけでした）。端末の CREDIT が 1・2・3 増え、STAGE 1 から 1 回ずつ普通に抽選します。<b style="color:var(--text)">当選額が増える</b>ので、下の予算の目安を見て割合を決めてください（1回のスピンあたりの割合）。0% にした種類は、絵柄も出なくなります。</p>' +
+      stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'CREDIT +1（0〜50%）') +
+      stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'CREDIT +2（0〜25%）') +
+      stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'CREDIT +3（0〜25%）') +
+      '<div class="ccost" style="margin-top:8px;font-size:14px">' + creditCost(p) + '</div></div>' +
+      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN（本物の追加プレイ）</b>を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます（1回ごとに普通に抽選します）。FREE SPIN は毎回 STAGE 1 から回ります。<b style="color:var(--text)">当選額が増える</b>ので、割合は慎重に決めてください。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
       stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
-      '<div id="logoCost" style="margin-top:8px;font-size:14px">' + logoCost(p) + '</div>' +
-      '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>ON: 獲得した 10 FREE SPIN で回っているゲームでは、FREE SPIN ×1〜×3 も casa ロゴも出ません（絵柄も出ません）。OFF: FREE SPIN 中にも、さらに FREE SPIN を獲得できます（そのぶん予算が増えます）</small></div><button class="btn sm ' + (noRetrig(p) ? '' : 'ghost') + '" data-act="retrig-on">' + (noRetrig(p) ? 'ON' : 'OFF') + '</button></div></div>' +
+      '<div class="ccost" style="margin-top:8px;font-size:14px">' + creditCost(p) + '</div>' +
+      '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>ON: 獲得した FREE SPIN（CREDIT）で回っているゲームでは、FREE SPIN ×1〜×3 も casa ロゴも出ません（絵柄も出ません）。OFF: FREE SPIN 中にも、さらに FREE SPIN を獲得できます（そのぶん予算が増えます）</small></div><button class="btn sm ' + (noRetrig(p) ? '' : 'ghost') + '" data-act="retrig-on">' + (noRetrig(p) ? 'ON' : 'OFF') + '</button></div></div>' +
       '<div class="panel"><h3>1日の当たり本数制限</h3><p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
       '<div class="row"><div class="lbl">制限を使う</div><button class="btn sm ' + (L.on ? '' : 'ghost') + '" data-act="lim-on">' + (L.on ? 'ON' : 'OFF') + '</button></div>' +
       stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
@@ -279,6 +284,68 @@
   });
   main.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.amt) e.target.blur(); }); // Enter で確定
   main.addEventListener('input', (e) => { if (e.target.id === 'pname' && editPreset) editPreset.name = e.target.value; }); // 途中で画面を作り直しても名前が消えないように
+  /* ◀ ▶ 1回ぶん（d = ±1）の増減。数字の直接入力からは、d に「入力した値 − いまの値」を渡す（上限・下限・丸めは同じ決まり） */
+  function doStep(b, d) {
+    const pv = b.parentNode.querySelector('.pv');
+    const show = (v, unit) => { pv.innerHTML = v + '<i>' + unit + '</i>'; };
+    if (b.dataset.p) {
+      const pk = b.dataset.p.split(':'); const v = Number(editPreset.probs[pk[0]][pk[1]]) || 0;
+      editPreset.probs[pk[0]][pk[1]] = Math.max(0, Math.min(100, Math.round((v + d) * 100) / 100));
+      show(editPreset.probs[pk[0]][pk[1]], '%');
+      $('psum').innerHTML = probSummary(editPreset);
+      const badge = main.querySelector('[data-sum="' + pk[0] + '"]'); if (badge) badge.outerHTML = sumBadge(editPreset, +pk[0]);
+      $('pstate').innerHTML = saveMsg(editPreset);
+      refreshCost();
+      return;
+    }
+    if (b.dataset.e) {
+      const E = editPreset.limits.early = earlyOf(editPreset.limits);
+      if (b.dataset.e === 'plays') { E.plays = Math.max(1, Math.min(999, Math.round((Number(E.plays) || 0) + d))); return show(E.plays, '回'); }
+      const A = amountsOf(editPreset); if (!A.length) return;
+      let i = A.indexOf(E.min); if (i < 0) { i = A.filter((x) => x < E.min).length; if (d > 0) i -= 1; } // 配当表から消えた金額のときは、近い金額から選び直す
+      E.min = A[Math.max(0, Math.min(A.length - 1, i + Math.round(d)))];
+      return show(fmtN(E.min), '以上');
+    }
+    if (b.dataset.g) { editPreset.logoRate = Math.max(0, Math.min(LOGO_MAX, Math.round((logoOf(editPreset) + d * 0.1) * 10) / 10)); refreshCost(); return show(editPreset.logoRate.toFixed(1), '%'); }
+    if (b.dataset.f) { const n = +b.dataset.f, key = FREE_KEYS[n - 1]; editPreset[key] = Math.max(0, Math.min(FREE_MAX[n - 1], Math.round((freeN(editPreset, n) + d) * 10) / 10)); refreshCost(); return show(editPreset[key], '%'); }
+    const k = b.dataset.l, L = editPreset.limits;
+    if (k === 'hour') { L.resetHour = ((Math.round(L.resetHour + d) % 24) + 24) % 24; return show(L.resetHour, ':00'); }
+    if (k === 'total') { L.total = Math.max(0, Math.min(999, Math.round((L.total || 0) + d))); return show(L.total, '本'); }
+    const v = Math.max(0, Math.min(99, Math.round((Number(L.max[k]) || 0) + d))); if (v) L.max[k] = v; else delete L.max[k];
+    return show(v, '回');
+  }
+  /* 数字の直接入力: ◀ ▶ の間の数字を押すと入力欄になる。Enter か欄の外を押すと確定、Esc で取り消し */
+  const curVal = (b) => { // その行のいまの値と、◀ ▶ 1回ぶんの大きさ（金額を選ぶ欄は直接入力なし）
+    const P = editPreset, L = P.limits;
+    if (b.dataset.p) { const pk = b.dataset.p.split(':'); return { v: Number(P.probs[pk[0]][pk[1]]) || 0, unit: 1 }; }
+    if (b.dataset.e === 'plays') return { v: Number(earlyOf(L).plays) || 0, unit: 1 };
+    if (b.dataset.e) return null;
+    if (b.dataset.g) return { v: logoOf(P), unit: 0.1 };
+    if (b.dataset.f) return { v: freeN(P, +b.dataset.f), unit: 1 };
+    if (b.dataset.l === 'hour') return { v: L.resetHour, unit: 1 };
+    if (b.dataset.l === 'total') return { v: L.total || 0, unit: 1 };
+    if (b.dataset.l) return { v: Number(L.max[b.dataset.l]) || 0, unit: 1 };
+    return null;
+  };
+  main.addEventListener('click', (e) => {
+    const pv = e.target.closest('.stepper .pv');
+    if (!pv || pv.querySelector('input') || !editPreset) return;
+    const b = pv.parentNode.querySelector('[data-act="step"][data-d="1"]'), c = b && curVal(b);
+    if (!c) return;
+    const unit = (pv.querySelector('i') || {}).textContent || '';
+    pv.innerHTML = '<input type="number" class="pvin" inputmode="decimal" step="any" value="' + c.v + '" aria-label="数字を入力"><i>' + esc(unit) + '</i>';
+    const inp = pv.querySelector('input');
+    inp.focus(); inp.select();
+    let done = false;
+    const commit = (apply) => {
+      if (done) return; done = true;
+      const now = curVal(b), x = Number(inp.value);
+      doStep(b, apply && inp.value !== '' && isFinite(x) ? (x - now.v) / now.unit : 0); // 0 でも、表示を数字に戻すために呼ぶ
+    };
+    inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commit(true); } else if (ev.key === 'Escape') commit(false); });
+    inp.addEventListener('blur', () => commit(true));
+  });
+
   // ◀ ▶ を押しっぱなしにすると連続で増減する
   let holdT = 0, holdI = 0;
   const holdStop = () => { clearTimeout(holdT); clearInterval(holdI); };
@@ -332,35 +399,7 @@
           const top = window.scrollY; render(); window.scrollTo(0, top);
           return;
         }
-        case 'step': {
-          const d = +b.dataset.d, pv = b.parentNode.querySelector('.pv');
-          const show = (v, unit) => { pv.innerHTML = v + '<i>' + unit + '</i>'; };
-          if (b.dataset.p) {
-            const pk = b.dataset.p.split(':'); const v = Number(editPreset.probs[pk[0]][pk[1]]) || 0;
-            editPreset.probs[pk[0]][pk[1]] = Math.max(0, Math.min(100, Math.round((v + d) * 100) / 100));
-            show(editPreset.probs[pk[0]][pk[1]], '%');
-            $('psum').innerHTML = probSummary(editPreset);
-            const badge = main.querySelector('[data-sum="' + pk[0] + '"]'); if (badge) badge.outerHTML = sumBadge(editPreset, +pk[0]);
-            $('pstate').innerHTML = saveMsg(editPreset);
-            if ($('logoCost')) $('logoCost').innerHTML = logoCost(editPreset);
-            return;
-          }
-          if (b.dataset.e) {
-            const E = editPreset.limits.early = earlyOf(editPreset.limits);
-            if (b.dataset.e === 'plays') { E.plays = Math.max(1, Math.min(999, (Number(E.plays) || 0) + d)); return show(E.plays, '回'); }
-            const A = amountsOf(editPreset); if (!A.length) return;
-            let i = A.indexOf(E.min); if (i < 0) { i = A.filter((x) => x < E.min).length; if (d > 0) i -= 1; } // 配当表から消えた金額のときは、近い金額から選び直す
-            E.min = A[Math.max(0, Math.min(A.length - 1, i + d))];
-            return show(fmtN(E.min), '以上');
-          }
-          if (b.dataset.g) { editPreset.logoRate = Math.max(0, Math.min(LOGO_MAX, Math.round((logoOf(editPreset) + d * 0.1) * 10) / 10)); $('logoCost').innerHTML = logoCost(editPreset); return show(editPreset.logoRate.toFixed(1), '%'); }
-          if (b.dataset.f) { const n = +b.dataset.f, key = FREE_KEYS[n - 1]; editPreset[key] = Math.max(0, Math.min(FREE_MAX[n - 1], freeN(editPreset, n) + d)); return show(editPreset[key], '%'); }
-          const k = b.dataset.l, L = editPreset.limits;
-          if (k === 'hour') { L.resetHour = (L.resetHour + d + 24) % 24; return show(L.resetHour, ':00'); }
-          if (k === 'total') { L.total = Math.max(0, Math.min(999, (L.total || 0) + d)); return show(L.total, '本'); }
-          const v = Math.max(0, Math.min(99, (Number(L.max[k]) || 0) + d)); if (v) L.max[k] = v; else delete L.max[k];
-          return show(v, '回');
-        }
+        case 'step': return doStep(b, +b.dataset.d);
       }
     } catch (err) { toast('失敗しました: ' + err.message); }
   });
