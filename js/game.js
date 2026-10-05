@@ -368,8 +368,8 @@ const Game = (function () {
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
     // 右上の2段目は「最高額配当」。回転中のプレイの分は、結果が出るまで反映しない（b53 で「合計当選額」から変更）
     { const st = Store.state, p = st.play; $('total').textContent = fmtN(p && p.phase === 'drawn' && !p.test && typeof p.bestBefore === 'number' ? p.bestBefore : bestOf(st)); stageEl.classList.toggle('testmode', !!st.testMode);
-      // CREDIT: 残っている FREE SPIN（本物の追加プレイ）＋ いま回り直し中の FREE SPIN の残り
-      const cr = $('crd'), n = String((st.credits || 0) + freeLeft);
+      // CREDIT: 残っている FREE SPIN（本物の追加プレイ）
+      const cr = $('crd'), n = String(st.credits || 0);
       if (cr && cr.textContent !== n) { const up = +n > +cr.textContent; cr.textContent = n; if (up) restart(cr, 'bump'); }
       stageEl.classList.toggle('has-info', logoOn()); } // 合計当選額（演出中の分は結果が出てから）
   }
@@ -514,7 +514,7 @@ const Game = (function () {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
       return refresh();
     }
-    oneMore = false; freeLeft = 0; freeTotal = 0; skipSpecial = false;
+    oneMore = false; skipSpecial = false;
     showCredits();
     lockbar.classList.remove('show');
     if (storeMode() && !Store.state.play.test) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
@@ -533,7 +533,6 @@ const Game = (function () {
   const FREE_DEFAULTS = [8, 3, 1], FREE_MAX = [50, 25, 25];
   const FREE_SYM = { 1: 'FREE', 2: 'FREE2', 3: 'FREE3' };
   const freeRates = () => ['freeRate', 'freeRate2', 'freeRate3'].map((k, i) => { const v = Store.state[k]; return typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(FREE_MAX[i], v)) : FREE_DEFAULTS[i]; });
-  let freeLeft = 0, freeTotal = 0; // FREE SPIN の回り直しの残り回数と、全部で何回か
   /* casa ロゴが3本そろうと 10 FREE SPIN を獲得: こちらは本物の追加プレイ（CREDIT が 10 増え、NEXT GAME を押すたびに 1 使って普通に抽選する）。
      予算が増える機能なので、出る割合（1スピンあたりの %。state.logoRate）は未設定なら 0 = 出ない。マスター画面のプリセットで決める。 */
   const LOGO_SPINS = 10, LOGO_MAX = 5;
@@ -699,26 +698,31 @@ const Game = (function () {
     FX.setAmbient([0, 0, 14, 30][curStage], STAGE_COL[curStage]);
   }
 
+  /* CREDIT（獲得した FREE SPIN）を n 増やす。右上の数字が 1 ずつ増える。by = 'LOGO'（casa ロゴ）/ 'FREE'（FREE SPIN ×1〜×3）
+     テスト用プリセットでも CREDIT は増える（動きを確認できるように。回した結果が記録されないのは同じ） */
+  async function addCredits(n, by) {
+    const before = Store.state.credits || 0;
+    try { Store.transact((s) => { s.credits = (s.credits || 0) + n; Store.log('CREDIT_ADD', { amount: n, before, after: s.credits, by }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
+    const after = Store.state.credits || 0, cr = $('crd');
+    for (let k = before + 1; k <= after; k++) { if (cr) { cr.textContent = String(k); restart(cr, 'bump'); } Sfx.play('count'); await wait(n > 3 ? 110 : 260); } // 1 ずつ増える
+  }
+
   /* 1ステージ分の演出。NEXT STAGE なら次のステージへ移り、再びレバー待ちに戻る。 */
   async function runStage(play, st) {
     busy = true;
     tense(0); // 念のため（前の回の期待の演出が残らないように）
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
-    // FREE SPIN の回り直し中（この回を含めてあと freeLeft 回）。最後の1回で本当の結果を出し、それまでの回は 0 で止まる
-    const inFree = freeLeft > 0;
-    if (inFree) freeLeft -= 1;
-    const midFree = inFree && freeLeft > 0;
     const noSp = skipSpecial; skipSpecial = false;
     // 獲得した FREE SPIN（CREDIT）で回しているゲームでは、さらに FREE SPIN を出さない設定（プリセットで ON/OFF。未設定は ON）
     const lockFree = !!play.free && Store.state.noRetrigger !== false;
-    const logoHit = !oneMore && !inFree && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN
-    const freeN = !oneMore && !inFree && !noSp && !logoHit && !lockFree ? rollFree() : 0;
+    const logoHit = !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN
+    const freeN = !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N FREE SPIN
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
-    const rev = !oneMore && !freeN && !logoHit && !midFree && sym !== 'NEXT' && play.value > 0 && rollReverse();
-    const pat = oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, midFree ? 0 : sym, inFree || play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
-    if (!oneMore && !freeN && !logoHit && !midFree && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
-    const warpTo = oneMore || freeN || logoHit || inFree || noSp ? 0 : pickWarp(play, st);
+    const rev = !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
+    const pat = oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    if (!oneMore && !freeN && !logoHit && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
+    const warpTo = oneMore || freeN || logoHit || noSp ? 0 : pickWarp(play, st);
     showCredits();
     if (warpTo) { // 普通に回り始めて 5 秒たったところで、いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
@@ -737,11 +741,10 @@ const Game = (function () {
       await hideBanner();
       return runStage(play, warpTo);
     }
-    if (inFree) setPlate('spin', 'FREE SPIN', (freeTotal - freeLeft) + ' / ' + freeTotal); // いま何回目か
-    else if (play.free && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + (Store.state.credits || 0)); // CREDIT を使って回している
+    if (play.free && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + (Store.state.credits || 0)); // CREDIT を使って回している
     else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
-    const extra = { fast: inFree || !!play.free, noFree: lockFree }; // FREE SPIN で回る分は、どのステージでも STAGE 1 と同じ速さ。noFree: FREE SPIN の絵柄も出さない
+    const extra = { fast: !!play.free, noFree: lockFree }; // FREE SPIN で回る分は、どのステージでも STAGE 1 と同じ速さ。noFree: FREE SPIN の絵柄も出さない
     if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
     Sfx.play('shuffle');
 
@@ -761,12 +764,7 @@ const Game = (function () {
       FX.burst(CX, CY, 260, { max: 1400, life: 1.7 });
       showBanner('next omc', '', LOGO_SPINS + ' FREE SPIN');
       await wait(1300);
-      { // テスト用プリセットでも CREDIT は増える（動きを確認できるように。回した結果が記録されないのは同じ）
-        const before = Store.state.credits || 0;
-        try { Store.transact((s) => { s.credits = (s.credits || 0) + LOGO_SPINS; Store.log('CREDIT_ADD', { amount: LOGO_SPINS, before, after: s.credits, by: 'LOGO' }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
-        const after = Store.state.credits || 0, cr = $('crd');
-        for (let n = before + 1; n <= after; n++) { if (cr) { cr.textContent = String(n); restart(cr, 'bump'); } Sfx.play('count'); await wait(110); } // 1 ずつ増える
-      }
+      await addCredits(LOGO_SPINS, 'LOGO');
       await wait(900);
       await hideBanner();
       skipSpecial = true;
@@ -775,7 +773,7 @@ const Game = (function () {
       await wait(300);
       return runStage(play, st);
     } else if (freeN) {
-      // FREE SPIN ×N が3本そろう → その回数だけ自動で回り直す（結果は確定済み。再抽選はしない）
+      // FREE SPIN ×N が3本そろう → N 回ぶんの FREE SPIN（本物の追加プレイ）を獲得。CREDIT が N 増える。このゲームは続けて回り、結果を出す
       await spinReel(st, FREE_SYM[freeN], { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
       win.classList.add('win');
       Sfx.play('revive');
@@ -783,21 +781,14 @@ const Game = (function () {
       FX.ring(CX, CY, 'gold', 1100, 0.8);
       FX.burst(CX, CY, 140 + 60 * (freeN - 1), { max: 1200, life: 1.5 });
       showBanner('next omc', '', 'FREE SPIN \u00d7' + freeN);
-      await wait(1800);
+      await wait(1300);
+      await addCredits(freeN, 'FREE');
+      await wait(700);
       await hideBanner();
-      freeLeft = freeN; freeTotal = freeN;
-      showCredits(); // CREDIT の数字が増える（回り直すたびに減る）
+      skipSpecial = true;
       win.classList.remove('win', 'lose');
+      showCredits();
       await wait(300);
-      return runStage(play, st);
-    } else if (midFree) {
-      // FREE SPIN の途中の回: 0 で止まり、すぐ次の回へ（本当の結果は最後の回）
-      await spinReel(st, 0, pat, Object.assign({ noTension: true }, extra));
-      win.classList.add('lose');
-      Sfx.play('zero');
-      await wait(1100);
-      win.classList.remove('lose');
-      await wait(250);
       return runStage(play, st);
     } else if (pat.type === 'respin') {
       // ハズレと思いきや当たり: 0 で完全に止まる → 暗転 → ONE MORE CHANCE → もう一度レバーを引かせる
@@ -932,10 +923,9 @@ const Game = (function () {
     const iv = (pat.quick ? 0.7 : 3.0) * k;
     const first = (pat.quick ? 1.4 : 4.8) * k; // 1本目が止まるまで（回り出し＋減速ぶんを含む）
     let stops = [first, first + iv, first + iv + iv * 1.5];
-    if (pat.reverse) { // 逆回転は回り始めて 5 秒後。反転してから 1本目が止まるまでに約 2.9 秒要るので、足りない分だけ全体を後ろへずらす
+    if (pat.reverse) { // 逆回転は回り始めて 5 秒後。逆回転してから、そのステージの通常と同じ時間（1本目・2本目・3本目の間隔もそのまま）をかけて止める
       p.reverse = EFFECT_DELAY_MS / 1000;
-      const late = Math.max(0, p.reverse + 2.9 - first);
-      stops = stops.map((x) => x + late);
+      stops = stops.map((x) => x + p.reverse);
     }
     // 期待の段階化: 先に止まる2本が「来るかも」の形のときだけ、3本目が回っている間に一段ずつ盛り上げる（結果は変えない）。
     // 確定演出（逆回転・画面が消える・虹）と重なる回では出さない
@@ -1399,7 +1389,7 @@ const Game = (function () {
           '<li>リールは3本。止まった<b>3本の金額を足した合計</b>が当選額です（例: 100 + 400 + 0 = 500）。</li>' +
           '<li>3本とも <b>0</b> ならハズレです。</li>' +
           '<li><b>NEXT STAGE が3本そろう</b>と次のステージへ。1〜2本だけのときは 0 として合計します。</li>' +
-          '<li><b>FREE SPIN ×1・×2・×3 が3本そろう</b>と、その回数だけ自動でまわります。そろわなかったときは 0 として合計します。</li>' +
+          '<li><b>FREE SPIN ×1・×2・×3 が3本そろう</b>と、その回数ぶんの <b>FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 1・2・3 増えます。そろわなかったときは 0 として合計します。</li>' +
           '<li><b>casa のロゴが3本そろう</b>と <b>10 FREE SPIN</b> を獲得し、右上の <b>CREDIT</b> が 10 増えます。CREDIT が残っている間は、<b>自動で回り続けます</b>（1回ごとに 1 減ります）。FREE SPIN は毎回 STAGE 1 から始まり、どのステージでも STAGE 1 と同じ速さで回ります。</li>' +
           '<li>金額が当たるときは、金額のリールが最後に止まります。3本目は少し長く回ります。</li>' +
           '<li>先に止まった2本がそろいかけた時や、合計が大きい時は、3本目が回っている間に<b>音と光が一段ずつ強くなり、回転がゆっくりになる</b>ことがあります。</li></ul>' +
