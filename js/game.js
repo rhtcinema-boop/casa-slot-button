@@ -247,8 +247,8 @@ const Game = (function () {
   const verNum = (v) => parseInt(String(v).replace(/\D/g, ''), 10) || 0;
   let updChecking = false, updLast = 0, updPending = false;
   const newerOnDisk = (st) => !!st && (st.state === 'done' || (st.state === 'latest' && verNum(st.v) > verNum(APP_V)));
-  async function autoUpdate() {
-    if (updChecking || Date.now() - updLast < 60000) return;
+  async function autoUpdate(force) { // force: マスターの「全店舗をいますぐアップデート」から。間隔あけを飛ばして、すぐ確認する
+    if (updChecking || (!force && Date.now() - updLast < 60000)) return;
     updChecking = true; updLast = Date.now();
     try {
       if (location.hostname === 'appassets.androidplatform.net') {
@@ -385,6 +385,7 @@ const Game = (function () {
     return (s.recent || []).reduce((m, r) => Math.max(m, Number(r.value) || 0), 0);
   }
   function showCredits() {
+    showPreset();
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
     // 右上の2段目は「最高額配当」。回転中のプレイの分は、結果が出るまで反映しない（b53 で「合計当選額」から変更）
     { const st = Store.state, p = st.play; $('total').textContent = fmtN(p && p.phase === 'drawn' && !p.test && typeof p.bestBefore === 'number' ? p.bestBefore : bestOf(st)); stageEl.classList.toggle('testmode', !!st.testMode);
@@ -1468,6 +1469,7 @@ const Game = (function () {
   const storeMode = () => Cloud.enabled && !cloudDown && !!Store.state.store;
   let cloudPresets = {};   // 配布されたプリセット { id: { name, probs, limits } }
   let cloudStore = null;   // 店舗ドキュメントの最新
+  let updSeen = null;      // この端末が見た、マスターの「いますぐアップデート」の時刻（最初に読んだ値は実行しない）
   let unwatch = null, presetWatch = {};
   async function chooseStore() {
     for (;;) {
@@ -1534,7 +1536,8 @@ const Game = (function () {
     const num = (v, d) => (typeof v === 'number' ? v : d);
     const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0), noRe = p.noRetrigger !== false;
     const st0 = Store.state;
-    if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test && (st0.logoRate || 0) === lg && (st0.noRetrigger !== false) === noRe) return;
+    const pname = String(p.name || '').slice(0, 20), pcolor = /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : ''; // 画面に出すプリセット名と、その色（マスターで選ぶ）
+    if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test && (st0.logoRate || 0) === lg && (st0.noRetrigger !== false) === noRe && st0.presetName === pname && (st0.presetColor || '') === pcolor) return;
     try {
       Store.transact((s) => {
         s.probs = JSON.parse(JSON.stringify(p.probs));
@@ -1542,11 +1545,22 @@ const Game = (function () {
         s.presetId = p.id;
         s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2]; s.logoRate = lg; s.noRetrigger = noRe;
         s.testMode = test;
+        s.presetName = pname; s.presetColor = pcolor;
         Store.log('PRESET_APPLY', { id: p.id, name: p.name });
       });
     } catch (err) { /* 保存のみ */ }
     syncTable();
+    showPreset();
     if (Admin.isOpen()) Admin.rerender();
+  }
+  /* いま使っているプリセットの名前を、左上（casa のエンブレムの右）に出す。色はマスターのプリセット編集で選んだ色。店舗モードのときだけ */
+  function showPreset() {
+    const el = $('presetTag'), s = Store.state;
+    if (!el) return;
+    const nm = s.store && s.presetName ? s.presetName : '';
+    el.hidden = !nm;
+    el.querySelector('b').textContent = nm;
+    if (s.presetColor) el.style.setProperty('--pc', s.presetColor); else el.style.removeProperty('--pc');
   }
   function startCloudSync() {
     const me = Store.state.store;
@@ -1558,6 +1572,10 @@ const Game = (function () {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
       if (doc.logoutAt && doc.logoutAt > me.boundAt) return unbindStore();
       cloudStore = doc;
+      // マスターの「全店舗をいますぐアップデート」: 押された時刻（updateAt）が新しくなったら、すぐに新しい版を確認する。
+      // 新しい版があれば、待機中ならすぐ、ゲーム中ならそのゲームが終わり次第、読み直す（updWatch）
+      if (updSeen === null) updSeen = doc.updateAt || 0;
+      else if ((doc.updateAt || 0) > updSeen) { updSeen = doc.updateAt; autoUpdate(true); }
       if (doc.pin && JSON.stringify(doc.pin) !== JSON.stringify(Store.state.pins && Store.state.pins.admin)) {
         try { Store.transact((s) => { s.pins = { admin: doc.pin }; }); } catch (err) { /* 保存のみ */ }
       }
