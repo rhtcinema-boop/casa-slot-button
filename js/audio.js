@@ -310,6 +310,13 @@ const Sfx = (function () {
       tone({ f: hz(r - 12), f2: hz(r - 5), a: dur * 0.9, d: dur * 0.1, g: 0.14 });
       revCrash(Math.max(0, dur - 0.9), 0.85, 0.12);
     },
+    tenseUp(L) { // 期待の段階が上がる瞬間: 低い一打 ＋ せり上がり。段が上がるほど高く・強く
+      const r = ROOT[stage];
+      timp(hz(r - 24 + (L - 1) * 2), 0, 0.5, 0.3 + 0.1 * L);
+      whoosh(0, 0.35, 0.08 + 0.03 * L, true);
+      [0, 7, 12].slice(0, L).forEach((iv, i) => bell(hz(r + 12 + iv + (L - 1) * 2), 0.02 + i * 0.06, 0.6, 0.07, { pan: -0.3 + i * 0.3 }));
+      if (L >= 3) { revCrash(0, 0.5, 0.1); clang(0.02, 0.05, 0.6); }
+    },
     heartbeat() {
       tone({ f: 62, f2: 38, d: 0.14, g: 0.85 });
       tone({ f: 58, f2: 36, at: 0.2, d: 0.14, g: 0.55 });
@@ -658,6 +665,47 @@ const Sfx = (function () {
     }
   }
 
+  /* 期待の段階化の音（ループ）。段階 1〜3 で層が増える。0 で止める。
+       1: 低いトレモロの弦 / 2: 5度上が重なり、揺れが速くなる / 3: オクターブ上が加わり、音が明るく開く
+     段が上がるたびに半音ずつ高くなり、その段の間もゆっくりせり上がる。 */
+  let tenseNodes = null;
+  function tension(level) {
+    if (!ready()) return;
+    const t = ctx.currentTime;
+    if (!(level > 0)) {
+      if (!tenseNodes) return;
+      const x = tenseNodes; tenseNodes = null;
+      x.out.gain.cancelScheduledValues(t); x.out.gain.setTargetAtTime(0, t, 0.05);
+      x.v.forEach((y) => y.o.stop(t + 0.4)); x.lfo.stop(t + 0.4);
+      return;
+    }
+    if (!tenseNodes) {
+      const base = hz(ROOT[stage] - 12);
+      const out = ctx.createGain(); out.gain.value = 0;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700; lp.Q.value = 0.7;
+      const trem = ctx.createGain(); trem.gain.value = 0.6;
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 6; lg.gain.value = 0.4;
+      lfo.connect(lg); lg.connect(trem.gain);
+      const mk = (mult) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sawtooth'; o.frequency.value = base * mult; g.gain.value = 0; o.connect(g); g.connect(lp); o.start(); return { o, g, mult }; };
+      const v = [mk(1), mk(1.498), mk(2.003)];
+      lp.connect(trem); trem.connect(out); out.connect(master);
+      if (!window.LITE) { const rg = ctx.createGain(); rg.gain.value = 0.3; out.connect(rg); rg.connect(revSend); }
+      lfo.start();
+      tenseNodes = { out, lp, lfo, v, base };
+    }
+    const x = tenseNodes, L = Math.min(3, Math.round(level));
+    x.out.gain.setTargetAtTime([0, 0.5, 0.7, 0.9][L], t, 0.12);
+    x.lp.frequency.setTargetAtTime([0, 700, 1300, 2600][L], t, 0.2);
+    x.lfo.frequency.setTargetAtTime([0, 6, 9, 13][L], t, 0.15);
+    x.v.forEach((y, i) => {
+      y.g.gain.setTargetAtTime(i < L ? [0.11, 0.08, 0.07][i] : 0, t, 0.1);
+      const fq = x.base * y.mult * Math.pow(2, (L - 1) / 12);
+      y.o.frequency.cancelScheduledValues(t);
+      y.o.frequency.setTargetAtTime(fq, t, 0.1);
+      y.o.frequency.setTargetAtTime(fq * Math.pow(2, 1 / 12), t + 0.4, 2.5);
+    });
+  }
+
   function setVolume(v) {
     volume = Math.max(0, Math.min(1, v));
     if (master) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.02);
@@ -671,5 +719,5 @@ const Sfx = (function () {
     document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); });
   }
 
-  return { init, unlock, play, tick, spin, setVolume, setStage };
+  return { init, unlock, play, tick, spin, tension, setVolume, setStage };
 })();
