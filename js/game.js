@@ -379,7 +379,7 @@ const Game = (function () {
   const WDAY = ['日', '月', '火', '水', '木', '金', '土'];
   // 配当履歴の日時: 日付（曜日つき）を大きく、時刻は小さく
   const hhmm = (ts) => { const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return '<span>' + (d.getMonth() + 1) + '/' + d.getDate() + '<em>(' + WDAY[d.getDay()] + ')</em></span><i>' + p(d.getHours()) + ':' + p(d.getMinutes()) + '</i>'; };
-  /* 画面右: 配当の履歴（日付・時刻と金額。新しい順に 40 件。1 ページ 10 件で、待機中に自動でスライドして切り替わる）。
+  /* 画面右: 配当の履歴（日付・時刻と金額。新しい順に 40 件。待機中は、上へゆっくり流れ続ける）。
      店舗モードでは全店舗ぶん（Cloud の feed）を店舗名つきで出す。読めないとき（圏外・データベースの決まりが古い・1台運用）は、この端末の履歴を出す */
   let recentShown = -1, feed = null, feedTop = 0, unFeed = null;
   const escH = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -401,41 +401,47 @@ const Game = (function () {
     recentShown = all.length;
     putRecent(list, r.length ? r.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>', r.length);
   }
-  /* 配当履歴のページ送り（b68）: 40 件は一度に入らないので、1 ページぶん（10 件）ずつ上へスライドして見せる。
-     動くのは待機画面のときだけ。ゲーム中と結果を見せている間は、いちばん新しいページ（先頭）に戻して止める。
-     中身が変わったとき（新しい当たりが入ったとき）も先頭に戻す。最後のページは、下に空きが出ないように末尾でそろえる */
-  const RECENT_MAX = 40, RECENT_FIRST_MS = 10000, RECENT_PAGE_MS = 7000;
-  let recentHtml = null, recentN = 0, recentPage = 0, recentAt = 0;
+  /* 配当履歴の流れ（b69）: 40 件は一度に入らないので、待機中は上へゆっくり流し続ける（b68 のページ送りから、オーナーの指示で変更）。
+     同じ行をうしろにもう一度並べて、1 周ぶん動かしたら最初に戻す。見た目は切れ目なくつながる（2 周目の先頭には細い線を入れる）。
+     動くのは待機画面のときだけ。ゲーム中と結果を見せている間は、流れを止めて、いちばん新しい行を先頭に出す。
+     中身が変わったとき（新しい当たりが入ったとき）も先頭に戻す。全部が枠に入る件数のときは流さない。
+     動きは transform のアニメだけ（描き直しが起きないので軽い）。移動量は件数で変わるので、keyframes は数字を入れて作る */
+  const RECENT_MAX = 40, RECENT_HOLD_SEC = 5, RECENT_ROW_SEC = 2; // 先頭で止めておく秒数 / 1 行ぶん流れるのにかける秒数
+  let recentHtml = null, recentN = 0, recentFlowing = false;
+  const recentPlain = () => (recentHtml || '').split('class="rc new').join('class="rc'); // 「新しい行」の動きは、流すときには付けない
   function putRecent(list, html, n) {
     recentN = n;
-    if (html === recentHtml) return; // 同じ内容なら描き直さない（ページ送りの途中で先頭に戻さないため）
+    if (html === recentHtml) return; // 同じ内容なら描き直さない（流れている途中で先頭に戻さないため）
     recentHtml = html;
+    recentFlowing = false;
+    list.style.animation = '';
     list.innerHTML = html;
-    setRecentPage(0);
   }
-  function recentPages() {
+  function startRecentFlow() {
     const list = $('recentList'), view = list.parentNode, first = list.firstElementChild;
-    const rowH = (first && first.offsetHeight) || 60, viewH = view.clientHeight || 600;
-    const per = Math.max(1, Math.floor((viewH + 4) / rowH));
-    return { rowH, viewH, per, pages: Math.max(1, Math.ceil(recentN / per)) };
+    if (!first || recentN < 2) return;
+    const rowH = first.offsetHeight || 60, total = recentN * rowH;
+    if (total <= view.clientHeight + 4) return; // 全部入っている
+    const marked = recentPlain().replace('class="rc', 'class="rc loop'); // 先頭の行に目印（細い線）。1 周目と 2 周目を同じ見た目にして、戻る瞬間に何も変わらないようにする
+    list.innerHTML = marked + marked;
+    let st = document.getElementById('rcflowStyle');
+    if (!st) { st = document.createElement('style'); st.id = 'rcflowStyle'; document.head.appendChild(st); }
+    st.textContent = '@keyframes rcflow{from{transform:translate3d(0,0,0)}to{transform:translate3d(0,-' + total + 'px,0)}}';
+    list.style.animation = 'rcflow ' + (recentN * RECENT_ROW_SEC) + 's linear ' + RECENT_HOLD_SEC + 's infinite';
+    recentFlowing = true;
   }
-  function setRecentPage(pg) {
-    const list = $('recentList'), m = recentPages();
-    recentPage = Math.max(0, Math.min(m.pages - 1, pg));
-    recentAt = Date.now();
-    const y = Math.max(0, Math.min(recentPage * m.per * m.rowH, recentN * m.rowH - m.viewH));
-    list.style.setProperty('--ry', (-y) + 'px');
-    const tag = $('recentPg');
-    if (tag) tag.textContent = m.pages > 1 ? (recentPage + 1) + '/' + m.pages : '';
+  function stopRecentFlow() {
+    if (!recentFlowing) return;
+    recentFlowing = false;
+    const list = $('recentList');
+    list.style.animation = '';
+    list.innerHTML = recentPlain();
   }
   function recentWatch() {
     const s = Store.state;
     const idle = !busy && !pressing && s && s.pins && !s.play && !$('ui').children.length && !$('calib') && !document.getElementById('splash');
-    if (!idle) { if (recentPage !== 0) setRecentPage(0); else recentAt = Date.now(); return; }
-    const m = recentPages();
-    if (m.pages < 2) { if (recentPage !== 0) setRecentPage(0); return; }
-    if (Date.now() - recentAt < (recentPage === 0 ? RECENT_FIRST_MS : RECENT_PAGE_MS)) return;
-    setRecentPage(recentPage + 1 >= m.pages ? 0 : recentPage + 1);
+    if (!idle) return stopRecentFlow();
+    if (!recentFlowing) startRecentFlow();
   }
   function startFeed() {
     stopFeed();
