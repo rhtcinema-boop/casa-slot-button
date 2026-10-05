@@ -363,6 +363,9 @@ const Reel = (function () {
     ov[T] = sym;
     return { at, T, V, tStop, total: tStop + SET, startAt: TW, teaseAt: -1, teaseDur: 0, reverseAt: TW + accel.d + c1 };
   }
+  /* o.gears = { from, v: [割合…], minGap } … 期待の段階化。from 秒から、最高速の v[0] 倍 → v[1] 倍 … と一段ずつ速さを落としてから
+       最後の減速に入る。段の間隔は、止まる時刻までを等分（minGap 秒より詰まるときは、止まる時刻のほうを後ろへずらす）。
+     o.from = 秒 … 途中からの回り直し（確定演出で画面が消えている間に作り直す）。その時刻のいまの位置から最高速で回り続けて止まる */
   function buildProfile(rl, st, sym, o, stopAt) {
     if (o.reverse) return buildReverse(rl, st, sym, o, stopAt);
     const p0 = rl.pos, ov = rl.ov;
@@ -374,8 +377,12 @@ const Reel = (function () {
     const vW = (AW * Math.PI) / TW;
     const vP = 0.2, vPk = 1.55, vL = 1.15;     // 止まりかけ速度 / 倒れ込み最高速 / デテントに落ちる速度
     let vEnd = vL, teaseIdx = -1;
+    const fresh = o.from === undefined;        // 回り始めから作る（false = 途中から回り直す）
     const accel = { d: 0.6, v0: vW, v1: V, g: 3.4 };
     const decay = (d, v0, v1, e) => ({ d, v0, v1, e });
+    const gv = o.gears && o.gears.v && o.gears.v.length && !o.quick && !o.attract ? o.gears.v : [];
+    const vT = gv.length ? V * gv[gv.length - 1] : V; // 最後の減速に入るときの速さ
+    const dk = 0.35 + 0.65 * (vT / V);                // すでに遅くなっているぶん、最後の減速は短く
     const tail = [];
     // 止まりかけ(vP)から dist セルを倒れ込み、速度 vOut で抜ける
     const tip = (dist, vOut) => {
@@ -383,17 +390,17 @@ const Reel = (function () {
       tail.push(seg(0.55 * sc, vP, vPk), seg(0.34 * sc, vPk, vOut));
     };
     if (type === 'slip') {
-      tail.push(decay(decT, V, vP, 4.4)); teaseIdx = tail.length;
+      tail.push(decay(decT * dk, vT, vP, 4.4)); teaseIdx = tail.length;
       tail.push(seg(pauseT, vP, vP)); tip(1.05 - pauseT * vP, vL);
     } else if (type === 'slip2') {
       const p1 = pauseT * 0.7;
-      tail.push(decay(decT, V, vP, 4.4)); teaseIdx = tail.length;
+      tail.push(decay(decT * dk, vT, vP, 4.4)); teaseIdx = tail.length;
       tail.push(seg(p1, vP, vP)); tip(1.0 - p1 * vP, vP);
       tail.push(seg(pauseT, vP, vP)); tip(1.05 - pauseT * vP, vL);
     } else if (type === 'seq') {
       // 汎用: pre 回止まりかけ（T-pre … T-1）、各回 holds[i] 秒。over なら最後に行き過ぎて戻る。crawl なら最後はじわじわ入る
       const pre = Math.max(1, Math.min(3, o.pre | 0)), holds = o.holds || [];
-      tail.push(decay(decT * (pre === 3 ? 0.55 : pre === 2 ? 0.75 : 1), V, vP, 4.4)); teaseIdx = tail.length; // 止まりかけが多いぶん減速は短く
+      tail.push(decay(decT * dk * (pre === 3 ? 0.55 : pre === 2 ? 0.75 : 1), vT, vP, 4.4)); teaseIdx = tail.length; // 止まりかけが多いぶん減速は短く
       for (let i = 0; i < pre; i++) {
         const h = holds[i] !== undefined ? holds[i] : pauseT;
         tail.push(seg(h, vP, vP));
@@ -411,28 +418,46 @@ const Reel = (function () {
         } else tip(1.05 - h * vP, vL);
       }
     } else if (type === 'back') {
-      tail.push(decay(decT, V, 0.9, 4.4)); teaseIdx = tail.length;
+      tail.push(decay(decT * dk, vT, 0.9, 4.4)); teaseIdx = tail.length;
       tail.push(seg(0.85 / 0.45, 0.9, 0));     // 目標を 0.55 コマ通り過ぎて失速
       tail.push(seg(pauseT + 0.3, 0, 0));      // 宙づり
       tail.push(seg(0.5, 0, -2.2));            // 引き戻し
       vEnd = -2.2;
     } else {
-      tail.push(decay(decT + pauseT, V, vL + 0.5, 3.8), seg(0.45, vL + 0.5, vL));
+      tail.push(decay(decT * dk + pauseT, vT, vL + 0.5, 3.8), seg(0.45, vL + 0.5, vL));
     }
-    let fixed = segDist(accel, 1), fixedT = TW + accel.d;
-    tail.forEach((s) => { fixed += segDist(s, 1); fixedT += s.d; });
+    const head = fresh ? [accel] : [];
+    const tStart = fresh ? TW : o.from;
+    let fixed = 0, headT = tStart, tailT = 0;
+    head.forEach((s) => { fixed += segDist(s, 1); headT += s.d; });
+    tail.forEach((s) => { fixed += segDist(s, 1); tailT += s.d; });
+    // 段階的な減速: [一段落とす][その速さで回る] を段の数だけ、最後の減速の前に入れる
+    const mid = [];
+    let cruiseEnd = (stopAt || 0) - tailT;
+    if (gv.length) {
+      const g0 = Math.max(o.gears.from || 0, headT + 0.3);
+      const gap = Math.max(o.gears.minGap || 0.8, (cruiseEnd - g0) / gv.length);
+      let v = V;
+      gv.forEach((r) => { const d = Math.min(0.5, gap * 0.5); mid.push(seg(d, v, V * r), seg(gap - d, V * r, V * r)); v = V * r; });
+      mid.forEach((s) => { fixed += segDist(s, 1); });
+      cruiseEnd = g0;
+    }
     // 指定された停止時刻に合うように巡航の長さを決める（最低 0.3 秒は最高速で回す）
-    const cruiseT = Math.max(0.3, (stopAt || 0) - fixedT);
+    const cruiseT = Math.max(0.3, cruiseEnd - headT);
     const T = Math.round(p0 + fixed + V * cruiseT);
     const cruise = seg((T - p0 - fixed) / V, V, V);
-    const segs = [accel, cruise].concat(tail);
-    let t = TW, p = p0, teaseAt = -1;
-    segs.forEach((s, i) => { s.t0 = t; s.p0 = p; t += s.d; p += segDist(s, 1); if (i === teaseIdx + 2 && teaseIdx >= 0) teaseAt = s.t0; });
+    const segs = head.concat([cruise]).concat(mid).concat(tail);
+    let t = tStart, p = p0;
+    segs.forEach((s) => { s.t0 = t; s.p0 = p; t += s.d; p += segDist(s, 1); });
+    const teaseAt = teaseIdx >= 0 ? tail[teaseIdx].t0 : -1;
+    const gearAt = gv.map((r, k) => mid[k * 2].t0);
     const tStop = t;
     const SET = 0.75, OM = 19, ZE = 7;
     function at(time) {
-      if (time <= 0) return p0;
-      if (time < TW) return p0 - AW * Math.sin((Math.PI * time) / TW);
+      if (fresh) {
+        if (time <= 0) return p0;
+        if (time < TW) return p0 - AW * Math.sin((Math.PI * time) / TW);
+      } else if (time <= tStart) return p0;
       if (time >= tStop) {
         const u = time - tStop;
         if (u >= SET) return T;
@@ -455,12 +480,12 @@ const Reel = (function () {
     else if (type === 'slip') put(T - 1, bait[0]);
     else if (type === 'slip2') { put(T - 2, bait[0]); put(T - 1, bait[1]); }
     else if (type === 'back') put(T + 1, bait[0]);
-    return { at, T, V, tStop, total: tStop + SET, startAt: TW, teaseAt, teaseDur: teaseAt >= 0 ? tStop - teaseAt : 0 };
+    return { at, T, V, tStop, total: tStop + SET, startAt: tStart, teaseAt, teaseDur: teaseAt >= 0 ? tStop - teaseAt : 0, gearAt };
   }
 
   /* 3本を回す。combo = 左中右の止まる絵柄、order = 止まる順（リール番号の並び）、
      stops = 止まる順ごとの目標停止秒 [1本目, 2本目, 3本目]、pat = 最後に止まるリールの停止パターン（bait 含む）。
-     hooks: onStart, onTick(speedNorm), onSpeed(speedNorm), onTease(sec), onNear（最後の停止1秒前）, onReelStop(reelIdx, k), onStop */
+     hooks: onStart, onTick(speedNorm), onSpeed(speedNorm), onTease(sec), onNear（最後の停止1秒前）, onReelStop(reelIdx, k), onGear(段), onStop */
   /* 回転の途中で別の回転や静止表示に切り替わるとき: いまの位置を覚えてから止める（見せ回し中に NEXT GAME が押された場合など）。
      見せ回しの Promise は false で解決する（待っている側が止まったままにならないように） */
   let live = null, attractDone = null;
@@ -482,6 +507,22 @@ const Reel = (function () {
     live.holdAt = 0;
     live.rebase = true;
   }
+  /* 確定演出で画面が消えている間（hold 中）に呼ぶ: まだ止まっていないリールを、いまの位置から最高速で回り直させ、
+     時計が再開してから windowSec 秒後に止める（確定演出が終わったあとも、リールがしっかり回り続けてから結果が出る）。
+     画面が消えている間に作り直すので、速さや位置が切り替わっても見えない。このあと resume(0) で再開する。 */
+  function relaunch(windowSec) {
+    const me = live;
+    if (!me || !me.holdAt || !me.args) return;
+    const t = (me.holdAt - me.t0) / 1000;
+    for (let i = 0; i < NR; i++) {
+      const pr = me.profs[i], a = me.args[i];
+      if (!a || t >= pr.tStop || a.o.reverse) continue;
+      reels[i].pos = pr.at(t);
+      me.profs[i] = buildProfile(reels[i], a.st, a.sym, Object.assign({}, a.o, { from: t, gears: null }), t + Math.max(1, windowSec || 0));
+      if (i === me.lastRi) { me.lastProf = me.profs[i]; me.teased = false; me.neared = false; me.gearN = 99; }
+    }
+    me.rebase = true;
+  }
   /* 待機中の見せ回し: 3本が約5秒回り、ゆっくり減速して READY / TO / SPIN で止まる（1本ずつ 0.6 秒おき）。音は鳴らさない。
      kind が 'logo' のときは、左右が空で真ん中に casa ロゴが止まる。最後まで回れば true、途中で切り替わったら false */
   function attract(kind) {
@@ -497,24 +538,27 @@ const Reel = (function () {
     if (!(pat && pat.attract)) interrupt();
     const ts = (pat && pat.timingStage) || st; // 速さ・減速の設定に使うステージ（FREE SPIN はどのステージでも 1）
     return new Promise((resolve) => {
-      const profs = [];
+      const profs = [], args = [];
       order.forEach((ri, k) => {
         const last = k === NR - 1;
         const o = last ? (pat || { type: 'plain' }) : { type: 'plain', decel: Math.min(1.4, TIMING[ts].decel * 0.6), quick: pat && pat.quick, attract: pat && pat.attract, reverse: pat && pat.reverse };
+        args[ri] = { st: ts, sym: combo[ri], o, stopAt: stops[k] };
         profs[ri] = buildProfile(reels[ri], ts, combo[ri], o, stops[k]);
       });
-      const lastRi = order[NR - 1], lastProf = profs[lastRi];
+      const lastRi = order[NR - 1];
       const t0 = performance.now();
-      const me = live = { profs, t0 };
+      // lastProf・teased・neared・gearN は relaunch() で作り直されることがあるので、この回転の状態（me）に持たせる
+      const me = live = { profs, t0, args, lastRi, lastProf: profs[lastRi], teased: false, neared: false, gearN: 0 };
       const lastP = reels.map((rl) => rl.pos), lastCell = reels.map((rl) => Math.round(rl.pos));
       const stoppedR = [false, false, false];
       let lastT = 0, lastNow = t0, frameNo = 0, lastDrawn = 0;
-      let started = false, teased = false, neared = false, stopped = false, reversed = false;
+      let started = false, stopped = false, reversed = false;
       cancelAnimationFrame(raf);
       function frame(now) {
         const t = ((me.holdAt || now) - me.t0) / 1000; // 時計が止められている間（確定演出で画面が消えている間）は進まない
         if (me.rebase) { me.rebase = false; lastT = t - 0.016; for (let i = 0; i < NR; i++) lastP[i] = profs[i].at(lastT); } // 再開直後: 速さの計算をやり直す
         const dt = Math.max(0.001, t - lastT);
+        const lastProf = me.lastProf;
         const ps = [], speeds = [];
         let maxNorm = 0, ticked = false;
         for (let i = 0; i < NR; i++) {
@@ -531,8 +575,9 @@ const Reel = (function () {
         if (!reversed && lastProf.reverseAt >= 0 && t >= lastProf.reverseAt) { reversed = true; hooks.onReverse && hooks.onReverse(); } // 逆回転が始まった瞬間
         if (ticked) hooks.onTick && hooks.onTick(maxNorm);
         if (started && !stopped) hooks.onSpeed && hooks.onSpeed(maxNorm);
-        if (!teased && lastProf.teaseAt >= 0 && t >= lastProf.teaseAt) { teased = true; hooks.onTease && hooks.onTease(lastProf.teaseDur); }
-        if (!neared && t >= lastProf.tStop - 1.0) { neared = true; hooks.onNear && hooks.onNear(); }
+        while (lastProf.gearAt && me.gearN < lastProf.gearAt.length && t >= lastProf.gearAt[me.gearN]) { const g = me.gearN++; hooks.onGear && hooks.onGear(g); } // 期待の段階化: 一段ずつ
+        if (!me.teased && lastProf.teaseAt >= 0 && t >= lastProf.teaseAt) { me.teased = true; hooks.onTease && hooks.onTease(lastProf.teaseDur); }
+        if (!me.neared && t >= lastProf.tStop - 1.0) { me.neared = true; hooks.onNear && hooks.onNear(); }
         if (!stopped && t >= lastProf.tStop) { stopped = true; hooks.onSpeed && hooks.onSpeed(0); hooks.onStop && hooks.onStop(); }
         lastT = t;
         if (t >= lastProf.total) {
@@ -605,5 +650,5 @@ const Reel = (function () {
     if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
   }
 
-  return { init, spin, attract, setStage, setTable, hold, resume, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
