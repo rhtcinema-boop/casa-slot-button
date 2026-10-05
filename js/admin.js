@@ -1,7 +1,7 @@
 /* PIN入力・確認ダイアログ・設定画面（営業設定 / 管理者）。 */
 const fmtN = (v) => Number(v).toLocaleString('en-US');
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const keyLabel = (key) => { const o = Engine.OUTCOME_BY_KEY[key]; return 'STAGE ' + o.stage + ' / ' + fmtN(o.value); };
+const keyLabel = (key) => { const o = Engine.OUTCOME_BY_KEY[key] || { stage: String(key).split(':')[0], value: Number(String(key).split(':')[1]) || 0 }; return 'STAGE ' + o.stage + ' / ' + fmtN(o.value); }; // 配当表から消えた金額の記録も読めるように
 const fmtDate = (ts) => {
   const d = new Date(ts), p = (n) => ('0' + n).slice(-2);
   return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
@@ -277,7 +277,7 @@ const Admin = (function () {
   function viewProbs() {
     const s = Store.state, ses = s.session;
     return '<div class="panel"><h4>各ステージの確率</h4><p class="hint">ステージごとに、それぞれの目で止まる確率（％）を ◀ ▶ で増減します。各ステージの合計をちょうど 100% にしてください。NEXT STAGE は次のステージに進む確率です。プレイヤー画面には確率は表示されません。</p></div>' +
-      '<div class="cols3">' + Engine.STAGE_DEFS.map((d) =>
+      '<div class="cols3">' + Engine.tableOf(probForm).map((d) =>
         '<div class="panel"><h4>STAGE ' + d.stage + '</h4>' +
         Engine.probKeys(d).map((k) => { const p = d.stage + ':' + k; return '<div class="row"><div class="lbl">' + probLabel(k) + '</div><div class="stepper pstep"><button data-act="pstep" data-d="-1" data-p="' + p + '">◀</button><span class="pv">' + probForm[d.stage][k] + '<i>%</i></span><button data-act="pstep" data-d="1" data-p="' + p + '">▶</button></div></div>'; }).join('') +
         '</div>').join('') + '</div>' +
@@ -426,7 +426,7 @@ const Admin = (function () {
       case 'PLAY':
         return (d.test ? '<b style="color:#ff9d8c">【テスト・記録なし】</b> ' : '') + (d.free ? '<b style="color:#ff9ad8">【FREE SPIN】</b> ' : '') + 'プレイ #' + d.playNo + '｜<b>STAGE ' + d.stage + ' / ' + fmtN(d.value) + '</b>｜通過: ' + d.path.map((p) => 'STAGE ' + p).join(' → ') + (d.blocked ? '｜本数制限で除外: ' + d.blocked.map(keyLabel).join('、') : '');
       case 'PROB_SET': {
-        const f = (p) => Engine.STAGE_DEFS.map((x) => 'STAGE ' + x.stage + '［' + Engine.probKeys(x).map((k) => probLabel(k) + ' ' + p[x.stage][k] + '%').join('、') + '］').join(' ');
+        const f = (p) => Engine.tableOf(p).map((x) => 'STAGE ' + x.stage + '［' + Engine.probKeys(x).map((k) => probLabel(k) + ' ' + p[x.stage][k] + '%').join('、') + '］').join(' ');
         return '変更前: ' + f(d.before) + '<br>変更後: ' + f(d.after);
       }
       case 'PRESET_APPLY': return 'プリセット「' + esc(d.name || d.id) + '」を適用';
@@ -720,7 +720,7 @@ const Admin = (function () {
         case 'prob-reset': probForm = copyProbs(Store.state.probs); return render();
         case 'prob-save': {
           if (!Engine.validateProbs(probForm).ok) return;
-          Store.transact((st) => { const before = st.probs; st.probs = copyProbs(probForm); Store.log('PROB_SET', { before, after: st.probs }, role); });
+          Store.transact((st) => { const before = st.probs; st.probs = copyProbs(probForm); Store.log('PROB_SET', { before, after: st.probs }, role); }); Game.syncTable();
           UI.toast('確率を保存しました。次のプレイから反映されます。', 'ok');
           return render();
         }
