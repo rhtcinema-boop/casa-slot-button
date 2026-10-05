@@ -1633,3 +1633,12 @@ body.lite .tglow { box-shadow: 0 0 14px 2px rgba(var(--acc), .7); }
    2行目（時刻＋店舗名）は、1行目の日付と同じ幅までにして、はみ出す分は … で切る（行の幅は今までどおり日付で決まるので、金額と重ならない） */
 .rc small i { width: 0; min-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rc small i u { margin-left: 7px; text-decoration: none; font-weight: 700; letter-spacing: .04em; color: var(--accent); }
+
+/* ---------- いま使っているプリセットの名前（b61）: 左上、casa のエンブレムの右。左の列（48〜332）の中に収める ----------
+   色（--pc）はマスターのプリセット編集で選ぶ。長い名前は … で切る。エンブレム（〜136）とも、中央のタイトル（465〜）とも重ならない */
+.preset-tag { position: absolute; left: 150px; top: 44px; max-width: 182px; height: 52px; box-sizing: border-box; padding: 6px 14px 0; border-radius: 12px; pointer-events: none;
+  --pc: #e2ba5c; background: linear-gradient(180deg, #1b1b20, #0b0b0d); box-shadow: inset 0 0 0 2px var(--pc), inset 0 0 0 4px #000; display: flex; flex-direction: column; gap: 3px; }
+.preset-tag[hidden] { display: none; }
+.preset-tag small { font: 700 10px/1 var(--font-label); letter-spacing: .3em; color: #9a917b; }
+.preset-tag b { font: 700 21px/1.1 var(--font-ui); letter-spacing: .02em; color: var(--pc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#stage.fxmode .preset-tag { opacity: .65; }
