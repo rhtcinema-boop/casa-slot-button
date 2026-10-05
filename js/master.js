@@ -47,7 +47,7 @@
   const presetName = (id) => { const p = presets.find((x) => x.id === id); return p ? p.name : '（未設定）'; };
 
   function render() {
-    if (tab === 'stores') main.innerHTML = editStore ? viewStoreEdit() : viewStores();
+    if (tab === 'stores') { main.innerHTML = editStore ? viewStoreEdit() : viewStores(); if (!editStore && !latestVer) loadLatest(); }
     else if (tab === 'presets') main.innerHTML = editPreset ? viewPresetEdit() : viewPresets();
     else main.innerHTML = viewStats();
     main.classList.toggle('wide', tab === 'presets' && !!editPreset);
@@ -57,7 +57,16 @@
   function viewStores() {
     return '<div class="panel"><h3>店舗</h3><p class="hint">店舗ごとにパスワードと、使えるプリセットを決めます。店舗の端末は起動時に店舗を選んでパスワードを入れます。</p>' +
       (stores.length ? '<div class="list">' + stores.map((s) => '<div class="item"><div class="name">' + esc(s.name) + '<small>使用中: ' + esc(presetName(s.activePresetId)) + '｜最終起動 ' + fmtDate(s.lastSeen) + (s.deviceVersion ? '（' + esc(s.deviceVersion) + '）' : '') + '</small></div><button class="btn sm ghost" data-act="store-edit" data-id="' + esc(s.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだ店舗がありません</div>') +
-      '<div class="acts"><button class="btn" data-act="store-new">店舗を追加</button></div></div>';
+      '<div class="acts"><button class="btn" data-act="store-new">店舗を追加</button></div></div>' +
+      '<div class="panel"><h3>アップデート</h3><p class="hint">店舗の端末は、ふだんは 1 時間以内に自動で新しい版に切り替わります。すぐに切り替えたいときは下のボタンを押してください。ログイン中のすべての端末が、すぐに新しい版を確認して切り替わります（ゲーム中の端末は、そのゲームが終わり次第）。b61 より古い版の端末には届かないので、その端末は今までどおり 1 時間以内に切り替わります。</p>' +
+      '<p class="hint">いまの最新版: <b style="color:var(--text)" id="latestVer">' + esc(latestVer || '確認中…') + '</b>　各店舗の版は、上の一覧の「最終起動」の横に出ます。</p>' +
+      '<div class="acts"><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全店舗をいますぐアップデート</button><button class="btn ghost" data-act="stores-reload">一覧を読み直す</button></div></div>';
+  }
+  // いま公開されている最新版（version.json）
+  let latestVer = '';
+  async function loadLatest() {
+    try { const man = await (await fetch('version.json?t=' + Date.now(), { cache: 'no-store' })).json(); latestVer = (man && man.v) || ''; } catch (e) { latestVer = '（確認できません）'; }
+    const el = $('latestVer'); if (el) el.textContent = latestVer;
   }
   function viewStoreEdit() {
     const s = editStore;
@@ -114,10 +123,12 @@
   // 開始直後の高額制限（最初の X 回は Y 以上を出さない）。Y は実際に出る金額の中から選ぶ
   const amountsOf = (p) => { const a = []; Engine.tableOf(p.probs).forEach((d) => d.values.forEach((v) => { if (v > 0 && a.indexOf(v) < 0) a.push(v); })); return a.sort((x, y) => x - y); };
   const EARLY_DEFAULT = { on: false, plays: 10, min: 2000 };
+  // 端末に出すプリセット名の色（先頭が初期値）
+  const PRESET_COLORS = [['#e2ba5c', '金'], ['#f2f2f2', '白'], ['#ff5a4d', '赤'], ['#ff9f43', 'オレンジ'], ['#3ddc84', '緑'], ['#4fc3ff', '水色'], ['#b388ff', '紫'], ['#ff7ac8', 'ピンク']];
   const earlyOf = (L) => Object.assign({}, EARLY_DEFAULT, (L && L.early) || {});
   function viewPresets() {
     return '<div class="panel"><h3>プリセット</h3><p class="hint">確率のセットです。店舗には名前だけが見えます。</p>' +
-      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name">' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeN(p, 1) + '/' + freeN(p, 2) + '/' + freeN(p, 3) + '%' + (logoOf(p) > 0 ? '｜ロゴ10回 ' + logoOf(p).toFixed(1) + '%' : '') + (p.test ? '｜<b style="color:var(--ng)">テスト用（記録しない）</b>' : '') + '</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
+      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name"><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeN(p, 1) + '/' + freeN(p, 2) + '/' + freeN(p, 3) + '%' + (logoOf(p) > 0 ? '｜ロゴ10回 ' + logoOf(p).toFixed(1) + '%' : '') + (p.test ? '｜<b style="color:var(--ng)">テスト用（記録しない）</b>' : '') + '</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
       '<div class="acts"><button class="btn" data-act="preset-new">プリセットを作る</button></div></div>';
   }
   function probSummary(p) {
@@ -151,6 +162,8 @@
     const stepRow = (label, val, attr, unit, hint) => '<div class="row"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="stepper"><button data-act="step" data-d="-1" ' + attr + ' aria-label="減らす">◀</button><span class="pv">' + val + '<i>' + unit + '</i></span><button data-act="step" data-d="1" ' + attr + ' aria-label="増やす">▶</button></div></div>';
     return '<div class="panel"><h3>' + (p.id ? 'プリセットを編集' : 'プリセットを作る') + '</h3>' +
       '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label>' +
+      '<div class="row"><div class="lbl">端末に出す名前の色<small>店舗の端末の左上に、このプリセットの名前がこの色で出ます（いま何のプリセットで回っているかが分かります）</small></div><div class="swatches">' +
+      PRESET_COLORS.map((c) => '<button class="sw' + ((p.color || PRESET_COLORS[0][0]) === c[0] ? ' on' : '') + '" data-act="pcolor" data-c="' + c[0] + '" style="--c:' + c[0] + '" aria-label="' + c[1] + '" title="' + c[1] + '"></button>').join('') + '</div></div>' +
       '<div class="row"><div class="lbl">テスト用プリセット<small>ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます</small></div><button class="btn sm ' + (p.test ? '' : 'ghost') + '" data-act="test-on">' + (p.test ? 'ON' : 'OFF') + '</button></div></div>' +
       '<div class="panel"><h3>各ステージの配当と確率</h3><p class="hint"><b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。<b style="color:var(--text)">数字を押すと、直接入力もできます</b>（小数も可。ほかの欄の数字も同じです）。各ステージの合計をちょうど 100% にしてください。下に、1回あたりの平均当選額（予算の目安）が出ます。</p><div class="cols pcols">' +
       Engine.tableOf(p.probs).map((d) => probStage(p, d)).join('') + '</div>' +
@@ -184,7 +197,7 @@
     if (!name) { err.textContent = '名前を入力してください。'; return; }
     const v = Engine.validateProbs(p.probs);
     if (!v.ok) { err.textContent = v.errors.join(' / '); return; }
-    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test });
+    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] });
     toast('保存しました。配布中の店舗には自動で反映されます');
     editPreset = null; await reload(); render();
   }
@@ -365,17 +378,26 @@
     try {
       switch (act) {
         case 'store-new': editStore = { name: '', presetIds: [], activePresetId: null }; return render();
+        case 'update-all': {
+          if (!stores.length || !confirm('ログイン中のすべての店舗の端末を、いますぐ最新版に切り替えます。ゲーム中の端末は、そのゲームが終わり次第切り替わります。')) return;
+          const t = Date.now();
+          await Promise.all(stores.map((s) => Cloud.saveStore(s.id, { updateAt: t })));
+          toast('全店舗（' + stores.length + ' 店舗）にアップデートを指示しました');
+          return;
+        }
+        case 'stores-reload': await reload(); render(); loadLatest(); toast('読み直しました'); return;
         case 'store-edit': editStore = Object.assign({}, stores.find((s) => s.id === b.dataset.id)); return render();
         case 'store-cancel': editStore = null; return render();
         case 'store-save': return await saveStore();   // 失敗したときに下の catch でメッセージを出すため await する
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。集計も消えます。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
-        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], logoRate: 0, noRetrigger: true, test: false }; return render();
-        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test })); return render(); }
+        case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], logoRate: 0, noRetrigger: true, test: false, color: PRESET_COLORS[0][0] }; return render();
+        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
         case 'preset-save': return await savePreset();
         case 'preset-del': if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
         case 'test-on': editPreset.test = !editPreset.test; return render();
+        case 'pcolor': { const top = window.scrollY; editPreset.color = b.dataset.c; editPreset.name = $('pname').value; render(); window.scrollTo(0, top); return; }
         case 'retrig-on': { const top = window.scrollY; editPreset.noRetrigger = !noRetrig(editPreset); render(); window.scrollTo(0, top); return; }
         case 'lim-on': editPreset.limits.on = !editPreset.limits.on; return render();
         case 'early-on': { const top = window.scrollY; editPreset.limits.early = earlyOf(editPreset.limits); editPreset.limits.early.on = !editPreset.limits.early.on; render(); window.scrollTo(0, top); return; }
