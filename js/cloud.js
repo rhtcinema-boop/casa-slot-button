@@ -7,7 +7,8 @@
      stores/{storeId}   { name, pin:{salt,hash}, presetIds:[..], activePresetId, logoutAt, lastSeen, deviceVersion }
      presets/{presetId} { name, probs, limits, updatedAt }
      stores/{storeId}/plays/{id} { ts, stage, value, key, playNo, presetId }
-     stores/{storeId}/days/{yyyymmdd} { plays, awarded, wins }   … 営業日（リセット時刻区切り）ごとの集計 */
+     stores/{storeId}/days/{yyyymmdd} { plays, awarded, wins }   … 営業日（リセット時刻区切り）ごとの集計
+     feed/{id}          { ts, value, storeId, store }  … 配当履歴（全店舗）。当たりが出るたびに1件。どの店舗の端末も読める */
 const Cloud = (function () {
   'use strict';
   const cfg = window.CASA_CLOUD || null;
@@ -125,6 +126,25 @@ const Cloud = (function () {
     ref.collection('days').doc(day).set({ plays: inc(1), awarded: inc(play.value), wins: inc(win) }, { merge: true }).catch(() => {});
   }
 
+  /* 配当履歴（全店舗）: 当たりの結果が画面に出たときに1件足す */
+  async function pushWin(storeId, storeName, win) {
+    await ready();
+    const doc = { ts: win.ts, value: win.value, storeId, store: String(storeName || '').slice(0, 30) };
+    if (isLocal) { const d = lread(); (d.feed = d.feed || []).push(doc); if (d.feed.length > 200) d.feed.splice(0, d.feed.length - 200); lwrite(d); return; }
+    db.collection('feed').add(doc).catch(() => {});
+  }
+  /* 配当履歴（全店舗）を新しい順に n 件、見張る。cb(list)。読めないとき（データベースの決まりが古い・圏外など）は cb(null)
+     → 呼ぶ側は端末内の履歴（自店ぶん）に戻す。返り値を呼ぶと見張りをやめる */
+  function watchFeed(n, cb) {
+    let un = null, dead = false;
+    ready().then(() => {
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => (lread().feed || []).slice(-n).reverse(), cb); return; }
+      un = db.collection('feed').orderBy('ts', 'desc').limit(n).onSnapshot((q) => cb(q.docs.map((x) => x.data())), () => cb(null));
+    }).catch(() => cb(null));
+    return () => { dead = true; if (un) un(); };
+  }
+
   /* ---------- マスター用 ---------- */
   async function masterLogin(email, password) {
     await ready();
@@ -186,7 +206,7 @@ const Cloud = (function () {
     return q.docs.map((x) => x.data());
   }
 
-  return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay,
+  return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, watchFeed,
     masterLogin, masterUser, masterLogout, saveStore, deleteStore, savePreset, deletePreset, listDays, listPlays, listDaysRange, listPlaysRange, dayKey };
 })();
 window.Cloud = Cloud;
