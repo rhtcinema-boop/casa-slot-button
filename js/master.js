@@ -108,7 +108,7 @@
     return '<span class="err" style="color:var(--gold)">予算の目安: 1回の有料プレイあたりの期待値が <b>' + fmtN(Math.round(ev)) + ' → ' + fmtN(Math.round(ev / k)) + '</b>（約 ' + (Math.round(1000 / k) / 10) + '%）になります。ロゴがそろうのは平均 ' + fmtN(Math.round(1 / r)) + ' プレイに1回です。</span>';
   }
   // 開始直後の高額制限（最初の X 回は Y 以上を出さない）。Y は実際に出る金額の中から選ぶ
-  const AMOUNTS = Engine.OUTCOMES.map((o) => o.value).filter((v, i, a) => v > 0 && a.indexOf(v) === i).sort((a, b) => a - b);
+  const amountsOf = (p) => { const a = []; Engine.tableOf(p.probs).forEach((d) => d.values.forEach((v) => { if (v > 0 && a.indexOf(v) < 0) a.push(v); })); return a.sort((x, y) => x - y); };
   const EARLY_DEFAULT = { on: false, plays: 10, min: 2000 };
   const earlyOf = (L) => Object.assign({}, EARLY_DEFAULT, (L && L.early) || {});
   function viewPresets() {
@@ -127,7 +127,20 @@
     const s = r2(Engine.probStats(p.probs).sums[stage]);
     return '<span class="sum ' + (s === 100 ? 'ok' : 'ng') + '" data-sum="' + stage + '">合計 ' + s + '%' + (s === 100 ? ' ✓' : s < 100 ? '（あと ' + r2(100 - s) + '%）' : '（' + r2(s - 100) + '% 多い）') + '</span>';
   }
-  const saveMsg = (p) => (Engine.validateProbs(p.probs).ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">各ステージの合計を 100% にしてください</span>');
+  const saveMsg = (p) => { const v = Engine.validateProbs(p.probs); return v.ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">' + esc(v.errors[0]) + '</span>'; };
+  /* 配当表の1行。金額の行は、金額そのものを書き換えられて × で消せる。0（ハズレ）と NEXT STAGE は固定 */
+  function probRow(p, d, k) {
+    const attr = 'data-p="' + d.stage + ':' + k + '"', fixed = k === '0' || k === 'NEXT';
+    const lbl = fixed ? '<div class="lbl">' + (k === 'NEXT' ? 'NEXT STAGE' : '0<small>ハズレ</small>') + '</div>'
+      : '<div class="lbl"><input type="number" class="amtin" inputmode="numeric" min="1" step="100" value="' + k + '" data-amt="' + d.stage + ':' + k + '" aria-label="STAGE ' + d.stage + ' の金額"></div>';
+    return '<div class="row prow">' + lbl + '<div class="stepper"><button data-act="step" data-d="-1" ' + attr + ' aria-label="減らす">◀</button><span class="pv">' + p.probs[d.stage][k] + '<i>%</i></span><button data-act="step" data-d="1" ' + attr + ' aria-label="増やす">▶</button></div>' +
+      (fixed ? '<span class="del ph"></span>' : '<button class="del" data-act="amt-del" data-k="' + d.stage + ':' + k + '" aria-label="' + fmtN(+k) + ' の行を消す">×</button>') + '</div>';
+  }
+  function probStage(p, d) {
+    const n = d.values.length - 1, full = n >= Engine.MAX_AMOUNTS;
+    return '<div class="stage"><h4><span>STAGE ' + d.stage + '</span>' + sumBadge(p, d.stage) + '</h4>' + PKEYS(d).map((k) => probRow(p, d, k)).join('') +
+      '<div class="addrow"><button class="btn sm ghost" data-act="amt-add" data-s="' + d.stage + '"' + (full ? ' disabled' : '') + '>＋ 金額を追加</button><small>' + (full ? '金額は ' + Engine.MAX_AMOUNTS + ' 種類までです' : '金額 ' + n + ' / ' + Engine.MAX_AMOUNTS + ' 種類') + '</small></div></div>';
+  }
   function viewPresetEdit() {
     const p = editPreset, L = p.limits;
     L.early = earlyOf(L);
@@ -135,8 +148,9 @@
     return '<div class="panel"><h3>' + (p.id ? 'プリセットを編集' : 'プリセットを作る') + '</h3>' +
       '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label>' +
       '<div class="row"><div class="lbl">テスト用プリセット<small>ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます</small></div><button class="btn sm ' + (p.test ? '' : 'ghost') + '" data-act="test-on">' + (p.test ? 'ON' : 'OFF') + '</button></div></div>' +
-      '<div class="panel"><h3>各ステージの確率</h3><p class="hint">◀ ▶ で 1% ずつ（押しっぱなしで連続）。各ステージの合計をちょうど 100% にしてください。</p><div class="cols">' +
-      Engine.STAGE_DEFS.map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span>' + sumBadge(p, d.stage) + '</h4>' + PKEYS(d).map((k) => stepRow(probLabel(k), p.probs[d.stage][k], 'data-p="' + d.stage + ':' + k + '"', '%')).join('') + '</div>').join('') + '</div>' +
+      '<div class="panel"><h3>各ステージの配当と確率</h3><p class="hint"><b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。各ステージの合計をちょうど 100% にしてください。下に、1回あたりの平均当選額（予算の目安）が出ます。</p><div class="cols pcols">' +
+      Engine.tableOf(p.probs).map((d) => probStage(p, d)).join('') + '</div>' +
+      '<p class="hint" style="margin-top:10px">金額を増やしたり消したりしたプリセットは、店舗の端末が b52 以上になってから反映されます（端末は 1 時間以内に自動でアップデートします。店舗一覧で端末の版を確認できます）。</p>' +
       '<div id="psum">' + probSummary(p) + '</div></div>' +
       '<div class="panel"><h3>FREE SPIN</h3><p class="hint">リールに同じ FREE SPIN が3本そろって、その回数だけ自動で回り直す演出が出る割合です（1回のスピンあたり）。演出なので、当選確率・期待値・回転数は変わりません。本当の結果は最後の回に出ます（×2・×3 の途中の回は 0 で止まります）。0% にした種類は、絵柄も出なくなります。</p>' +
       stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'もう1回まわる（0〜50%）') +
@@ -151,7 +165,7 @@
       stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
       stepRow('1日の当たり本数の上限（合計）', L.total, 'data-l="total"', '本', '0 は無制限') +
       '<p class="hint" style="margin:18px 0 8px"><b style="color:var(--text)">金額ごとの上限</b>（任意。0 は制限なし）</p><div class="cols">' +
-      Engine.STAGE_DEFS.map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + Engine.OUTCOMES.filter((o) => o.stage === d.stage && o.value > 0).map((o) => stepRow(fmtN(o.value), L.max[o.key] || 0, 'data-l="' + o.key + '"', '回')).join('') + '</div>').join('') + '</div></div>' +
+      Engine.tableOf(p.probs).map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + (d.values.filter((v) => v > 0).map((v) => stepRow(fmtN(v), L.max[d.stage + ':' + v] || 0, 'data-l="' + d.stage + ':' + v + '"', '回')).join('') || '<div class="empty" style="padding:8px 0">金額がありません</div>') + '</div>').join('') + '</div></div>' +
       (function () { const E = L.early; return '<div class="panel"><h3>開始直後の高額制限</h3><p class="hint">毎日のリセット時刻（上の設定）から数えて、<b style="color:var(--text)">最初の X 回のプレイでは、Y 以上の金額が当たらない</b>ようにします（その分の確率は、そのステージの 0 に回ります）。X 回を過ぎると通常どおりです。回数は端末ごとに数えます。</p>' +
         '<div class="row"><div class="lbl">この制限を使う</div><button class="btn sm ' + (E.on ? '' : 'ghost') + '" data-act="early-on">' + (E.on ? 'ON' : 'OFF') + '</button></div>' +
         stepRow('最初の何回まで（X）', E.plays, 'data-e="plays"', '回', '1〜999 回') +
@@ -170,28 +184,100 @@
     editPreset = null; await reload(); render();
   }
 
-  /* ---------- 集計 ---------- */
+  /* ---------- 集計（期間を指定できる。日付は営業日＝当たりのリセット時刻で切り替わる日） ---------- */
+  const PLAY_MAX = 200; // 期間内のプレイの一覧に出す件数の上限
+  let statsRange = null; // { from: 'yyyy-mm-dd', to: 'yyyy-mm-dd' }（営業日）
+  const p2 = (n) => ('0' + n).slice(-2);
+  const iso = (d) => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+  const isoToDate = (s) => { const a = s.split('-').map(Number); return new Date(a[0], a[1] - 1, a[2]); };
+  const addDays = (s, n) => { const d = isoToDate(s); d.setDate(d.getDate() + n); return iso(d); };
+  // その店舗で使用中のプリセットのリセット時刻（営業日の切り替わり）。未設定は 19 時
+  function resetHourOf(storeId) {
+    const s = stores.find((x) => x.id === storeId), pr = s && presets.find((x) => x.id === s.activePresetId);
+    return pr && pr.limits && Number.isInteger(pr.limits.resetHour) ? pr.limits.resetHour : 19;
+  }
+  // いまの営業日（リセット時刻より前なら前日の日付）
+  const bizToday = (storeId) => iso(new Date(Engine.windowStart(Date.now(), resetHourOf(storeId))));
+  function quickRange(q, storeId) {
+    const t = bizToday(storeId), d = isoToDate(t);
+    if (q === 'today') return { from: t, to: t };
+    if (q === 'yesterday') return { from: addDays(t, -1), to: addDays(t, -1) };
+    if (q === '7') return { from: addDays(t, -6), to: t };
+    if (q === 'month') return { from: iso(new Date(d.getFullYear(), d.getMonth(), 1)), to: t };
+    if (q === 'last') return { from: iso(new Date(d.getFullYear(), d.getMonth() - 1, 1)), to: iso(new Date(d.getFullYear(), d.getMonth(), 0)) };
+    return { from: addDays(t, -30), to: t }; // 直近31日
+  }
+  const QUICK = [['today', '今日'], ['yesterday', '昨日'], ['7', '直近7日'], ['month', '今月'], ['last', '先月'], ['31', '直近31日']];
   function viewStats() {
     const sel = '<label class="f"><span>店舗</span><select id="stsel"><option value="">選んでください</option>' + stores.map((s) => '<option value="' + esc(s.id) + '" ' + (statsStore === s.id ? 'selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></label>';
-    if (!statsStore || !statsData) return '<div class="panel"><h3>集計</h3>' + sel + '</div>';
+    if (!statsStore) return '<div class="panel"><h3>集計</h3>' + sel + '</div>';
+    const R = statsRange || quickRange('31', statsStore), rh = resetHourOf(statsStore);
+    const WD = ['日', '月', '火', '水', '木', '金', '土'];
+    const fmtDay = (k) => { const d = new Date(+k.slice(0, 4), +k.slice(4, 6) - 1, +k.slice(6, 8)); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')'; };
+    const isQ = (q) => { const x = quickRange(q, statsStore); return x.from === R.from && x.to === R.to; };
+    const period = '<div class="range"><label class="f"><span>開始（営業日）</span><input type="date" id="stfrom" value="' + R.from + '" max="' + R.to + '"></label><label class="f"><span>終了（営業日）</span><input type="date" id="stto" value="' + R.to + '" min="' + R.from + '"></label></div>' +
+      '<div class="quick">' + QUICK.map((q) => '<button class="btn sm ' + (isQ(q[0]) ? '' : 'ghost') + '" data-act="st-quick" data-q="' + q[0] + '">' + q[1] + '</button>').join('') + '</div>' +
+      '<p class="hint" style="margin-top:8px">営業日は、当たりのリセット時刻（' + rh + ':00）で切り替わります。たとえば ' + fmtDay(R.from.replace(/-/g, '')) + ' の営業日は、その日の ' + rh + ':00 から翌日の ' + rh + ':00 の直前までです。</p>';
+    if (!statsData) return '<div class="panel"><h3>集計</h3>' + sel + period + '<div class="empty">読み込み中…</div></div>';
     const d = statsData;
-    const tot = d.days.reduce((a, x) => ({ plays: a.plays + x.plays, awarded: a.awarded + x.awarded, wins: a.wins + x.wins }), { plays: 0, awarded: 0, wins: 0 });
-    const fmtDay = (k) => k.slice(4, 6).replace(/^0/, '') + '/' + k.slice(6, 8).replace(/^0/, '');
-    return '<div class="panel"><h3>集計</h3>' + sel +
-      '<div class="summary"><div class="stat"><small>プレイ回数（表示期間）</small><b>' + fmtN(tot.plays) + '</b></div><div class="stat"><small>当選額の合計</small><b>' + fmtN(tot.awarded) + '</b></div><div class="stat"><small>当たり本数</small><b>' + fmtN(tot.wins) + '</b></div><div class="stat"><small>1回あたりの平均</small><b>' + fmtN(tot.plays ? Math.round(tot.awarded / tot.plays) : 0) + '</b></div></div>' +
-      '<table><tr><th>営業日</th><th class="n">回転</th><th class="n">当たり</th><th class="n">当選額</th></tr>' + (d.days.length ? d.days.map((x) => '<tr><td>' + fmtDay(x.day) + '</td><td class="n">' + fmtN(x.plays) + '</td><td class="n">' + fmtN(x.wins) + '</td><td class="n">' + fmtN(x.awarded) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">まだデータがありません</td></tr>') + '</table></div>' +
-      '<div class="panel"><h3>直近のプレイ</h3><table><tr><th>日時</th><th>ステージ</th><th class="n">結果</th><th>プリセット</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td><td>STAGE ' + x.stage + '</td><td class="n">' + fmtN(x.value) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">まだデータがありません</td></tr>') + '</table></div>';
+    const tot = d.days.reduce((a, x) => ({ plays: a.plays + (x.plays || 0), awarded: a.awarded + (x.awarded || 0), wins: a.wins + (x.wins || 0) }), { plays: 0, awarded: 0, wins: 0 });
+    return '<div class="panel"><h3>集計</h3>' + sel + period +
+      '<div class="summary"><div class="stat"><small>プレイ回数（この期間）</small><b>' + fmtN(tot.plays) + '</b></div><div class="stat"><small>当選額の合計</small><b>' + fmtN(tot.awarded) + '</b></div><div class="stat"><small>当たり本数</small><b>' + fmtN(tot.wins) + '</b></div><div class="stat"><small>1回あたりの平均</small><b>' + fmtN(tot.plays ? Math.round(tot.awarded / tot.plays) : 0) + '</b></div></div>' +
+      '<table><tr><th>営業日</th><th class="n">回転</th><th class="n">当たり</th><th class="n">当選額</th></tr>' + (d.days.length ? d.days.map((x) => '<tr><td>' + fmtDay(x.day) + '</td><td class="n">' + fmtN(x.plays || 0) + '</td><td class="n">' + fmtN(x.wins || 0) + '</td><td class="n">' + fmtN(x.awarded || 0) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のデータはありません</td></tr>') + '</table></div>' +
+      '<div class="panel"><h3>この期間のプレイ</h3>' + (tot.plays > d.plays.length && d.plays.length >= PLAY_MAX ? '<p class="hint">この期間のプレイは ' + fmtN(tot.plays) + ' 回あります。新しい ' + PLAY_MAX + ' 件を表示しています。</p>' : '') +
+      '<table><tr><th>日時</th><th>ステージ</th><th class="n">結果</th><th>プリセット</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td><td>STAGE ' + x.stage + '</td><td class="n">' + fmtN(x.value) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のプレイはありません</td></tr>') + '</table></div>';
   }
-  async function loadStats(id) {
+  async function loadStats(id, range) {
+    if (id !== statsStore) statsRange = null; // 店舗を変えたら、期間は直近31日に戻す
     statsStore = id; statsData = null;
+    if (range) statsRange = range;
     if (!id) return render();
-    const [days, plays] = await Promise.all([Cloud.listDays(id, 31), Cloud.listPlays(id, 50)]);
+    const R = statsRange || quickRange('31', id), rh = resetHourOf(id);
+    render(); // 先に期間の欄だけ出す
+    const from = isoToDate(R.from), to = isoToDate(R.to);
+    from.setHours(rh, 0, 0, 0); to.setDate(to.getDate() + 1); to.setHours(rh, 0, 0, 0);
+    const k0 = R.from.replace(/-/g, ''), k1 = R.to.replace(/-/g, ''), t0 = from.getTime(), t1 = to.getTime();
+    let days, plays;
+    try {
+      [days, plays] = await Promise.all([Cloud.listDaysRange(id, k0, k1), Cloud.listPlaysRange(id, t0, t1, PLAY_MAX)]);
+    } catch (err) {
+      // 期間での問い合わせに失敗したら、これまでの取り方（新しい順にまとめて取る）で取って、こちらで期間に絞る
+      try {
+        const all = await Promise.all([Cloud.listDays(id, 400), Cloud.listPlays(id, 500)]);
+        days = all[0].filter((x) => x.day >= k0 && x.day <= k1);
+        plays = all[1].filter((x) => x.ts >= t0 && x.ts < t1).slice(0, PLAY_MAX);
+      } catch (err2) { days = []; plays = []; toast('集計を読み込めませんでした: ' + err2.message); }
+    }
+    if (id !== statsStore) return; // 読み込み中に店舗を切り替えた
     statsData = { days, plays };
     render();
   }
 
   /* ---------- 操作 ---------- */
-  main.addEventListener('change', (e) => { if (e.target.id === 'stsel') loadStats(e.target.value); });
+  main.addEventListener('change', (e) => {
+    if (e.target.id === 'stsel') return loadStats(e.target.value);
+    // 集計の期間（開始・終了）を変えた
+    if ((e.target.id === 'stfrom' || e.target.id === 'stto') && statsStore) {
+      const R = Object.assign({}, statsRange || quickRange('31', statsStore));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) return;
+      R[e.target.id === 'stfrom' ? 'from' : 'to'] = e.target.value;
+      if (R.from > R.to) { if (e.target.id === 'stfrom') R.to = R.from; else R.from = R.to; }
+      return loadStats(statsStore, R);
+    }
+    // 配当表の金額を書き換えた
+    if (e.target.dataset.amt && editPreset) {
+      const pk = e.target.dataset.amt.split(':'), row = editPreset.probs[pk[0]], v = Number(e.target.value), key = String(v);
+      const back = (msg) => { e.target.value = pk[1]; toast(msg); };
+      if (!Number.isInteger(v) || v < 1 || v > Engine.MAX_VALUE) return back('金額は 1 以上の整数で入力してください');
+      if (key === pk[1]) return;
+      if (row[key] !== undefined) return back('STAGE ' + pk[0] + ' には、すでに ' + fmtN(v) + ' があります');
+      row[key] = row[pk[1]]; delete row[pk[1]];
+      const M = editPreset.limits.max || {}, old = pk[0] + ':' + pk[1];
+      if (M[old]) { M[pk[0] + ':' + key] = M[old]; delete M[old]; } // 金額ごとの上限も一緒に移す
+      const top = window.scrollY; render(); window.scrollTo(0, top);
+    }
+  });
+  main.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.amt) e.target.blur(); }); // Enter で確定
   main.addEventListener('input', (e) => { if (e.target.id === 'pname' && editPreset) editPreset.name = e.target.value; }); // 途中で画面を作り直しても名前が消えないように
   // ◀ ▶ を押しっぱなしにすると連続で増減する
   let holdT = 0, holdI = 0;
@@ -226,6 +312,26 @@
         case 'retrig-on': { const top = window.scrollY; editPreset.noRetrigger = !noRetrig(editPreset); render(); window.scrollTo(0, top); return; }
         case 'lim-on': editPreset.limits.on = !editPreset.limits.on; return render();
         case 'early-on': { const top = window.scrollY; editPreset.limits.early = earlyOf(editPreset.limits); editPreset.limits.early.on = !editPreset.limits.early.on; render(); window.scrollTo(0, top); return; }
+        case 'st-quick': return await loadStats(statsStore, quickRange(b.dataset.q, statsStore));
+        case 'amt-add': {
+          const s = b.dataset.s, row = editPreset.probs[s], vals = Engine.tableOf(editPreset.probs)[s - 1].values.filter((v) => v > 0);
+          if (vals.length >= Engine.MAX_AMOUNTS) return;
+          // 新しい行の金額の初期値: いちばん大きい金額に、いちばん小さい金額を足した額（あとで直接書き換えられる）
+          let v = vals.length ? vals[vals.length - 1] + vals[0] : Engine.DEFAULT_VALUES[s][1];
+          while (row[v] !== undefined) v += vals[0] || 100;
+          row[v] = 0;
+          const top = window.scrollY; render(); window.scrollTo(0, top);
+          const inp = main.querySelector('[data-amt="' + s + ':' + v + '"]'); if (inp) { inp.focus(); inp.select(); }
+          return;
+        }
+        case 'amt-del': {
+          const pk = b.dataset.k.split(':'), row = editPreset.probs[pk[0]];
+          row['0'] = Math.round(((Number(row['0']) || 0) + (Number(row[pk[1]]) || 0)) * 100) / 100; // 消す行の確率は 0（ハズレ）に足す
+          delete row[pk[1]];
+          if (editPreset.limits.max) delete editPreset.limits.max[b.dataset.k];
+          const top = window.scrollY; render(); window.scrollTo(0, top);
+          return;
+        }
         case 'step': {
           const d = +b.dataset.d, pv = b.parentNode.querySelector('.pv');
           const show = (v, unit) => { pv.innerHTML = v + '<i>' + unit + '</i>'; };
@@ -242,7 +348,9 @@
           if (b.dataset.e) {
             const E = editPreset.limits.early = earlyOf(editPreset.limits);
             if (b.dataset.e === 'plays') { E.plays = Math.max(1, Math.min(999, (Number(E.plays) || 0) + d)); return show(E.plays, '回'); }
-            const i = Math.max(0, AMOUNTS.indexOf(E.min)); E.min = AMOUNTS[Math.max(0, Math.min(AMOUNTS.length - 1, i + d))];
+            const A = amountsOf(editPreset); if (!A.length) return;
+            let i = A.indexOf(E.min); if (i < 0) { i = A.filter((x) => x < E.min).length; if (d > 0) i -= 1; } // 配当表から消えた金額のときは、近い金額から選び直す
+            E.min = A[Math.max(0, Math.min(A.length - 1, i + d))];
             return show(fmtN(E.min), '以上');
           }
           if (b.dataset.g) { editPreset.logoRate = Math.max(0, Math.min(LOGO_MAX, Math.round((logoOf(editPreset) + d * 0.1) * 10) / 10)); $('logoCost').innerHTML = logoCost(editPreset); return show(editPreset.logoRate.toFixed(1), '%'); }
