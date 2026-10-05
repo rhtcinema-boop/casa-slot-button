@@ -1580,3 +1580,47 @@ body.lite .info10 { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -
 /* テレビ版・軽量モード: 動きは止めて、1つおきに明るさを変えて光らせたままにする */
 #stage.no-bg .edge i, body.lite .edge i { animation: none; opacity: 1; box-shadow: 0 0 6px 2px rgba(var(--acc), .7); }
 #stage.no-bg .edge i:nth-child(even), body.lite .edge i:nth-child(even) { opacity: .5; }
+
+/* ---------- 期待の段階化（b56）: #stage.tense ＋ data-tense="1|2|3" ----------
+   3本目が回っている間、段階が上がるごとに「リール窓の枠の光（.tglow）」「上下の電球の帯」「左右の光の帯」が速く・明るくなる。
+   動かすのは透明度だけで、枠の光は1枚、上下の帯も1枚ずつ（テレビ版・軽量モードでも同じように光る）。 */
+.tglow { position: absolute; left: 46px; top: 46px; right: 46px; bottom: 46px; border-radius: 26px; pointer-events: none; opacity: 0; will-change: opacity;
+  border: 5px solid rgba(var(--acc), 1); box-shadow: 0 0 26px 6px rgba(var(--acc), .75), inset 0 0 34px 4px rgba(var(--acc), .5); }
+.edge::after { content: ""; position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; opacity: 0; will-change: opacity;
+  background: linear-gradient(90deg, rgba(var(--acc), .25), rgba(255, 255, 255, .85) 50%, rgba(var(--acc), .25)); }
+#stage[data-tense="1"] .tglow, #stage[data-tense="1"] .edge::after { animation: tglow1 .95s ease-in-out infinite; }
+#stage[data-tense="2"] .tglow, #stage[data-tense="2"] .edge::after { animation: tglow2 .6s ease-in-out infinite; }
+#stage[data-tense="3"] .tglow, #stage[data-tense="3"] .edge::after { animation: tglow3 .34s ease-in-out infinite; }
+#stage[data-tense="3"] .tglow { border-color: #fff; }
+@keyframes tglow1 { 0%, 100% { opacity: .1; } 50% { opacity: .5; } }
+@keyframes tglow2 { 0%, 100% { opacity: .22; } 50% { opacity: .78; } }
+@keyframes tglow3 { 0%, 100% { opacity: .42; } 50% { opacity: 1; } }
+#stage.tense .bulbs { opacity: 1; }
+#stage[data-tense="1"] .edge i { animation-duration: .7s; }
+#stage[data-tense="2"] .edge i { animation-duration: .45s; }
+#stage[data-tense="3"] .edge i { animation-duration: .26s; }
+#stage[data-tense="1"] .led::before { animation-duration: .5s; }
+#stage[data-tense="2"] .led::before { animation-duration: .32s; }
+#stage[data-tense="3"] .led::before { animation-duration: .2s; }
+#stage[data-tense="2"] .pointer { animation: ptr .5s ease-in-out infinite; }
+#stage[data-tense="3"] .pointer { animation: ptr .3s ease-in-out infinite; }
+#stage.sure .tglow, #stage.sure .edge::after { animation: none; opacity: 0; }
+body.lite .tglow { box-shadow: 0 0 14px 2px rgba(var(--acc), .7); }
+#stage.no-bg .edge i, body.lite .edge i { animation: none !important; }
+
+/* ---------- ステージが上がる演出をゆっくりに（b56）: 扉が閉まる・開く、チップが飛んでくる・飛び去る ----------
+   速すぎると端末が追いつかず、演出が見えないまま終わってしまうため。待ち時間は game.js（transVault / stampStage）と合わせてある */
+.door { transition: transform var(--dt, .46s) cubic-bezier(.6, 0, .9, .25); }
+.door.opening { transition: transform .8s cubic-bezier(.65, 0, .15, 1); }
+.shutter-label.stamp .medal { animation: chip-in .76s both; }
+.shutter-label.out .medal { animation: chip-out .32s ease-in both; }
+
+/* ---------- 当たりラインの目印: 面取りした金属の矢じり（b56。それまでは単色の三角） ----------
+   本体 = 黒い縁、::before = 金属の面（ステージの色）、::after = 上の面のハイライト */
+.pointer, .pointer.l, .pointer.r { width: 46px; height: 58px; margin-top: -29px; border: 0; background: #0b0703; }
+.pointer.l { left: 26px; clip-path: polygon(0 0, 100% 50%, 0 100%, 20% 50%); }
+.pointer.r { right: 26px; clip-path: polygon(100% 0, 0 50%, 100% 100%, 80% 50%); }
+.pointer::before, .pointer::after { content: ""; position: absolute; left: 5px; right: 8px; top: 6px; bottom: 6px; }
+.pointer::before { background: var(--text-grad); clip-path: polygon(0 0, 100% 50%, 0 100%, 20% 50%); }
+.pointer::after { background: linear-gradient(180deg, rgba(255, 255, 255, .55), rgba(255, 255, 255, 0) 46%); clip-path: polygon(0 0, 100% 50%, 20% 50%); }
+.pointer.r::before, .pointer.r::after { left: 8px; right: 5px; transform: scaleX(-1); }
