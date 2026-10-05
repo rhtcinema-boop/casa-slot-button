@@ -1391,6 +1391,10 @@ body.lite #crt i { display: none; }
 #calib .cal-c.tl::before { left: 0; top: 0; border-left-width: 1.6vmin; border-top-width: 1.6vmin; }
 #calib .cal-c.br { right: 0; bottom: 0; }
 #calib .cal-c.br::before { right: 0; bottom: 0; border-right-width: 1.6vmin; border-bottom-width: 1.6vmin; }
+#calib .cal-c.tr { right: 0; top: 0; }
+#calib .cal-c.tr::before { right: 0; top: 0; border-right-width: 1.6vmin; border-top-width: 1.6vmin; }
+#calib .cal-c.bl { left: 0; bottom: 0; }
+#calib .cal-c.bl::before { left: 0; bottom: 0; border-left-width: 1.6vmin; border-bottom-width: 1.6vmin; }
 #calib .cal-c.on::before { border-color: #ffd24a; animation: calblink 1s steps(2, start) infinite; }
 @keyframes calblink { 50% { border-color: #fff; } }
 #calib .cal-panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 78vmin; max-width: 86%; padding: 3vmin 3.6vmin; border-radius: 2vmin; background: rgba(10, 10, 12, .92); box-shadow: 0 0 0 .3vmin #6b5a2a, 0 2vmin 6vmin rgba(0, 0, 0, .7); font-size: 2.5vmin; line-height: 1.6; }
@@ -1559,3 +1563,20 @@ body.lite .led { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--accent-dim); }
 body.lite .info10 { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -4px 0 rgba(0, 0, 0, .5), inset 0 0 0 2px var(--accent), inset 0 0 0 5px #000, 0 2px 0 var(--accent-dim), 0 8px 0 #050506; }
 /* テスト中の表示は、説明の帯と重ならないよう左上（ロゴの右）へ */
 #stage.testmode .marquee::after { content: "TEST（記録されません）"; left: -170px; top: 34px; }
+
+/* ---------- 画面の上下の電飾（電球の列）。黒金のレールに電球が並び、3つおきに順番に光る。色はステージの色に合わせて変わる ----------
+   中身（#content）は game.js の layout() が内側へ寄せているので、どの部品とも重ならない */
+.edge { position: absolute; left: 0; right: 0; height: 22px; z-index: 2; pointer-events: none; display: flex; justify-content: space-between; align-items: center; padding: 0 16px;
+  background: linear-gradient(180deg, #2a2110, #0c0904); }
+.edge.t { top: 0; box-shadow: inset 0 -2px 0 rgba(var(--acc), .55), 0 4px 14px rgba(0, 0, 0, .7); }
+.edge.b { bottom: 0; box-shadow: inset 0 2px 0 rgba(var(--acc), .55), 0 -4px 14px rgba(0, 0, 0, .7); }
+.edge i { width: 13px; height: 13px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle, #fff 0 24%, var(--accent) 48%, rgba(var(--acc), .55) 72%); box-shadow: 0 0 9px 3px rgba(var(--acc), .85); animation: edgebulb 1.2s linear infinite; }
+.edge i:nth-child(3n+2) { animation-delay: -.8s; }
+.edge i:nth-child(3n) { animation-delay: -.4s; }
+.edge.b i { animation-direction: reverse; }
+@keyframes edgebulb { 0%, 50%, 100% { opacity: .22; } 18% { opacity: 1; } }
+#stage.sure .edge i { animation-duration: .3s; }
+/* テレビ版・軽量モード: 動きは止めて、1つおきに明るさを変えて光らせたままにする */
+#stage.no-bg .edge i, body.lite .edge i { animation: none; opacity: 1; box-shadow: 0 0 6px 2px rgba(var(--acc), .7); }
+#stage.no-bg .edge i:nth-child(even), body.lite .edge i:nth-child(even) { opacity: .5; }
