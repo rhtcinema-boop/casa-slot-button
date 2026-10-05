@@ -463,6 +463,7 @@ const Game = (function () {
     const s0 = Store.state;
     if (busy || s0.locked || s0.play) return refresh();
     let res;
+    syncTable(); // 念のため、抽選の前に配当表をそろえる（変わっていなければ何もしない）
     try {
       Store.transact((s) => {
         const ses = s.session;
@@ -470,11 +471,11 @@ const Game = (function () {
         if (!v.ok) throw new Error('probs');
         const now = Date.now();
         s.hits = Engine.pruneHits(s.hits, now, s.limits && s.limits.resetHour);
-        const blocked = Engine.blockedKeys(s.limits, s.hits, now);
+        const blocked = Engine.blockedKeys(s.limits, s.hits, now, s.probs);
         // 開始直後の高額制限: その営業日の最初の X 回は、Y 以上の金額を出さない（回数は毎日のリセット時刻から数え直す）
         const from = Engine.windowStart(now, s.limits && s.limits.resetHour);
         if (!s.dayPlays || s.dayPlays.from !== from) s.dayPlays = { from, n: 0 };
-        Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
+        Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n, s.probs).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
         res = Engine.drawProb(s.probs, undefined, blocked);
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
@@ -1381,6 +1382,23 @@ const Game = (function () {
   }
   /* 店舗の設定画面から自分でログアウト（店舗のパスワードで設定を開いた人だけが押せる）。再読み込み後は店舗選択に戻る */
   const logoutStore = () => unbindStore('ログアウトしました。店舗を選び直します。', 'ok');
+  /* 配当表（確率表に書かれた金額）を、エンジン・リールの絵柄・画面下の MAX 表示に反映する。
+     起動時と、確率が変わったとき（プリセットの切り替え・端末での変更）に呼ぶ。金額の一覧が同じなら何もしない。 */
+  let tableSig = null;
+  function syncTable(force) {
+    const probs = Store.state.probs, sig = JSON.stringify(Engine.tableOf(probs).map((d) => d.values));
+    if (!force && sig === tableSig) return;
+    tableSig = sig;
+    const T = Engine.setTable(probs), pays = [];
+    T.forEach((d) => d.values.forEach((v) => { if (v > 0 && pays.indexOf(v) < 0) pays.push(v); }));
+    Reel.setTable(Engine.REEL_SYMS, pays);
+    // 最下段: ステージごとの最大金額だけを見せる（内訳は見せない）
+    const pt = $('paytable');
+    if (pt) {
+      const on = pt.querySelector('.ps.on'), cur = on && on.dataset.s;
+      pt.innerHTML = T.map((d) => { const mx = Math.max.apply(null, d.values); return '<div class="ps' + (cur === String(d.stage) ? ' on' : '') + '" data-s="' + d.stage + '"><em>STAGE ' + d.stage + '</em><span><i>MAX</i><b class="amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= mx).length) + '">' + fmtN(mx) + '</b></span></div>'; }).join('');
+    }
+  }
   /* 配布されたプリセットを端末の確率・制限に反映（結果には「次のプレイから」効く） */
   function applyPreset(p) {
     if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
@@ -1399,6 +1417,7 @@ const Game = (function () {
         Store.log('PRESET_APPLY', { id: p.id, name: p.name });
       });
     } catch (err) { /* 保存のみ */ }
+    syncTable();
     if (Admin.isOpen()) Admin.rerender();
   }
   function startCloudSync() {
@@ -1522,9 +1541,8 @@ const Game = (function () {
     lockbar.addEventListener('click', onLockbar);
     initSecret();
     initHelp();
-    // 画面下: 各ステージで当たる金額の一覧
-    // 最下段: ステージごとの最大金額だけを見せる（内訳は見せない）
-    $('paytable').innerHTML = Engine.STAGE_DEFS.map((d) => { const mx = Math.max.apply(null, d.values); return '<div class="ps" data-s="' + d.stage + '"><em>STAGE ' + d.stage + '</em><span><i>MAX</i><b class="amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= mx).length) + '">' + fmtN(mx) + '</b></span></div>'; }).join('');
+    // 画面下: 各ステージの最大金額（配当表から作る）
+    syncTable(true);
     buildLightSprites();
     applyPerf();
     setStage(1);
@@ -1561,6 +1579,6 @@ const Game = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo };
+  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo };
 })();
 window.Game = Game;
