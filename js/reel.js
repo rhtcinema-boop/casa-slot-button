@@ -466,8 +466,21 @@ const Reel = (function () {
   let live = null, attractDone = null;
   function interrupt() {
     cancelAnimationFrame(raf);
-    if (live) { const t = (performance.now() - live.t0) / 1000; reels.forEach((rl, i) => { rl.pos = live.profs[i].at(t); }); live = null; }
+    if (live) { const t = ((live.holdAt || performance.now()) - live.t0) / 1000; reels.forEach((rl, i) => { rl.pos = live.profs[i].at(t); }); live = null; }
     if (attractDone) { const r = attractDone; attractDone = null; r(false); }
+  }
+  /* 確定演出で画面が消えている間は、回転の時計を止める（消えている時間を回転時間に数えない）。
+     hold() で止め、resume(rewindSec) で再開。rewindSec を渡すと、そのぶん時計を巻き戻してから再開する
+     （画面が消え始めてから真っ暗になるまでに進んだ分を取り戻す。画面が消えている間なので位置が戻っても見えない）。
+     すでに止まったリールが動き出さないよう、止まった時刻より前には戻さない。 */
+  function hold() { if (live && !live.holdAt) live.holdAt = performance.now(); }
+  function resume(rewindSec) {
+    if (!live || !live.holdAt) return;
+    const tHold = (live.holdAt - live.t0) / 1000;
+    const rewind = Math.max(0, Math.min(Math.max(0, rewindSec || 0), tHold - (live.minT || 0)));
+    live.t0 += performance.now() - live.holdAt + rewind * 1000;
+    live.holdAt = 0;
+    live.rebase = true;
   }
   /* 待機中の見せ回し: 3本が約5秒回り、ゆっくり減速して READY / TO / SPIN で止まる（1本ずつ 0.6 秒おき）。音は鳴らさない。
      kind が 'logo' のときは、左右が空で真ん中に casa ロゴが止まる。最後まで回れば true、途中で切り替わったら false */
@@ -499,7 +512,8 @@ const Reel = (function () {
       let started = false, teased = false, neared = false, stopped = false, reversed = false;
       cancelAnimationFrame(raf);
       function frame(now) {
-        const t = (now - t0) / 1000;
+        const t = ((me.holdAt || now) - me.t0) / 1000; // 時計が止められている間（確定演出で画面が消えている間）は進まない
+        if (me.rebase) { me.rebase = false; lastT = t - 0.016; for (let i = 0; i < NR; i++) lastP[i] = profs[i].at(lastT); } // 再開直後: 速さの計算をやり直す
         const dt = Math.max(0.001, t - lastT);
         const ps = [], speeds = [];
         let maxNorm = 0, ticked = false;
@@ -510,7 +524,7 @@ const Reel = (function () {
           maxNorm = Math.max(maxNorm, Math.min(1, Math.abs(speed) / pr.V));
           const cell = Math.round(p);
           if (cell !== lastCell[i] && t < pr.tStop) { lastCell[i] = cell; ticked = true; }
-          if (!stoppedR[i] && t >= pr.tStop) { stoppedR[i] = true; hooks.onReelStop && hooks.onReelStop(i, order.indexOf(i)); }
+          if (!stoppedR[i] && t >= pr.tStop) { stoppedR[i] = true; me.minT = Math.max(me.minT || 0, pr.tStop); hooks.onReelStop && hooks.onReelStop(i, order.indexOf(i)); }
           lastP[i] = p;
         }
         if (!started && t >= lastProf.startAt) { started = true; hooks.onStart && hooks.onStart(); }
@@ -591,5 +605,5 @@ const Reel = (function () {
     if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
   }
 
-  return { init, spin, attract, setStage, setTable, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  return { init, spin, attract, setStage, setTable, hold, resume, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
