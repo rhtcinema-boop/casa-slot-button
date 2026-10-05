@@ -329,6 +329,7 @@ const Game = (function () {
     win.classList.remove('win', 'lose');
     cabinet.classList.remove('party');
     if (s.play) { // 演出の途中で閉じた: NEXT GAME で続きから再開（再抽選はしない）
+      setNotes(false);
       const st = s.play.cur || 1;
       if (showingResult || curStage !== st) { showingResult = false; setStage(st); }
       return idleBar();
@@ -336,7 +337,44 @@ const Game = (function () {
     clearSure();
     if (showingResult || curStage !== 1) { showingResult = false; setStage(1); }
     if (!s.pins) { lockbar.classList.remove('show'); return setPlate('idle', 'WELCOME', ''); }
+    setNotes(true); // 待機画面に戻るたびに、左側を説明に切り替える（説明が入力されている店舗だけ）
     idleBar();
+  }
+  /* 待機中の説明: リールが回っていない待機画面のときだけ、左のステージの場所に、店舗ごとの説明を出す。
+     説明はマスターの「店舗の編集」で 3 つまで入力する。1つなら大きく1枠、2つなら2分割、3つなら3分割。
+     ゲームが始まるとステージの表示に戻る（結果を見せている間もステージのまま）。説明が無い店舗は、いつもステージを出す */
+  let notesWanted = false;
+  function setNotes(on) { notesWanted = !!on; showNotes(); }
+  function showNotes() {
+    const el = $('notes'), s = Store.state, list = (s && s.store && s.notesFor === s.store.id && s.notes) || []; // 別の店舗に切り替えた直後は、前の店舗の説明を出さない
+    if (!el) return;
+    const on = notesWanted && list.length > 0;
+    stageEl.classList.toggle('show-notes', on);
+    if (!on) return;
+    const sig = JSON.stringify(list);
+    if (el.dataset.sig !== sig) {
+      el.dataset.sig = sig;
+      el.innerHTML = list.map((t) => '<div class="note"><p>' + escH(t) + '</p></div>').join('');
+    }
+    // 高さはステージの列と同じ。文字は、枠に収まる一番大きい大きさにする
+    el.style.height = $('ladder').offsetHeight + 'px';
+    el.querySelectorAll('.note').forEach((box) => {
+      const p = box.querySelector('p');
+      const maxW = box.clientWidth - 28, maxH = box.clientHeight - 28, text = p.textContent;
+      const start = [0, 50, 40, 32][list.length] || 32;
+      let size = start;
+      p.style.fontSize = size + 'px';
+      // 入力された 1 行ずつの幅を測って、途中で切れる行がいちばん少なくなる大きさを選ぶ（同じなら大きいほう。小さくしすぎない）
+      p.style.whiteSpace = 'pre'; p.style.maxWidth = 'none';
+      const widths = text.split('\n').map((ln) => { p.textContent = ln || ' '; return p.offsetWidth; });
+      p.textContent = text; p.style.whiteSpace = ''; p.style.maxWidth = '';
+      for (let sz = start, best = Infinity; sz >= Math.max(26, Math.round(start * 0.6)); sz -= 2) {
+        const broken = widths.filter((w) => w * sz / start > maxW).length;
+        if (broken < best) { best = broken; size = sz; }
+      }
+      p.style.fontSize = size + 'px';
+      while (size > 14 && (p.scrollHeight > maxH || p.scrollWidth > maxW)) { size -= 2; p.style.fontSize = size + 'px'; }
+    });
   }
   const WDAY = ['日', '月', '火', '水', '木', '金', '土'];
   // 配当履歴の日時: 日付（曜日つき）を大きく、時刻は小さく
@@ -461,6 +499,7 @@ const Game = (function () {
 
   /* 結果表示＋レバー完全ロック（再起動時の復元にも使用） */
   function showLocked(play, animate) {
+    setNotes(false); // 結果を見せている間は、ステージの表示のまま
     showingResult = true;
     Lever.setEnabled(false);
     if (!animate) {
@@ -765,6 +804,7 @@ const Game = (function () {
   /* 1ステージ分の演出。NEXT STAGE なら次のステージへ移り、再びレバー待ちに戻る。 */
   async function runStage(play, st) {
     busy = true;
+    setNotes(false); // ゲーム中は、左側をステージの表示に戻す
     tense(0); // 念のため（前の回の期待の演出が残らないように）
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
@@ -1607,6 +1647,11 @@ const Game = (function () {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
       if (doc.logoutAt && doc.logoutAt > me.boundAt) return unbindStore();
       cloudStore = doc;
+      { // 待機中に左側へ出す説明（マスターの店舗の編集で入力。3つまで）。変わったら端末に覚えて、すぐ画面に反映する
+        const nt = (Array.isArray(doc.notes) ? doc.notes : []).map((x) => String(x || '').slice(0, 80)).filter(Boolean).slice(0, 3);
+        const sid = Store.state.store && Store.state.store.id;
+        if (JSON.stringify(nt) !== JSON.stringify(Store.state.notes || []) || Store.state.notesFor !== sid) { try { Store.transact((s) => { s.notes = nt; s.notesFor = sid; }); } catch (err) { /* 保存のみ */ } showNotes(); }
+      }
       // マスターの「全店舗をいますぐアップデート」: 押された時刻（updateAt）が新しくなったら、すぐに新しい版を確認する。
       // 新しい版があれば、待機中ならすぐ、ゲーム中ならそのゲームが終わり次第、読み直す（updWatch）
       if (updSeen === null) updSeen = doc.updateAt || 0;
