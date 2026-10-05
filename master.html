@@ -39,6 +39,11 @@
   .stepper button:active { background: var(--gold); color: #1a1204; }
   .stepper .pv { min-width: 60px; text-align: center; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .stepper .pv i { font-style: normal; color: var(--sub); font-size: 12px; margin-left: 2px; }
+  /* プリセットの色（b61） */
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; flex: none; max-width: 240px; justify-content: flex-end; }
+  .sw { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #000; background: var(--c); box-shadow: 0 0 0 1px var(--line); touch-action: manipulation; }
+  .sw.on { box-shadow: 0 0 0 3px var(--text); }
+  .pdot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: baseline; box-shadow: 0 0 0 1px #000; }
   /* 数字を押すと直接入力できる（b58） */
   .stepper .pv { cursor: text; border-radius: 8px; padding: 6px 2px; }
   .stepper .pv:hover { background: rgba(255, 255, 255, .06); }
@@ -104,9 +109,9 @@
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
-<script src="cloud-config.js?v=b60"></script>
-<script src="js/engine.js?v=b60"></script>
-<script src="js/cloud.js?v=b60"></script>
-<script src="js/master.js?v=b60"></script>
+<script src="cloud-config.js?v=b61"></script>
+<script src="js/engine.js?v=b61"></script>
+<script src="js/cloud.js?v=b61"></script>
+<script src="js/master.js?v=b61"></script>
 </body>
 </html>
