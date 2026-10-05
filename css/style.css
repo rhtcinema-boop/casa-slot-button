@@ -1249,7 +1249,6 @@ body.is-tv .help-btn { opacity: .5; }
 .recent { left: calc(1250px - 62px * var(--t, 0)); top: 150px; width: calc(300px - 45px * var(--t, 0)); height: 690px; padding: 0 0 8px; }
 .recent h6 { height: 44px; margin: 0; display: grid; place-items: center; font-size: 28px; letter-spacing: .2em; padding-left: .2em; }
 .recent-view { margin: 0 18px; }
-.recent-list { animation: none !important; transform: none !important; }
 .rc { height: 64px; box-sizing: border-box; padding: 0 2px; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, .07); }
 .rc small { font-size: 20px; gap: 3px; color: #cfc6ad; }
 .rc small i { font-size: 15px; color: #8e8672; }
@@ -1663,7 +1662,6 @@ body.lite .tglow { box-shadow: 0 0 14px 2px rgba(var(--acc), .7); }
 .notes .note p { margin: 0; max-width: 100%; font: 700 28px/1.35 var(--font-ui); letter-spacing: .02em; color: #f3ead0; white-space: pre-wrap; overflow-wrap: anywhere; line-break: strict; word-break: auto-phrase; text-wrap: balance; text-shadow: 0 2px 2px rgba(0, 0, 0, .7); }
 body.lite .notes .note { box-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000; }
 
-/* ---------- 配当履歴のページ送り（b68）: 直近 40 件を、10 件ずつ上へスライドして見せる ----------
-   位置は game.js が --ry に入れる。動くのはページが替わる一瞬だけ（transform だけなので軽い） */
-.recent-list { transform: translate3d(0, var(--ry, 0px), 0) !important; transition: transform .8s cubic-bezier(.3, .7, .2, 1); }
-.recent-pg { position: absolute; right: 16px; top: 0; height: 44px; display: grid; place-items: center; font: 700 15px/1 var(--font-ui); font-style: normal; letter-spacing: .06em; color: #9a917b; pointer-events: none; }
+/* ---------- 配当履歴の流れ（b69）: 直近 40 件を、待機中に上へゆっくり流し続ける ----------
+   動きは game.js が付ける（transform のアニメだけ）。いちばん新しい行（.loop）の上には、一周の切れ目が分かるように細い線を入れる */
+.rc.loop { border-top: 2px solid rgba(var(--acc), .6); }
