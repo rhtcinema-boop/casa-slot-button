@@ -5,19 +5,41 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  /* 各ステージの配当（金額の一覧）。下は初期値で、b52 からは確率表（probs）に書かれた金額がそのまま配当になる。
+     setTable(probs) を呼ぶと STAGE_DEFS / OUTCOMES / OUTCOME_BY_KEY / REEL_SYMS が「いま使っている表」に入れ替わる
+     （同じ配列・オブジェクトを書き換えるので、参照している側はそのまま使える）。 */
+  const DEFAULT_VALUES = { 1: [0, 500, 1000], 2: [0, 1000, 2000, 3000, 5000], 3: [0, 10000, 50000, 100000] };
+  const MAX_AMOUNTS = 8, MAX_VALUE = 10000000; // 1ステージの金額の種類の上限／金額の上限
   const STAGE_DEFS = [
-    { stage: 1, values: [0, 500, 1000], hasNext: true },
-    { stage: 2, values: [0, 1000, 2000, 3000, 5000], hasNext: true },
-    { stage: 3, values: [0, 10000, 50000, 100000], hasNext: false },
+    { stage: 1, values: DEFAULT_VALUES[1].slice(), hasNext: true },
+    { stage: 2, values: DEFAULT_VALUES[2].slice(), hasNext: true },
+    { stage: 3, values: DEFAULT_VALUES[3].slice(), hasNext: false },
   ];
+  // 確率表の1ステージぶん（{ 金額: %, NEXT: % }）から金額の一覧を作る（0 を必ず含め、小さい順）
+  function rowValues(row) {
+    const out = [0];
+    Object.keys(row || {}).forEach((k) => { const v = Number(k); if (k !== 'NEXT' && k !== '' && Number.isInteger(v) && v > 0 && out.indexOf(v) < 0) out.push(v); });
+    return out.sort((a, b) => a - b);
+  }
+  // 確率表 p での各ステージの定義（p に無いステージは初期値）
+  function tableOf(p) {
+    return STAGE_DEFS.map((d) => ({ stage: d.stage, values: p && p[d.stage] ? rowValues(p[d.stage]) : DEFAULT_VALUES[d.stage].slice(), hasNext: d.hasNext }));
+  }
+  function outcomesOf(p) {
+    const o = [];
+    tableOf(p).forEach((d) => d.values.forEach((v) => o.push({ key: d.stage + ':' + v, stage: d.stage, value: v })));
+    return o;
+  }
 
   // 最終結果の一覧。在庫は「どのステージのどの結果で終了するか」単位で管理する。
   const OUTCOMES = [];
-  STAGE_DEFS.forEach((d) =>
-    d.values.forEach((v) => OUTCOMES.push({ key: d.stage + ':' + v, stage: d.stage, value: v }))
-  );
   const OUTCOME_BY_KEY = {};
-  OUTCOMES.forEach((o) => (OUTCOME_BY_KEY[o.key] = o));
+  function rebuildOutcomes() {
+    OUTCOMES.length = 0;
+    Object.keys(OUTCOME_BY_KEY).forEach((k) => delete OUTCOME_BY_KEY[k]);
+    STAGE_DEFS.forEach((d) => d.values.forEach((v) => { const o = { key: d.stage + ':' + v, stage: d.stage, value: v }; OUTCOMES.push(o); OUTCOME_BY_KEY[o.key] = o; }));
+  }
+  rebuildOutcomes();
 
   const isCount = (n) => Number.isInteger(n) && n >= 0;
 
@@ -169,9 +191,13 @@
   const units = (x) => Math.round(Number(x) * 100); // 0.01% 単位の整数
   function validateProbs(p) {
     const errors = [];
-    STAGE_DEFS.forEach((d) => {
+    tableOf(p).forEach((d) => {
       const row = (p && p[d.stage]) || {};
       let ok = true, sum = 0;
+      // 金額の書き方: 0 以上の整数（先頭の 0 や小数は不可）。NEXT は次のステージがある段だけ
+      const bad = Object.keys(row).filter((k) => (k === 'NEXT' ? !d.hasNext && Number(row[k]) > 0 : !(String(Number(k)) === k && Number.isInteger(Number(k)) && Number(k) >= 0 && Number(k) <= MAX_VALUE)));
+      if (bad.length) errors.push('STAGE ' + d.stage + ': 金額は 1 以上の整数で入力してください（' + bad.join('、') + '）。');
+      if (d.values.length - 1 > MAX_AMOUNTS) errors.push('STAGE ' + d.stage + ': 金額は ' + MAX_AMOUNTS + ' 種類までです。');
       probKeys(d).forEach((k) => {
         const v = Number(row[k]);
         if (!Number.isFinite(v) || v < 0 || v > 100 || Math.abs(v * 100 - Math.round(v * 100)) > 1e-6) ok = false;
@@ -185,7 +211,7 @@
   function probStats(p) {
     const sums = {}, reach = { 1: 1 }, outcome = {};
     let ev = 0, win = 0;
-    STAGE_DEFS.forEach((d) => {
+    tableOf(p).forEach((d) => {
       const row = (p && p[d.stage]) || {};
       let sum = 0;
       probKeys(d).forEach((k) => { const v = Number(row[k]); sum += Number.isFinite(v) ? units(v) : 0; });
@@ -218,11 +244,11 @@
     pruneHits(hits, now, resetHour).forEach((h) => { c[h.key] = (c[h.key] || 0) + 1; c.total += 1; });
     return c;
   }
-  function blockedKeys(limits, hits, now) {
+  function blockedKeys(limits, hits, now, p) {
     if (!limits || !limits.on) return [];
     const c = hitCounts(hits, now, limits.resetHour), out = [];
     const total = Number(limits.total) || 0;
-    OUTCOMES.forEach((o) => {
+    (p ? outcomesOf(p) : OUTCOMES).forEach((o) => {
       if (!(o.value > 0)) return;
       const m = Number(limits.max && limits.max[o.key]) || 0;
       if ((total > 0 && c.total >= total) || (m > 0 && (c[o.key] || 0) >= m)) out.push(o.key);
@@ -231,17 +257,18 @@
   }
   /* 開始直後の高額制限: 営業日（毎日 resetHour 時から）の最初の plays 回は、min 以上の金額を出さない。
      early = { on, plays, min }、played = その営業日にこの端末ですでに回した回数。止める目の一覧を返す（確率はそのステージの 0 に回る） */
-  function earlyBlocked(early, played) {
+  function earlyBlocked(early, played, p) {
     if (!early || !early.on) return [];
     const n = Number(early.plays) || 0, min = Number(early.min) || 0;
     if (n <= 0 || min <= 0 || (Number(played) || 0) >= n) return [];
-    return OUTCOMES.filter((o) => o.value >= min).map((o) => o.key);
+    return (p ? outcomesOf(p) : OUTCOMES).filter((o) => o.value >= min).map((o) => o.key);
   }
   function drawProb(p, rng, blocked) {
     rng = rng || secureRandomInt;
     blocked = blocked || [];
-    for (let i = 0; i < STAGE_DEFS.length; i++) {
-      const d = STAGE_DEFS[i], row = p[d.stage], keys = probKeys(d);
+    const T = tableOf(p);
+    for (let i = 0; i < T.length; i++) {
+      const d = T[i], row = p[d.stage], keys = probKeys(d);
       const w = keys.map((k) => Math.max(0, units(row[k]) || 0));
       keys.forEach((k, j) => { if (k !== '0' && k !== 'NEXT' && blocked.indexOf(d.stage + ':' + k) >= 0) { w[0] += w[j]; w[j] = 0; } });
       const total = w.reduce((a, b) => a + b, 0);
@@ -257,11 +284,46 @@
   /* ---------- 3本リールの見せ方（合計方式） ----------
      各リールは「金額」「BAR（0円）」「NEXT」のどれか。NEXT が3本そろえば次のステージ、それ以外は金額の合計が当選額（NEXT 1〜2本は 0 扱い）。
      結果は確率で先に決まっていて、その結果になる組み合わせの中から見せ方を選ぶだけ。 */
-  const REEL_SYMS = {
+  const REEL_BASE = {
     1: [100, 200, 300, 400, 500],
     2: [500, 1000, 2000, 3000, 5000],
     3: [5000, 10000, 20000, 30000, 50000, 100000],
   };
+  const REEL_SYMS = { 1: REEL_BASE[1].slice(), 2: REEL_BASE[2].slice(), 3: REEL_BASE[3].slice() };
+  // S の絵柄 1〜3 個（同じ絵柄の繰り返し可）の合計で t を作れるか
+  function canMake(S, t) {
+    for (let i = 0; i < S.length; i++) {
+      if (S[i] === t) return true;
+      for (let j = i; j < S.length; j++) {
+        if (S[i] + S[j] === t) return true;
+        for (let k = j; k < S.length; k++) if (S[i] + S[j] + S[k] === t) return true;
+      }
+    }
+    return false;
+  }
+  /* そのステージのリールに出す数字の絵柄を、配当の一覧から決める。
+     もとの絵柄（REEL_BASE）を土台に、それでは作れない金額だけ「その金額そのもの」と「半分」を足す。
+     最後に、どの配当の合計にも使えない絵柄（出ても当たりにならない数字）は外す。初期の配当表ではもとの絵柄と同じになる。 */
+  function symsFor(stage, values) {
+    const A = (values || []).filter((v) => v > 0);
+    const S = REEL_BASE[stage].slice();
+    A.forEach((v) => {
+      if (canMake(S, v)) return;
+      S.push(v);
+      const h = v / 2;
+      if (Number.isInteger(h) && h >= 100 && h % 100 === 0 && S.indexOf(h) < 0) S.push(h);
+    });
+    const used = {};
+    const mark = (list) => { const sum = list.reduce((a, b) => a + b, 0); if (A.indexOf(sum) >= 0) list.forEach((s) => { used[s] = true; }); };
+    for (let i = 0; i < S.length; i++) {
+      mark([S[i]]);
+      for (let j = i; j < S.length; j++) {
+        mark([S[i], S[j]]);
+        for (let k = j; k < S.length; k++) mark([S[i], S[j], S[k]]);
+      }
+    }
+    return S.filter((s, i) => used[s] && S.indexOf(s) === i).sort((a, b) => a - b);
+  }
   const FREES = ['FREE', 'FREE2', 'FREE3', 'LOGO']; // FREE SPIN ×1 / ×2 / ×3、casa ロゴ（3本そろうと 10 FREE SPIN を獲得）
   function readReels(stage, syms) {
     let nexts = 0, sum = 0;
@@ -281,6 +343,15 @@
     return out;
   }
   const comboCache = {};
+  /* 使う配当表を切り替える（端末: 確率を読み込んだ時・プリセットが変わった時／マスター: 編集中のプリセット）。
+     p を省略すると初期の配当表に戻る。 */
+  function setTable(p) {
+    const T = tableOf(p);
+    T.forEach((d, i) => { STAGE_DEFS[i].values = d.values; REEL_SYMS[d.stage] = symsFor(d.stage, d.values); });
+    rebuildOutcomes();
+    Object.keys(comboCache).forEach((k) => delete comboCache[k]);
+    return T;
+  }
   /* target（金額 / 0 / 'NEXT'）になる3本の組み合わせをすべて返す（左中右の並びも別物として数える） */
   function reelCombos(stage, target) {
     const key = stage + ':' + target;
@@ -405,7 +476,7 @@
   }
 
   return {
-    STAGE_DEFS, OUTCOMES, OUTCOME_BY_KEY,
+    STAGE_DEFS, OUTCOMES, OUTCOME_BY_KEY, DEFAULT_VALUES, MAX_AMOUNTS, MAX_VALUE, tableOf, setTable, symsFor,
     emptyCounts, sumCounts, prizeTotal, winCount,
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
