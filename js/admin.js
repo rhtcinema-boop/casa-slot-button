@@ -205,7 +205,7 @@ const Admin = (function () {
   const PAGE = 50;
   const TYPES = {
     PLAY: ['play', 'プレイ'], OVERFLOW_PLAY: ['over', '超過プレイ'],
-    SESSION_START: ['ops', '営業開始'], SESSION_END: ['ops', '営業終了'], NEXT_PLAY: ['ops', '次のプレイ'], CREDIT_ADD: ['ops', 'クレジット追加'], FEED_SEED: ['ops', '過去の当たりを全店舗の配当履歴に追加'], CREDIT_SET: ['ops', 'クレジット変更'], TOTAL: ['ops', 'クレジット終了'],
+    SESSION_START: ['ops', '営業開始'], SESSION_END: ['ops', '営業終了'], NEXT_PLAY: ['ops', '次のプレイ'], CREDIT_ADD: ['ops', 'クレジット追加'], FREE_PLAY: ['ops', 'FREE SPIN（当たりなしの回）'], FEED_SEED: ['ops', '過去の当たりを全店舗の配当履歴に追加'], CREDIT_SET: ['ops', 'クレジット変更'], TOTAL: ['ops', 'クレジット終了'],
     PROB_SET: ['cfg', '確率変更'], PRESET_APPLY: ['cfg', 'プリセット適用'], STORE_LOGIN: ['pin', '店舗ログイン'], STORE_LOGOUT: ['pin', '店舗ログアウト'], STATS_RESET: ['ops', '集計リセット'], PRESET_SAVE: ['cfg', 'プリセット保存'], PRESET_DELETE: ['cfg', 'プリセット削除'], LIMITS_SET: ['cfg', '本数制限変更'],
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
@@ -727,7 +727,7 @@ const Admin = (function () {
         case 'stats-reset': {
           const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・最高額配当・画面右の「配当履歴」を 0 に戻します。全履歴は消えません。</p>', ok: 'リセットする' });
           if (!ok) return;
-          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = 0; st.recent = []; st.lastValue = null; st.credits = 0; });
+          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; });
           UI.toast('集計をリセットしました。', 'ok');
           return render();
         }
@@ -870,7 +870,7 @@ const Admin = (function () {
         total: c.total, consumedTotal: c.total - Engine.sumCounts(c.remaining), remainTotal: Engine.sumCounts(c.remaining),
         initial: c.initial, consumed: c.consumed, remaining: c.remaining, awarded: c.awarded, overflowCount: c.overflowCount, plays: c.playNo, startedAt: c.startedAt, creditsLeft: st.credits || 0,
       }, role);
-      st.session = null; st.draft = null; st.play = null; st.locked = false; st.credits = 0; st.wonTotal = 0;
+      st.session = null; st.draft = null; st.play = null; st.locked = false; st.credits = 0; st.dud = 0; st.wonTotal = 0;
     });
     loadForm();
     UI.toast('営業を終了しました。', 'ok');
