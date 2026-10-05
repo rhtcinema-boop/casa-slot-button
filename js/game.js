@@ -606,8 +606,10 @@ const Game = (function () {
     if (finalStage && play.value >= PUCHUN_MIN && !sureShown && !play.overflow) { if (Math.random() < PUCHUN_REAL) puchunPlan = { kind: 'real', fx: pickFx() }; return; }
     if (Math.random() < PUCHUN_FAKE) puchunPlan = { kind: 'fake', fx: pickFx() };
   }
-  /* 画面が消える（crt）／白く飛ぶ（flash）。during() は真っ暗・真っ白の間に呼ばれる（ステージ切替などに使う） */
-  async function blink(fx, holdMs, during) {
+  /* 画面が消える（crt）／白く飛ぶ（flash）。during() は真っ暗・真っ白の間に呼ばれる（ステージ切替などに使う）。
+     freeze = true のとき、画面が消えている間はリールの時計を止め、消え始めた分も巻き戻して再開する
+     （確定演出の時間を回転時間に数えない。画面が戻ってから、リールは本来の長さだけ回る）。 */
+  async function blink(fx, holdMs, during, freeze) {
     const crt = $('crt');
     // ゆっくり: 消えるのに約1秒、消えたまま holdMs、戻るのに約0.7秒
     if (fx === 'flash') {
@@ -616,8 +618,10 @@ const Game = (function () {
       await wait(600);
       crt.className = 'white';
       Sfx.spin(0);
+      if (freeze) Reel.hold();
       if (during) await during();
       await wait(holdMs);
+      if (freeze) Reel.resume(0.6);
       crt.className = 'white-out';
       await wait(1000);
       crt.className = '';
@@ -628,15 +632,17 @@ const Game = (function () {
     await wait(950);
     crt.className = 'dark';
     Sfx.spin(0);
+    if (freeze) Reel.hold();
     if (during) await during();
     await wait(holdMs);
+    if (freeze) Reel.resume(0.95);
     Sfx.play('crtOn');
     crt.className = 'on';
     await wait(700);
     crt.className = '';
   }
   async function puchun(plan) {
-    await blink(plan.fx, plan.kind === 'real' ? 2200 : 1600);
+    await blink(plan.fx, plan.kind === 'real' ? 2200 : 1600, null, true);
     if (plan.kind === 'real') announceSure();
   }
   /* ワープ開始: NEXT GAME 直後、結果が STAGE 2 以上で「金額が当たる」プレイでたまに、いきなり上のステージから始まる。
