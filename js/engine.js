@@ -227,6 +227,31 @@
     });
     return { sums, reach, outcome, ev, win };
   }
+  /* CREDIT のフリースピン（ステージを下げない）: ステージ s から始めて n 回まわしたときの、当選額の合計の期待値。
+     1回ごとに、そのステージの確率で抽選し、NEXT で上がったステージは次の回にも引き継ぐ。
+     返り値 { 1: 期待値, 2: …, 3: … }（始めるステージごと）と、1回ぶんの内訳 one / end */
+  function creditStats(p, n) {
+    const T = tableOf(p), N = T.length;
+    const pr = (st, k) => (Number(((p && p[st]) || {})[k]) || 0) / 100;
+    const one = {}, end = {}; // one[s] = s から始めた1回の期待値、end[s][t] = s から始めて t で終わる確率
+    for (let i = N - 1; i >= 0; i--) {
+      const d = T[i], s = d.stage, nx = d.hasNext && i + 1 < N ? pr(s, 'NEXT') : 0;
+      let ev = 0;
+      d.values.forEach((v) => { ev += pr(s, v) * v; });
+      one[s] = ev + (nx ? nx * one[T[i + 1].stage] : 0);
+      end[s] = {};
+      end[s][s] = 1 - nx;
+      if (nx) Object.keys(end[T[i + 1].stage]).forEach((t) => { end[s][t] = (end[s][t] || 0) + nx * end[T[i + 1].stage][t]; });
+    }
+    let F = {};
+    T.forEach((d) => { F[d.stage] = 0; });
+    for (let k = 0; k < (n || 0); k++) {
+      const G = {};
+      T.forEach((d) => { let x = one[d.stage]; Object.keys(end[d.stage]).forEach((t) => { x += end[d.stage][t] * F[t]; }); G[d.stage] = x; });
+      F = G;
+    }
+    return { total: F, one, end };
+  }
   /* 24時間の当たり本数制限。limits = { on, total, max: { 'stage:value': n } }
      total = 直近24時間の当たり本数（合計）の上限、max = 金額ごとの上限（任意）。0 は無制限。hits = [{ ts, key }]。
      上限に達した金額は、その分の確率をそのステージの「0」に回す（他の当たりは増えない）。 */
@@ -263,11 +288,13 @@
     if (n <= 0 || min <= 0 || (Number(played) || 0) >= n) return [];
     return (p ? outcomesOf(p) : OUTCOMES).filter((o) => o.value >= min).map((o) => o.key);
   }
-  function drawProb(p, rng, blocked) {
+  /* startStage: 抽選を始めるステージ（省略は 1）。CREDIT のフリースピン中は、前の回が終わったステージから始める */
+  function drawProb(p, rng, blocked, startStage) {
     rng = rng || secureRandomInt;
     blocked = blocked || [];
     const T = tableOf(p);
-    for (let i = 0; i < T.length; i++) {
+    const from = Math.max(0, Math.min(T.length - 1, (Math.floor(Number(startStage)) || 1) - 1));
+    for (let i = from; i < T.length; i++) {
       const d = T[i], row = p[d.stage], keys = probKeys(d);
       const w = keys.map((k) => Math.max(0, units(row[k]) || 0));
       keys.forEach((k, j) => { if (k !== '0' && k !== 'NEXT' && blocked.indexOf(d.stage + ':' + k) >= 0) { w[0] += w[j]; w[j] = 0; } });
@@ -404,6 +431,27 @@
       return v !== actual && valid.indexOf(v) >= 0;
     });
   }
+  /* 期待の段階化（見せ方だけ。結果は変えない）: 先に止まる2本を見て、3本目が回っている間に盛り上げてよい場面かを返す。
+       next … NEXT STAGE が2本 / free … 同じ FREE SPIN が2本 / logo … casa ロゴが2本
+       sum  … 2本目までの合計が大きい（そのステージの金額のうち上位半分が当たる回で、2本の合計がその当選額の半分以上）
+     cap = 上がれる段階の上限（1〜3）、hit = 3本目で本当に「来る」か（sum は、そのステージの最高額になるか）、
+     big = 大きな場面か（NEXT STAGE・casa ロゴ・FREE SPIN ×3・STAGE 2 以上の合計。false の場面は控えめに出す）。当てはまらなければ null */
+  function tensionOf(stage, combo, order) {
+    const d = STAGE_DEFS[stage - 1];
+    if (!d || !combo || !order) return null;
+    const a = combo[order[0]], b = combo[order[1]], c = combo[order[2]];
+    if (a === 'NEXT' && b === 'NEXT' && d.hasNext) return { kind: 'next', cap: stage >= 2 ? 3 : 2, hit: c === 'NEXT', big: true };
+    if (a === b && a === 'LOGO') return { kind: 'logo', cap: 3, hit: c === a, big: true };
+    if (a === b && FREES.indexOf(a) >= 0) return { kind: 'free', cap: FREES.indexOf(a) + 1, hit: c === a, big: a === 'FREE3' };
+    const num = (x) => (typeof x === 'number' ? x : 0);
+    const sum2 = num(a) + num(b), total = readReels(stage, combo);
+    if (sum2 > 0 && typeof total === 'number' && total > 0 && sum2 * 2 >= total) {
+      const vals = d.values.filter((v) => v > 0).sort((x, y) => x - y);
+      const upper = vals.slice(Math.floor(vals.length / 2)); // 上位半分の金額（奇数個なら真ん中を含む）
+      if (upper.indexOf(total) >= 0) return { kind: 'sum', cap: Math.min(3, stage), hit: total === vals[vals.length - 1], big: stage >= 2, sum: sum2 };
+    }
+    return null;
+  }
   function pathFor(stage) {
     const p = [];
     for (let i = 1; i <= stage; i++) p.push(i);
@@ -481,8 +529,8 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
-    REEL_SYMS, readReels, reelCombos, reelAlternatives,
+    probKeys, defaultProbs, validateProbs, probStats, creditStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
+    REEL_SYMS, readReels, reelCombos, reelAlternatives, tensionOf,
     sha256, makePin, checkPin,
   };
 });
