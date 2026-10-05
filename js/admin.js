@@ -264,6 +264,15 @@ const Admin = (function () {
       '<div class="acts"><button class="btn ghost" data-act="lim-reset" ' + (changed ? '' : 'disabled') + '>元に戻す</button><button class="btn" data-act="lim-save" ' + (changed ? '' : 'disabled') + '>制限を保存</button></div></div>';
   }
   /* 店舗モード: 配布されたプリセットの名前だけを並べる（確率の中身は表示しない） */
+  /* 今日の当たり合計（b67）: 毎日のリセット時刻（既定 19:00）から今までに出た金額の合計。「今日の当たり本数」と同じ区切り。
+     テスト用プリセットの回と、当たりなしの FREE SPIN の回は入らない。画面の集計をリセットしても消えない。
+     お客さんに見えないよう、ふだんは伏せ字。「見る」を押すと 10 秒だけ数字を出す（描き直しはしないので、リモコンの選択枠は動かない） */
+  const TODAY_MASK = '＊＊＊＊＊', TODAY_SHOW_MS = 10000;
+  let todayTimer = 0;
+  function todayWon() {
+    const s = Store.state;
+    return Engine.pruneHits(s.hits, Date.now(), s.limits && s.limits.resetHour).reduce((a, h) => a + (Number(String(h.key).split(':')[1]) || 0), 0);
+  }
   function viewPreset() {
     const info = Game.storeInfo(), s = Store.state, ses = s.session;
     const now = Date.now(), counts = Engine.hitCounts(s.hits, now, s.limits && s.limits.resetHour);
@@ -272,6 +281,8 @@ const Admin = (function () {
       '<div class="panel"><h4>プリセットを選ぶ</h4><p class="hint">マスターから配られたプリセットの中から選びます。選ぶと次のプレイから反映されます。</p>' +
       (info.presets.length ? '<div class="preset-list">' + info.presets.map((p) => '<button class="btn ' + (p.id === info.activeId ? '' : 'ghost') + ' preset-btn" data-act="preset-use" data-id="' + esc(p.id) + '">' + esc(p.name) + (p.id === info.activeId ? '<small>使用中</small>' : '') + '</button>').join('') + '</div>' : '<p class="hint">まだプリセットが配られていません。マスター画面で配布してください。</p>') + '</div>' +
       '<div class="panel"><h4>今日の集計</h4><div class="summary">' + stat('プレイ回数（累計）', fmtN(ses.playNo)) + stat('当選額の合計（累計）', fmtN(ses.awarded)) + stat('今日の当たり本数', fmtN(counts.total) + (s.limits && s.limits.on && s.limits.total ? ' / ' + s.limits.total : '')) + '</div>' +
+      '<div class="row"><div class="lbl" style="font-family:var(--font-ui);font-size:20px">今日の当たり合計<small>' + (Number.isInteger(s.limits && s.limits.resetHour) ? s.limits.resetHour : 19) + ':00 から今までに出た金額の合計です。「見る」を押すと 10 秒だけ表示します</small></div>' +
+      '<div class="stepper"><span class="lbl" id="todaySum" style="min-width:190px;text-align:right">' + TODAY_MASK + '</span><button class="btn sm" data-act="today-show">見る</button></div></div>' +
       '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="stats-reset">画面の集計をリセット</button></div></div>';
   }
   function viewProbs() {
@@ -645,6 +656,14 @@ const Admin = (function () {
     try {
       switch (act) {
         case 'close': return close();
+        case 'today-show': { // 今日の当たり合計を 10 秒だけ見せる
+          const out = el.querySelector('#todaySum');
+          if (!out) return;
+          out.textContent = fmtN(todayWon());
+          clearTimeout(todayTimer);
+          todayTimer = setTimeout(() => { const o = el && el.querySelector('#todaySum'); if (o) o.textContent = TODAY_MASK; }, TODAY_SHOW_MS);
+          return;
+        }
         case 'tab': tab = b.dataset.tab; adjust = null; hist.page = 0; if (tab === 'history' || tab === 'changes') hist.all = null; return render();
         case 'step': {
           const d = +b.dataset.d;
