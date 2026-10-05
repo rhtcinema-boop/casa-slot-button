@@ -364,12 +364,33 @@ const Game = (function () {
   function startFeed() {
     stopFeed();
     if (!storeMode()) return;
-    unFeed = Cloud.watchFeed(10, (listOrNull) => {
-      feed = Array.isArray(listOrNull) ? listOrNull.filter((x) => x && x.value > 0 && x.ts) : null;
+    unFeed = Cloud.watchFeed(30, (listOrNull) => {
+      feed = Array.isArray(listOrNull) ? dedupeFeed(listOrNull.filter((x) => x && x.value > 0 && x.ts)).slice(0, 10) : null;
+      if (feed) seedFeed();
       // 読めなかったら 10 分後にもう一度試す（データベースの決まりを変えたあと、端末を触らなくても全店舗の表示に切り替わる）
       if (!feed) { clearTimeout(feedRetry); feedRetry = setTimeout(startFeed, 10 * 60 * 1000); }
       renderRecent();
     });
+  }
+  /* 同じ当たりが二重に入っていても1行にまとめる（同じ店舗・同じ金額で、時刻の差が 8 秒以内のもの。b60・b61 の端末が送った分と、あとから入れた過去ぶんが重なる場合がある） */
+  function dedupeFeed(list) {
+    const out = [];
+    list.slice().sort((a, b) => b.ts - a.ts).forEach((x) => { if (!out.some((y) => y.storeId === x.storeId && y.value === x.value && Math.abs(y.ts - x.ts) <= 8000)) out.push(x); });
+    return out;
+  }
+  /* これまでの当たり（この端末に残っている配当履歴。最大 200 件）を、全店舗の配当履歴に入れる。端末ごとに1回だけ。
+     全店舗の履歴が読めることを確かめてから送る（読めないうちは送らない）。途中で失敗したら、次に読めたときにやり直す（同じ当たりは増えない） */
+  let seeding = false;
+  async function seedFeed() {
+    const s = Store.state, me = s.store;
+    if (seeding || !me || s.feedSeeded || s.testMode) return;
+    seeding = true;
+    try {
+      const wins = (s.recent || []).filter((x) => x && x.value > 0 && x.ts).map((x) => ({ ts: x.ts, value: x.value }));
+      await Cloud.pushWins(me.id, (cloudStore && cloudStore.name) || me.name, wins);
+      Store.transact((st) => { st.feedSeeded = true; Store.log('FEED_SEED', { count: wins.length }); });
+    } catch (err) { /* 圏外など: 次に読めたときにやり直す */ }
+    seeding = false;
   }
   let feedRetry = 0;
   function stopFeed() { clearTimeout(feedRetry); if (unFeed) { unFeed(); unFeed = null; } feed = null; feedTop = 0; }
@@ -857,7 +878,7 @@ const Game = (function () {
     try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
-    if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: Date.now(), value: play.value }).catch(() => {}); } // 全店舗の配当履歴へ
+    if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === play.value ? last.ts : Date.now(), value: play.value }).catch(() => {}); } // 全店舗の配当履歴へ（時刻は端末の履歴と同じにする）
     if (out) await totalFx(Store.state.wonTotal || 0);
     busy = false;
     if (Store.state.play) showLocked(Store.state.play, true); else refresh();
