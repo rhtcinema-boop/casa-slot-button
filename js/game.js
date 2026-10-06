@@ -439,7 +439,7 @@ const Game = (function () {
   }
   function recentWatch() {
     const s = Store.state;
-    const idle = !busy && !pressing && s && s.pins && !s.play && !$('ui').children.length && !$('calib') && !document.getElementById('splash');
+    const idle = !busy && !pressing && s && s.pins && !s.play && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && !document.hidden; // 画面が隠れている間（スクリーンセーバー等）は流さない（b75）
     if (!idle) return stopRecentFlow();
     if (!recentFlowing) startRecentFlow();
   }
@@ -448,7 +448,8 @@ const Game = (function () {
     if (!storeMode()) return;
     unFeed = Cloud.watchFeed(RECENT_MAX + 20, (listOrNull) => { // 二重の行をまとめると減るので、少し多めに読む
       feed = Array.isArray(listOrNull) ? dedupeFeed(listOrNull.filter((x) => x && x.value > 0 && x.ts)).slice(0, RECENT_MAX) : null;
-      if (feed) seedFeed();
+      if (feed && !feed.length && (Store.state.recent || []).length) feed = null; // 全店舗の履歴がまだ空なら、この端末の履歴を出す（空の枠を見せない。b75）
+      if (feed) { clearTimeout(feedRetry); seedFeed(); } // 読めたら、予約していた再試行は消す（b75）
       // 読めなかったら 10 分後にもう一度試す（データベースの決まりを変えたあと、端末を触らなくても全店舗の表示に切り替わる）
       if (!feed) { clearTimeout(feedRetry); feedRetry = setTimeout(startFeed, 10 * 60 * 1000); }
       renderRecent();
@@ -854,7 +855,7 @@ const Game = (function () {
     const sym = st < play.stage ? 'NEXT' : play.value;
     const noSp = skipSpecial; skipSpecial = false;
     // 獲得した FREE SPIN（CREDIT）で回しているゲームでは、さらに FREE SPIN を出さない設定（プリセットで ON/OFF。未設定は ON）
-    const lockFree = !!play.free && (!!play.dud || Store.state.noRetrigger !== false); // 当たりなしの FREE SPIN（dud）の回では、必ず出さない
+    const lockFree = (!!play.free && (!!play.dud || Store.state.noRetrigger !== false)) || (storeMode() && !netOk); // 当たりなしの FREE SPIN（dud）の回と、オフラインの間は、FREE SPIN もロゴも出さない（b75）
     const logoHit = !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
     const freeN = !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
@@ -1585,7 +1586,7 @@ const Game = (function () {
   /* ---------- 店舗モード（クラウド同期） ----------
      初回は店舗を選んでその店舗のパスワードを入れる。以後はマスターが配ったプリセットだけを使う。 */
   let cloudDown = false; // クラウドに接続できず、端末内の設定で動いている
-  const storeMode = () => Cloud.enabled && !cloudDown && !!Store.state.store;
+  const storeMode = () => Cloud.enabled && !cloudDown && !!(Store.state && Store.state.store); // 起動直後（状態の読み込み前）に呼ばれても落ちない（b75）
   let cloudPresets = {};   // 配布されたプリセット { id: { name, probs, limits } }
   let cloudStore = null;   // 店舗ドキュメントの最新
   let updSeen = null;      // この端末が見た、マスターの「いますぐアップデート」の時刻（最初に読んだ値は実行しない）
@@ -1698,7 +1699,7 @@ const Game = (function () {
      取れた中身が JSON で v があることまで確かめる（オフライン時に service worker が index.html を返してくることがあるため） */
   let netOk = true, netFail = 0;
   async function netCheck() {
-    if (!storeMode() || Cloud.isLocal) { netOk = true; netFail = 0; return; }
+    if (!Store.state || !storeMode() || Cloud.isLocal) { netOk = true; netFail = 0; return; }
     if (navigator.onLine === false) { netOk = false; return; }
     try {
       const c = typeof AbortController === 'function' ? new AbortController() : null, t = c && setTimeout(() => c.abort(), 5000);
