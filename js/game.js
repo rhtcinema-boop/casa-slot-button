@@ -1726,7 +1726,10 @@ const Game = (function () {
     if (navigator.onLine === false) { netOk = false; return; }
     try {
       const c = typeof AbortController === 'function' ? new AbortController() : null, t = c && setTimeout(() => c.abort(), 5000);
-      const r = await fetch('version.json?t=' + Date.now(), Object.assign({ cache: 'no-store' }, c ? { signal: c.signal } : {}));
+      // Fire TV のアプリでは、画面のファイルはアプリの中（appassets）から読むので、相対の version.json はネットが無くても取れてしまう。
+      // 公開先（GitHub Pages）の version.json を直接取りに行く（b77）。iPad などはいつもどおり同じ場所の version.json
+      const probe = location.hostname === 'appassets.androidplatform.net' ? 'https://rhtcinema-boop.github.io/casa-slot-button/version.json' : 'version.json';
+      const r = await fetch(probe + '?t=' + Date.now(), Object.assign({ cache: 'no-store', mode: 'cors' }, c ? { signal: c.signal } : {}));
       if (t) clearTimeout(t);
       const j = r.ok ? await r.json() : null;
       if (j && j.v) { netFail = 0; netOk = true; return; }
