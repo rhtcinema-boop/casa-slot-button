@@ -1,9 +1,9 @@
 {
- "v": "b71",
+ "v": "b72",
  "files": [
   {
    "path": "index.html",
-   "sha256": "c44f563cd13a3dd0865e06d1d255711fc2c214a5e1e7b6ea85326caa3ff15ff7"
+   "sha256": "51c27a6e1d53ff9299a34289affffad15f3e2d8e7b4e83790bb8415f0c30715a"
   },
   {
    "path": "manifest.webmanifest",
@@ -59,7 +59,7 @@
   },
   {
    "path": "js/master.js",
-   "sha256": "a1ad13b1d84707591f7deaf1c5126e7b7cf141c4f66a0a6fd2bdc0aa5618d01b"
+   "sha256": "8e78b51557601fe3c36d363b3a8a9187672c73777b1054e78b6ad21adacf67c9"
   },
   {
    "path": "js/reel.js",
