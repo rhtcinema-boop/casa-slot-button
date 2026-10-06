@@ -28,7 +28,9 @@ const TV = (function () {
   function candidates() {
     return Array.from(layer().querySelectorAll(FOCUSABLE)).filter(visible);
   }
-  const keyOf = (el) => el ? [el.tagName, el.dataset.act, el.dataset.tab, el.dataset.k, el.dataset.r, el.dataset.p, el.dataset.f, el.dataset.d, el.dataset.g, (el.textContent || '').trim().slice(0, 20)].join('|') : '';
+  // 描き直しのあとに同じ要素へ枠を戻すための目印。data-〇〇 と id で決める。文字は目印が何も無いときだけ使う
+  // （b75: ON/OFF のように文字が変わるボタンを押すと、文字入りの目印が合わなくなって枠が先頭へ飛んでいた）
+  const keyOf = (el) => { if (!el) return ''; const ds = Object.keys(el.dataset || {}).sort().map((k) => k + '=' + el.dataset[k]).join(','); return [el.tagName, el.id || '', ds, (el.id || ds) ? '' : (el.textContent || '').trim().slice(0, 20)].join('|'); };
 
   /* 設定やダイアログの本文だけをスクロールして、選んだ場所を見える位置へ（scrollIntoView は画面全体まで動かしてしまうので使わない） */
   function reveal(el) {
@@ -105,7 +107,7 @@ const TV = (function () {
     ensure();
     if (!cur) return;
     if (isNum(cur)) { editing = !editing; cur.classList.toggle('tvedit', editing); return; }
-    if (cur.tagName === 'SELECT') { cur.focus(); return; }
+    if (cur.tagName === 'SELECT') { cur.focus(); try { if (cur.showPicker) cur.showPicker(); } catch (e) { /* 開けない環境では上下キーで選ぶ */ } return; }
     if (cur.id === 'crest') { // 左上のロゴに枠を合わせて決定を5回（2.5秒以内）→ 設定（PIN）
       const now = Date.now();
       logoTaps = logoTaps.filter((x) => now - x < 2500).concat(now);
