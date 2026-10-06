@@ -172,7 +172,7 @@ const Cloud = (function () {
   async function saveStore(id, data) {
     await ready();
     if (isLocal) { const d = lread(); id = id || lid(); d.stores[id] = Object.assign({}, d.stores[id] || {}, data); lwrite(d); return id; }
-    if (id) { await db.collection('stores').doc(id).set(data, { merge: true }); return id; }
+    if (id) { await db.collection('stores').doc(id).update(data); return id; } // update: 渡した項目だけを丸ごと置き換える（set+merge だと中の項目が深く混ざり、消した項目が残る）
     const r = await db.collection('stores').add(Object.assign({ createdAt: now() }, data));
     return r.id;
   }
@@ -185,7 +185,9 @@ const Cloud = (function () {
     await ready();
     data = Object.assign({}, data, { updatedAt: now() });
     if (isLocal) { const d = lread(); id = id || lid(); d.presets[id] = Object.assign({}, d.presets[id] || {}, data); lwrite(d); return id; }
-    if (id) { await db.collection('presets').doc(id).set(data, { merge: true }); return id; }
+    // b73: set(data, {merge:true}) は中の項目を深く混ぜるので、配当表（probs）や金額ごとの上限（limits.max）で消した金額・書き換えた金額が
+    // データベースに残り続けていた（本番の RING で STAGE 3 の合計が 185% になった原因）。update は渡した項目を丸ごと置き換える
+    if (id) { await db.collection('presets').doc(id).update(data); return id; }
     const r = await db.collection('presets').add(data);
     return r.id;
   }
