@@ -1667,7 +1667,7 @@ const Game = (function () {
       });
     } catch (err) { /* 保存のみ */ }
     syncTable();
-    showPreset();
+    showCredits(); // プリセット名と、TEST の帯（#stage.testmode）をその場で描き直す。b69 までは showPreset() だけで、帯は次の描き直しまで前のプリセットのまま残っていた
     if (Admin.isOpen()) Admin.rerender();
   }
   /* いま使っているプリセットの名前を、左上（casa のエンブレムの右）に出す。色はマスターのプリセット編集で選んだ色。店舗モードのときだけ */
@@ -1682,7 +1682,7 @@ const Game = (function () {
   function startCloudSync() {
     const me = Store.state.store;
     if (!me) return;
-    const beat = () => Cloud.updateStoreFields(me.id, { lastSeen: Date.now(), deviceVersion: ($('ver') && $('ver').textContent) || '' }).catch(() => {});
+    const beat = () => Cloud.updateStoreFields(me.id, { lastSeen: Date.now(), deviceVersion: APP_V }).catch(() => {}); // 版は起動直後に控えた APP_V（起動画面の #ver はあとで消えるので、ここで読むと空になる＝b69 までマスターの一覧に版が出なかった）
     beat(); setInterval(beat, 10 * 60 * 1000);
     startFeed();
     unwatch = Cloud.watchStore(me.id, (doc) => {
