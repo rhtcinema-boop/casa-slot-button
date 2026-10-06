@@ -408,7 +408,12 @@
         case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
         case 'preset-save': return await savePreset();
-        case 'preset-del': if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
+        case 'preset-del': {
+          // 使用中（いま使う／配布中）の店舗があるプリセットは消せない（端末が前の設定のまま動き続け、マスターでは「未設定」に見えるため）
+          const users = stores.filter((s) => s.activePresetId === editPreset.id || (s.presetIds || []).indexOf(editPreset.id) >= 0).map((s) => s.name);
+          if (users.length) { $('perr').textContent = '店舗「' + users.join('」「') + '」で使っているので削除できません。先に店舗の編集で外してください。'; return; }
+          if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
+        }
         case 'test-on': editPreset.test = !editPreset.test; return render();
         case 'pcolor': { const top = window.scrollY; editPreset.color = b.dataset.c; editPreset.name = $('pname').value; render(); window.scrollTo(0, top); return; }
         case 'retrig-on': { const top = window.scrollY; editPreset.noRetrigger = !noRetrig(editPreset); render(); window.scrollTo(0, top); return; }
