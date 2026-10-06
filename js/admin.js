@@ -276,7 +276,8 @@ const Admin = (function () {
   function viewPreset() {
     const info = Game.storeInfo(), s = Store.state, ses = s.session;
     const now = Date.now(), counts = Engine.hitCounts(s.hits, now, s.limits && s.limits.resetHour);
-    return '<div class="panel"><h4>店舗</h4><div class="summary">' + stat('店舗名', esc(info.store ? info.store.name : '—')) + stat('使用中のプリセット', esc((info.presets.find((p) => p.id === info.activeId) || {}).name || '（未設定）')) + '</div>' +
+    return '<div class="panel"><h4>店舗</h4><div class="summary">' + stat('店舗名', esc(info.store ? info.store.name : '—')) + stat('使用中のプリセット', esc(info.appliedName || (info.presets.find((p) => p.id === info.activeId) || {}).name || '（未設定）')) + '</div>' +
+      (info.warn ? '<ul class="errors"><li>マスターで選ばれているプリセット「' + esc(info.warn.name) + '」は設定に誤りがあるため使えません：' + esc(info.warn.errors.join(' ')) + '</li><li>いまは前の設定「' + esc(info.appliedName || '—') + '」のまま動いています。マスターでプリセットを直して保存すると、自動で切り替わります。</li></ul>' : '') +
       '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="store-logout">この店舗からログアウト</button></div></div>' +
       '<div class="panel"><h4>プリセットを選ぶ</h4><p class="hint">マスターから配られたプリセットの中から選びます。選ぶと次のプレイから反映されます。</p>' +
       (info.presets.length ? '<div class="preset-list">' + info.presets.map((p) => '<button class="btn ' + (p.id === info.activeId ? '' : 'ghost') + ' preset-btn" data-act="preset-use" data-id="' + esc(p.id) + '">' + esc(p.name) + (p.id === info.activeId ? '<small>使用中</small>' : '') + '</button>').join('') + '</div>' : '<p class="hint">まだプリセットが配られていません。マスター画面で配布してください。</p>') + '</div>' +
