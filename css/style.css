@@ -1665,3 +1665,17 @@ body.lite .notes .note { box-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 
 /* ---------- 配当履歴の流れ（b69）: 直近 40 件を、待機中に上へゆっくり流し続ける ----------
    動きは game.js が付ける（transform のアニメだけ）。いちばん新しい行（.loop）の上には、一周の切れ目が分かるように細い線を入れる */
 .rc.loop { border-top: 2px solid rgba(var(--acc), .6); }
+
+/* ---------- テスト用プリセットの大きな表示（b76） ----------
+   #stage.testmode のときだけ、画面の中央（リールの窓の上）に半透明で出す。操作の邪魔はしない（pointer-events: none）。
+   リールの動きが見えるように薄くし、縁取りで読めるようにする */
+.testbig { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-8deg); display: none; flex-direction: column; align-items: center; gap: 6px; padding: 18px 56px; border: 6px solid rgba(255, 90, 90, .85); border-radius: 26px; background: rgba(40, 0, 0, .45); pointer-events: none; z-index: 40; text-align: center; }
+#stage.testmode .testbig { display: flex; }
+.testbig b { white-space: nowrap; font: 900 130px/1 var(--font-ui); letter-spacing: .04em; padding-left: .04em; color: #ffd0d0; text-shadow: 0 0 18px rgba(255, 60, 60, .9), 0 4px 0 #5a0000, 0 8px 24px rgba(0, 0, 0, .8); }
+.testbig small { white-space: nowrap; font: 700 30px/1.2 var(--font-ui); letter-spacing: .08em; color: #ffecec; text-shadow: 0 2px 4px rgba(0, 0, 0, .9); }
+body.lite .testbig b { text-shadow: 0 4px 0 #5a0000; }
+/* 中央に大きく出すようになったので、左上の小さな TEST の帯は出さない（プリセット名の表示と重なっていた。b76） */
+#stage.testmode .marquee::after { content: none; }
+/* ゲーム中と結果の表示中は、結果が読めるように小さく薄く（待機に戻ると元の大きさ） */
+.testbig { transition: transform .3s ease, opacity .3s ease; }
+#stage.testmode.inplay .testbig { opacity: .35; transform: translate(-50%, -50%) rotate(-8deg) scale(.55); }
