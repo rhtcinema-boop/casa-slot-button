@@ -1647,8 +1647,20 @@ const Game = (function () {
     }
   }
   /* 配布されたプリセットを端末の確率・制限に反映（結果には「次のプレイから」効く） */
+  /* 設定に誤りのあるプリセット（確率の合計が 100% でない、金額が多すぎる等）は使えない。b70 までは黙って前の設定のまま動いていた
+     （本番で RING の STAGE 3 が 185% になっていて、渋谷が TEST のまま動いていた）。b71 から、画面に一言出して、設定画面に理由を出す */
+  let presetWarn = null, presetWarnSig = '';
   function applyPreset(p) {
-    if (!p || !p.probs || !Engine.validateProbs(p.probs).ok) return;
+    if (!p) return;
+    const v = p.probs ? Engine.validateProbs(p.probs) : { ok: false, errors: ['確率表がありません。'] };
+    if (!v.ok) {
+      presetWarn = { id: p.id, name: String(p.name || ''), errors: v.errors.slice() };
+      const sig = p.id + '|' + v.errors.join('|');
+      if (sig !== presetWarnSig) { presetWarnSig = sig; try { UI.toast('プリセット「' + presetWarn.name + '」は設定に誤りがあるため使えません。前の設定のまま動きます（設定画面に詳細）。', 'err'); } catch (err) { /* 表示のみ */ } }
+      if (Admin.isOpen()) Admin.rerender();
+      return;
+    }
+    presetWarn = null; presetWarnSig = '';
     const same = JSON.stringify(Store.state.probs) === JSON.stringify(p.probs) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
     const num = (v, d) => (typeof v === 'number' ? v : d);
     const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0), noRe = p.noRetrigger !== false;
@@ -1725,7 +1737,7 @@ const Game = (function () {
     try { await Cloud.updateStoreFields(me.id, { activePresetId: pid }); } catch (err) { UI.toast('クラウドへの保存に失敗しました（端末には反映済み）。', 'err'); }
     return true;
   }
-  const storeInfo = () => ({ store: Store.state.store, presets: (cloudStore && cloudStore.presetIds || []).map((id) => cloudPresets[id]).filter(Boolean), activeId: Store.state.presetId || (cloudStore && cloudStore.activePresetId) || null });
+  const storeInfo = () => ({ store: Store.state.store, presets: (cloudStore && cloudStore.presetIds || []).map((id) => cloudPresets[id]).filter(Boolean), activeId: Store.state.presetId || (cloudStore && cloudStore.activePresetId) || null, warn: presetWarn, appliedName: Store.state.presetName || '' });
 
   function initSecret() {
     // casa ロゴ（左上のエンブレム／中央上の casa SLOT）を続けて3回タップ → PIN → 設定画面
