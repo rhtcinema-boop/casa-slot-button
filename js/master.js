@@ -54,9 +54,14 @@
   }
 
   /* ---------- 店舗 ---------- */
+  // 使用中のプリセットに誤りがあると、端末はそれを受け付けず前の設定のまま動く（b71）。店舗の一覧でそれが分かるようにする
+  function storeWarn(s) {
+    const p = presets.find((x) => x.id === s.activePresetId);
+    return p && !Engine.validateProbs(p.probs).ok ? '<br><b style="color:var(--ng)">⚠ 使用中のプリセットに誤りがあるため、端末は前の設定のまま動いています。プリセットを直してください</b>' : '';
+  }
   function viewStores() {
     return '<div class="panel"><h3>店舗</h3><p class="hint">店舗ごとにパスワードと、使えるプリセットを決めます。店舗の端末は起動時に店舗を選んでパスワードを入れます。</p>' +
-      (stores.length ? '<div class="list">' + stores.map((s) => '<div class="item"><div class="name">' + esc(s.name) + '<small>使用中: ' + esc(presetName(s.activePresetId)) + '｜最終起動 ' + fmtDate(s.lastSeen) + (s.deviceVersion ? '（' + esc(s.deviceVersion) + '）' : '') + '</small></div><button class="btn sm ghost" data-act="store-edit" data-id="' + esc(s.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだ店舗がありません</div>') +
+      (stores.length ? '<div class="list">' + stores.map((s) => '<div class="item"><div class="name">' + esc(s.name) + '<small>使用中: ' + esc(presetName(s.activePresetId)) + '｜最終起動 ' + fmtDate(s.lastSeen) + (s.deviceVersion ? '（' + esc(s.deviceVersion) + '）' : '') + storeWarn(s) + '</small></div><button class="btn sm ghost" data-act="store-edit" data-id="' + esc(s.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだ店舗がありません</div>') +
       '<div class="acts"><button class="btn" data-act="store-new">店舗を追加</button></div></div>' +
       '<div class="panel"><h3>アップデート</h3><p class="hint">店舗の端末は、ふだんは 1 時間以内に自動で新しい版に切り替わります。すぐに切り替えたいときは下のボタンを押してください。ログイン中のすべての端末が、すぐに新しい版を確認して切り替わります（ゲーム中の端末は、そのゲームが終わり次第）。b61 より古い版の端末には届かないので、その端末は今までどおり 1 時間以内に切り替わります。</p>' +
       '<p class="hint">いまの最新版: <b style="color:var(--text)" id="latestVer">' + esc(latestVer || '確認中…') + '</b>　各店舗の版は、上の一覧の「最終起動」の横に出ます。</p>' +
@@ -126,7 +131,7 @@
   const earlyOf = (L) => Object.assign({}, EARLY_DEFAULT, (L && L.early) || {});
   function viewPresets() {
     return '<div class="panel"><h3>プリセット</h3><p class="hint">確率のセットです。店舗には名前だけが見えます。</p>' +
-      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name"><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeN(p, 1) + '/' + freeN(p, 2) + '/' + freeN(p, 3) + '%' + (logoOf(p) > 0 ? '｜ロゴ10回 ' + logoOf(p).toFixed(1) + '%' : '') + (p.test ? '｜<b style="color:var(--ng)">テスト用（記録しない）</b>' : '') + '</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
+      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name"><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeN(p, 1) + '/' + freeN(p, 2) + '/' + freeN(p, 3) + '%' + (logoOf(p) > 0 ? '｜ロゴ10回 ' + logoOf(p).toFixed(1) + '%' : '') + (p.test ? '｜<b style="color:var(--ng)">テスト用（記録しない）</b>' : '') + (Engine.validateProbs(p.probs).ok ? '' : '｜<b style="color:var(--ng)">⚠ 設定に誤り（端末では使えません。開いて直してください）</b>') + '</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
       '<div class="acts"><button class="btn" data-act="preset-new">プリセットを作る</button></div></div>';
   }
   function probSummary(p) {
