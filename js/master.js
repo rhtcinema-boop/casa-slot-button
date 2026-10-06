@@ -68,11 +68,20 @@
       '<div class="acts"><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全店舗をいますぐアップデート</button><button class="btn ghost" data-act="stores-reload">一覧を読み直す</button></div></div>';
   }
   // いま公開されている最新版（version.json）
-  let latestVer = '';
+  let latestVer = '', stale = false;
+  // このマスター画面の版（読み込んだ master.js の ?v=）。開きっぱなしの画面は古いコードのまま動くので、公開されている版と見比べて、古ければ保存させない
+  const MY_VER = (((document.querySelector('script[src*="js/master.js"]') || {}).src || '').match(/[?&]v=(b\d+)/) || [])[1] || '';
   async function loadLatest() {
     try { const man = await (await fetch('version.json?t=' + Date.now(), { cache: 'no-store' })).json(); latestVer = (man && man.v) || ''; } catch (e) { latestVer = '（確認できません）'; }
     const el = $('latestVer'); if (el) el.textContent = latestVer;
+    stale = !!(MY_VER && /^b\d+$/.test(latestVer) && Number(latestVer.slice(1)) > Number(MY_VER.slice(1))); // 公開のほうが新しいときだけ（公開の途中で version.json が一瞬古いことがあるので、「違う」ではなく「新しい」で見る）
+    let bar = document.getElementById('stalebar');
+    if (stale && !bar) { bar = document.createElement('div'); bar.id = 'stalebar'; bar.style.cssText = 'position:sticky;top:0;z-index:50;background:#5a1f1f;color:#fff;padding:10px 16px;font-size:14px;display:flex;gap:12px;align-items:center;justify-content:center'; document.body.insertBefore(bar, document.body.firstChild); }
+    if (bar) { if (stale) bar.innerHTML = '⚠ このマスター画面は古い版（' + esc(MY_VER) + '）です。最新は ' + esc(latestVer) + '。読み直すまで保存はできません。 <button class="btn sm" onclick="location.reload()">読み直す</button>'; else bar.remove(); }
   }
+  setInterval(loadLatest, 10 * 60 * 1000); // 開きっぱなしでも 10 分ごとに確かめる
+  setTimeout(loadLatest, 1500);
+  const staleMsg = () => (stale ? 'このマスター画面は古い版です。画面を読み直してから保存してください。' : '');
   function viewStoreEdit() {
     const s = editStore;
     return '<div class="panel"><h3>' + (s.id ? '店舗を編集' : '店舗を追加') + '</h3>' +
@@ -90,6 +99,7 @@
     const err = $('serr'); err.textContent = '';
     if (!name) { err.textContent = '店舗名を入力してください。'; return; }
     if ((!s.id || pin) && !/^\d{4,8}$/.test(pin)) { err.textContent = 'パスワードは4〜8桁の数字にしてください。'; return; }
+    if (staleMsg()) { err.textContent = staleMsg(); return; }
     const presetIds = Array.from(document.querySelectorAll('[data-pid]:checked')).map((x) => x.dataset.pid);
     const active = $('sactive').value;
     if (active && presetIds.indexOf(active) < 0) presetIds.push(active);
@@ -145,7 +155,7 @@
     const s = r2(Engine.probStats(p.probs).sums[stage]);
     return '<span class="sum ' + (s === 100 ? 'ok' : 'ng') + '" data-sum="' + stage + '">合計 ' + s + '%' + (s === 100 ? ' ✓' : s < 100 ? '（あと ' + r2(100 - s) + '%）' : '（' + r2(s - 100) + '% 多い）') + '</span>';
   }
-  const saveMsg = (p) => { const v = Engine.validateProbs(p.probs); return v.ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">' + esc(v.errors[0]) + '</span>'; };
+  const saveMsg = (p) => { const v = Engine.validateProbs(p.probs); const btn = main.querySelector('[data-act="preset-save"]'); if (btn) btn.disabled = !v.ok; return v.ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">' + esc(v.errors[0]) + (/種類まで/.test(v.errors[0]) ? '（× で行を消してください）' : '') + '</span>'; };
   /* 配当表の1行。金額の行は、金額そのものを書き換えられて × で消せる。0（ハズレ）と NEXT STAGE は固定 */
   function probRow(p, d, k) {
     const attr = 'data-p="' + d.stage + ':' + k + '"', fixed = k === '0' || k === 'NEXT';
@@ -191,7 +201,7 @@
         stepRow('最初の何回まで（X）', E.plays, 'data-e="plays"', '回', '1〜999 回') +
         stepRow('いくら以上を出さないか（Y）', fmtN(E.min), 'data-e="min"', '以上', '例: 2,000 にすると、2,000・3,000・5,000・10,000… が出ません') + '</div>'; })() +
       (p.id ? '<div class="panel"><h3>このプリセットを削除</h3><p class="hint">配布中の店舗からも消えます。</p><div class="acts" style="justify-content:flex-start"><button class="btn danger" data-act="preset-del">削除する</button></div></div>' : '') +
-      '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save">保存</button></div>';
+      '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save"' + (Engine.validateProbs(p.probs).ok ? '' : ' disabled') + '>保存</button></div>';
   }
   async function savePreset() {
     const p = editPreset, name = $('pname').value.trim(), err = $('perr');
@@ -199,6 +209,7 @@
     if (!name) { err.textContent = '名前を入力してください。'; return; }
     const v = Engine.validateProbs(p.probs);
     if (!v.ok) { err.textContent = v.errors.join(' / '); return; }
+    if (staleMsg()) { err.textContent = staleMsg(); return; }
     await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] });
     toast('保存しました。配布中の店舗には自動で反映されます');
     editPreset = null; await reload(); render();
