@@ -147,6 +147,9 @@ const UI = (function () {
     }
     let locked = false;
     Store.transact((st) => {
+      // 10 分以上あいだが空いた失敗は数え直す（お客さんが何日かに分けて触った分が溜まって、スタッフの打ち間違い 1 回でロックされないように。b75）
+      if (st.auth.lastFail && now - st.auth.lastFail > 10 * 60 * 1000) st.auth.fails = 0;
+      st.auth.lastFail = now;
       st.auth.fails += 1;
       if (st.auth.fails >= 5) {
         st.auth.fails = 0; st.auth.lockUntil = now + 60000; locked = true;
