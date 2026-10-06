@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-180.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="css/style.css?v=b76">
+<link rel="stylesheet" href="css/style.css?v=b77">
 </head>
 <body>
 <div id="viewport">
@@ -86,7 +86,7 @@
       <div class="recent" id="recent"><h6>配当履歴</h6><div class="recent-view"><div class="recent-list" id="recentList"></div></div></div>
 
       <div id="dim"></div>
-      <!-- テスト用プリセットのとき、画面の中央に大きく出す（b76。オーナー指示） -->
+      <!-- テスト用プリセットのとき、画面の中央に大きく出す（b77。オーナー指示） -->
       <div class="testbig" aria-hidden="true"><b>テスト中</b><small>この設定の結果は記録されません</small></div>
 
       <div class="banner" id="banner">
@@ -119,7 +119,7 @@
     <div id="toast"></div>
     <div id="meter"></div>
     <!-- 最初のタップで音声を有効化する（ブラウザ/OSの自動再生制限への対応） -->
-    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p class="tap">TAP TO START</p><p class="ok">決定ボタンでスタート</p></div><small id="ver">b76</small></div>
+    <div id="splash"><div class="splash-in"><div class="logo-emblem"></div><h1 class="brand"><span class="logo-word" role="img" aria-label="casa"></span><b class="gold-text">SLOT</b></h1><p class="tap">TAP TO START</p><p class="ok">決定ボタンでスタート</p></div><small id="ver">b77</small></div>
   </div>
   <div id="rotate"><div>端末を横向きにしてご利用ください</div></div>
 </div>
@@ -129,7 +129,7 @@
 window.addEventListener('error', function (e) {
   var d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal' }));
   d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;padding:10px 14px;border-radius:10px;background:#7a211a;color:#fff;font:14px/1.5 sans-serif;white-space:pre-wrap';
-  d.textContent = 'エラー (b76): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
+  d.textContent = 'エラー (b77): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
 });
 </script>
 <script>
@@ -146,15 +146,15 @@ window.addEventListener('error', function (e) {
   }).catch(function () { return null; });
 })();
 </script>
-<script src="js/engine.js?v=b76"></script>
-<script src="js/store.js?v=b76"></script>
-<script src="cloud-config.js?v=b76"></script>
-<script src="js/cloud.js?v=b76"></script>
-<script src="js/audio.js?v=b76"></script>
-<script src="js/reel.js?v=b76"></script>
-<script src="js/fx.js?v=b76"></script>
-<script src="js/admin.js?v=b76"></script>
-<script src="js/tv.js?v=b76"></script>
-<script src="js/game.js?v=b76"></script>
+<script src="js/engine.js?v=b77"></script>
+<script src="js/store.js?v=b77"></script>
+<script src="cloud-config.js?v=b77"></script>
+<script src="js/cloud.js?v=b77"></script>
+<script src="js/audio.js?v=b77"></script>
+<script src="js/reel.js?v=b77"></script>
+<script src="js/fx.js?v=b77"></script>
+<script src="js/admin.js?v=b77"></script>
+<script src="js/tv.js?v=b77"></script>
+<script src="js/game.js?v=b77"></script>
 </body>
 </html>
