@@ -74,13 +74,28 @@ const Cloud = (function () {
     const d = await retry(() => db.collection('stores').doc(id).get());
     return d.exists ? Object.assign({ id }, d.data()) : null;
   }
-  /* 店舗ドキュメントの変更を監視。cb(store|null) */
+  /* 1 つのドキュメントの見張り（b75）。onSnapshot がエラーで止まったら（ログイン直後の権限エラー、決まりの変更など）、少し待って張り直す。
+     エラーのときは cb を呼ばない（「店舗が消えた」扱いにしないため）。返り値を呼ぶと見張りをやめる */
+  function watchDoc(ref, cb) {
+    let un = null, dead = false, delay = 1500;
+    const attach = () => {
+      if (dead) return;
+      try {
+        un = ref.onSnapshot((d) => { delay = 1500; cb(d); }, () => { un = null; if (!dead) setTimeout(attach, delay); delay = Math.min(delay * 2, 30000); });
+      } catch (e) { un = null; if (!dead) setTimeout(attach, delay); delay = Math.min(delay * 2, 30000); }
+    };
+    attach();
+    return () => { dead = true; if (un) { try { un(); } catch (e) { /* noop */ } un = null; } };
+  }
+  /* 店舗ドキュメントの変更を監視。cb(store|null)。null は「店舗が消えた」ときだけ（接続の失敗では呼ばない） */
   function watchStore(id, cb) {
+    let un = null, dead = false;
     ready().then(() => {
-      if (isLocal) { const un = lwatch(() => { const s = lread().stores[id]; return s ? Object.assign({ id }, s) : null; }, cb); watchStore.un = un; return; }
-      watchStore.un = db.collection('stores').doc(id).onSnapshot((d) => cb(d.exists ? Object.assign({ id }, d.data()) : null), () => {});
-    }).catch(() => cb(null));
-    return () => { if (watchStore.un) watchStore.un(); };
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => { const s = lread().stores[id]; return s ? Object.assign({ id }, s) : null; }, cb); return; }
+      un = watchDoc(db.collection('stores').doc(id), (d) => cb(d.exists ? Object.assign({ id }, d.data()) : null));
+    }).catch(() => { /* 接続できない: 見張りなしで動く（店舗が消えた扱いにはしない） */ });
+    return () => { dead = true; if (un) un(); };
   }
   async function getPreset(id) {
     await ready();
@@ -88,12 +103,15 @@ const Cloud = (function () {
     const d = await retry(() => db.collection('presets').doc(id).get());
     return d.exists ? Object.assign({ id }, d.data()) : null;
   }
-  /* プリセットの変更を監視（配布されたものだけ） */
+  /* プリセットの変更を監視（配布されたものだけ）。返り値を呼ぶと見張りをやめる。null は「プリセットが消えた」ときだけ */
   function watchPreset(id, cb) {
+    let un = null, dead = false;
     ready().then(() => {
-      if (isLocal) return lwatch(() => { const p = lread().presets[id]; return p ? Object.assign({ id }, p) : null; }, cb);
-      return db.collection('presets').doc(id).onSnapshot((d) => cb(d.exists ? Object.assign({ id }, d.data()) : null), () => {});
-    }).catch(() => cb(null));
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => { const p = lread().presets[id]; return p ? Object.assign({ id }, p) : null; }, cb); return; }
+      un = watchDoc(db.collection('presets').doc(id), (d) => cb(d.exists ? Object.assign({ id }, d.data()) : null));
+    }).catch(() => { /* 接続できない: 見張りなし */ });
+    return () => { dead = true; if (un) un(); };
   }
   async function listPresets() {
     await ready();
@@ -105,7 +123,7 @@ const Cloud = (function () {
   async function updateStoreFields(id, fields) {
     await ready();
     if (isLocal) { const d = lread(); if (d.stores[id]) Object.assign(d.stores[id], fields); lwrite(d); return; }
-    await db.collection('stores').doc(id).update(fields);
+    await retry(() => db.collection('stores').doc(id).update(fields));
   }
   /* 店舗側: プレイ結果を送る（圏外なら SDK が溜めて後で送る） */
   async function pushPlay(storeId, play, resetHour) {
@@ -199,27 +217,27 @@ const Cloud = (function () {
   async function listDays(storeId, n) {
     await ready();
     if (isLocal) { const days = lread().days[storeId] || {}; return Object.keys(days).sort().reverse().slice(0, n || 31).map((k) => Object.assign({ day: k }, days[k])); }
-    const q = await db.collection('stores').doc(storeId).collection('days').orderBy(firebase.firestore.FieldPath.documentId(), 'desc').limit(n || 31).get();
+    const q = await retry(() => db.collection('stores').doc(storeId).collection('days').orderBy(firebase.firestore.FieldPath.documentId(), 'desc').limit(n || 31).get());
     return q.docs.map((x) => Object.assign({ day: x.id }, x.data()));
   }
   /* 営業日キー（yyyymmdd）の範囲で日別の集計を取る（両端を含む。新しい日が先） */
   async function listDaysRange(storeId, fromKey, toKey) {
     await ready();
     if (isLocal) { const days = lread().days[storeId] || {}; return Object.keys(days).filter((k) => k >= fromKey && k <= toKey).sort().reverse().map((k) => Object.assign({ day: k }, days[k])); }
-    const q = await db.collection('stores').doc(storeId).collection('days').orderBy(firebase.firestore.FieldPath.documentId()).startAt(fromKey).endAt(toKey).get();
+    const q = await retry(() => db.collection('stores').doc(storeId).collection('days').orderBy(firebase.firestore.FieldPath.documentId()).startAt(fromKey).endAt(toKey).get());
     return q.docs.map((x) => Object.assign({ day: x.id }, x.data())).reverse();
   }
   /* 時刻の範囲（fromTs 以上 toTs 未満）のプレイを、新しい順に最大 n 件 */
   async function listPlaysRange(storeId, fromTs, toTs, n) {
     await ready();
     if (isLocal) { return (lread().plays[storeId] || []).filter((x) => x.ts >= fromTs && x.ts < toTs).reverse().slice(0, n || 200); }
-    const q = await db.collection('stores').doc(storeId).collection('plays').where('ts', '>=', fromTs).where('ts', '<', toTs).orderBy('ts', 'desc').limit(n || 200).get();
+    const q = await retry(() => db.collection('stores').doc(storeId).collection('plays').where('ts', '>=', fromTs).where('ts', '<', toTs).orderBy('ts', 'desc').limit(n || 200).get());
     return q.docs.map((x) => x.data());
   }
   async function listPlays(storeId, n) {
     await ready();
     if (isLocal) { return (lread().plays[storeId] || []).slice().reverse().slice(0, n || 50); }
-    const q = await db.collection('stores').doc(storeId).collection('plays').orderBy('ts', 'desc').limit(n || 50).get();
+    const q = await retry(() => db.collection('stores').doc(storeId).collection('plays').orderBy('ts', 'desc').limit(n || 50).get());
     return q.docs.map((x) => x.data());
   }
 
