@@ -205,7 +205,7 @@ const Admin = (function () {
   const PAGE = 50;
   const TYPES = {
     PLAY: ['play', 'プレイ'], OVERFLOW_PLAY: ['over', '超過プレイ'],
-    SESSION_START: ['ops', '営業開始'], SESSION_END: ['ops', '営業終了'], NEXT_PLAY: ['ops', '次のプレイ'], CREDIT_ADD: ['ops', 'クレジット追加'], FREE_PLAY: ['ops', 'FREE SPIN（当たりなしの回）'], FEED_SEED: ['ops', '過去の当たりを全店舗の配当履歴に追加'], CREDIT_SET: ['ops', 'クレジット変更'], TOTAL: ['ops', 'クレジット終了'],
+    SESSION_START: ['ops', '営業開始'], SESSION_END: ['ops', '営業終了'], NEXT_PLAY: ['ops', '次のプレイ'], CREDIT_ADD: ['ops', 'クレジット追加'], FREE_PLAY: ['ops', 'FREE SPIN（当たりなしの回）'], OFFLINE_PLAY: ['ops', 'オフライン中のプレイ（ハズレ）'], FEED_SEED: ['ops', '過去の当たりを全店舗の配当履歴に追加'], CREDIT_SET: ['ops', 'クレジット変更'], TOTAL: ['ops', 'クレジット終了'],
     PROB_SET: ['cfg', '確率変更'], PRESET_APPLY: ['cfg', 'プリセット適用'], STORE_LOGIN: ['pin', '店舗ログイン'], STORE_LOGOUT: ['pin', '店舗ログアウト'], STATS_RESET: ['ops', '集計リセット'], PRESET_SAVE: ['cfg', 'プリセット保存'], PRESET_DELETE: ['cfg', 'プリセット削除'], LIMITS_SET: ['cfg', '本数制限変更'],
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
@@ -277,6 +277,7 @@ const Admin = (function () {
     const info = Game.storeInfo(), s = Store.state, ses = s.session;
     const now = Date.now(), counts = Engine.hitCounts(s.hits, now, s.limits && s.limits.resetHour);
     return '<div class="panel"><h4>店舗</h4><div class="summary">' + stat('店舗名', esc(info.store ? info.store.name : '—')) + stat('使用中のプリセット', esc(info.appliedName || (info.presets.find((p) => p.id === info.activeId) || {}).name || '（未設定）')) + '</div>' +
+      (Game.netState && !Game.netState() ? '<ul class="errors"><li>いまネットにつながっていません。つながるまで、当たりは出ません（すべてハズレになります）。</li></ul>' : '') +
       (info.warn ? '<ul class="errors"><li>マスターで選ばれているプリセット「' + esc(info.warn.name) + '」は設定に誤りがあるため使えません：' + esc(info.warn.errors.join(' ')) + '</li><li>いまは前の設定「' + esc(info.appliedName || '—') + '」のまま動いています。マスターでプリセットを直して保存すると、自動で切り替わります。</li></ul>' : '') +
       '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="store-logout">この店舗からログアウト</button></div></div>' +
       '<div class="panel"><h4>プリセットを選ぶ</h4><p class="hint">マスターから配られたプリセットの中から選びます。選ぶと次のプレイから反映されます。</p>' +
