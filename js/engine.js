@@ -225,7 +225,7 @@
       });
       if (d.hasNext) reach[d.stage + 1] = r * (Number(row.NEXT) || 0) / 100;
     });
-    return { sums, reach, outcome, ev, win };
+    return { sums, reach, outcome, ev, win: Math.min(1, Math.max(0, win)) }; // 浮動小数の丸めで 1 をごくわずかに超えることがある（b77）
   }
   /* 24時間の当たり本数制限。limits = { on, total, max: { 'stage:value': n } }
      total = 直近24時間の当たり本数（合計）の上限、max = 金額ごとの上限（任意）。0 は無制限。hits = [{ ts, key }]。
