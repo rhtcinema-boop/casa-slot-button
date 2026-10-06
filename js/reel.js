@@ -255,7 +255,7 @@ const Reel = (function () {
   }
 
   function drawLayer(img, blurred, xc, y, k, alpha) {
-    if (alpha <= 0.01) return;
+    if (!img || alpha <= 0.01) return; // 絵柄の画像がまだ無い／作れなかったときも描画ループを止めない（b76）
     ctx.globalAlpha = alpha;
     const w = COLW * k;
     if (blurred) { const h = (CH + PAD * 2) * k; ctx.drawImage(img, xc - w / 2, y - h / 2, w, h); }
@@ -490,7 +490,7 @@ const Reel = (function () {
      見せ回しの Promise は false で解決する（待っている側が止まったままにならないように） */
   let live = null, attractDone = null;
   function interrupt() {
-    cancelAnimationFrame(raf);
+    cancelAnimationFrame(raf); raf = 0;
     if (live) { const t = ((live.holdAt || performance.now()) - live.t0) / 1000; reels.forEach((rl, i) => { rl.pos = live.profs[i].at(t); }); live = null; }
     if (attractDone) { const r = attractDone; attractDone = null; r(false); }
   }
@@ -533,8 +533,10 @@ const Reel = (function () {
       attractDone = res;
     });
   }
+  // フック（演出側の処理）が例外を投げても回転のループが止まらないように包む（b76）
+  function wrapHooks(h) { const w = {}; Object.keys(h || {}).forEach((k) => { if (typeof h[k] === 'function') w[k] = function () { try { return h[k].apply(null, arguments); } catch (e) { /* 演出側のエラー。回転は続ける */ } }; }); return w; }
   function spin(st, combo, order, stops, pat, hooks) {
-    hooks = hooks || {};
+    hooks = wrapHooks(hooks);
     if (!(pat && pat.attract)) interrupt();
     const ts = (pat && pat.timingStage) || st; // 速さ・減速の設定に使うステージ（FREE SPIN はどのステージでも 1）
     return new Promise((resolve) => {
@@ -582,8 +584,9 @@ const Reel = (function () {
         lastT = t;
         if (t >= lastProf.total) {
           for (let i = 0; i < NR; i++) reels[i].pos = profs[i].T;
-          drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
+          try { drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); } catch (e) { /* 次の描き直しで */ }
           if (live === me) live = null;
+          raf = 0;
           resolve();
           return;
         }
@@ -592,7 +595,7 @@ const Reel = (function () {
         frameMs += (Math.min(100, now - lastNow) - frameMs) * 0.08;
         lastNow = now;
         if (!slow && frameMs > 21) slow = true; else if (slow && frameMs < 12) slow = false;
-        if (MIN_FRAME || !slow || (frameNo++ & 1) === 0) drawAll(ps, speeds);
+        if (MIN_FRAME || !slow || (frameNo++ & 1) === 0) { try { drawAll(ps, speeds); } catch (e) { /* 描けなかったフレームは飛ばす */ } }
         raf = requestAnimationFrame(frame);
       }
       raf = requestAnimationFrame(frame);
@@ -614,6 +617,12 @@ const Reel = (function () {
     drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
   }
 
+  /* いま見えているべき絵柄をもう一度描く（b76）。Android の WebView は画面が消えたり裏に回ったりするとキャンバスの中身が消えることがあり、
+     待機中は何も描き直さないので「リールが何も表示されない」ままになっていた。回転中（raf あり）は毎フレーム描いているので何もしない */
+  function redraw() {
+    if (!ctx || live) return; // live: 回転中（見せ回しも含む）。raf の番号は回転が終わっても残るので、それでは判定しない
+    try { drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); } catch (e) { /* 描けないときは次の機会に */ }
+  }
   function init(canvas) {
     if (window.LITE) { S = 1; MIN_FRAME = 1000 / 24 - 2; }
     cv = canvas;
@@ -650,5 +659,5 @@ const Reel = (function () {
     if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
   }
 
-  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, redraw, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
