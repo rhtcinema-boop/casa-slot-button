@@ -624,7 +624,9 @@ const Game = (function () {
         const from = Engine.windowStart(now, s.limits && s.limits.resetHour);
         if (!s.dayPlays || s.dayPlays.from !== from) s.dayPlays = { from, n: 0 };
         Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n, s.probs).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
-        res = Engine.drawProb(s.probs, undefined, blocked);
+        // オフライン対策（b74、オーナー指示）: ネットにつながっていない間は抽選せず、必ず STAGE 1 の 0 で終わる（画面には何も出さない。設定画面にだけ出す）
+        if (storeMode() && !netOk) { res = { overflow: false, key: '1:0', stage: 1, value: 0 }; Store.log('OFFLINE_PLAY', {}); }
+        else res = Engine.drawProb(s.probs, undefined, blocked);
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
         const bestBefore = bestOf(s); // 今回の結果が出る前の最高額配当（回転中はこちらを表示する）
@@ -1691,6 +1693,24 @@ const Game = (function () {
     el.querySelector('b').textContent = nm;
     if (s.presetColor) el.style.setProperty('--pc', s.presetColor); else el.style.removeProperty('--pc');
   }
+  /* オフラインの見張り（b74）: 30 秒ごとに version.json を取りに行き、2 回続けて取れなければオフラインとみなす。navigator.onLine が false のときも即オフライン。
+     オフラインの間は、当たりを出さない（上の startPlay）。模擬（'local'）と店舗モード以外は常にオンライン扱い。
+     取れた中身が JSON で v があることまで確かめる（オフライン時に service worker が index.html を返してくることがあるため） */
+  let netOk = true, netFail = 0;
+  async function netCheck() {
+    if (!storeMode() || Cloud.isLocal) { netOk = true; netFail = 0; return; }
+    if (navigator.onLine === false) { netOk = false; return; }
+    try {
+      const c = typeof AbortController === 'function' ? new AbortController() : null, t = c && setTimeout(() => c.abort(), 5000);
+      const r = await fetch('version.json?t=' + Date.now(), Object.assign({ cache: 'no-store' }, c ? { signal: c.signal } : {}));
+      if (t) clearTimeout(t);
+      const j = r.ok ? await r.json() : null;
+      if (j && j.v) { netFail = 0; netOk = true; return; }
+    } catch (err) { /* 取れなかった */ }
+    netFail += 1;
+    if (netFail >= 2) netOk = false;
+  }
+  const netState = () => netOk;
   function startCloudSync() {
     const me = Store.state.store;
     if (!me) return;
@@ -1796,6 +1816,9 @@ const Game = (function () {
     layout();
     window.addEventListener('resize', layout);
     setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); }, 500);
+    netCheck(); setInterval(netCheck, 30 * 1000); // オフラインの見張り（b74）
+    window.addEventListener('offline', () => { netOk = false; });
+    window.addEventListener('online', () => { netFail = 0; netCheck(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) autoUpdate(); }); // アプリに戻ってきたときに新しい版を確認
     setInterval(() => { autoUpdate(); }, UPDATE_CHECK_MS);                                          // 開きっぱなしでも 1 時間に 1 回確認
     if (window.__autoUpdate) window.__autoUpdate.then((st) => { if (newerOnDisk(st)) updPending = true; });
@@ -1861,6 +1884,6 @@ const Game = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo };
+  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo, netState };
 })();
 window.Game = Game;
