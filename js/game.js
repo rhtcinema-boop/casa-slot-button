@@ -244,6 +244,8 @@ const Game = (function () {
      読み直したあとは起動画面を自動で閉じて元の画面に戻る（CREDIT が残っていれば、続きから自動で回る）。 */
   const UPDATE_CHECK_MS = 60 * 60 * 1000;
   const APP_V = ((document.getElementById('ver') || {}).textContent || '').trim();
+  // 演出確認用のフック。テスト用の環境（localhost・模擬）でだけ効く。本番では常に無効（b76）
+  const FXT = () => ((/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || (window.Cloud && Cloud.isLocal)) ? window.__fxTest : null);
   const verNum = (v) => parseInt(String(v).replace(/\D/g, ''), 10) || 0;
   let updChecking = false, updLast = 0, updPending = false;
   const newerOnDisk = (st) => !!st && (st.state === 'done' || (st.state === 'latest' && verNum(st.v) > verNum(APP_V)));
@@ -309,6 +311,15 @@ const Game = (function () {
     creditAt = 0;
     const b = lockbar.classList.contains('show') && lockbar.querySelector('[data-act="next"]');
     if (b) b.click();
+  }
+  /* リールの描き直しの見張り（b76）: 回転していない間、3 秒ごとに静止画を描き直す（キャンバスの中身が消えても 3 秒以内に戻る。描くのは 3 枚だけなので軽い） */
+  let reelAt = 0;
+  function reelWatch() {
+    stageEl.classList.toggle('inplay', busy || !!(Store.state && Store.state.play)); // ゲーム中・結果の表示中（「テスト中」の大きな表示を小さくする）
+    const now = Date.now();
+    if (now - reelAt < 3000) return;
+    reelAt = now;
+    if (!document.hidden) Reel.redraw();
   }
   const IDLE_BACK_MS = 10000;
   let resultSince = 0;
@@ -605,6 +616,8 @@ const Game = (function () {
     const s0 = Store.state;
     if (busy || s0.locked || s0.play) return refresh();
     let res;
+    // 抽選の前に、マスターから配られている今のプリセットをもう一度当てる（端末側の保存を書き換えられていても、配られた設定で抽選する。同じなら何もしない。b76）
+    if (storeMode() && cloudStore && cloudStore.activePresetId && cloudPresets[cloudStore.activePresetId]) applyPreset(cloudPresets[cloudStore.activePresetId]);
     syncTable(); // 念のため、抽選の前に配当表をそろえる（変わっていなければ何もしない）
     try {
       Store.transact((s) => {
@@ -675,12 +688,12 @@ const Game = (function () {
   const logoOn = () => logoRate() > 0 && Reel.hasLogo;
   let skipSpecial = false; // casa ロゴがそろった直後の回り直しでは、FREE SPIN やロゴをもう一度出さない
   function rollLogo() {
-    if (window.__fxTest && window.__fxTest.logo !== undefined) return !!window.__fxTest.logo && Reel.hasLogo; // 演出確認用
+    if (FXT() && FXT().logo !== undefined) return !!FXT().logo && Reel.hasLogo; // 演出確認用
     return logoOn() && Math.random() * 100 < logoRate();
   }
   /* このスピンで FREE SPIN を出すか。0 = 出さない、1〜3 = ×1〜×3 */
   function rollFree() {
-    if (window.__fxTest && window.__fxTest.free !== undefined) return window.__fxTest.free === true ? 1 : (+window.__fxTest.free || 0); // 演出確認用
+    if (FXT() && FXT().free !== undefined) return FXT().free === true ? 1 : (+FXT().free || 0); // 演出確認用
     const r = Math.random() * 100, rates = freeRates();
     let acc = 0;
     for (let i = 0; i < 3; i++) { acc += rates[i]; if (r < acc) return i + 1; }
@@ -691,7 +704,7 @@ const Game = (function () {
   /* 逆回転（当たり確定の演出）: 金額が当たるプレイの最後のステージで、たまに、回っている途中で突然3本とも逆回転を始める */
   const REVERSE_RATE = 0.12;
   function rollReverse() {
-    if (window.__fxTest && window.__fxTest.reverse !== undefined) return !!window.__fxTest.reverse; // 演出確認用
+    if (FXT() && FXT().reverse !== undefined) return !!FXT().reverse; // 演出確認用
     return Math.random() < REVERSE_RATE;
   }
   const RESPIN_RATE = [0, 0.1, 0.12, 0.15]; // 当たりのとき ONE MORE CHANCE になる割合（ステージ別）
@@ -721,7 +734,7 @@ const Game = (function () {
     return p;
   }
   function pickPattern(st, sym, holdSt) { // holdSt: 止まりかけの間の長さに使うステージ（FREE SPIN で回る分は 1）
-    if (window.__fxTest && window.__fxTest.pat) return window.__fxTest.pat; // 演出確認用（結果には影響しない）
+    if (FXT() && FXT().pat) return FXT().pat; // 演出確認用（結果には影響しない）
     const isWin = sym !== 0;
     if (Math.random() > (isWin ? DRAMA.win : DRAMA.lose)[st]) return { type: 'plain' };
     if (isWin && Math.random() < RESPIN_RATE[st]) return { type: 'respin' };
@@ -744,7 +757,7 @@ const Game = (function () {
   const pickFx = () => (Math.random() < 0.5 ? 'crt' : 'flash'); // 暗転（プチュン）か白飛び（フラッシュ）か半々
   function planPuchun(play, st) {
     puchunPlan = null;
-    if (window.__fxTest && window.__fxTest.puchun) { puchunPlan = { kind: window.__fxTest.puchun, fx: window.__fxTest.fx || pickFx() }; return; }
+    if (FXT() && FXT().puchun) { puchunPlan = { kind: FXT().puchun, fx: FXT().fx || pickFx() }; return; }
     if (!(play.value > 0)) return; // ハズレで終わるプレイでは、画面が消える演出を出さない
     const finalStage = st === play.stage;
     if (finalStage && play.value >= PUCHUN_MIN && !sureShown && !play.overflow) { if (Math.random() < PUCHUN_REAL) puchunPlan = { kind: 'real', fx: pickFx() }; return; }
@@ -800,14 +813,14 @@ const Game = (function () {
   const WARP_RATE = 0.18;
   function pickWarp(play, st) {
     if (st !== 1 || play.stage < 2 || play.overflow || !(play.value > 0)) return 0;
-    if (window.__fxTest && window.__fxTest.warp !== undefined) return window.__fxTest.warp;
+    if (FXT() && FXT().warp !== undefined) return FXT().warp;
     if (Math.random() >= WARP_RATE) return 0;
     return play.stage === 3 && Math.random() < 0.5 ? 3 : Math.min(play.stage, 2); // 3 まで行けるときは半々で 3 に直行
   }
   let pendingSure = false;
   function pickSure(play) {
     if (sureShown || !play || !(play.value > 0) || play.overflow) return false;
-    if (window.__fxTest && window.__fxTest.sure !== undefined) return !!window.__fxTest.sure;
+    if (FXT() && FXT().sure !== undefined) return !!FXT().sure;
     return Math.random() < SURE_RATE;
   }
   function announceSure(main, sub) {
@@ -848,6 +861,16 @@ const Game = (function () {
 
   /* 1ステージ分の演出。NEXT STAGE なら次のステージへ移り、再びレバー待ちに戻る。 */
   async function runStage(play, st) {
+    try { return await runStageInner(play, st); }
+    catch (err) {
+      // 演出の途中でエラー（b76）: ボタンが効かないまま固まらないように戻す。抽選結果は保存済みなので、NEXT GAME で続きから再開できる
+      busy = false; pressing = false;
+      try { Store.transact(() => Store.log('FX_ERROR', { stage: st, message: String(err && err.message || err).slice(0, 120) })); } catch (e) { /* ログのみ */ }
+      try { tense(0); Lever.setEnabled(true); } catch (e) { /* noop */ }
+      refresh();
+    }
+  }
+  async function runStageInner(play, st) {
     busy = true;
     setNotes(false); // ゲーム中は、左側をステージの表示に戻す
     tense(0); // 念のため（前の回の期待の演出が残らないように）
@@ -1005,7 +1028,7 @@ const Game = (function () {
     const t = Engine.tensionOf(st, combo, order);
     if (!t) return null;
     let steps = 0;
-    if (window.__fxTest && window.__fxTest.tension !== undefined) steps = Math.min(t.cap, +window.__fxTest.tension || 0); // 演出確認用
+    if (FXT() && FXT().tension !== undefined) steps = Math.min(t.cap, +FXT().tension || 0); // 演出確認用
     else {
       const w = t.kind === 'sum' && t.big && !t.hit ? TENSE_RATE.sum[t.cap] : TENSE_RATE[t.big ? 'big' : 'small'][t.hit ? 'hit' : 'miss'][t.cap];
       let r = Math.random();
@@ -1816,7 +1839,12 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); }, 500);
+    // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) Reel.redraw(); });
+    window.addEventListener('pageshow', () => Reel.redraw());
+    window.addEventListener('focus', () => Reel.redraw());
+    window.addEventListener('resize', () => setTimeout(() => Reel.redraw(), 100));
     netCheck(); setInterval(netCheck, 30 * 1000); // オフラインの見張り（b74）
     window.addEventListener('offline', () => { netOk = false; });
     window.addEventListener('online', () => { netFail = 0; netCheck(); });
