@@ -131,6 +131,20 @@ const Store = (function () {
     }));
   }
 
+  /* 古い履歴を消す（b78: 毎日の軽量化）。ts が before より前の IndexedDB の記録を消し、消した件数を返す */
+  function pruneLog(before) {
+    return openDb().then((d) => new Promise((resolve) => {
+      if (!d) return resolve(0);
+      let n = 0, tx;
+      try { tx = d.transaction(DB_STORE, 'readwrite'); } catch (e) { return resolve(0); }
+      const req = tx.objectStore(DB_STORE).openCursor();
+      req.onsuccess = () => { const c = req.result; if (!c) return; if ((c.value.ts || 0) < before) { c.delete(); n += 1; } c.continue(); };
+      req.onerror = () => resolve(n);
+      tx.oncomplete = () => resolve(n);
+      tx.onerror = tx.onabort = () => resolve(n);
+    }));
+  }
+
   function init() {
     load();
     flush();
@@ -141,7 +155,7 @@ const Store = (function () {
   }
 
   return {
-    init, transact, log, readLog,
+    init, transact, log, readLog, pruneLog,
     get state() { return state; },
   };
 })();
