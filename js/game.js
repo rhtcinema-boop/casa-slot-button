@@ -356,6 +356,20 @@ const Game = (function () {
       location.reload();
     })();
   }
+  /* 読み直し後の自動再開（b81）: 抽選済み（drawn）のプレイが残っているのに回っていないとき（回転中の読み直し・アップデート・毎日の軽量化のあと）は、
+     客がもう一度ボタンを押さなくても 1.5 秒後に続きから自動で回す。FREE SPIN の連続中に止まったままにならないように。同じプレイで 1 回だけ */
+  let resumedTs = 0, resumeAt = 0;
+  function resumeWatch() {
+    const s = Store.state, p = s && s.play;
+    if (!p || p.phase !== 'drawn' || busy || pressing) { resumeAt = 0; return; }
+    if ($('ui').children.length || $('calib') || document.getElementById('splash')) { resumeAt = 0; return; }
+    if (resumedTs === p.ts) return;
+    if (!resumeAt) { resumeAt = Date.now() + 1500; return; }
+    if (Date.now() < resumeAt) return;
+    resumedTs = p.ts; resumeAt = 0;
+    const b = lockbar.classList.contains('show') && lockbar.querySelector('[data-act="next"]');
+    if (b) { try { Store.transact(() => Store.log('AUTO_RESUME', { playNo: p.playNo, cur: p.cur })); } catch (e) { /* ログのみ */ } b.click(); }
+  }
   const IDLE_BACK_MS = 10000;
   let resultSince = 0;
   async function idleWatch() {
@@ -1819,6 +1833,7 @@ const Game = (function () {
     const beat = () => Cloud.updateStoreFields(me.id, { lastSeen: Date.now(), deviceVersion: APP_V }).catch(() => {}); // 版は起動直後に控えた APP_V（起動画面の #ver はあとで消えるので、ここで読むと空になる＝b69 までマスターの一覧に版が出なかった）
     beat(); setInterval(beat, 10 * 60 * 1000);
     startFeed();
+    let storeSig = '';
     unwatch = Cloud.watchStore(me.id, (doc) => {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
       if (doc.logoutAt && (me.logoutSeen === undefined ? doc.logoutAt > me.boundAt : doc.logoutAt !== me.logoutSeen)) return unbindStore(); // b80: ログイン時に見た値から変わったら（古い端末は従来の時刻比較）
@@ -1848,7 +1863,9 @@ const Game = (function () {
         });
       });
       if (doc.activePresetId && cloudPresets[doc.activePresetId]) applyPreset(cloudPresets[doc.activePresetId]);
-      if (Admin.isOpen()) Admin.rerender();
+      // b81: 自分の 10 分ごとの生存報告（lastSeen）だけが変わった通知では設定画面を描き直さない（開いている最中に伏せ字が戻る・音量の操作が途切れるため）
+      const sig = JSON.stringify(Object.assign({}, doc, { lastSeen: 0, deviceVersion: '' }));
+      if (sig !== storeSig) { storeSig = sig; if (Admin.isOpen()) Admin.rerender(); }
     });
   }
   /* 設定画面から: 店舗がプリセット名を選ぶ */
@@ -1917,7 +1934,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); }, 500);
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
     window.addEventListener('pageshow', () => { reelHeal(); setTimeout(reelHeal, 600); });
