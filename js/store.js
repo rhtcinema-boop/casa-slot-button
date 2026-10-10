@@ -96,21 +96,22 @@ const Store = (function () {
   function flush() {
     if (flushing || !state.pendingLog.length) return;
     flushing = true;
+    const guard = setTimeout(() => { flushing = false; }, 20000); // b79: IndexedDB が返事をしないまま固まっても、次の flush ができるようにする
     const batch = state.pendingLog.slice();
     openDb().then((d) => {
-      if (!d) { flushing = false; return; } // IndexedDB 不可: localStorage 側に保持し続ける
+      if (!d) { clearTimeout(guard); flushing = false; return; } // IndexedDB 不可: localStorage 側に保持し続ける
       let tx;
-      try { tx = d.transaction(DB_STORE, 'readwrite'); } catch (e) { flushing = false; return; }
+      try { tx = d.transaction(DB_STORE, 'readwrite'); } catch (e) { clearTimeout(guard); flushing = false; return; }
       const os = tx.objectStore(DB_STORE);
       batch.forEach((e) => os.put(e));
       tx.oncomplete = () => {
         const done = new Set(batch.map((e) => e.id));
         state.pendingLog = state.pendingLog.filter((e) => !done.has(e.id));
         try { save(); } catch (e) { /* 次回 flush で再試行（put は冪等） */ }
-        flushing = false;
+        clearTimeout(guard); flushing = false;
         if (state.pendingLog.length) flush();
       };
-      tx.onerror = tx.onabort = () => { flushing = false; };
+      tx.onerror = tx.onabort = () => { clearTimeout(guard); flushing = false; };
     });
   }
 
