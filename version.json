@@ -1,9 +1,9 @@
 {
- "v": "b82",
+ "v": "b83",
  "files": [
   {
    "path": "index.html",
-   "sha256": "efe43243d7c79c6f05939c3f8219e8db60e70b46eb04fb140dea799cd5ff6f23"
+   "sha256": "54290670a093090bf431ac78aed9b18b478fc2c45687d8d935e73ae8f2a729ab"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,19 +31,27 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "e4a5967c768321ef168110caeffa53827089313e3fd09a76c42681a691b4958d"
+   "sha256": "043c64ab30da8e004777d670918c31a9f81f03ba91164ab33b2c699cba03ca42"
   },
   {
    "path": "js/admin.js",
-   "sha256": "5b81f1193fe7a94e02aff31451d3c504ab7478e6f744fb41000376f0ecd14e74"
+   "sha256": "17e6b6656f78df4fc82fab3056364f638c4a46012301d70773d8f5909d9b0724"
   },
   {
    "path": "js/audio.js",
-   "sha256": "14e870d885f6bc304564d7d1b10ed74e4770350211f87aafecee621a8a38c78f"
+   "sha256": "c8c3727c2f3368961f076bc95bbe66dd956faa24fc12da8b437ab58f4ae094ee"
+  },
+  {
+   "path": "js/bill-art.js",
+   "sha256": "ebc8089f5d27aa01eebe4128a66131267cd3a4d5c17c083d33f1ea425f3d62e9"
+  },
+  {
+   "path": "js/bill.js",
+   "sha256": "3fe49f9553a6ee46313074049b5d08c6d5e58e4cb00d6f265373ee38dbb97bdb"
   },
   {
    "path": "js/cloud.js",
-   "sha256": "2bd7eea76066ec637c7c61be628b6a208775ae7c4a7abacf348f802f8ed8226f"
+   "sha256": "c2d9d39e56d813faf2857fe2907240ce7da4f7b6e3e2d21a9446688d220da726"
   },
   {
    "path": "js/engine.js",
@@ -55,11 +63,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "efa4ee65079af12d7f73c21a21ff1a1cf0eea6339bed8ce822023cea3b6402f3"
+   "sha256": "7ee0723eb38e7c0443bd8e15f1aa1f69daa700be582c03450872d6626ec82fc7"
   },
   {
    "path": "js/master.js",
-   "sha256": "a7ab4ff84c787dbb00da949656f26427fc8e6f4751c687cacd8fb091d0ae0068"
+   "sha256": "ba4e8fe38dc4660eddbd5e32025a7d9e93ed700ed44c8815b97c2e34ea9a73d1"
   },
   {
    "path": "js/reel.js",
@@ -71,7 +79,7 @@
   },
   {
    "path": "js/tv.js",
-   "sha256": "b812f1497530a19b13b0c7f19680055eeafc94e7b6666b2f39962c986d3dd747"
+   "sha256": "3ed02f8802dd77dfbb12ed900f4768fb3d03c17be571bdf8fe29315f45af5e34"
   }
  ]
 }
