@@ -5,7 +5,7 @@
 const TV = (function () {
   'use strict';
   const isTV = /casaTV/.test(navigator.userAgent);
-  const FOCUSABLE = 'button, input, select, [data-act], [data-k], [data-r], #crest';
+  const FOCUSABLE = 'button, input, select, summary, [data-act], [data-k], [data-r], #crest'; // b82: summary（折りたたみの見出し）も対象。金額ごとの上限がリモコンで開けなかった
   let on = false, cur = null, curKey = '', editing = false, menuTaps = [], pending = 0, backHold = 0, logoTaps = [];
 
   const rect = (el) => el.getBoundingClientRect();
@@ -104,8 +104,10 @@ const TV = (function () {
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
   function activate() {
+    const had = !!cur;
     ensure();
     if (!cur) return;
+    if (!had) return; // b82: 枠がどこにも無かったときは、枠を付けるだけで押さない（ダイアログが開いた直後の 1 回目の決定で、見えないまま「はい」を押してしまっていた）
     if (isNum(cur)) { editing = !editing; cur.classList.toggle('tvedit', editing); return; }
     if (cur.tagName === 'SELECT') { cur.focus(); try { if (cur.showPicker) cur.showPicker(); } catch (e) { /* 開けない環境では上下キーで選ぶ */ } return; }
     if (cur.id === 'crest') { // 左上のロゴに枠を合わせて決定を5回（2.5秒以内）→ 設定（PIN）
@@ -152,11 +154,12 @@ const TV = (function () {
   function onKey(e) {
     const k = e.key, code = e.keyCode;
     const splash = document.getElementById('splash');
-    const isEnter = k === 'Enter' || k === ' ' || code === 13 || code === 23 || code === 66;
+    const isEnter = k === 'Enter' || (on && k === ' ') || code === 13 || code === 23 || code === 66; // b82: スペースを決定と見なすのはリモコン操作が有効になってから（iPad の名前入力でスペースが打てなかった）
     const isBack = k === 'Escape' || k === 'GoBack' || k === 'BrowserBack' || code === 27 || code === 4;
     const isMenu = k === 'ContextMenu' || code === 93 || code === 82;
     const isArrow = /^Arrow(Up|Down|Left|Right)$/.test(k);
     if (!(isEnter || isBack || isMenu || isArrow)) return;
+    if (!on && !isTV && !(isArrow || isEnter)) return; // b82: iPad では矢印か決定が押されるまで何もしない
     if (e.target && e.target.tagName === 'SELECT' && (k === 'ArrowUp' || k === 'ArrowDown')) { // b79: Fire TV ではキーがネイティブに届かないので、上下で選択肢を動かす
       const sel = e.target, n = sel.selectedIndex + (k === 'ArrowDown' ? 1 : -1);
       if (n >= 0 && n < sel.options.length) { sel.selectedIndex = n; sel.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -195,13 +198,13 @@ const TV = (function () {
       if (t && t.id === 'stage' && (t.scrollTop || t.scrollLeft)) { t.scrollTop = 0; t.scrollLeft = 0; }
       else if (t === document && (window.scrollX || window.scrollY)) window.scrollTo(0, 0);
     }, true);
-    document.addEventListener('focusin', (e) => { const el = e.target; if (el && el !== document.body && el.matches && el.matches(FOCUSABLE)) { enable(); setFocus(el); } }, true);
+    document.addEventListener('focusin', (e) => { const el = e.target; if ((on || isTV) && el && el !== document.body && el.matches && el.matches(FOCUSABLE)) { enable(); setFocus(el); } }, true); // b82: iPad で入力欄をタップしただけでリモコンの枠が出ないように
     // ロゴ（div）でのブラウザ標準の決定（keydown が届く環境向け）
     document.getElementById('crest').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); enable(); setFocus(e.currentTarget); activate(); } });
     // ダイアログや設定の描き直し、NEXT GAME の出入りに合わせてフォーカスを付け直す
     const mo = new MutationObserver(() => {
       if (!on || pending) return;
-      pending = requestAnimationFrame(() => { pending = 0; ensure(); });
+      pending = requestAnimationFrame(() => { pending = 0; ensure(); setTimeout(() => { if (on) ensure(); }, 350); }); // b82: 開いた直後はフェード中（透明）で見えない扱いになるので、フェードが終わってからもう一度枠を付ける
     });
     mo.observe(document.getElementById('ui'), { childList: true, subtree: true });
     mo.observe(document.getElementById('lockbar'), { childList: true, attributes: true, attributeFilter: ['class'] });
