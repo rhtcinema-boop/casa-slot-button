@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -52,7 +53,7 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(false);
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(true);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        s.setCacheMode(WebSettings.LOAD_DEFAULT); // b82: 通常のキャッシュ。画面のファイルは下の shouldInterceptRequest から出すので古くならない。Firebase の SDK（gstatic）は起動のたびに取り直さなくて済む
         s.setUserAgentString(s.getUserAgentString() + " casaTV"); // Web 側はこれでテレビ用の操作に切り替わる
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
@@ -72,6 +73,12 @@ public class MainActivity extends Activity {
                     }
                 }
                 return loader.shouldInterceptRequest(u);
+            }
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // b82: 画面の描画プロセスが落ちても（メモリ不足など）アプリごと終了せず、作り直して開き直す
+                view.post(new Runnable() { public void run() { recreate(); } });
+                return true;
             }
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -174,7 +181,7 @@ public class MainActivity extends Activity {
             @Override public void run() {
                 String res;
                 try { res = doUpdate(); }
-                catch (Exception e) { res = "{\"state\":\"error\",\"error\":" + JSONObject.quote(String.valueOf(e.getMessage())) + "}"; }
+                catch (Throwable e) { res = "{\"state\":\"error\",\"error\":" + JSONObject.quote(String.valueOf(e.getMessage())) + "}"; } // b82: Error でも止まらない
                 updState = res;
                 updBusy = false;
             }
