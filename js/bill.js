@@ -132,7 +132,8 @@
     box.classList.remove('hidden');
     for (;;) {
       let stores = null;
-      try { stores = await Cloud.listStores(); } catch (e) { stores = null; }
+      box.innerHTML = '<h1>casa SLOT 紙幣</h1><p class="wait">店舗の一覧を読み込んでいます…</p>';
+      try { stores = await Promise.race([Cloud.listStores(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000))]); } catch (e) { stores = null; }
       if (!stores || !stores.length) {
         box.innerHTML = '<h1>casa SLOT 紙幣</h1><p>' + (stores ? '店舗が登録されていません。マスター画面で店舗を登録してください。' : 'クラウドに接続できません。通信を確認してください。') + '</p><div class="row"><button class="ok" id="retry">再試行</button></div>';
         await new Promise((r) => $('retry').onclick = r);
@@ -143,9 +144,10 @@
         box.querySelectorAll('.item').forEach((b) => { b.onclick = () => resolve(b.dataset.id); });
       });
       const st = stores.find((s) => s.id === id);
+      box.innerHTML = '<h1>' + esc(st.name) + '</h1><p class="wait">店舗の情報を読み込んでいます…</p>';
       let doc = null;
-      try { doc = await Cloud.getStore(id); } catch (e) { doc = null; }
-      if (!doc || !doc.pin) { continue; }
+      try { doc = await Promise.race([Cloud.getStore(id), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000))]); } catch (e) { doc = null; }
+      if (!doc || !doc.pin) { box.innerHTML = '<h1>' + esc(st.name) + '</h1><p>店舗の情報を読み込めませんでした。通信を確認してもう一度お試しください。</p><div class="row"><button class="ok" id="retry">もう一度</button></div>'; await new Promise((r) => { document.getElementById('retry').onclick = r; }); continue; }
       const ok = await new Promise((resolve) => {
         box.innerHTML = '<h1>' + esc(st.name) + '</h1><p>店舗のパスワード（端末と同じ）</p><input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="8"><div class="err" id="perr"></div><div class="row"><button class="ghost" id="back">戻る</button><button class="ok" id="go">ログイン</button></div>';
         const inp = $('pin'); setTimeout(() => inp.focus(), 100);
@@ -177,7 +179,8 @@
     $('btnReload').onclick = () => location.reload();
     document.addEventListener('pointerdown', unlockAudio, { once: true });
     if (!Cloud.enabled) { $('login').classList.remove('hidden'); $('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p>この公開先は店舗モードではないため、紙幣ページは使えません。</p>'; return; }
-    try { await Cloud.ready(); } catch (e) { /* ログイン画面で再試行できる */ }
+    document.getElementById('login').classList.remove('hidden'); document.getElementById('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p class="wait">クラウドに接続しています…</p>';
+    try { await Promise.race([Cloud.ready(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))]); } catch (e) { /* ログイン画面で再試行できる */ }
     saved = load();
     if (!saved || !saved.storeId) await login();
     drawBill();
