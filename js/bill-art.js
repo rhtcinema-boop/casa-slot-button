@@ -21,7 +21,7 @@ const BillArt = (function () {
     // 縁のレース（半円の連なり）
     s.push('<pattern id="' + id + 'lace" width="12" height="8" patternUnits="userSpaceOnUse"><path d="M0 8 A6 6 0 0 1 12 8" fill="none" stroke="' + G + '" stroke-width="1.1"/><circle cx="6" cy="3" r="1" fill="' + G + '"/></pattern>');
     // 肖像の型抜き（エンブレム画像をマスクにして緑で塗る）
-    if (emblem) s.push('<mask id="' + id + 'em" maskUnits="userSpaceOnUse" x="185" y="48" width="100" height="104"><image xlink:href="' + base + 'logo-emblem.png" href="' + base + 'logo-emblem.png" x="185" y="48" width="100" height="104" preserveAspectRatio="xMidYMid meet"/></mask>');
+    if (emblem) s.push('<mask id="' + id + 'em" maskUnits="userSpaceOnUse" x="201" y="68" width="68" height="68"><image xlink:href="' + base + 'logo-emblem.png" href="' + base + 'logo-emblem.png" x="201" y="68" width="68" height="68" preserveAspectRatio="xMidYMid meet"/></mask>');
     s.push('</defs>');
     // 紙
     s.push('<rect x="1.5" y="1.5" width="467" height="197" rx="5" fill="url(#' + id + 'paper)" stroke="' + G2 + '" stroke-width="2.5"/>');
@@ -41,9 +41,9 @@ const BillArt = (function () {
     s.push('<text x="235" y="38" text-anchor="middle" font-family="Georgia, \'Times New Roman\', serif" font-size="12" letter-spacing="4.5" fill="' + G2 + '">AMUSEMENT BAR CASA</text>');
     s.push('<text x="235" y="52" text-anchor="middle" font-family="Georgia, \'Times New Roman\', serif" font-size="6.5" letter-spacing="2.5" fill="' + G + '">THIS NOTE IS GOOD FOR ONE GAME AT CASA SLOT</text>');
     // 肖像の楕円と、エンブレム
-    s.push('<ellipse cx="235" cy="100" rx="58" ry="54" fill="' + PAPER + '" stroke="' + G2 + '" stroke-width="2"/>');
-    s.push('<ellipse cx="235" cy="100" rx="52" ry="48" fill="url(#' + id + 'hatch)" stroke="' + G + '" stroke-width=".8"/>');
-    if (emblem) s.push('<rect x="185" y="48" width="100" height="104" fill="' + G2 + '" mask="url(#' + id + 'em)"/>');
+    s.push('<ellipse cx="235" cy="102" rx="54" ry="44" fill="' + PAPER + '" stroke="' + G2 + '" stroke-width="2"/>');
+    s.push('<ellipse cx="235" cy="102" rx="48" ry="39" fill="url(#' + id + 'hatch)" stroke="' + G + '" stroke-width=".8"/>');
+    if (emblem) s.push('<rect x="201" y="68" width="68" height="68" fill="' + G2 + '" mask="url(#' + id + 'em)"/>');
     else s.push('<text x="235" y="110" text-anchor="middle" font-family="Georgia, serif" font-size="30" font-weight="700" fill="' + G2 + '">casa</text>');
     s.push('<text x="235" y="165" text-anchor="middle" font-family="Georgia, \'Times New Roman\', serif" font-size="7" letter-spacing="3" fill="' + G2 + '">CASA SLOT</text>');
     // 左右の印章（財務省印の位置）
