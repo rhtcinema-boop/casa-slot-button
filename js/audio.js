@@ -602,6 +602,14 @@ const Sfx = (function () {
     button() { tone({ f: 820, d: 0.05, g: 0.13 }); noise({ f: 3000, q: 2, d: 0.02, g: 0.1 }); },
     key() { fm({ f: hz(pick([84, 86, 88, 91, 93])), d: 0.08, g: 0.1, ratio: 2, idx: 0.6 }); noise({ f: 3500, q: 2, d: 0.015, g: 0.07 }); },
     ok() { bell(hz(88), 0, 0.5, 0.16); bell(hz(95), 0.09, 0.7, 0.16); },
+    bill() { // 紙幣が吸い込まれる: モーターの唸り（1.1 秒）→ カチッ → 受け付けのチャイム
+      tone({ type: 'sawtooth', f: 95, f2: 140, d: 1.05, g: 0.08, lp: 900, lp2: 1400, trem: 28 });
+      noise({ f: 1800, f2: 2600, q: 1.2, d: 1.0, g: 0.05 });
+      noise({ f: 3200, q: 3, at: 1.08, d: 0.03, g: 0.18 });
+      tone({ type: 'square', f: 220, at: 1.1, d: 0.05, g: 0.1, lp: 2000 });
+      chime(hz(76), 1.18, 0.5, 0.16);
+      chime(hz(83), 1.3, 0.7, 0.16);
+    },
     error() {
       tone({ type: 'square', f: 170, d: 0.13, g: 0.16, lp: 1100 });
       tone({ type: 'square', f: 130, at: 0.17, d: 0.2, g: 0.16, lp: 1100 });
