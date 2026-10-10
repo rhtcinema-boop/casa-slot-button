@@ -6,7 +6,7 @@ const TV = (function () {
   'use strict';
   const isTV = /casaTV/.test(navigator.userAgent);
   const FOCUSABLE = 'button, input, select, summary, [data-act], [data-k], [data-r], #crest'; // b82: summary（折りたたみの見出し）も対象。金額ごとの上限がリモコンで開けなかった
-  let on = false, cur = null, curKey = '', editing = false, menuTaps = [], pending = 0, backHold = 0, logoTaps = [];
+  let on = false, cur = null, curKey = '', editing = false, menuTaps = [], pending = 0, backHold = 0, enterHold = 0, logoTaps = [];
 
   const rect = (el) => el.getBoundingClientRect();
   function visible(el) {
@@ -173,7 +173,8 @@ const TV = (function () {
       return;
     }
     if (e.repeat && isBack) { backHold += 1; if (backHold === 12) settings(); return; }
-    if (!e.repeat) backHold = 0;
+    if (e.repeat && isEnter) { enterHold += 1; if (enterHold === 28 && layer().id === 'content' && window.Game && Game.longStart) Game.longStart(); return; } // b83: 決定の長押し（約 2 秒）で、スマホ無しでもゲームを始める
+    if (!e.repeat) { backHold = 0; enterHold = 0; }
     if (e.repeat && !isArrow) return;
     enable();
     if (isMenu) return menu();
