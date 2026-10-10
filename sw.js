@@ -1,5 +1,5 @@
 /* オフライン動作用。ネットワーク優先・失敗時キャッシュ（更新を確実に反映しつつ圏外でも起動できる）。 */
-const CACHE = 'casa-slot-button-b84';
+const CACHE = 'casa-slot-button-b85';
 const ASSETS = ['./', 'index.html', 'css/style.css', 'js/engine.js', 'js/store.js', 'cloud-config.js', 'js/cloud.js', 'js/audio.js', 'js/reel.js', 'js/fx.js', 'js/admin.js', 'js/tv.js', 'js/game.js', 'js/bill-art.js', 'bill.html', 'js/bill.js', 'master.html', 'js/master.js', 'manifest.webmanifest', 'logo-emblem.png', 'logo-casa.png', 'icon-180.png', 'icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
