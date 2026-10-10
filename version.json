@@ -1,9 +1,9 @@
 {
- "v": "b86",
+ "v": "b87",
  "files": [
   {
    "path": "index.html",
-   "sha256": "152dbddd70e9f0cab84f72d1d9086a0f7cd4f6df6c07f437e1eb2e5024e2d3bf"
+   "sha256": "b9db90d1304655d91b1b481328bdd02feab262e1fcaf453d0d221301a82eb565"
   },
   {
    "path": "manifest.webmanifest",
@@ -39,7 +39,7 @@
   },
   {
    "path": "js/audio.js",
-   "sha256": "c8c3727c2f3368961f076bc95bbe66dd956faa24fc12da8b437ab58f4ae094ee"
+   "sha256": "b9a0f25672aff6c25c582a545c8ed92c039b14a3b67f3513424c1e002d6574cf"
   },
   {
    "path": "js/bill-art.js",
@@ -47,7 +47,7 @@
   },
   {
    "path": "js/bill.js",
-   "sha256": "71f7aa6e176ca1d9635f9c6c798b3bd323171c9b76f718229fbd75f800817737"
+   "sha256": "0ab2c79dbce7fa8f0ec56c1868e0fcf4f74ad946f780b182c257cbe44fe58b0e"
   },
   {
    "path": "js/cloud.js",
