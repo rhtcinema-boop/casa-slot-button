@@ -325,7 +325,7 @@ const Game = (function () {
   let reelFixAt = 0;
   function reelHeal() {
     Reel.redraw();
-    if (!Reel.isBlank()) return;
+    if (!Reel.lost()) return;
     const now = Date.now();
     if (now - reelFixAt < 30000) return;
     reelFixAt = now;
@@ -340,8 +340,8 @@ const Game = (function () {
   function maintStart(now) { const s = Store.state, rh = s && s.limits && Number.isInteger(s.limits.resetHour) ? s.limits.resetHour : 19; return Engine.windowStart(now, (rh + 12) % 24); }
   function maintWatch() {
     const s = Store.state;
-    if (maintBusy || updPending || busy || pressing || !s || s.play) return;
-    if ($('ui').children.length || $('calib') || document.getElementById('splash')) return;
+    const idle = () => !updPending && !busy && !pressing && s && !s.play && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash');
+    if (maintBusy || !idle()) return;
     const now = Date.now(), from = maintStart(now);
     if (!s.maintAt) { try { Store.transact((x) => { x.maintAt = from; }); } catch (e) { /* 設定のみ */ } return; }
     if (s.maintAt >= from) return;
@@ -349,7 +349,9 @@ const Game = (function () {
     (async () => {
       let removed = 0;
       try { removed = await Store.pruneLog(now - MAINT_KEEP_DAYS * 86400000); } catch (e) { /* 消せなくても読み直しはする */ }
-      try { Store.transact((x) => { x.maintAt = from; x.recent = (x.recent || []).slice(-200); Store.log('MAINT', { removed }); }); } catch (e) { maintBusy = false; return; }
+      // 掃除の間に客が NEXT GAME を押していたら、読み直しは次の待機中まで持ち越す（b79。掃除は何度やっても同じ結果なので問題ない）
+      if (!idle()) { maintBusy = false; return; }
+      try { Store.transact((x) => { x.maintAt = from; x.recent = (x.recent || []).slice(-200); if (x.pendingLog.length > 3000) { Store.log('LOG_TRIM', { dropped: x.pendingLog.length - 1000 }); x.pendingLog = x.pendingLog.slice(-1000); } Store.log('MAINT', { removed }); }); } catch (e) { maintBusy = false; return; }
       try { sessionStorage.setItem('casa.skipSplash', '1'); } catch (e) { /* 保存できない環境では起動画面を出す */ }
       location.reload();
     })();
@@ -613,13 +615,15 @@ const Game = (function () {
       });
     } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); return false; }
     busy = true;
-    lockbar.classList.remove('show');
-    if (curStage !== 1) await transition(1); else setStage(1);
-    win.classList.remove('win', 'lose');
-    showingResult = false;
-    // 次のゲームの前に、リールに READY TO SPIN を一拍見せる
-    setPlate('idle', 'NEXT GAME', '');
-    await wait(900);
+    try { // b79: 途中で例外が出ても busy が立ちっぱなしにならないように（立ちっぱなしだと NEXT GAME も自動アップデートも効かなくなる）
+      lockbar.classList.remove('show');
+      if (curStage !== 1) await transition(1); else setStage(1);
+      win.classList.remove('win', 'lose');
+      showingResult = false;
+      // 次のゲームの前に、リールに READY TO SPIN を一拍見せる
+      setPlate('idle', 'NEXT GAME', '');
+      await wait(900);
+    } catch (err) { try { Store.transact(() => Store.log('FX_ERROR', { stage: 0, message: String(err && err.message || err).slice(0, 120) })); } catch (e) { /* ログのみ */ } }
     busy = false;
     return true;
   }
@@ -696,6 +700,7 @@ const Game = (function () {
       return refresh();
     }
     oneMore = false; skipSpecial = false;
+    clearSure(); // b79: 前のゲームの「当選確定」の表示が（画面が隠れていた等で）遅れて付いても、新しいゲームには持ち越さない
     showCredits();
     lockbar.classList.remove('show');
     if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
@@ -902,6 +907,7 @@ const Game = (function () {
       busy = false; pressing = false;
       try { Store.transact(() => Store.log('FX_ERROR', { stage: st, message: String(err && err.message || err).slice(0, 120) })); } catch (e) { /* ログのみ */ }
       try { tense(0); Lever.setEnabled(true); } catch (e) { /* noop */ }
+      try { FX.releasePile(); } catch (e) { /* noop */ } // b79: 途中で止まった当選演出のチップが残って描き続けないように
       refresh();
     }
   }
@@ -1711,8 +1717,16 @@ const Game = (function () {
   /* 設定に誤りのあるプリセット（確率の合計が 100% でない、金額が多すぎる等）は使えない。b70 までは黙って前の設定のまま動いていた
      （本番で RING の STAGE 3 が 185% になっていて、渋谷が TEST のまま動いていた）。b71 から、画面に一言出して、設定画面に理由を出す */
   let presetWarn = null, presetWarnSig = '';
+  let pendingPreset = null; // b79: ゲームの途中にマスターからプリセットが届いたら、ここに置いて待つ（途中で配当表が変わると、抽選済みの金額が絵柄で作れず止まることがあった）
+  function presetTick() {
+    if (!pendingPreset || busy || (Store.state.play && Store.state.play.phase !== 'shown')) return;
+    const p = pendingPreset; pendingPreset = null;
+    applyPreset(p);
+  }
   function applyPreset(p) {
     if (!p) return;
+    if (busy || (Store.state.play && Store.state.play.phase !== 'shown')) { pendingPreset = p; return; }
+    pendingPreset = null;
     const v = p.probs ? Engine.validateProbs(p.probs) : { ok: false, errors: ['確率表がありません。'] };
     if (!v.ok) {
       presetWarn = { id: p.id, name: String(p.name || ''), errors: v.errors.slice() };
@@ -1877,7 +1891,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); }, 500);
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
     window.addEventListener('pageshow', () => { reelHeal(); setTimeout(reelHeal, 600); });
@@ -1942,7 +1956,10 @@ const Game = (function () {
     });
     if (updated) UI.toast('新しいバージョン ' + APP_V + ' にアップデートしました。', 'ok');
     if (Cloud.enabled) {
-      try { await Cloud.ready(); } catch (err) { cloudDown = true; UI.toast('クラウドに接続できません。端末内の設定で動作します。', 'err'); }
+      for (let t = 1; ; t++) { // b79: 起動直後に Wi-Fi がつながっていない等で失敗しても、3 秒おきに 5 回までやり直す（前は 1 回失敗すると、その日ずっと店舗モードが切れていた）
+        try { await Cloud.ready(); break; }
+        catch (err) { if (t >= 5) { cloudDown = true; UI.toast('クラウドに接続できません。端末内の設定で動作します。', 'err'); break; } await wait(3000); }
+      }
       if (!cloudDown && !Store.state.store) { await chooseStore(); refresh(); }
       if (!cloudDown && Store.state.store) startCloudSync();
       if (!Store.state.pins) { await firstRun(); refresh(); } // クラウド無しで使うときは従来どおり端末の PIN
