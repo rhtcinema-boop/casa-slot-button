@@ -44,7 +44,7 @@
   .msg.ok { color: #35e07a; } .msg.err { color: #ff8c7a; }
   .foot { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 18px); left: 0; right: 0; text-align: center; font-size: 12px; color: #5f6b61; }
   /* ログイン */
-  .login { position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 24px; gap: 14px; }
+  .login { position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 24px; gap: 14px; }
   .login h1 { font-size: 20px; letter-spacing: .2em; color: var(--gold); margin: 0 0 6px; }
   .login p { margin: 0; color: var(--dim); font-size: 14px; text-align: center; }
   .login .list { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 360px; }
@@ -69,10 +69,10 @@
   <div class="foot">紙幣 1 枚で 1 ゲーム。ゲーム中は入れられません。</div>
   <div class="login hidden" id="login"></div>
 </div>
-<script src="js/engine.js?v=b84"></script>
-<script src="cloud-config.js?v=b84"></script>
-<script src="js/cloud.js?v=b84"></script>
-<script src="js/bill-art.js?v=b84"></script>
-<script src="js/bill.js?v=b84"></script>
+<script src="js/engine.js?v=b85"></script>
+<script src="cloud-config.js?v=b85"></script>
+<script src="js/cloud.js?v=b85"></script>
+<script src="js/bill-art.js?v=b85"></script>
+<script src="js/bill.js?v=b85"></script>
 </body>
 </html>
