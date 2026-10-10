@@ -41,7 +41,7 @@ const Cloud = (function () {
   }
   function ready() {
     if (!enabled) return Promise.reject(new Error('cloud disabled'));
-    if (!readyP) readyP = isLocal ? Promise.resolve() : initFirebase();
+    if (!readyP) readyP = isLocal ? Promise.resolve() : initFirebase().catch((e) => { readyP = null; throw e; }); // b79: 失敗したら覚えない（次の ready() でやり直す）
     return readyP;
   }
 
