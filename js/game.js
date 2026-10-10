@@ -319,7 +319,40 @@ const Game = (function () {
     const now = Date.now();
     if (now - reelAt < 3000) return;
     reelAt = now;
-    if (!document.hidden) Reel.redraw();
+    if (!document.hidden) reelHeal();
+  }
+  /* 描き直しても何も出ないとき（Fire TV でホームに戻って復帰したあと等。b78）は、絵柄の元画像ごと作り直す。作り直しは 30 秒に 1 回まで */
+  let reelFixAt = 0;
+  function reelHeal() {
+    Reel.redraw();
+    if (!Reel.isBlank()) return;
+    const now = Date.now();
+    if (now - reelFixAt < 30000) return;
+    reelFixAt = now;
+    Reel.restore();
+    try { Store.transact(() => Store.log('REEL_RESTORE', {})); } catch (e) { /* ログのみ */ }
+  }
+  /* 毎日の軽量化（b78）: 開きっぱなしにすると少しずつ重くなるので、1 日 1 回、営業日の区切り（limits.resetHour、既定 19 時）の 12 時間後
+     （既定は朝 7 時）以降の最初の待機中に、古い履歴（MAINT_KEEP_DAYS 日より前）を消してから読み直す。回転中・結果の表示中・設定中・
+     アップデート待ちのときは待つ。起動画面は出さずに元の画面へ戻る（自動アップデートと同じ）。初回は時刻を覚えるだけで読み直さない */
+  const MAINT_KEEP_DAYS = 60;
+  let maintBusy = false;
+  function maintStart(now) { const s = Store.state, rh = s && s.limits && Number.isInteger(s.limits.resetHour) ? s.limits.resetHour : 19; return Engine.windowStart(now, (rh + 12) % 24); }
+  function maintWatch() {
+    const s = Store.state;
+    if (maintBusy || updPending || busy || pressing || !s || s.play) return;
+    if ($('ui').children.length || $('calib') || document.getElementById('splash')) return;
+    const now = Date.now(), from = maintStart(now);
+    if (!s.maintAt) { try { Store.transact((x) => { x.maintAt = from; }); } catch (e) { /* 設定のみ */ } return; }
+    if (s.maintAt >= from) return;
+    maintBusy = true;
+    (async () => {
+      let removed = 0;
+      try { removed = await Store.pruneLog(now - MAINT_KEEP_DAYS * 86400000); } catch (e) { /* 消せなくても読み直しはする */ }
+      try { Store.transact((x) => { x.maintAt = from; x.recent = (x.recent || []).slice(-200); Store.log('MAINT', { removed }); }); } catch (e) { maintBusy = false; return; }
+      try { sessionStorage.setItem('casa.skipSplash', '1'); } catch (e) { /* 保存できない環境では起動画面を出す */ }
+      location.reload();
+    })();
   }
   const IDLE_BACK_MS = 10000;
   let resultSince = 0;
@@ -505,7 +538,7 @@ const Game = (function () {
     // 右上の2段目は「最高額配当」。回転中のプレイの分は、結果が出るまで反映しない（b53 で「合計当選額」から変更）
     { const st = Store.state, p = st.play; $('total').textContent = fmtN(p && p.phase === 'drawn' && !p.test && typeof p.bestBefore === 'number' ? p.bestBefore : bestOf(st)); stageEl.classList.toggle('testmode', !!st.testMode);
       // CREDIT: 残っている FREE SPIN（casa ロゴの 10 回と FREE SPIN ×1〜×3 の、当たりなしの回 ＋ スタッフが入れたクレジット）
-      const cr = $('crd'), n = String((st.credits || 0) + (st.dud || 0));
+      const cr = $('crd'), n = String(creditsLeft());
       if (cr && cr.textContent !== n) { const up = +n > +cr.textContent; cr.textContent = n; if (up) restart(cr, 'bump'); }
       stageEl.classList.toggle('has-info', logoOn()); } // 合計当選額（演出中の分は結果が出てから）
   }
@@ -851,7 +884,9 @@ const Game = (function () {
        b65 までは、ロゴの 10 回だけ本物の追加プレイ（state.credits）だった。b66 でオーナーの指示により、ロゴも当たりなしに変更。
        state.credits（本物の追加プレイ）に入るのは、スタッフが設定画面で入れたクレジットだけ。
      画面の CREDIT は、その2つの合計を出す。テスト用プリセットでも増える（動きを確認できるように） */
-  const creditsLeft = () => (Store.state.credits || 0) + (Store.state.dud || 0);
+  /* 画面に出す CREDIT の数（b78）: 回っている最中の FREE SPIN も、結果が出るまでは 1 として数える
+     （b77 までは回り始めた瞬間に減らしていたので、最後の 1 回が「残り 0」と出ていた。保存している数は変えない） */
+  const creditsLeft = () => { const s = Store.state, p = s.play; return (s.credits || 0) + (s.dud || 0) + (p && p.free && p.phase !== 'shown' ? 1 : 0); };
   async function addCredits(n, by) {
     const key = 'dud', before = creditsLeft();
     try { Store.transact((s) => { s[key] = (s[key] || 0) + n; Store.log('CREDIT_ADD', { amount: n, before, after: before + n, by }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
@@ -1842,12 +1877,12 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); }, 500);
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) Reel.redraw(); });
-    window.addEventListener('pageshow', () => Reel.redraw());
-    window.addEventListener('focus', () => Reel.redraw());
-    window.addEventListener('resize', () => setTimeout(() => Reel.redraw(), 100));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
+    window.addEventListener('pageshow', () => { reelHeal(); setTimeout(reelHeal, 600); });
+    window.addEventListener('focus', () => reelHeal());
+    window.addEventListener('resize', () => setTimeout(() => reelHeal(), 100));
     netCheck(); setInterval(netCheck, 30 * 1000); // オフラインの見張り（b74）
     window.addEventListener('offline', () => { netOk = false; });
     window.addEventListener('online', () => { netFail = 0; netCheck(); });
@@ -1916,6 +1951,6 @@ const Game = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo, netState };
+  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo, netState, reelHeal };
 })();
 window.Game = Game;
