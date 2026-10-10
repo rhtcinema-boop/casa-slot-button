@@ -213,6 +213,7 @@ const Admin = (function () {
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
+    INSERT: ['ops', 'スマホの紙幣で開始'], INSERT_BUSY: ['ops', 'スマホの紙幣（ゲーム中のため受け付けず）'], LONG_START: ['ops', '長押しで開始'],
   };
   const GROUPS = [['all', 'すべて'], ['play', 'プレイ'], ['ops', '営業'], ['cfg', '設定変更'], ['pin', 'PIN・認証']];
 
