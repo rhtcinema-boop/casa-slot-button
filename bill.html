@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="casa 紙幣">
+<meta name="theme-color" content="#0b0f0c">
+<meta name="format-detection" content="telephone=no">
+<title>casa SLOT 紙幣</title>
+<link rel="icon" href="icon-180.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root { --gold: #ffd773; --dim: #9aa89c; --bg: #0b0f0c; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: #e8e3d2; font-family: -apple-system, "Helvetica Neue", "Hiragino Sans", sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #app { position: fixed; inset: 0; }
+  .top { position: absolute; top: 0; left: 0; right: 0; padding: calc(env(safe-area-inset-top) + 14px) 18px 0; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--dim); }
+  .top b { color: var(--gold); letter-spacing: .25em; font-weight: 700; }
+  .top button { background: none; border: 0; color: var(--dim); font: inherit; padding: 6px 0; }
+  .store { position: absolute; top: calc(env(safe-area-inset-top) + 50px); left: 0; right: 0; text-align: center; font-size: 15px; color: #cfd6cc; }
+  .store i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #35e07a; box-shadow: 0 0 8px #35e07a; margin-right: 6px; vertical-align: 1px; }
+  .store.busy i { background: #ffb84d; box-shadow: 0 0 8px #ffb84d; }
+  .store.off i { background: #6b7570; box-shadow: none; }
+  .slit { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 92px); width: 160px; height: 22px; margin-left: -80px; border-radius: 11px; background: #050505; box-shadow: inset 0 3px 8px #000, 0 0 0 2px #c9a03e, 0 0 18px rgba(255, 215, 115, .5); transition: box-shadow .3s; }
+  .slit.hot { box-shadow: inset 0 3px 8px #000, 0 0 0 2px #ffe9a8, 0 0 30px rgba(255, 225, 140, .9); }
+  .bill { position: absolute; left: 50%; top: 50%; width: 330px; height: 140px; margin: -70px 0 0 -165px; transform: rotate(-90deg); will-change: transform; transition: transform .25s ease-out, opacity .25s; }
+  .bill svg { width: 330px; height: 140px; filter: drop-shadow(0 18px 24px rgba(0, 0, 0, .7)); }
+  .bill.gray svg { filter: grayscale(1) brightness(.55) drop-shadow(0 18px 24px rgba(0, 0, 0, .7)); }
+  .bill.drag { transition: none; }
+  .bill.fly { transition: transform .45s cubic-bezier(.2, .8, .2, 1), opacity .4s .1s; opacity: 0; }
+  .bill.back { transition: transform .35s cubic-bezier(.3, 1.4, .5, 1); }
+  .hint { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 110px); text-align: center; color: var(--dim); font-size: 14px; letter-spacing: .1em; }
+  .hint .arr { display: block; font-size: 28px; color: var(--gold); margin-bottom: 6px; animation: up 1.4s ease-in-out infinite; }
+  @keyframes up { 0%, 100% { transform: translateY(6px); opacity: .5; } 50% { transform: translateY(-6px); opacity: 1; } }
+  .hint.busy .arr { animation: none; opacity: .25; }
+  .msg { position: absolute; left: 20px; right: 20px; bottom: calc(env(safe-area-inset-bottom) + 50px); text-align: center; font-size: 16px; color: #e8e3d2; min-height: 22px; }
+  .msg.ok { color: #35e07a; } .msg.err { color: #ff8c7a; }
+  .foot { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 18px); left: 0; right: 0; text-align: center; font-size: 12px; color: #5f6b61; }
+  /* ログイン */
+  .login { position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px 24px; gap: 14px; }
+  .login h1 { font-size: 20px; letter-spacing: .2em; color: var(--gold); margin: 0 0 6px; }
+  .login p { margin: 0; color: var(--dim); font-size: 14px; text-align: center; }
+  .login .list { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 360px; }
+  .login button.item { width: 100%; padding: 16px; font-size: 18px; border-radius: 12px; border: 1px solid #c9a03e; background: #15120a; color: #ffe9a8; font-family: inherit; }
+  .login input { width: 100%; max-width: 360px; padding: 14px; font-size: 24px; letter-spacing: .4em; text-align: center; border-radius: 12px; border: 1px solid #c9a03e; background: #0d0c08; color: #fff; }
+  .login .row { display: flex; gap: 10px; width: 100%; max-width: 360px; }
+  .login .row button { flex: 1; padding: 14px; font-size: 16px; border-radius: 12px; border: 0; font-family: inherit; }
+  .login .row .ok { background: linear-gradient(180deg, #ffe9a8, #c9a03e); color: #1a1408; font-weight: 700; }
+  .login .row .ghost { background: #1a1a1a; color: #cfd6cc; }
+  .login .err { color: #ff8c7a; font-size: 14px; min-height: 18px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top"><button id="btnLogout">ログアウト</button><b>casa SLOT</b><button id="btnReload">再接続</button></div>
+  <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
+  <div class="slit" id="slit"></div>
+  <div class="bill" id="bill"></div>
+  <div class="hint" id="hint"><span class="arr">▲</span>上にスライドで投入（1 GAME）</div>
+  <div class="msg" id="msg"></div>
+  <div class="foot">紙幣 1 枚で 1 ゲーム。ゲーム中は入れられません。</div>
+  <div class="login hidden" id="login"></div>
+</div>
+<script src="js/engine.js?v=b83"></script>
+<script src="cloud-config.js?v=b83"></script>
+<script src="js/cloud.js?v=b83"></script>
+<script src="js/bill-art.js?v=b83"></script>
+<script src="js/bill.js?v=b83"></script>
+</body>
+</html>
