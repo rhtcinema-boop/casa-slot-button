@@ -157,7 +157,11 @@ const TV = (function () {
     const isMenu = k === 'ContextMenu' || code === 93 || code === 82;
     const isArrow = /^Arrow(Up|Down|Left|Right)$/.test(k);
     if (!(isEnter || isBack || isMenu || isArrow)) return;
-    if (e.target && e.target.tagName === 'SELECT' && isArrow) return; // ネイティブの選択に任せる
+    if (e.target && e.target.tagName === 'SELECT' && (k === 'ArrowUp' || k === 'ArrowDown')) { // b79: Fire TV ではキーがネイティブに届かないので、上下で選択肢を動かす
+      const sel = e.target, n = sel.selectedIndex + (k === 'ArrowDown' ? 1 : -1);
+      if (n >= 0 && n < sel.options.length) { sel.selectedIndex = n; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+      e.preventDefault(); return;
+    }
     e.preventDefault();
     if (capture) {
       if (isMenu) { if (!e.repeat) capture('Menu', false); }
