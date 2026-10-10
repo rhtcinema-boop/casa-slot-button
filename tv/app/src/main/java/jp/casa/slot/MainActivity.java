@@ -270,5 +270,9 @@ public class MainActivity extends Activity {
     protected void onPause() { super.onPause(); web.onPause(); }
 
     @Override
-    protected void onResume() { super.onResume(); web.onResume(); hideSystemUi(); }
+    protected void onResume() {
+        super.onResume(); web.onResume(); hideSystemUi();
+        // 復帰したら、リールが消えていないか確かめて描き直す（b78。ホームに戻ると WebView のキャンバスの中身が消えることがある）
+        web.postDelayed(new Runnable() { public void run() { web.evaluateJavascript("typeof TV!=='undefined' && TV.resume && TV.resume()", null); } }, 600);
+    }
 }
