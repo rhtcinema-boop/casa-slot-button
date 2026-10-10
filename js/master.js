@@ -401,13 +401,13 @@
         case 'stores-reload': await reload(); render(); loadLatest(); toast('読み直しました'); return;
         case 'store-edit': editStore = Object.assign({}, stores.find((s) => s.id === b.dataset.id)); return render();
         case 'store-cancel': editStore = null; return render();
-        case 'store-save': return await saveStore();   // 失敗したときに下の catch でメッセージを出すため await する
+        case 'store-save': if (b.disabled) return; b.disabled = true; try { return await saveStore(); } finally { b.disabled = false; }   // b79: 二度押しで同じ店舗が 2 つできないように。失敗したときに下の catch でメッセージを出すため await する
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。集計も消えます。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
         case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], logoRate: 0, noRetrigger: true, test: false, color: PRESET_COLORS[0][0] }; return render();
         case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
-        case 'preset-save': return await savePreset();
+        case 'preset-save': if (b.disabled) return; b.disabled = true; try { return await savePreset(); } finally { b.disabled = false; }
         case 'preset-del': {
           // 使用中（いま使う／配布中）の店舗があるプリセットは消せない（端末が前の設定のまま動き続け、マスターでは「未設定」に見えるため）
           const users = stores.filter((s) => s.activePresetId === editPreset.id || (s.presetIds || []).indexOf(editPreset.id) >= 0).map((s) => s.name);
