@@ -1676,3 +1676,30 @@ body.lite .testbig b { text-shadow: 0 4px 0 #5a0000; }
 /* ゲーム中と結果の表示中は、結果が読めるように小さく薄く（待機に戻ると元の大きさ） */
 .testbig { transition: transform .3s ease, opacity .3s ease; }
 #stage.testmode.inplay .testbig { opacity: .35; transform: translate(-50%, -50%) rotate(-8deg) scale(.55); }
+
+/* ---------- スマホの紙幣（b83）: NEXT GAME の代わりのサンド（紙幣投入口）。casa 風（金と黒） ---------- */
+.lockbar .hidden-next { display: none !important; }
+.lockbar .sand { position: relative; flex: 1 1 auto; height: 96px; border-radius: 14px; background: linear-gradient(180deg, #1a1408 0%, #0b0a08 50%, #1a1408 100%);
+  box-shadow: 0 0 0 2px #000, 0 0 0 5px #c9a03e, 0 0 0 7px #000, 0 8px 0 #5c4414, 0 12px 20px rgba(0, 0, 0, .8), inset 0 2px 0 rgba(255, 235, 180, .25); }
+.lockbar .sand::before { content: ""; position: absolute; left: 14px; right: 14px; top: 8px; bottom: 8px; border: 1px solid rgba(226, 186, 92, .45); border-radius: 9px; pointer-events: none; }
+.lockbar .sand .slit { position: absolute; left: 50%; top: 50%; width: 300px; height: 20px; margin: -10px 0 0 -150px; border-radius: 10px; background: #050505; box-shadow: inset 0 3px 8px #000, 0 0 0 2px #c9a03e, 0 0 16px rgba(226, 186, 92, .6); }
+.lockbar .sand .slit::after { content: ""; position: absolute; left: 10px; right: 10px; top: 8px; height: 4px; border-radius: 2px; background: #111; }
+.lockbar .sand .lbl { position: absolute; left: 50%; transform: translateX(-50%); top: 10px; font: 700 13px/1 var(--font-label); letter-spacing: .35em; white-space: nowrap; color: #ffd773; text-shadow: 0 0 8px rgba(255, 215, 115, .7); }
+.lockbar .sand .led { position: absolute; top: 50%; width: 14px; height: 14px; margin-top: -7px; border-radius: 50%; background: radial-gradient(circle, #fff 0 20%, #ffd773 45%, rgba(255, 215, 115, .3) 70%, transparent 72%); box-shadow: 0 0 14px #ffd773; animation: bulb 2.2s ease-in-out infinite; }
+.lockbar .sand .led.l { left: 34px; } .lockbar .sand .led.r { right: 34px; animation-delay: -1.1s; }
+.lockbar .sand .arrow { position: absolute; top: 50%; margin-top: -8px; font: 700 16px/1 Arial, sans-serif; color: #ffd773; text-shadow: 0 0 8px #ffd773; animation: sandarrow 1.2s ease-in-out infinite; }
+.lockbar .sand .arrow.l { left: 205px; } .lockbar .sand .arrow.r { right: 205px; }
+@keyframes sandarrow { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+.lockbar .sand .emb { position: absolute; top: 50%; width: 46px; height: 46px; margin-top: -23px; border-radius: 50%; border: 2px solid #c9a03e; background: url(../logo-emblem.png) center / 60% no-repeat; opacity: .85; }
+.lockbar .sand .emb.l { left: 70px; } .lockbar .sand .emb.r { right: 70px; }
+.lockbar .sand.feeding .slit { box-shadow: inset 0 3px 8px #000, 0 0 0 2px #ffe9a8, 0 0 26px rgba(255, 225, 140, .9); }
+.lockbar .sand.feeding .led, .lockbar .sand.accept .led { animation-duration: .25s; }
+.lockbar .sand.accept { box-shadow: 0 0 0 2px #000, 0 0 0 5px #ffe9a8, 0 0 0 7px #000, 0 8px 0 #5c4414, 0 0 40px rgba(255, 225, 140, .8), inset 0 2px 0 rgba(255, 235, 180, .4); }
+.lockbar .billwrap { position: absolute; left: 50%; width: 300px; margin-left: -150px; top: 50%; height: 220px; overflow: hidden; z-index: 5; pointer-events: none; display: none; }
+.lockbar .billwrap.in { display: block; }
+.lockbar .billwrap svg { position: absolute; left: 0; top: 0; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .7)); animation: billin 1.15s cubic-bezier(.3, .1, .2, 1) both; }
+@keyframes billin { 0% { transform: translateY(190px); } 25% { transform: translateY(118px); } 55% { transform: translateY(64px); } 100% { transform: translateY(-132px); } }
+.lockbar .res { flex: none; margin-right: 18px; }
+.lockbar .res b { font-size: 48px; }
+body.lite .lockbar .sand { box-shadow: 0 0 0 2px #000, 0 0 0 5px #c9a03e, 0 0 0 7px #000, 0 8px 0 #5c4414; }
+body.lite .lockbar .billwrap svg { filter: none; }
