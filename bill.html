@@ -15,7 +15,10 @@
 <style>
   :root { --gold: #ffd773; --dim: #9aa89c; --bg: #0b0f0c; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: #e8e3d2; font-family: -apple-system, "Helvetica Neue", "Hiragino Sans", sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: #e8e3d2; font-family: -apple-system, "Helvetica Neue", "Hiragino Sans", sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  #feedClip, .bill { touch-action: none; }
+  .login input { -webkit-user-select: text; user-select: text; font-size: 24px; }
+  .login .wait { color: var(--dim); font-size: 14px; }
   #app { position: fixed; inset: 0; }
   .top { position: absolute; top: 0; left: 0; right: 0; padding: calc(env(safe-area-inset-top) + 14px) 18px 0; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--dim); }
   .top b { color: var(--gold); letter-spacing: .25em; font-weight: 700; }
@@ -69,10 +72,10 @@
   <div class="foot">紙幣 1 枚で 1 ゲーム。ゲーム中は入れられません。</div>
   <div class="login hidden" id="login"></div>
 </div>
-<script src="js/engine.js?v=b85"></script>
-<script src="cloud-config.js?v=b85"></script>
-<script src="js/cloud.js?v=b85"></script>
-<script src="js/bill-art.js?v=b85"></script>
-<script src="js/bill.js?v=b85"></script>
+<script src="js/engine.js?v=b86"></script>
+<script src="cloud-config.js?v=b86"></script>
+<script src="js/cloud.js?v=b86"></script>
+<script src="js/bill-art.js?v=b86"></script>
+<script src="js/bill.js?v=b86"></script>
 </body>
 </html>
