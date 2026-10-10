@@ -30,7 +30,8 @@
   /* ---------- 画面 ---------- */
   function drawBill() {
     const n = (saved && saved.seq) || 0;
-    $('bill').innerHTML = BillArt.svg(330, { serial: 'C ' + String(10000000 + n).slice(1) + ' A' });
+    $('bill').innerHTML = BillArt.svg(470, { serial: 'C ' + String(10000000 + n).slice(1) + ' A' });
+    layoutBill();
   }
   function setMsg(text, cls) { const m = $('msg'); m.textContent = text || ''; m.className = 'msg' + (cls ? ' ' + cls : ''); }
   function render() {
@@ -39,7 +40,7 @@
     const stale = !storeDoc || !storeDoc.lastSeen || Date.now() - storeDoc.lastSeen > 25 * 60 * 1000; // 生存報告は 10 分ごと
     if (!saved) return;
     if (!storeDoc) { st.className = 'store off'; $('storeText').textContent = saved.name + ' … 接続中'; }
-    else if (stale) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません（電源・通信を確認）'; }
+    else if (stale) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
     else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
     else { st.className = 'store'; $('storeText').textContent = saved.name + ' の端末につながっています'; }
     armed = !busy && !sending;
@@ -50,18 +51,29 @@
 
   /* ---------- スライド ---------- */
   const setY = (y) => { $('bill').style.setProperty('--y', y + 'px'); };
+  /* 紙幣の大きさと置き場所（b87）: 縦の長さは画面の 92%、待機中は上の 65% だけ見える。口の幅は紙幣の幅に合わせる */
+  const geo = { bh: 0, bw: 0, restTop: 0 };
+  function layoutBill() {
+    const clip = $('feedClip'), bill = $('bill'), svg = bill.querySelector('svg');
+    const H = window.innerHeight, clipH = clip.clientHeight;
+    const bh = Math.round(H * 0.92), bw = Math.round(bh / 2.35);
+    geo.bh = bh; geo.bw = bw; geo.restTop = Math.round(clipH - bh * 0.65);
+    bill.style.width = bw + 'px'; bill.style.height = bh + 'px'; bill.style.top = geo.restTop + 'px';
+    if (svg) { svg.setAttribute('width', bh); svg.setAttribute('height', bw); svg.style.width = bh + 'px'; svg.style.height = bw + 'px'; svg.style.left = (bw / 2 - bh / 2) + 'px'; svg.style.top = (bh / 2 - bw / 2) + 'px'; }
+    $('slit').style.width = (bw + 18) + 'px';
+  }
   function initSwipe() {
-    const bill = $('bill');
+    const bill = $('bill'), clip = $('feedClip');
     let y0 = 0, dy = 0, dragging = false, pid = null;
     const H = () => window.innerHeight;
-    bill.addEventListener('pointerdown', (e) => {
+    clip.addEventListener('pointerdown', (e) => { // 紙幣の周り（枠の中）どこを触ってもよい
       unlockAudio();
       if (!armed) { buzz(40); return; }
       dragging = true; pid = e.pointerId; y0 = e.clientY; dy = 0;
-      bill.classList.add('drag'); bill.classList.remove('back', 'fly');
-      try { bill.setPointerCapture(pid); } catch (x) { /* noop */ }
+      bill.classList.add('drag'); bill.classList.remove('back', 'enter', 'suck');
+      try { clip.setPointerCapture(pid); } catch (x) { /* noop */ }
     });
-    bill.addEventListener('pointermove', (e) => {
+    clip.addEventListener('pointermove', (e) => {
       if (!dragging || e.pointerId !== pid) return;
       dy = Math.min(0, e.clientY - y0); // 上方向だけ
       setY(dy);
@@ -75,8 +87,9 @@
       if (-dy > H() / 3) insert(dy);
       else { bill.classList.add('back'); setY(0); }
     };
-    bill.addEventListener('pointerup', end);
-    bill.addEventListener('pointercancel', end);
+    clip.addEventListener('pointerup', end);
+    clip.addEventListener('pointercancel', end);
+    window.addEventListener('resize', layoutBill);
   }
 
   /* ---------- 投入 ---------- */
@@ -86,7 +99,7 @@
     if (!armed || sending || Date.now() - lastSent < 3000) { bill.classList.add('back'); setY(0); return; }
     sending = true; lastSent = Date.now();
     render();
-    const target = -(clip.clientHeight / 2 + 165 + 12); // 紙幣（縦 330px）が口の中へ完全に入る位置
+    const target = -(geo.restTop + geo.bh + 16); // 紙幣が口の中へ完全に入る位置
     bill.classList.add('suck');
     $('slit').classList.add('hot');
     setY(target);
@@ -118,7 +131,7 @@
       drawBill();
       // 次の紙幣は下から出てくる（失敗したときは口から戻ってくる）
       bill.classList.remove('suck', 'back', 'enter');
-      bill.classList.add('drag'); setY(ok ? window.innerHeight : -(window.innerHeight / 2 + 165));
+      bill.classList.add('drag'); setY(ok ? geo.bh : -(geo.restTop + geo.bh)); // 次の紙幣は下から（失敗は口から戻る）
       void bill.offsetHeight;
       bill.classList.remove('drag'); bill.classList.add('enter'); setY(0);
       render();
@@ -173,7 +186,8 @@
   }
 
   async function init() {
-    $('bill').innerHTML = BillArt.svg(330);
+    $('bill').innerHTML = BillArt.svg(470);
+    layoutBill();
     initSwipe();
     $('btnLogout').onclick = async () => { if (unwatchStore) { unwatchStore(); unwatchStore = null; } saved = null; try { localStorage.removeItem(KEY); } catch (e) { /* noop */ } await login(); drawBill(); watchStore(); };
     $('btnReload').onclick = () => location.reload();
@@ -181,6 +195,7 @@
     if (!Cloud.enabled) { $('login').classList.remove('hidden'); $('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p>この公開先は店舗モードではないため、紙幣ページは使えません。</p>'; return; }
     document.getElementById('login').classList.remove('hidden'); document.getElementById('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p class="wait">クラウドに接続しています…</p>';
     try { await Promise.race([Cloud.ready(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))]); } catch (e) { /* ログイン画面で再試行できる */ }
+    document.getElementById('login').classList.add('hidden'); // 接続できたら（ログイン済みなら）画面を戻す
     saved = load();
     if (!saved || !saved.storeId) await login();
     drawBill();
