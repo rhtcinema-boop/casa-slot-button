@@ -272,6 +272,16 @@ const Reel = (function () {
     for (let i = 1; i < NR; i++) { const x = X0 + i * (COLW + GAP) - GAP / 2; ctx.fillRect(x - 1.5, 0, 3, H); }
     ctx.globalAlpha = 1;
   }
+  const lineGrads = {}; // b80: コマ境界線のグラデーション（ステージ×列ごとに 1 回だけ作る。毎フレーム作ると GC が増えてカクつく）
+  function lineGrad(ri, xc) {
+    const key = stage + ':' + ri;
+    if (!lineGrads[key]) {
+      const g = ctx.createLinearGradient(xc - COLW / 2, 0, xc + COLW / 2, 0), lc = LINE_RGB[stage];
+      g.addColorStop(0, 'rgba(' + lc + ',0)'); g.addColorStop(0.5, 'rgba(' + lc + ',1)'); g.addColorStop(1, 'rgba(' + lc + ',0)');
+      lineGrads[key] = g;
+    }
+    return lineGrads[key];
+  }
   function drawCol(ri, p, speed) {
     const rl = reels[ri], xc = X0 + ri * (COLW + GAP) + COLW / 2;
     const sp = Math.abs(speed);
@@ -298,10 +308,7 @@ const Reel = (function () {
       // セル境界の細いライン
       ctx.globalAlpha = 0.28 * (1 - aH);
       const ly = y + CH / 2;
-      const g = ctx.createLinearGradient(xc - COLW / 2, 0, xc + COLW / 2, 0);
-      const lc = LINE_RGB[stage];
-      g.addColorStop(0, 'rgba(' + lc + ',0)'); g.addColorStop(0.5, 'rgba(' + lc + ',1)'); g.addColorStop(1, 'rgba(' + lc + ',0)');
-      ctx.fillStyle = g;
+      ctx.fillStyle = lineGrad(ri, xc);
       ctx.fillRect(xc - COLW / 2 + 10, ly - 1, COLW - 20, 2);
     }
     ctx.restore();
