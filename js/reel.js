@@ -625,11 +625,18 @@ const Reel = (function () {
   }
   /* 真ん中の列の中央に何も描かれていないか（b78）。Fire TV でホームに戻ってから復帰すると、リールのキャンバスだけでなく
      絵柄の元画像（別キャンバス）まで中身が消えることがあり、描き直しても何も出なかった。その判定用（4px 幅の帯を読むだけ） */
-  function isBlank() {
-    if (!ctx) return false;
+  /* b79: 画面のキャンバスを読むのはやめた（GPU からの読み戻しが重く、見せ回しの空白コマで誤検知もした）。
+     代わりに、絵柄の元画像（BAR = 銀の 0）を 8×8 の小さなキャンバスに縮小して描き、何も写らなければ元画像が消えたと判断する */
+  let probe = null;
+  function lost() {
+    const im = imgs.BAR && imgs.BAR.sharp;
+    if (!im) return false;
     try {
-      const xc = (X0 + (COLW + GAP) + COLW / 2) * S, y0 = (H / 2 - CH / 2 + 10) * S, hh = (CH - 20) * S;
-      const d = ctx.getImageData(Math.round(xc - 2), Math.round(y0), 4, Math.round(hh)).data;
+      if (!probe) { probe = document.createElement('canvas'); probe.width = 8; probe.height = 8; }
+      const px = probe.getContext('2d', { willReadFrequently: true });
+      px.clearRect(0, 0, 8, 8);
+      px.drawImage(im, 0, 0, 8, 8);
+      const d = px.getImageData(0, 0, 8, 8).data;
       for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return false;
       return true;
     } catch (e) { return false; }
@@ -642,6 +649,7 @@ const Reel = (function () {
       ctx = cv.getContext('2d');
       ctx.setTransform(S, 0, 0, S, 0, 0);
       faceCv = null;
+      Object.keys(imgs).forEach((k) => { if (k !== 'LOGO') delete imgs[k]; }); // FREE2/FREE3 も含めて全部作り直す（LOGO は画像の読み込み後に置き換わる）
       build(); buildLogo();
       if (!live) drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
     } catch (e) { /* 次の機会に */ }
@@ -659,9 +667,10 @@ const Reel = (function () {
 
   /* 当選金額などの大きな文字を、リールと同じ金属の質感で1枚の画像として描く（DOMの文字＋影より軽い） */
   function drawText(canvas, text, value) {
-    canvas.width = SW * S; canvas.height = CH * S; // 幅の再設定で全消去される
     const x = canvas.getContext('2d');
-    x.scale(S, S);
+    if (canvas.width === SW * S && canvas.height === CH * S) { x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, canvas.width, canvas.height); } // b79: 大きさが同じなら消すだけ（毎回作り直すとメモリを食う）
+    else { canvas.width = SW * S; canvas.height = CH * S; }
+    x.setTransform(S, 0, 0, S, 0, 0);
     const pal = value === 0 ? PAL.silver : palOf(value, true);
     metalText(x, text, SW / 2, CH / 2, 190, NUM_FONT, pal, 640, true);
   }
@@ -682,5 +691,5 @@ const Reel = (function () {
     if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
   }
 
-  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, redraw, restore, isBlank, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, redraw, restore, lost, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
