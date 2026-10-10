@@ -281,6 +281,7 @@ const Admin = (function () {
     const now = Date.now(), counts = Engine.hitCounts(s.hits, now, s.limits && s.limits.resetHour);
     return '<div class="panel"><h4>店舗</h4><div class="summary">' + stat('店舗名', esc(info.store ? info.store.name : '—')) + stat('使用中のプリセット', esc(info.appliedName || (info.presets.find((p) => p.id === info.activeId) || {}).name || '（未設定）')) + '</div>' +
       (Game.netState && !Game.netState() ? '<ul class="errors"><li>いまネットにつながっていません。つながるまで、当たりは出ません（すべてハズレになります）。</li></ul>' : '') +
+      (Game.cloudErrors && Game.cloudErrors() > 0 ? '<ul class="errors"><li>クラウドへの送信に失敗した記録が ' + Game.cloudErrors() + ' 件あります。マスターの集計や配当履歴に反映されていない可能性があります。</li></ul>' : '') +
       (info.warn ? '<ul class="errors"><li>マスターで選ばれているプリセット「' + esc(info.warn.name) + '」は設定に誤りがあるため使えません：' + esc(info.warn.errors.join(' ')) + '</li><li>いまは前の設定「' + esc(info.appliedName || '—') + '」のまま動いています。マスターでプリセットを直して保存すると、自動で切り替わります。</li></ul>' : '') +
       '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="store-logout">この店舗からログアウト</button></div></div>' +
       '<div class="panel"><h4>プリセットを選ぶ</h4><p class="hint">マスターから配られたプリセットの中から選びます。選ぶと次のプレイから反映されます。</p>' +
@@ -751,7 +752,7 @@ const Admin = (function () {
         case 'stats-reset': {
           const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・最高額配当・この端末の当たりの記録を 0 に戻します。全履歴と、全店舗の「配当履歴」は消えません。</p>', ok: 'リセットする' });
           if (!ok) return;
-          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; });
+          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; });
           UI.toast('集計をリセットしました。', 'ok');
           return render();
         }
