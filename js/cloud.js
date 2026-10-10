@@ -178,6 +178,42 @@ const Cloud = (function () {
     return () => { dead = true; if (un) un(); };
   }
 
+  /* ---------- スマホの紙幣（b83） ----------
+     stores/{storeId}/inserts/{id} { ts, phone, seq, state, ackAt, reason }
+       … スマホが紙幣をスライドすると 1 件作る（state: 'new'）。端末が受け取ったら state を 'ok'（回す）か 'busy'（ゲーム中で受け付けない）にする */
+  async function pushInsert(storeId, data) {
+    await ready();
+    const doc = { ts: data.ts || now(), phone: String(data.phone || '').slice(0, 40), seq: Number(data.seq) || 0, state: 'new' };
+    if (isLocal) { const d = lread(); const id = lid(); (d.inserts = d.inserts || {}); (d.inserts[storeId] = d.inserts[storeId] || []).push(Object.assign({ id }, doc)); if (d.inserts[storeId].length > 50) d.inserts[storeId].splice(0, d.inserts[storeId].length - 50); lwrite(d); return id; }
+    const r = await db.collection('stores').doc(storeId).collection('inserts').add(doc);
+    return r.id;
+  }
+  /* 端末側: 新しい投入を見張る。cb(list)… ts が since より新しいもの、新しい順（最大 5 件） */
+  function watchInserts(storeId, since, cb) {
+    let un = null, dead = false;
+    ready().then(() => {
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => ((lread().inserts || {})[storeId] || []).filter((x) => x.ts > since).slice(-5).reverse(), cb); return; }
+      un = watchDoc(db.collection('stores').doc(storeId).collection('inserts').where('ts', '>', since).orderBy('ts', 'desc').limit(5), (q) => cb(q.docs.map((x) => Object.assign({ id: x.id }, x.data()))));
+    }).catch(() => { /* 接続できない: 見張りなし */ });
+    return () => { dead = true; if (un) un(); };
+  }
+  async function ackInsert(storeId, id, fields) {
+    await ready();
+    if (isLocal) { const d = lread(); const list = (d.inserts || {})[storeId] || []; const x = list.find((y) => y.id === id); if (x) Object.assign(x, fields); lwrite(d); return; }
+    await db.collection('stores').doc(storeId).collection('inserts').doc(id).update(fields);
+  }
+  /* スマホ側: 自分の投入がどうなったかを見張る。cb(doc|null) */
+  function watchInsert(storeId, id, cb) {
+    let un = null, dead = false;
+    ready().then(() => {
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => (((lread().inserts || {})[storeId] || []).find((x) => x.id === id) || null), cb); return; }
+      un = watchDoc(db.collection('stores').doc(storeId).collection('inserts').doc(id), (d) => cb(d.exists ? Object.assign({ id }, d.data()) : null));
+    }).catch(() => cb(null));
+    return () => { dead = true; if (un) un(); };
+  }
+
   /* ---------- マスター用 ---------- */
   async function masterLogin(email, password) {
     await ready();
@@ -241,7 +277,7 @@ const Cloud = (function () {
     return q.docs.map((x) => x.data());
   }
 
-  return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed,
+  return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed, pushInsert, watchInserts, ackInsert, watchInsert,
     masterLogin, masterUser, masterLogout, saveStore, deleteStore, savePreset, deletePreset, listDays, listPlays, listDaysRange, listPlaysRange, dayKey };
 })();
 window.Cloud = Cloud;
