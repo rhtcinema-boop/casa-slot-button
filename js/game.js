@@ -231,8 +231,8 @@ const Game = (function () {
      隠しボタン（data-act="next"）は残し、CREDIT の自動回転・読み直し後の自動再開・長押し開始・紙幣の受け取りが押す（画面には出ない） */
   function sandBar(v) {
     const has = typeof v === 'number';
-    return (has ? lastBox(v) : '') +
-      '<div class="sand" id="sand"><span class="led l"></span><span class="led r"></span><span class="emb l"></span><span class="emb r"></span><span class="arrow l">▶</span><span class="arrow r">◀</span><div class="lbl">INSERT BILL · 1 GAME</div><div class="slit"></div></div>' +
+    const lv = has ? '<b class="' + (v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + fmtN(v) + '</b>' : '<b class="none">—</b>';
+    return '<div class="sand" id="sand"><span class="led l"></span><span class="led r"></span><div class="last"><small>LAST</small>' + lv + '</div><span class="emb r"></span><span class="arrow l">▶</span><span class="arrow r">◀</span><div class="lbl">INSERT BILL · 1 GAME</div><div class="slit"></div></div>' +
       '<div class="billwrap" id="billwrap"></div><button class="btn hidden-next" data-act="next" tabindex="-1" aria-hidden="true">NEXT GAME</button>';
   }
   const billMode = () => !!(cloudStore && cloudStore.billMode); // マスターの店舗の設定「スマホの紙幣で始める」が ON のときだけサンドを出す（OFF なら今までどおり NEXT GAME ボタン）
@@ -241,8 +241,24 @@ const Game = (function () {
     plate.classList.add('hidden');
     const lv = Store.state.lastValue; // 直前のゲームの結果（自動で待機画面に戻ったあとも LAST に残す）
     lockbar.innerHTML = billMode() ? sandBar(lv) : nextBar(lv, true);
+    lockbar.classList.toggle('sandbar', billMode()); // サンドのときは箱の飾りを消し、幅をリールの箱に合わせる
     lockbar.classList.add('show');
     resultSince = 0;
+    fitSide();
+  }
+  /* b84（オーナー指示）: 紙幣モードのときは、右の配当履歴と左の説明をサンドの下端まで伸ばす。ボタンのときは CSS の高さのまま */
+  function fitSide() {
+    const rec = $('recent'), sand = $('sand');
+    if (!rec) return;
+    if (!sand || !billMode()) { rec.style.height = ''; showNotes(); return; }
+    const st = stageEl.getBoundingClientRect(), k = st.width ? 1600 / st.width : 1;
+    const sb = (sand.getBoundingClientRect().bottom - st.top) * k, rt = (rec.getBoundingClientRect().top - st.top) * k;
+    if (sb > rt + 100) {
+      rec.style.height = Math.round(sb - rt) + 'px';
+      const over = (rec.getBoundingClientRect().bottom - st.top) * k - sb; // 影や枠のぶん下にはみ出たら引く
+      if (Math.abs(over) > 1) rec.style.height = Math.round(sb - rt - over) + 'px';
+    }
+    showNotes();
   }
   /* 結果を出したまま 10 秒たったら、最初の待機画面（STAGE 1・READY TO SPIN）へ自動で戻す。
      設定やダイアログを開いている間は数えない（閉じてから 10 秒）。 */
@@ -329,6 +345,7 @@ const Game = (function () {
     if (now - reelAt < 3000) return;
     reelAt = now;
     if (!document.hidden) reelHeal();
+    if (billMode() && $('sand')) fitSide(); // 画面の大きさが変わったあとも、配当履歴と説明をサンドの下端に合わせ直す（3 秒ごと）
   }
   /* 描き直しても何も出ないとき（Fire TV でホームに戻って復帰したあと等。b78）は、絵柄の元画像ごと作り直す。作り直しは 30 秒に 1 回まで */
   let reelFixAt = 0;
@@ -383,7 +400,7 @@ const Game = (function () {
       const sand = $('sand'), wrap = $('billwrap');
       if (!sand || !wrap || !window.BillArt) return;
       Sfx.unlock(); Sfx.play('bill');
-      wrap.innerHTML = BillArt.svg(300, { serial: 'C ' + String(Date.now() % 10000000).padStart(7, '0') + ' A' });
+      wrap.innerHTML = '<div class="billrot">' + BillArt.svg(300, { serial: 'C ' + String(Date.now() % 10000000).padStart(7, '0') + ' A' }) + '</div>'; // 縦向き（b84）
       sand.classList.add('feeding');
       wrap.classList.add('in');
       await wait(1150);
@@ -495,8 +512,9 @@ const Game = (function () {
       el.dataset.sig = sig;
       el.innerHTML = list.map((t) => '<div class="note"><p>' + escH(t) + '</p></div>').join('');
     }
-    // 高さはステージの列と同じ。文字は、枠に収まる一番大きい大きさにする
-    el.style.height = $('ladder').offsetHeight + 'px';
+    // 高さは右の配当履歴の箱と同じ（b84、オーナー指示。それまではステージの列と同じだった）。文字は、枠に収まる一番大きい大きさにする
+    const rec = $('recent');
+    el.style.height = ((rec && rec.offsetHeight) || $('ladder').offsetHeight) + 'px';
     el.querySelectorAll('.note').forEach((box) => {
       const p = box.querySelector('p');
       const maxW = box.clientWidth - 28, maxH = box.clientHeight - 28, text = p.textContent;
@@ -695,7 +713,9 @@ const Game = (function () {
   function renderLockbar() {
     const p = Store.state.play;
     lockbar.innerHTML = billMode() ? sandBar(p.value) : nextBar(p.value, false);
+    lockbar.classList.toggle('sandbar', billMode());
     resultSince = Date.now(); // ここから 10 秒で待機画面へ戻す
+    fitSide();
   }
   /* 結果表示中のプレイを片付けて STAGE 1 に戻す（CREDIT の FREE SPIN も、毎回 STAGE 1 から回す） */
   async function clearShown() {
@@ -2033,6 +2053,7 @@ const Game = (function () {
     window.addEventListener('pageshow', () => { reelHeal(); setTimeout(reelHeal, 600); });
     window.addEventListener('focus', () => reelHeal());
     window.addEventListener('resize', () => setTimeout(() => reelHeal(), 100));
+    window.addEventListener('resize', () => setTimeout(fitSide, 150));
     netCheck(); setInterval(netCheck, 30 * 1000); // オフラインの見張り（b74）
     window.addEventListener('offline', () => { netOk = false; });
     window.addEventListener('online', () => { netFail = 0; netCheck(); });
