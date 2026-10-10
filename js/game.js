@@ -227,11 +227,20 @@ const Game = (function () {
   /* ---------- 状態 → 画面 ---------- */
   /* 待機中: 下の大きな NEXT GAME ボタンだけを出す */
   const lastBox = (v) => '<div class="res"><small>LAST</small><b class="' + (v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + fmtN(v) + '</b></div>';
+  /* b83: NEXT GAME ボタンは無くし、サンド（紙幣投入口）を出す。スマホの紙幣が入ると回る。
+     隠しボタン（data-act="next"）は残し、CREDIT の自動回転・読み直し後の自動再開・長押し開始・紙幣の受け取りが押す（画面には出ない） */
+  function sandBar(v) {
+    const has = typeof v === 'number';
+    return (has ? lastBox(v) : '') +
+      '<div class="sand" id="sand"><span class="led l"></span><span class="led r"></span><span class="emb l"></span><span class="emb r"></span><span class="arrow l">▶</span><span class="arrow r">◀</span><div class="lbl">INSERT BILL · 1 GAME</div><div class="slit"></div></div>' +
+      '<div class="billwrap" id="billwrap"></div><button class="btn hidden-next" data-act="next" tabindex="-1" aria-hidden="true">NEXT GAME</button>';
+  }
+  const billMode = () => !!(cloudStore && cloudStore.billMode); // マスターの店舗の設定「スマホの紙幣で始める」が ON のときだけサンドを出す（OFF なら今までどおり NEXT GAME ボタン）
+  const nextBar = (v, solo) => (typeof v === 'number' ? lastBox(v) : '') + '<div class="side' + (solo && typeof v !== 'number' ? ' solo' : '') + '"><button class="btn" data-act="next">NEXT GAME</button></div>';
   function idleBar() {
     plate.classList.add('hidden');
     const lv = Store.state.lastValue; // 直前のゲームの結果（自動で待機画面に戻ったあとも LAST に残す）
-    const has = typeof lv === 'number';
-    lockbar.innerHTML = (has ? lastBox(lv) : '') + '<div class="side' + (has ? '' : ' solo') + '"><button class="btn" data-act="next">NEXT GAME</button></div>';
+    lockbar.innerHTML = billMode() ? sandBar(lv) : nextBar(lv, true);
     lockbar.classList.add('show');
     resultSince = 0;
   }
@@ -331,6 +340,76 @@ const Game = (function () {
     reelFixAt = now;
     Reel.restore();
     try { Store.transact(() => Store.log('REEL_RESTORE', {})); } catch (e) { /* ログのみ */ }
+  }
+  /* ---------- スマホの紙幣（b83） ----------
+     スタッフのスマホ（bill.html）が紙幣をスライドすると、クラウドの stores/{id}/inserts に 1 件届く。
+     待機中（結果の表示中も可）なら受け取って「お札がサンドに吸い込まれる」演出のあと、隠しボタンを押して回す。
+     回転中・CREDIT の消化中・設定中・アップデート待ちなら受け付けず、state を 'busy' にして返す（スマホに「ゲーム中」と出る）。
+     同じ投入を 2 回処理しないよう id を覚え、起動より 30 秒以上前の投入は捨てる（読み直したあとに勝手に回らないように）。 */
+  const INSERT_WINDOW_MS = 30000;
+  const insertSeen = {};
+  let insertBusy = false, unwatchIns = null, lastPhase = '';
+  const canStart = () => { const s = Store.state, p = s && s.play; return !busy && !pressing && !insertBusy && !updPending && !!s && (!p || p.phase === 'shown') && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && lockbar.classList.contains('show') && !!lockbar.querySelector('[data-act="next"]'); };
+  const INSERT_GRACE_MS = 3000; // 待機に戻る途中（結果の片付け中など）に届いた投入は、少し待ってから判定する
+  let insertQueue = Promise.resolve();
+  function onInserts(list) {
+    (list || []).slice().reverse().forEach((d) => { // 古い順に処理
+      if (!d || insertSeen[d.id] || d.state !== 'new') return;
+      insertSeen[d.id] = true;
+      if (Date.now() - d.ts > INSERT_WINDOW_MS) return; // 古い投入（読み直しの前のもの等）は無視
+      insertQueue = insertQueue.then(() => handleInsert(d)).catch(() => {});
+    });
+  }
+  async function handleInsert(d) {
+    const me = Store.state.store;
+    if (!me) return;
+    const t0 = Date.now();
+    while (!canStart() && Date.now() - t0 < INSERT_GRACE_MS && !(Store.state.play && Store.state.play.phase === 'drawn' && busy)) await wait(150); // 回転中は待たずに断る。片付け中などの一瞬だけ待つ
+    if (!canStart()) {
+      try { Store.transact(() => Store.log('INSERT_BUSY', { id: d.id, phone: d.phone })); } catch (e) { /* ログのみ */ }
+      Cloud.ackInsert(me.id, d.id, { state: 'busy', ackAt: Date.now(), reason: busy || (Store.state.play && Store.state.play.phase !== 'shown') ? 'playing' : creditsLeft() > 0 ? 'credit' : 'other' }).catch(() => {});
+      return;
+    }
+    Cloud.ackInsert(me.id, d.id, { state: 'ok', ackAt: Date.now() }).catch(() => {});
+    try { Store.transact(() => Store.log('INSERT', { id: d.id, phone: d.phone })); } catch (e) { /* ログのみ */ }
+    await insertFx();
+    const b = lockbar.querySelector('[data-act="next"]'); if (b && !busy && !pressing) b.click();
+    await wait(300);
+  }
+  /* お札がサンドに吸い込まれる演出（約 1.3 秒）。軽量モードでも同じ（画像 1 枚の移動と光だけ） */
+  async function insertFx() {
+    insertBusy = true;
+    try {
+      const sand = $('sand'), wrap = $('billwrap');
+      if (!sand || !wrap || !window.BillArt) return;
+      Sfx.unlock(); Sfx.play('bill');
+      wrap.innerHTML = BillArt.svg(300, { serial: 'C ' + String(Date.now() % 10000000).padStart(7, '0') + ' A' });
+      sand.classList.add('feeding');
+      wrap.classList.add('in');
+      await wait(1150);
+      sand.classList.remove('feeding'); sand.classList.add('accept');
+      await wait(250);
+      wrap.classList.remove('in'); wrap.innerHTML = '';
+      sand.classList.remove('accept');
+    } catch (e) { /* 演出だけ */ }
+    insertBusy = false;
+  }
+  /* スマホが使えないときの逃げ道: テレビはリモコンの決定を長押し（tv.js）、iPad は casa ロゴを長押し。お札の演出なしで回す */
+  function longStart() {
+    if (!canStart()) return false;
+    try { Store.transact(() => Store.log('LONG_START', {})); } catch (e) { /* ログのみ */ }
+    Sfx.unlock(); Sfx.play('ok');
+    const b = lockbar.querySelector('[data-act="next"]'); if (b) b.click();
+    return true;
+  }
+  /* 端末の状態（待機中か、ゲーム中か）をクラウドに書く。スマホの紙幣ページが「ゲーム中」の表示に使う。変わったときだけ書く */
+  let phaseFailAt = 0;
+  function phaseWatch() {
+    if (!storeMode() || !Store.state.store || !billMode()) return;
+    const ph = canStart() ? 'idle' : 'busy';
+    if (ph === lastPhase || Date.now() - phaseFailAt < 60000) return;
+    lastPhase = ph;
+    Cloud.updateStoreFields(Store.state.store.id, { phase: ph, phaseAt: Date.now() }).catch(() => { lastPhase = ''; phaseFailAt = Date.now(); }); // 書けないとき（決まりが古い等）は 60 秒あけてやり直す
   }
   /* 毎日の軽量化（b78）: 開きっぱなしにすると少しずつ重くなるので、1 日 1 回、営業日の区切り（limits.resetHour、既定 19 時）の 12 時間後
      （既定は朝 7 時）以降の最初の待機中に、古い履歴（MAINT_KEEP_DAYS 日より前）を消してから読み直す。回転中・結果の表示中・設定中・
@@ -615,7 +694,7 @@ const Game = (function () {
   }
   function renderLockbar() {
     const p = Store.state.play;
-    lockbar.innerHTML = lastBox(p.value) + '<div class="side"><button class="btn" data-act="next">NEXT GAME</button></div>';
+    lockbar.innerHTML = billMode() ? sandBar(p.value) : nextBar(p.value, false);
     resultSince = Date.now(); // ここから 10 秒で待機画面へ戻す
   }
   /* 結果表示中のプレイを片付けて STAGE 1 に戻す（CREDIT の FREE SPIN も、毎回 STAGE 1 から回す） */
@@ -1833,6 +1912,8 @@ const Game = (function () {
     const beat = () => Cloud.updateStoreFields(me.id, { lastSeen: Date.now(), deviceVersion: APP_V }).catch(() => {}); // 版は起動直後に控えた APP_V（起動画面の #ver はあとで消えるので、ここで読むと空になる＝b69 までマスターの一覧に版が出なかった）
     beat(); setInterval(beat, 10 * 60 * 1000);
     startFeed();
+    if (unwatchIns) unwatchIns();
+    unwatchIns = Cloud.watchInserts(me.id, Date.now() - INSERT_WINDOW_MS, onInserts); // b83: スマホの紙幣
     let storeSig = '';
     unwatch = Cloud.watchStore(me.id, (doc) => {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
@@ -1864,8 +1945,13 @@ const Game = (function () {
       });
       if (doc.activePresetId && cloudPresets[doc.activePresetId]) applyPreset(cloudPresets[doc.activePresetId]);
       // b81: 自分の 10 分ごとの生存報告（lastSeen）だけが変わった通知では設定画面を描き直さない（開いている最中に伏せ字が戻る・音量の操作が途切れるため）
-      const sig = JSON.stringify(Object.assign({}, doc, { lastSeen: 0, deviceVersion: '' }));
-      if (sig !== storeSig) { storeSig = sig; if (Admin.isOpen()) Admin.rerender(); }
+      const sig = JSON.stringify(Object.assign({}, doc, { lastSeen: 0, deviceVersion: '', phase: '', phaseAt: 0 }));
+      if (sig !== storeSig) {
+        storeSig = sig;
+        if (Admin.isOpen()) Admin.rerender();
+        // b83: 「スマホの紙幣で始める」の ON/OFF が変わったら、待機中・結果表示中ならその場でサンド／ボタンを描き直す
+        if (!busy && !insertBusy && lockbar.classList.contains('show') && (!!lockbar.querySelector('.sand')) !== billMode()) { if (Store.state.play) renderLockbar(); else idleBar(); }
+      }
     });
   }
   /* 設定画面から: 店舗がプリセット名を選ぶ */
@@ -1901,6 +1987,13 @@ const Game = (function () {
       openSettings();
     };
     $('crest').addEventListener('pointerdown', tap);
+    { // b83: iPad ではロゴを 2 秒長押しすると、スマホ無しでもゲームを始める（テレビはリモコンの決定の長押し）
+      let hold = 0;
+      const start = () => { clearTimeout(hold); hold = setTimeout(() => { longStart(); }, 2000); };
+      const stop = () => clearTimeout(hold);
+      $('crest').addEventListener('pointerdown', start);
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => $('crest').addEventListener(ev, stop));
+    }
     document.querySelector('.marquee .brand').addEventListener('pointerdown', tap);
   }
 
@@ -1934,7 +2027,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); }, 500);
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
     window.addEventListener('pageshow', () => { reelHeal(); setTimeout(reelHeal, 600); });
@@ -2011,6 +2104,6 @@ const Game = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo, netState, reelHeal, cloudErrors };
+  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo, netState, reelHeal, cloudErrors, longStart };
 })();
 window.Game = Game;
