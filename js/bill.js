@@ -43,12 +43,13 @@
     else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
     else { st.className = 'store'; $('storeText').textContent = saved.name + ' の端末につながっています'; }
     armed = !busy && !sending;
-    bill.classList.toggle('gray', !armed);
+    bill.classList.toggle('gray', busy); // 送信中は色のまま（吸い込まれていく途中で灰色にしない）
     hint.classList.toggle('busy', !armed);
     hint.innerHTML = armed ? '<span class="arr">▲</span>上にスライドで投入（1 GAME）' : busy ? '<span class="arr">▲</span>ゲームが終わるまでお待ちください' : '<span class="arr">▲</span>送信中…';
   }
 
   /* ---------- スライド ---------- */
+  const setY = (y) => { $('bill').style.setProperty('--y', y + 'px'); };
   function initSwipe() {
     const bill = $('bill');
     let y0 = 0, dy = 0, dragging = false, pid = null;
@@ -63,7 +64,7 @@
     bill.addEventListener('pointermove', (e) => {
       if (!dragging || e.pointerId !== pid) return;
       dy = Math.min(0, e.clientY - y0); // 上方向だけ
-      bill.style.transform = 'translateY(' + dy + 'px) rotate(-90deg)';
+      setY(dy);
       $('slit').classList.toggle('hot', -dy > H() / 3);
     });
     const end = (e) => {
@@ -71,22 +72,28 @@
       dragging = false;
       bill.classList.remove('drag');
       $('slit').classList.remove('hot');
-      if (-dy > H() / 3) insert();
-      else { bill.classList.add('back'); bill.style.transform = ''; }
+      if (-dy > H() / 3) insert(dy);
+      else { bill.classList.add('back'); setY(0); }
     };
     bill.addEventListener('pointerup', end);
     bill.addEventListener('pointercancel', end);
   }
 
   /* ---------- 投入 ---------- */
+  /* 吸い込み: 紙幣の上端が口に届いたところから、口の中へ引き込まれていく（口より上は #feedClip で隠れる）。約 1 秒 */
   async function insert() {
-    const bill = $('bill');
-    if (!armed || sending || Date.now() - lastSent < 3000) { bill.classList.add('back'); bill.style.transform = ''; return; }
+    const bill = $('bill'), clip = $('feedClip');
+    if (!armed || sending || Date.now() - lastSent < 3000) { bill.classList.add('back'); setY(0); return; }
     sending = true; lastSent = Date.now();
     render();
-    bill.classList.add('fly'); bill.style.transform = 'translateY(-' + (window.innerHeight * 0.6) + 'px) rotate(-90deg) scale(.6)';
-    buzz([30, 40, 30]);
-    setMsg('送信中…');
+    const target = -(clip.clientHeight / 2 + 165 + 12); // 紙幣（縦 330px）が口の中へ完全に入る位置
+    bill.classList.add('suck');
+    $('slit').classList.add('hot');
+    setY(target);
+    buzz([20, 30, 20, 30, 60]);
+    setMsg('投入中…');
+    await new Promise((r) => setTimeout(r, 950));
+    $('slit').classList.remove('hot');
     saved.seq = (saved.seq || 0) + 1; save();
     let id = null;
     try { id = await Cloud.pushInsert(saved.storeId, { ts: Date.now(), phone: saved.phone, seq: saved.seq }); }
@@ -109,10 +116,14 @@
     setTimeout(() => {
       sending = false;
       drawBill();
-      bill.classList.remove('fly'); bill.classList.add('back'); bill.style.transform = '';
+      // 次の紙幣は下から出てくる（失敗したときは口から戻ってくる）
+      bill.classList.remove('suck', 'back', 'enter');
+      bill.classList.add('drag'); setY(ok ? window.innerHeight : -(window.innerHeight / 2 + 165));
+      void bill.offsetHeight;
+      bill.classList.remove('drag'); bill.classList.add('enter'); setY(0);
       render();
       setTimeout(() => setMsg(''), 3000);
-    }, ok ? 1200 : 400);
+    }, ok ? 900 : 300);
   }
 
   /* ---------- 店舗へのログイン ---------- */
