@@ -1061,7 +1061,7 @@ input[type=range].vol { width: 380px; height: 44px; accent-color: #e9c25e; touch
 /* 演出中・診断時は背景の常時アニメを非表示（描画自体が止まる） */
 #stage.fxmode .rays, #stage.fxmode .beams, #stage.fxmode .rim, #stage.fxmode .led, #stage.fxmode .sheen, #stage.fxmode .tline,
 #stage.no-bg .rays, #stage.no-bg .beams, #stage.no-bg .rim, #stage.no-bg .led, #stage.no-bg .sheen { visibility: hidden; }
-#stage.no-bg .bulbs i, #stage.no-bg .gem, #stage.no-bg .pointer, #stage.no-bg .rail i, #stage.no-bg .lever-arrows i { animation: none !important; }
+#stage.no-bg .gem, #stage.no-bg .pointer, #stage.no-bg .rail i, #stage.no-bg .lever-arrows i { animation: none !important; } /* b78: 電球（.bulbs i）は no-bg でも動かす */
 /* フィルタの削除（ぼかし影・色調整） */
 .frame, #crest::before { filter: none; }
 .pointer { filter: none; }
@@ -1329,11 +1329,11 @@ body.is-tv .help-btn { opacity: .5; }
 body.tv #crest.tvfocus { border-radius: 22px; }
 
 /* ---------- テレビ版の軽量化: 常時動く飾りを止める（一回きりの演出は残す） ---------- */
-body.lite .bulbs i, body.lite .led, body.is-tv .pointer, body.is-tv .rung.on, body.is-tv .vignette, body.is-tv .sheen::before, body.is-tv .rim,
+body.is-tv .pointer, body.is-tv .rung.on, body.is-tv .vignette, body.is-tv .sheen::before, body.is-tv .rim,
 body.lite .lockbar .side .btn, body.lite .rail i, body.lite .plate.idle .plate-main, body.lite .rays, body.lite .rays2, body.lite .beam, body.lite .spot, body.lite .tline { animation: none !important; }
 body.lite .rays, body.lite .rays2, body.lite .beams, body.lite .sheen, body.lite .rim, body.lite .lattice, body.lite .speedlines, body.lite .spot, body.lite .shutter-rays, body.lite .seam { display: none !important; }
 body.lite .frame, body.lite .rung, body.lite .recent, body.lite .credit-box, body.lite .lockbar .res, body.lite .paytable .ps { filter: none !important; }
-body.lite .bulbs { opacity: .35; }
+/* b78: 筐体の電球（.bulbs）・左右の電飾の帯（.led）・上下の電球（.edge）は、テレビ版・軽量モードでも動かす（オーナー指示） */
 /* 軽量モード: ぼかし付きの影を全廃（枠線だけ残す） */
 body.lite .credit-box, body.lite .recent, body.lite .lockbar .res, body.lite .paytable .ps, body.lite .rung { box-shadow: inset 0 0 0 2px var(--accent-dim), inset 0 0 0 5px #000 !important; }
 body.lite .rung.on { box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 0 5px #000 !important; }
@@ -1532,7 +1532,6 @@ body.tv:not(.lite) .lockbar .side .btn.tvfocus.pressed { box-shadow: inset 0 3px
    大きな演出の最中（fxmode）だけは今までどおり隠す。 */
 #stage.no-bg .led { visibility: visible; }
 #stage.no-bg.fxmode .led { visibility: hidden; }
-#stage.no-bg .led::before, body.lite .led::before { animation: none; }
 body.lite .led { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--accent-dim); }
 
 /* テスト用プリセットで動いているときの表示（結果は記録されない） */
@@ -1576,9 +1575,8 @@ body.lite .info10 { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -
 .edge.b i { animation-direction: reverse; }
 @keyframes edgebulb { 0%, 50%, 100% { opacity: .22; } 18% { opacity: 1; } }
 #stage.sure .edge i { animation-duration: .3s; }
-/* テレビ版・軽量モード: 動きは止めて、1つおきに明るさを変えて光らせたままにする */
-#stage.no-bg .edge i, body.lite .edge i { animation: none; opacity: 1; box-shadow: 0 0 6px 2px rgba(var(--acc), .7); }
-#stage.no-bg .edge i:nth-child(even), body.lite .edge i:nth-child(even) { opacity: .5; }
+/* テレビ版・軽量モード（b78）: 上下の電球も動かす。透明度だけを変えるので、合成層にして軽くする */
+#stage.no-bg .edge i, body.lite .edge i { will-change: opacity; box-shadow: 0 0 6px 2px rgba(var(--acc), .7); }
 
 /* ---------- 期待の段階化（b56）: #stage.tense ＋ data-tense="1|2|3" ----------
    3本目が回っている間、段階が上がるごとに「リール窓の枠の光（.tglow）」「上下の電球の帯」「左右の光の帯」が速く・明るくなる。
@@ -1605,7 +1603,6 @@ body.lite .info10 { box-shadow: inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -
 #stage[data-tense="3"] .pointer { animation: ptr .3s ease-in-out infinite; }
 #stage.sure .tglow, #stage.sure .edge::after { animation: none; opacity: 0; }
 body.lite .tglow { box-shadow: 0 0 14px 2px rgba(var(--acc), .7); }
-#stage.no-bg .edge i, body.lite .edge i { animation: none !important; }
 
 /* ---------- ステージが上がる演出をゆっくりに（b56）: 扉が閉まる・開く、チップが飛んでくる・飛び去る ----------
    速すぎると端末が追いつかず、演出が見えないまま終わってしまうため。待ち時間は game.js（transVault / stampStage）と合わせてある */
