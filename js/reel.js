@@ -623,6 +623,29 @@ const Reel = (function () {
     if (!ctx || live) return; // live: 回転中（見せ回しも含む）。raf の番号は回転が終わっても残るので、それでは判定しない
     try { drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); } catch (e) { /* 描けないときは次の機会に */ }
   }
+  /* 真ん中の列の中央に何も描かれていないか（b78）。Fire TV でホームに戻ってから復帰すると、リールのキャンバスだけでなく
+     絵柄の元画像（別キャンバス）まで中身が消えることがあり、描き直しても何も出なかった。その判定用（4px 幅の帯を読むだけ） */
+  function isBlank() {
+    if (!ctx) return false;
+    try {
+      const xc = (X0 + (COLW + GAP) + COLW / 2) * S, y0 = (H / 2 - CH / 2 + 10) * S, hh = (CH - 20) * S;
+      const d = ctx.getImageData(Math.round(xc - 2), Math.round(y0), 4, Math.round(hh)).data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return false;
+      return true;
+    } catch (e) { return false; }
+  }
+  /* キャンバスと絵柄の元画像を作り直して描き直す（b78）。復帰したときに isBlank() なら呼ぶ */
+  function restore() {
+    if (!cv) return;
+    try {
+      cv.width = W * S; cv.height = H * S; // 大きさの再設定で新しく確保される
+      ctx = cv.getContext('2d');
+      ctx.setTransform(S, 0, 0, S, 0, 0);
+      faceCv = null;
+      build(); buildLogo();
+      if (!live) drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
+    } catch (e) { /* 次の機会に */ }
+  }
   function init(canvas) {
     if (window.LITE) { S = 1; MIN_FRAME = 1000 / 24 - 2; }
     cv = canvas;
@@ -659,5 +682,5 @@ const Reel = (function () {
     if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
   }
 
-  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, redraw, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, redraw, restore, isBlank, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
