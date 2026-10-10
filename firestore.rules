@@ -15,9 +15,18 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create, delete: if isMaster();
       allow update: if isMaster()
-        || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activePresetId', 'lastSeen', 'deviceVersion']));
+        || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activePresetId', 'lastSeen', 'deviceVersion', 'phase', 'phaseAt']));
       match /plays/{p} { allow read: if isMaster(); allow create: if signedIn(); }
       match /days/{d} { allow read: if isMaster(); allow create, update: if signedIn(); }
+      // スマホの紙幣（b83）: ログインした端末・スマホが 1 件作り、端末が state を書き戻す。消せるのはマスターだけ
+      match /inserts/{i} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['ts', 'phone', 'seq', 'state'])
+          && request.resource.data.ts is number && request.resource.data.phone is string && request.resource.data.state == 'new';
+        allow update: if signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'ackAt', 'reason']);
+        allow delete: if isMaster();
+      }
     }
     // 配当履歴（全店舗）: どの店舗の端末も読める。足せるのは「時刻・金額・店舗」の4項目だけ。書き換えと削除はマスターだけ
     match /feed/{id} {
