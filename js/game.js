@@ -676,14 +676,15 @@ const Game = (function () {
         if (!s.dayPlays || s.dayPlays.from !== from) s.dayPlays = { from, n: 0 };
         Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n, s.probs).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
         // オフライン対策（b74、オーナー指示）: ネットにつながっていない間は抽選せず、必ず STAGE 1 の 0 で終わる（画面には何も出さない。設定画面にだけ出す）
-        if (storeMode() && !netOk) { res = { overflow: false, key: '1:0', stage: 1, value: 0 }; Store.log('OFFLINE_PLAY', {}); }
+        const off = storeMode() && !netOk;
+        if (off) { res = { overflow: false, key: '1:0', stage: 1, value: 0 }; Store.log('OFFLINE_PLAY', {}); }
         else res = Engine.drawProb(s.probs, undefined, blocked);
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
         const bestBefore = bestOf(s); // 今回の結果が出る前の最高額配当（回転中はこちらを表示する）
         if (!test) {
           if (res.value > bestBefore) s.bestValue = res.value; else s.bestValue = bestBefore;
-          s.dayPlays.n += 1;
+          if (!off) s.dayPlays.n += 1; // b80: オフラインの強制ハズレは「開始直後の高額制限」の回数に数えない（制限の回数を食いつぶさない）
           if (res.value > 0) s.hits.push({ ts: now, key: res.key });
           ses.playNo += 1;
           ses.awarded += res.value;
@@ -703,7 +704,7 @@ const Game = (function () {
     clearSure(); // b79: 前のゲームの「当選確定」の表示が（画面が隠れていた等で）遅れて付いても、新しいゲームには持ち越さない
     showCredits();
     lockbar.classList.remove('show');
-    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(() => {}); }
+    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(cloudFail); }
     runStage(Store.state.play, 1);
   }
 
@@ -900,12 +901,21 @@ const Game = (function () {
   }
 
   /* 1ステージ分の演出。NEXT STAGE なら次のステージへ移り、再びレバー待ちに戻る。 */
+  let fxErrPlay = 0, fxErrN = 0; // b80: 同じプレイで演出エラーが続いた回数
   async function runStage(play, st) {
     try { return await runStageInner(play, st); }
     catch (err) {
       // 演出の途中でエラー（b76）: ボタンが効かないまま固まらないように戻す。抽選結果は保存済みなので、NEXT GAME で続きから再開できる
       busy = false; pressing = false;
       try { Store.transact(() => Store.log('FX_ERROR', { stage: st, message: String(err && err.message || err).slice(0, 120) })); } catch (e) { /* ログのみ */ }
+      // b80: 同じプレイで 3 回続けて失敗したら、演出はあきらめて結果だけ表示して次へ進めるようにする（固まったままにしない）
+      if (fxErrPlay !== play.ts) { fxErrPlay = play.ts; fxErrN = 0; }
+      fxErrN += 1;
+      if (fxErrN >= 3) {
+        try { Store.transact((s) => { if (s.play && s.play.phase !== 'shown') { s.play.phase = 'shown'; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); Store.log('FX_GIVEUP', { stage: st, value: s.play.value }); } }); } catch (e) { /* 保存できなければ次回また試す */ }
+        try { setStage(play.stage); } catch (e) { /* noop */ }
+        showCredits();
+      }
       try { tense(0); Lever.setEnabled(true); } catch (e) { /* noop */ }
       try { FX.releasePile(); } catch (e) { /* noop */ } // b79: 途中で止まった当選演出のチップが残って描き続けないように
       refresh();
@@ -1041,7 +1051,7 @@ const Game = (function () {
     try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
-    if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === play.value ? last.ts : Date.now(), value: play.value }).catch(() => {}); } // 全店舗の配当履歴へ（時刻は端末の履歴と同じにする）
+    if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === play.value ? last.ts : Date.now(), value: play.value }).catch(cloudFail); } // 全店舗の配当履歴へ（時刻は端末の履歴と同じにする）
     if (out) await totalFx(Store.state.wonTotal || 0);
     busy = false;
     if (Store.state.play) showLocked(Store.state.play, true); else refresh();
@@ -1680,7 +1690,7 @@ const Game = (function () {
       const pin = await UI.askPin({ title: st.name, sub: '店舗のパスワード', solid: true, check: (p) => (Engine.checkPin(p, doc.pin) ? null : 'パスワードが正しくありません。') });
       if (pin === null) continue;
       Store.transact((s) => {
-        s.store = { id, name: st.name, boundAt: Date.now() };
+        s.store = { id, name: st.name, boundAt: Date.now(), logoutSeen: doc.logoutAt || 0 }; // logoutSeen: ログイン時点の「強制ログアウトの時刻」。あとで変わったら出される（b80。時計のずれで効かない・効き続けるのを防ぐ）
         s.pins = { admin: doc.pin };
         Store.log('STORE_LOGIN', { storeId: id, name: st.name });
       });
@@ -1783,10 +1793,26 @@ const Game = (function () {
       const j = r.ok ? await r.json() : null;
       if (j && j.v) { netFail = 0; netOk = true; return; }
     } catch (err) { /* 取れなかった */ }
+    // b80: 公開先（GitHub）だけが落ちているときにハズレだけにならないよう、別の場所にも届くか確かめる（no-cors は届けば成功、届かなければ失敗）
+    try {
+      const c2 = typeof AbortController === 'function' ? new AbortController() : null, t2 = c2 && setTimeout(() => c2.abort(), 5000);
+      await fetch('https://www.gstatic.com/generate_204?t=' + Date.now(), Object.assign({ cache: 'no-store', mode: 'no-cors' }, c2 ? { signal: c2.signal } : {}));
+      if (t2) clearTimeout(t2);
+      netFail = 0; netOk = true; return;
+    } catch (err) { /* こちらも届かない */ }
     netFail += 1;
     if (netFail >= 2) netOk = false;
   }
   const netState = () => netOk;
+  /* b80: 配当やプレイのクラウド送信に失敗したら数えて、1 分に 1 回だけ記録する（設定画面の店舗の欄に出す） */
+  let cloudErrs = 0, cloudErrAt = 0;
+  function cloudFail(e) {
+    cloudErrs += 1;
+    if (Date.now() - cloudErrAt < 60000) return;
+    cloudErrAt = Date.now();
+    try { Store.transact(() => Store.log('CLOUD_ERR', { n: cloudErrs, message: String(e && (e.code || e.message) || e).slice(0, 80) })); } catch (x) { /* ログのみ */ }
+  }
+  const cloudErrors = () => cloudErrs;
   function startCloudSync() {
     const me = Store.state.store;
     if (!me) return;
@@ -1795,7 +1821,7 @@ const Game = (function () {
     startFeed();
     unwatch = Cloud.watchStore(me.id, (doc) => {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
-      if (doc.logoutAt && doc.logoutAt > me.boundAt) return unbindStore();
+      if (doc.logoutAt && (me.logoutSeen === undefined ? doc.logoutAt > me.boundAt : doc.logoutAt !== me.logoutSeen)) return unbindStore(); // b80: ログイン時に見た値から変わったら（古い端末は従来の時刻比較）
       cloudStore = doc;
       { // 待機中に左側へ出す説明（マスターの店舗の編集で入力。3つまで）。変わったら端末に覚えて、すぐ画面に反映する
         const nt = (Array.isArray(doc.notes) ? doc.notes : []).map((x) => String(x || '').slice(0, 80)).filter(Boolean).slice(0, 3);
@@ -1968,6 +1994,6 @@ const Game = (function () {
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo, netState, reelHeal };
+  return { refresh, applyPerf, syncTable, openSettings: () => openSettings && openSettings(), storeMode, storeInfo, choosePreset, logoutStore, calibrate, screenInfo, netState, reelHeal, cloudErrors };
 })();
 window.Game = Game;
