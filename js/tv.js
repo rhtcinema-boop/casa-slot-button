@@ -203,6 +203,8 @@ const TV = (function () {
     mo.observe(document.getElementById('lockbar'), { childList: true, attributes: true, attributeFilter: ['class'] });
   }
   document.addEventListener('DOMContentLoaded', init);
-  return { isTV, back, menu, settings, press, setCapture, get enabled() { return on; } };
+  /* Android 側の onResume から呼ばれる（b78）: ホームに戻ってから復帰したとき、リールが消えていたら描き直す */
+  function resume() { try { if (window.Game && Game.reelHeal) Game.reelHeal(); } catch (e) { /* noop */ } }
+  return { isTV, back, menu, settings, press, setCapture, resume, get enabled() { return on; } };
 })();
 window.TV = TV; // Android（Fire TV）側は window.TV 経由で呼ぶ（const は window に載らないため明示する）
