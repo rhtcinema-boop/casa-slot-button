@@ -733,7 +733,7 @@ const Admin = (function () {
           return render();
         }
         case 'preset-use': {
-          if (await Game.choosePreset(b.dataset.id)) UI.toast('プリセットを切り替えました。次のプレイから反映されます。', 'ok');
+          if (await Game.choosePreset(b.dataset.id)) { const p = Store.state.play; UI.toast(p && p.phase !== 'shown' ? 'プリセットを選びました。いまのゲームが終わってから切り替わります。' : 'プリセットを切り替えました。次のプレイから反映されます。', 'ok'); }
           return render();
         }
         case 'store-logout': {
@@ -750,7 +750,7 @@ const Admin = (function () {
           return render();
         }
         case 'stats-reset': {
-          const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・最高額配当・この端末の当たりの記録を 0 に戻します。全履歴と、全店舗の「配当履歴」は消えません。</p>', ok: 'リセットする' });
+          const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・最高額配当・この端末の当たりの記録を 0 に戻します。残っている CREDIT（FREE SPIN）も 0 になります。全履歴と、全店舗の「配当履歴」は消えません。</p>', ok: 'リセットする' });
           if (!ok) return;
           Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; });
           UI.toast('集計をリセットしました。', 'ok');
@@ -807,7 +807,7 @@ const Admin = (function () {
       }
     } catch (err) {
       UI.toast('処理に失敗しました: ' + err.message, 'err');
-      render();
+      try { render(); } catch (e) { UI.toast('画面を描き直せませんでした: ' + e.message, 'err'); } // b81: 描き直し自体が失敗しても黙って止まらない
     }
   }
 
