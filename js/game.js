@@ -313,7 +313,7 @@ const Game = (function () {
   let attractAt = 0, attracting = false, attractN = 0;
   function attractWatch() {
     const s = Store.state;
-    const idle = !busy && !pressing && s && s.pins && !s.play && curStage === 1 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && !document.hidden;
+    const idle = !busy && !pressing && !insertBusy && s && s.pins && !s.play && curStage === 1 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && !document.hidden;
     if (!idle) { attractAt = 0; return; }
     if (attracting) return;
     if (!attractAt) { attractAt = Date.now() + ATTRACT_REST_MS; return; }
@@ -399,13 +399,14 @@ const Game = (function () {
     try {
       const sand = $('sand'), wrap = $('billwrap');
       if (!sand || !wrap || !window.BillArt) return;
+      if (attracting) { Reel.setStage(curStage); attracting = false; attractAt = 0; } // b88: 待機中の見せ回しを止めて、吸い込みの間はリールを止めておく（回るのは吸い込みが終わってから）
       Sfx.unlock(); Sfx.play('bill');
       wrap.innerHTML = '<div class="billrot">' + BillArt.svg(300, { serial: 'C ' + String(Date.now() % 10000000).padStart(7, '0') + ' A' }) + '</div>'; // 縦向き（b84）
       sand.classList.add('feeding');
       wrap.classList.add('in');
-      await wait(1150);
+      await wait(2000); // b88: ゆっくり（約 2 秒）
       sand.classList.remove('feeding'); sand.classList.add('accept');
-      await wait(250);
+      await wait(450);
       wrap.classList.remove('in'); wrap.innerHTML = '';
       sand.classList.remove('accept');
     } catch (e) { /* 演出だけ */ }
