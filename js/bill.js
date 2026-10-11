@@ -110,7 +110,7 @@
     bill.classList.add('drag'); bill.classList.remove('back', 'enter', 'suck');
     $('acc').classList.add('feeding');
     buzz([20, 30, 20, 30, 60]);
-    setMsg('投入中…');
+    setMsg('');
     try {
       const anim = bill.animate([
         { transform: tx(startY, 1), filter: 'brightness(1)', offset: 0 },
