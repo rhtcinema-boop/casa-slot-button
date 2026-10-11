@@ -1,17 +1,20 @@
-/* スマホの紙幣ページ（b83）。スタッフのスマホで開き、店舗にログインしておく。
+/* スマホの紙幣ページ（b83〜）。スタッフのスマホで開き、店舗にログインしておく。
    紙幣を上にスライドすると、クラウド（stores/{id}/inserts）に 1 件書く → 店舗の端末がお札の演出をして回す。
-   端末からの返事（state: 'ok' / 'busy'）を見て「投入しました」「ゲーム中」を出す。返事が無ければ 5 秒で「届きませんでした」。 */
+   端末からの返事（state: 'ok' / 'busy'）を見て「投入しました」「ゲーム中」を出す。返事が無ければ 5 秒で「届きませんでした」。
+   b91: casa SLOT のロゴ 5 回タップで、端末の設定画面と同じ項目を遠隔で操作する（stores/{id}/cmds に指示を書き、端末が実行して返事を書く。
+        端末の状態は店舗ドキュメントの stat（端末が 1 分ごと・変化時に書く）を見て表示する） */
 (function () {
   'use strict';
   const KEY = 'casa-slot-bill.v1';
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmtN = (n) => (Number(n) || 0).toLocaleString('ja-JP');
   let saved = null;      // { storeId, name, phone, seq }
-  let storeDoc = null;   // 店舗ドキュメントの最新（phase を見る）
+  let storeDoc = null;   // 店舗ドキュメントの最新（phase / stat を見る）
   let unwatchStore = null, sending = false, lastSent = 0, armed = true;
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* noop */ } };
-  const phoneId = () => { let s = load(); if (s && s.phone) return s.phone; return 'p' + Math.random().toString(36).slice(2, 10); };
+  const phoneId = () => { const s = load(); if (s && s.phone) return s.phone; return 'p' + Math.random().toString(36).slice(2, 10); };
 
   /* ---------- 音と振動 ---------- */
   let ac = null;
@@ -34,33 +37,32 @@
     layoutBill();
   }
   function setMsg(text, cls) { const m = $('msg'); m.textContent = text || ''; m.className = 'msg' + (cls ? ' ' + cls : ''); }
+  const isStale = () => !storeDoc || !storeDoc.lastSeen || Date.now() - storeDoc.lastSeen > 25 * 60 * 1000; // 生存報告は 10 分ごと
   function render() {
     const st = $('store'), bill = $('bill'), hint = $('hint');
     const busy = !!(storeDoc && storeDoc.phase === 'busy');
-    const stale = !storeDoc || !storeDoc.lastSeen || Date.now() - storeDoc.lastSeen > 25 * 60 * 1000; // 生存報告は 10 分ごと
     if (!saved) return;
     if (!storeDoc) { st.className = 'store off'; $('storeText').textContent = saved.name + ' … 接続中'; }
-    else if (stale) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
+    else if (isStale()) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
     else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
     else { st.className = 'store'; $('storeText').textContent = saved.name + ' の端末につながっています'; }
     armed = !busy && !sending;
-    bill.classList.toggle('gray', busy); // 送信中は色のまま（吸い込まれていく途中で灰色にしない）
+    bill.classList.toggle('gray', busy);
     hint.classList.toggle('busy', !armed);
-    hint.innerHTML = '<span class="arr"></span>'; // 三角だけ（文字は出さない。b89）
+    if (!$('adm').classList.contains('hidden')) renderAdm();
   }
 
-  /* ---------- スライド ---------- */
+  /* ---------- 紙幣の大きさと置き場所 ---------- */
   const setY = (y) => { $('bill').style.setProperty('--y', y + 'px'); };
-  /* 紙幣の大きさと置き場所（b87）: 縦の長さは画面の 92%、待機中は上の 65% だけ見える。口の幅は紙幣の幅に合わせる */
   const geo = { bh: 0, bw: 0, restTop: 0 };
   function layoutBill() {
     const clip = $('feedClip'), bill = $('bill'), svg = bill.querySelector('svg');
     const H = window.innerHeight, clipH = clip.clientHeight;
-    const bh = Math.round(H * 0.92), bw = Math.round(bh / 2.35);
-    geo.bh = bh; geo.bw = bw; geo.restTop = Math.round(clipH - bh * 0.65);
+    const bh = Math.round(H * 0.9), bw = Math.round(bh / 2.35);
+    geo.bh = bh; geo.bw = bw; geo.restTop = Math.round(clipH - bh * 0.62);
     bill.style.width = bw + 'px'; bill.style.height = bh + 'px'; bill.style.top = geo.restTop + 'px';
     if (svg) { svg.setAttribute('width', bh); svg.setAttribute('height', bw); svg.style.width = bh + 'px'; svg.style.height = bw + 'px'; svg.style.left = (bw / 2 - bh / 2) + 'px'; svg.style.top = (bh / 2 - bw / 2) + 'px'; }
-    $('slit').style.width = (bw + 18) + 'px';
+    $('acc').style.setProperty('--w', (bw + 60) + 'px'); // サンドの幅は紙幣に合わせる
   }
   function initSwipe() {
     const bill = $('bill'), clip = $('feedClip');
@@ -77,14 +79,14 @@
       if (!dragging || e.pointerId !== pid) return;
       dy = Math.min(0, e.clientY - y0); // 上方向だけ
       setY(dy);
-      $('slit').classList.toggle('hot', -dy > H() / 3);
+      $('acc').classList.toggle('hot', -dy > H() / 3);
     });
     const end = (e) => {
       if (!dragging || e.pointerId !== pid) return;
       dragging = false;
       bill.classList.remove('drag');
-      $('slit').classList.remove('hot');
-      if (-dy > H() / 3) insert(dy);
+      $('acc').classList.remove('hot');
+      if (-dy > H() / 3) insert();
       else { bill.classList.add('back'); setY(0); }
     };
     clip.addEventListener('pointerup', end);
@@ -93,25 +95,24 @@
   }
 
   /* ---------- 投入 ---------- */
-  /* 吸い込み: 紙幣の上端が口に届いたところから、口の中へ引き込まれていく（口より上は #feedClip で隠れる）。約 1 秒 */
   async function insert() {
-    const bill = $('bill'), clip = $('feedClip');
+    const bill = $('bill');
     if (!armed || sending || Date.now() - lastSent < 3000) { bill.classList.add('back'); setY(0); return; }
     sending = true; lastSent = Date.now();
     render();
     const target = -(geo.restTop + geo.bh + 16); // 紙幣が口の中へ完全に入る位置
     bill.classList.add('suck');
-    $('slit').classList.add('hot');
+    bill.style.setProperty('--s', '.94'); bill.style.setProperty('--b', '.6'); // 奥に入るほど少し小さく・暗く
+    $('acc').classList.add('feeding');
     setY(target);
     buzz([20, 30, 20, 30, 60]);
     setMsg('投入中…');
-    await new Promise((r) => setTimeout(r, 950));
-    $('slit').classList.remove('hot');
+    await new Promise((r) => setTimeout(r, 1150));
+    $('acc').classList.remove('feeding');
     saved.seq = (saved.seq || 0) + 1; save();
     let id = null;
     try { id = await Cloud.pushInsert(saved.storeId, { ts: Date.now(), phone: saved.phone, seq: saved.seq }); }
     catch (e) { finish(false, '届きませんでした。通信を確認してもう一度'); return; }
-    // 端末の返事を待つ（最長 5 秒）
     let done = false;
     const un = Cloud.watchInsert(saved.storeId, id, (d) => {
       if (done || !d || d.state === 'new') return;
@@ -129,14 +130,100 @@
     setTimeout(() => {
       sending = false;
       drawBill();
-      // 次の紙幣は下から出てくる（失敗したときは口から戻ってくる）
       bill.classList.remove('suck', 'back', 'enter');
       bill.classList.add('drag'); setY(ok ? geo.bh : -(geo.restTop + geo.bh)); // 次の紙幣は下から（失敗は口から戻る）
+      bill.style.setProperty('--s', '1'); bill.style.setProperty('--b', '1');
       void bill.offsetHeight;
       bill.classList.remove('drag'); bill.classList.add('enter'); setY(0);
       render();
       setTimeout(() => setMsg(''), 3000);
     }, ok ? 900 : 300);
+  }
+
+  /* ---------- 設定（端末の設定を遠隔で） ---------- */
+  let admTab = 'stats', todayShown = 0, cmdBusy = false;
+  function toast(text, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = text; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+  function confirmBox(title, text, okLabel) {
+    return new Promise((resolve) => {
+      const w = document.createElement('div'); w.className = 'confirm';
+      w.innerHTML = '<div class="card"><h3>' + esc(title) + '</h3><p>' + esc(text) + '</p><div class="row"><button class="ghost">やめる</button><button class="ok">' + esc(okLabel || 'はい') + '</button></div></div>';
+      w.querySelector('.ghost').onclick = () => { w.remove(); resolve(false); };
+      w.querySelector('.ok').onclick = () => { w.remove(); resolve(true); };
+      document.body.appendChild(w);
+    });
+  }
+  /* 端末に指示を送り、返事（state: ok / error）を最長 8 秒待つ */
+  async function sendCmd(type, data, label) {
+    if (cmdBusy) return false;
+    if (isStale()) { toast('端末が見つかりません（電源・通信を確認）', true); return false; }
+    cmdBusy = true; renderAdm();
+    let id = null, result = false;
+    try { id = await Cloud.pushCmd(saved.storeId, { ts: Date.now(), phone: saved.phone, type, data: data || {} }); }
+    catch (e) { cmdBusy = false; renderAdm(); toast('送れませんでした。通信を確認してください', true); return false; }
+    await new Promise((resolve) => {
+      let done = false;
+      const un = Cloud.watchCmd(saved.storeId, id, (d) => {
+        if (done || !d || d.state === 'new') return;
+        done = true; un();
+        if (d.state === 'ok') { toast(label + '：端末に反映しました'); result = true; }
+        else toast(label + '：端末が受け付けませんでした' + (d.reason ? '（' + d.reason + '）' : ''), true);
+        resolve();
+      });
+      setTimeout(() => { if (!done) { done = true; un(); toast(label + '：端末から返事がありません', true); resolve(); } }, 8000);
+    });
+    cmdBusy = false; renderAdm();
+    return result;
+  }
+  const stat = () => (storeDoc && storeDoc.stat) || null;
+  function renderAdm() {
+    const box = $('adm'), st = stat();
+    const tab = (id, name) => '<button data-tab="' + id + '" class="' + (admTab === id ? 'on' : '') + '">' + name + '</button>';
+    let body = '';
+    if (!st) body = '<div class="panel"><p class="note">端末からの状態がまだ届いていません。端末が最新版（b91 以降）で起動していて、通信できているか確認してください。</p></div>';
+    else if (admTab === 'stats') {
+      const today = st.today || {};
+      body = '<div class="panel"><h4>画面の集計（端末）</h4>' +
+        '<div class="stat"><span>合計回転数</span><b>' + fmtN(st.playNo) + '</b></div>' +
+        '<div class="stat"><span>当選額の合計</span><b>' + fmtN(st.awarded) + '</b></div>' +
+        '<div class="stat"><span>最高額配当</span><b>' + fmtN(st.bestValue) + '</b></div>' +
+        '<div class="stat"><span>CREDIT（残り）</span><b>' + fmtN((st.credits || 0) + (st.dud || 0)) + '</b></div>' +
+        '<button class="btn danger" data-act="reset">画面の集計をリセット</button></div>' +
+        '<div class="panel"><h4>今日の当たり</h4><p class="note">毎日 ' + (Number.isInteger(st.resetHour) ? st.resetHour : 19) + ':00 からの合計。テストの回と当たりなしの回は入りません。</p>' +
+        '<div class="stat"><span>今日の当たり本数</span><b>' + fmtN(today.wins) + '</b></div>' +
+        '<div class="stat"><span>今日の当たり合計</span><b class="' + (Date.now() < todayShown ? '' : 'mask') + '">' + (Date.now() < todayShown ? fmtN(today.awarded) : '＊＊＊＊＊') + '</b></div>' +
+        '<button class="btn sm" data-act="today">10 秒だけ見る</button></div>';
+    } else if (admTab === 'preset') {
+      const list = st.presets || [];
+      body = '<div class="panel"><h4>プリセットを選ぶ</h4><p class="note">マスターから配られたプリセットの中から選びます。選ぶと端末の次のプレイから反映されます。</p><div class="plist">' +
+        (list.length ? list.map((p) => '<button data-act="preset" data-id="' + esc(p.id) + '" class="' + (p.id === st.presetId ? 'on' : '') + '"><span>' + esc(p.name) + '</span><span class="chip">' + (p.id === st.presetId ? '使用中' : '') + '</span></button>').join('') : '<p class="note">配られているプリセットがありません。</p>') +
+        '</div></div>';
+    } else {
+      const rec = st.recent || [];
+      body = '<div class="panel"><h4>直近のプレイ（端末）</h4><div class="hist">' +
+        (rec.length ? rec.map((r) => { const d = new Date(r.ts); return '<div class="row"><small>' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + (r.free ? ' FREE' : '') + (r.test ? ' テスト' : '') + '</small><span>STAGE ' + r.stage + '</span><b class="' + (r.value ? '' : 'zero') + '">' + fmtN(r.value) + '</b></div>'; }).join('') : '<p class="note">まだありません。</p>') +
+        '</div></div>' +
+        '<div class="panel"><h4>音量（端末）</h4><div class="slider"><span>小</span><input type="range" min="0" max="1" step="0.05" value="' + (typeof st.volume === 'number' ? st.volume : 0.5) + '" id="vol"><span>大</span></div><button class="btn sm" data-act="volume">この音量にする</button></div>' +
+        '<div class="panel"><h4>端末</h4><p class="note">端末の版: ' + esc(st.ver || '—') + '　最終更新: ' + (st.at ? new Date(st.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '—') + '</p>' +
+        '<button class="btn" data-act="update">端末を最新版に更新</button>' +
+        '<button class="btn danger" data-act="logout">端末をこの店舗からログアウト</button></div>' +
+        '<div class="panel"><h4>このスマホ</h4><button class="btn ghost" data-act="reload">画面を読み直す（再接続）</button><button class="btn ghost" data-act="phoneLogout">店舗を切り替える（ログアウト）</button></div>';
+    }
+    box.innerHTML = '<div class="head"><h2>設定 ・ ' + esc(saved ? saved.name : '') + '</h2><button data-act="close">閉じる</button></div><div class="tabs">' + tab('stats', '集計') + tab('preset', 'プリセット') + tab('other', '履歴・その他') + '</div><div class="body">' + body + '</div>';
+    box.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { admTab = b.dataset.tab; renderAdm(); }; });
+    box.querySelectorAll('.btn, .plist button').forEach((b) => { if (cmdBusy && b.dataset.act !== 'close') b.disabled = true; });
+    box.onclick = async (e) => {
+      const b = e.target.closest('[data-act]'); if (!b) return;
+      const act = b.dataset.act;
+      if (act === 'close') { box.classList.add('hidden'); return; }
+      if (act === 'today') { todayShown = Date.now() + 10000; renderAdm(); setTimeout(renderAdm, 10100); return; }
+      if (act === 'reload') { location.reload(); return; }
+      if (act === 'phoneLogout') { box.classList.add('hidden'); await phoneLogout(); return; }
+      if (act === 'preset') { const p = (st.presets || []).find((x) => x.id === b.dataset.id); if (!p || p.id === st.presetId) return; if (await confirmBox('プリセットを切り替え', '端末のプリセットを「' + p.name + '」にします。次のプレイから反映されます。', '切り替える')) await sendCmd('preset', { id: p.id }, 'プリセット'); return; }
+      if (act === 'reset') { if (await confirmBox('集計をリセット', '端末のプレイ回数・最高額配当・当たりの記録を 0 に戻します。残っている CREDIT も 0 になります。全履歴と全店舗の配当履歴は消えません。', 'リセットする')) await sendCmd('statsReset', {}, '集計のリセット'); return; }
+      if (act === 'volume') { const v = Number($('vol').value); await sendCmd('volume', { v }, '音量'); return; }
+      if (act === 'update') { if (await confirmBox('最新版に更新', '端末が新しい版を確認して、ゲームが終わり次第読み直します。', '更新する')) await sendCmd('update', {}, '更新'); return; }
+      if (act === 'logout') { if (await confirmBox('端末をログアウト', '端末は店舗の選び直しとパスワード入力が必要になります。', 'ログアウトする')) await sendCmd('logout', {}, 'ログアウト'); return; }
+    };
   }
 
   /* ---------- 店舗へのログイン ---------- */
@@ -149,7 +236,7 @@
       try { stores = await Promise.race([Cloud.listStores(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000))]); } catch (e) { stores = null; }
       if (!stores || !stores.length) {
         box.innerHTML = '<h1>casa SLOT 紙幣</h1><p>' + (stores ? '店舗が登録されていません。マスター画面で店舗を登録してください。' : 'クラウドに接続できません。通信を確認してください。') + '</p><div class="row"><button class="ok" id="retry">再試行</button></div>';
-        await new Promise((r) => $('retry').onclick = r);
+        await new Promise((r) => { $('retry').onclick = r; });
         continue;
       }
       const id = await new Promise((resolve) => {
@@ -160,7 +247,7 @@
       box.innerHTML = '<h1>' + esc(st.name) + '</h1><p class="wait">店舗の情報を読み込んでいます…</p>';
       let doc = null;
       try { doc = await Promise.race([Cloud.getStore(id), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000))]); } catch (e) { doc = null; }
-      if (!doc || !doc.pin) { box.innerHTML = '<h1>' + esc(st.name) + '</h1><p>店舗の情報を読み込めませんでした。通信を確認してもう一度お試しください。</p><div class="row"><button class="ok" id="retry">もう一度</button></div>'; await new Promise((r) => { document.getElementById('retry').onclick = r; }); continue; }
+      if (!doc || !doc.pin) { box.innerHTML = '<h1>' + esc(st.name) + '</h1><p>店舗の情報を読み込めませんでした。通信を確認してもう一度お試しください。</p><div class="row"><button class="ok" id="retry">もう一度</button></div>'; await new Promise((r) => { $('retry').onclick = r; }); continue; }
       const ok = await new Promise((resolve) => {
         box.innerHTML = '<h1>' + esc(st.name) + '</h1><p>店舗のパスワード（端末と同じ）</p><input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="8"><div class="err" id="perr"></div><div class="row"><button class="ghost" id="back">戻る</button><button class="ok" id="go">ログイン</button></div>';
         const inp = $('pin'); setTimeout(() => inp.focus(), 100);
@@ -175,7 +262,12 @@
       return;
     }
   }
-
+  async function phoneLogout() {
+    if (unwatchStore) { unwatchStore(); unwatchStore = null; }
+    saved = null; storeDoc = null;
+    try { localStorage.removeItem(KEY); } catch (e) { /* noop */ }
+    await login(); drawBill(); watchStore();
+  }
   function watchStore() {
     if (unwatchStore) unwatchStore();
     storeDoc = null; render();
@@ -189,23 +281,20 @@
     $('bill').innerHTML = BillArt.svg(470);
     layoutBill();
     initSwipe();
-    { // casa ロゴを 2.5 秒以内に 5 回タップで設定（端末と同じ流儀。b90）
+    { // casa SLOT のロゴを 2.5 秒以内に 5 回タップで設定（端末と同じ流儀）
       let taps = [];
-      $('crest').addEventListener('pointerdown', (e) => { e.preventDefault(); const now = Date.now(); taps = taps.filter((t) => now - t < 2500).concat(now); if (taps.length >= 5) { taps = []; $('sheet').classList.remove('hidden'); } });
-      $('btnClose').onclick = () => $('sheet').classList.add('hidden');
+      $('crest').addEventListener('pointerdown', (e) => { e.preventDefault(); const now = Date.now(); taps = taps.filter((t) => now - t < 2500).concat(now); if (taps.length >= 5) { taps = []; admTab = 'stats'; renderAdm(); $('adm').classList.remove('hidden'); } });
     }
-    $('btnLogout').onclick = async () => { $('sheet').classList.add('hidden'); if (unwatchStore) { unwatchStore(); unwatchStore = null; } saved = null; try { localStorage.removeItem(KEY); } catch (e) { /* noop */ } await login(); drawBill(); watchStore(); };
-    $('btnReload').onclick = () => location.reload();
     document.addEventListener('pointerdown', unlockAudio, { once: true });
     if (!Cloud.enabled) { $('login').classList.remove('hidden'); $('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p>この公開先は店舗モードではないため、紙幣ページは使えません。</p>'; return; }
-    document.getElementById('login').classList.remove('hidden'); document.getElementById('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p class="wait">クラウドに接続しています…</p>';
+    $('login').classList.remove('hidden'); $('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p class="wait">クラウドに接続しています…</p>';
     try { await Promise.race([Cloud.ready(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))]); } catch (e) { /* ログイン画面で再試行できる */ }
-    document.getElementById('login').classList.add('hidden'); // 接続できたら（ログイン済みなら）画面を戻す
+    $('login').classList.add('hidden');
     saved = load();
     if (!saved || !saved.storeId) await login();
     drawBill();
     watchStore();
-    setInterval(render, 30000); // 端末の生存確認の表示を更新
+    setInterval(render, 30000);
   }
   document.addEventListener('DOMContentLoaded', init);
 })();
