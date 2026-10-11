@@ -40,10 +40,12 @@
   .bill.drag { transition: none; }
   .bill.back { transition: transform .35s cubic-bezier(.3, 1.4, .5, 1); }
   .slit { z-index: 2; }
-  .hint { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 128px); text-align: center; color: var(--dim); font-size: 14px; letter-spacing: .1em; pointer-events: none; }
-  .hint .arr { display: block; font-size: 28px; color: var(--gold); margin-bottom: 6px; animation: up 1.4s ease-in-out infinite; }
-  @keyframes up { 0%, 100% { transform: translateY(6px); opacity: .5; } 50% { transform: translateY(-6px); opacity: 1; } }
-  .hint.busy .arr { animation: none; opacity: .25; }
+  /* 口の下の大きな三角だけ（b89、オーナー指示。文字は無し）。紙幣より下のレイヤーなので、紙幣がせり上がると隠れる */
+  .hint { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 124px); text-align: center; pointer-events: none; z-index: 0; }
+  .hint .arr { display: block; width: 0; height: 0; margin: 0 auto; border-left: 46px solid transparent; border-right: 46px solid transparent; border-bottom: 64px solid var(--gold); filter: drop-shadow(0 0 14px rgba(255, 215, 115, .6)); animation: up 1.4s ease-in-out infinite; }
+  @keyframes up { 0%, 100% { transform: translateY(10px); opacity: .55; } 50% { transform: translateY(-10px); opacity: 1; } }
+  .hint.busy .arr { animation: none; opacity: .2; filter: none; }
+  #feedClip { z-index: 1; }
   .msg { position: absolute; left: 20px; right: 20px; top: calc(env(safe-area-inset-top) + 186px); text-align: center; font-size: 16px; color: #e8e3d2; min-height: 22px; pointer-events: none; z-index: 2; }
   .msg.ok { color: #35e07a; } .msg.err { color: #ff8c7a; }
   .foot { display: none; }
@@ -68,7 +70,7 @@
   <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
   <div class="slit" id="slit"></div>
   <div id="feedClip"><div class="bill" id="bill"></div></div>
-  <div class="hint" id="hint"><span class="arr">▲</span>上にスライドで投入（1 GAME）</div>
+  <div class="hint" id="hint"><span class="arr"></span></div>
   <div class="msg" id="msg"></div>
   <div class="foot">紙幣 1 枚で 1 ゲーム。ゲーム中は入れられません。</div>
   <div class="login hidden" id="login"></div>
