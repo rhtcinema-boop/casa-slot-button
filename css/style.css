@@ -1739,3 +1739,8 @@ body.lite .lockbar .billwrap .billrot { filter: none; }
 .lockbar .billwrap .billrot { width: 206px; height: 484px; margin-left: -103px; }
 .lockbar .billwrap .billrot svg { width: 484px; height: 206px; }
 @keyframes billin { 0% { transform: translateY(62px); } 14% { transform: translateY(34px); } 100% { transform: translateY(-500px); } }
+
+/* b93（オーナー指示）: お札は箱の下から見えた状態でせり上がり、口に向かって入っていく（口の上の縁より上だけ隠す） */
+.lockbar .billwrap { width: 330px; margin-left: -165px; top: 28px; height: 420px; border-radius: 0; }
+.lockbar .billwrap .billrot { animation: billin 2.2s cubic-bezier(.3, .05, .3, 1) both; }
+@keyframes billin { 0% { transform: translateY(400px); } 35% { transform: translateY(120px); } 55% { transform: translateY(40px); } 62% { transform: translateY(36px); } 100% { transform: translateY(-500px); } }
