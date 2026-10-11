@@ -15,8 +15,9 @@
 <style>
   :root { --gold: #ffd773; --dim: #9aa89c; --bg: #0b0f0c; --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: radial-gradient(ellipse at 50% 30%, #13231a, #070a08 70%); color: #e8e3d2; font-family: -apple-system, "Helvetica Neue", "Hiragino Sans", sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
-  #app { position: fixed; inset: 0; }
+  html { background: #070a08; }
+  html, body { margin: 0; height: 100%; background-color: #070a08; color: #e8e3d2; font-family: -apple-system, "Helvetica Neue", "Hiragino Sans", sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  #app { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 30%, #13231a, #070a08 70%); } /* 画面の端（ホームバーの領域）まで暗い色で塗る。白い帯が出ないように */
   .hidden { display: none !important; }
   .top { position: absolute; top: 0; left: 0; right: 0; padding: calc(var(--sat) + 10px) 18px 0; text-align: center; }
   .top b { display: inline-block; padding: 10px 18px; color: var(--gold); letter-spacing: .25em; font-weight: 700; font-size: 14px; }
