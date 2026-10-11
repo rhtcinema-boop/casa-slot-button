@@ -1,9 +1,9 @@
 {
- "v": "b88",
+ "v": "b90",
  "files": [
   {
    "path": "index.html",
-   "sha256": "056d798d3d34879b873e269acb93876ed2939e0cf6dccd4aa3cbc2cc375be469"
+   "sha256": "1b66aa14a9b573ec543f8c553f6e846967745098efac8b6d591d8c5b1fb983cf"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,7 +31,7 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "e45ee5dadc56f6c2bc86b98999248db1f0be97557f85a0e1a8d8475a4b94db92"
+   "sha256": "4b2ed5af708de5c37d03ce600ed3f6404063c9d746105766d607f674191a3c4c"
   },
   {
    "path": "js/admin.js",
@@ -47,7 +47,7 @@
   },
   {
    "path": "js/bill.js",
-   "sha256": "75cb9940e4bb304328e276c96fa6d45c3a0224a67f57b32ec689619356ee5fe7"
+   "sha256": "1879180ff56e146d172176b59c4ae8b220927663fcb7edacd2877a561e3d3b14"
   },
   {
    "path": "js/cloud.js",
