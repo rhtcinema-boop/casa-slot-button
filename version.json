@@ -1,9 +1,9 @@
 {
- "v": "b92",
+ "v": "b93",
  "files": [
   {
    "path": "index.html",
-   "sha256": "d913ef45102263cd0cb193ec95d41971928aac3aee4cd54c139c2ac8711872b5"
+   "sha256": "03becd91fce3e1f57ec6df981190a6ddb0cbdb2971ce2e959eb5828dc4d08292"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,7 +31,7 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "ce859f0a31b63e6a8ae2482f267c4c8fa8c8e83473c1f0dfc8dbdc84993521b6"
+   "sha256": "2aef720c22cee8a11b5cc9be33b64a28b1ac282dde82e97fa23c54d8130097eb"
   },
   {
    "path": "js/admin.js",
@@ -63,7 +63,7 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "d24c793745d589c91ea563804bf7a3df738cd0ab44249967ca4bd9d5e71b8227"
+   "sha256": "d41c1b01f9d341d150c0d72533d895165f1cde2bce6e056a454814ed4035d82e"
   },
   {
    "path": "js/master.js",
