@@ -1729,3 +1729,13 @@ body.lite .lockbar .billwrap .billrot { filter: none; }
 .lockbar .sand .led { width: 16px; height: 16px; margin-top: -8px; }
 .lockbar .billwrap { width: 190px; margin-left: -95px; height: 52px; }
 @keyframes billin { 0% { transform: translateY(56px); } 12% { transform: translateY(34px); } 100% { transform: translateY(-304px); } }
+
+/* b92（オーナー指示）: テレビの投入口を大きく、お札も大きく。口は奥行きのある穴（スマホと同じ作り） */
+.lockbar .sand .slit { width: 330px; height: 62px; margin: -31px 0 0 -165px; border-radius: 12px; background: linear-gradient(180deg, #000 0%, #050505 45%, #121009 100%); box-shadow: inset 0 8px 14px #000, inset 0 -2px 0 rgba(255, 215, 115, .25), 0 0 0 2px #c9a03e, 0 0 20px rgba(226, 186, 92, .55); }
+.lockbar .sand .slit::after { left: 12px; right: 12px; top: 7px; height: 5px; border-radius: 3px; background: #000; box-shadow: 0 1px 0 rgba(255, 255, 255, .08); }
+.lockbar .sand .lbl { top: 5px; font-size: 12px; }
+.lockbar .sand .arrow.l { left: 190px; } .lockbar .sand .arrow.r { right: 190px; }
+.lockbar .billwrap { width: 318px; margin-left: -159px; top: 28px; height: 56px; border-radius: 10px; } /* 口の中（穴の内側）だけに見える */
+.lockbar .billwrap .billrot { width: 206px; height: 484px; margin-left: -103px; }
+.lockbar .billwrap .billrot svg { width: 484px; height: 206px; }
+@keyframes billin { 0% { transform: translateY(62px); } 14% { transform: translateY(34px); } 100% { transform: translateY(-500px); } }
