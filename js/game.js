@@ -421,6 +421,58 @@ const Game = (function () {
     return true;
   }
   /* 端末の状態（待機中か、ゲーム中か）をクラウドに書く。スマホの紙幣ページが「ゲーム中」の表示に使う。変わったときだけ書く */
+  /* ---------- スマホの設定画面（b91） ----------
+     端末の状態（集計・プリセット・直近のプレイ・音量）を店舗ドキュメントの stat に書く（変わったとき、最長 60 秒に 1 回）。
+     スマホからの指示（stores/{id}/cmds）を受けて実行し、state を書き戻す。 */
+  let statSig = '', statAt = 0, statFailAt = 0, unwatchCmds = null;
+  const cmdSeen = {};
+  function statOf() {
+    const s = Store.state, ses = s.session, now = Date.now();
+    const info = storeInfo();
+    const hits = Engine.pruneHits(s.hits, now, s.limits && s.limits.resetHour);
+    return {
+      at: 0, ver: APP_V, playNo: ses.playNo, awarded: ses.awarded, bestValue: s.bestValue || 0, credits: s.credits || 0, dud: s.dud || 0,
+      presetId: info.activeId || null, presets: (info.presets || []).map((p) => ({ id: p.id, name: String(p.name || '').slice(0, 20) })),
+      today: { wins: hits.length, awarded: hits.reduce((a, h) => a + (Number(String(h.key).split(':')[1]) || 0), 0) },
+      resetHour: Number.isInteger(s.limits && s.limits.resetHour) ? s.limits.resetHour : 19,
+      volume: typeof s.settings.volume === 'number' ? s.settings.volume : 0.5,
+      recent: (s.playsRecent || []).slice(-20).reverse(),
+    };
+  }
+  function statWatch() {
+    if (!storeMode() || !Store.state.store || !billMode()) return;
+    if (Date.now() - statFailAt < 60000) return;
+    const st = statOf(), sig = JSON.stringify(st);
+    if (sig === statSig && Date.now() - statAt < 60000) return;
+    statSig = sig; statAt = Date.now(); st.at = statAt;
+    Cloud.updateStoreFields(Store.state.store.id, { stat: st }).catch(() => { statSig = ''; statFailAt = Date.now(); });
+  }
+  let cmdQueue = Promise.resolve();
+  function onCmds(list) {
+    (list || []).slice().reverse().forEach((d) => {
+      if (!d || cmdSeen[d.id] || d.state !== 'new') return;
+      cmdSeen[d.id] = true;
+      if (Date.now() - d.ts > 60000) return;
+      cmdQueue = cmdQueue.then(() => runCmd(d)).catch(() => {});
+    });
+  }
+  async function runCmd(d) {
+    const me = Store.state.store;
+    if (!me) return;
+    let ok = false, reason = '';
+    try {
+      if (d.type === 'preset') { ok = await choosePreset(String((d.data || {}).id || '')); if (!ok) reason = 'preset'; }
+      else if (d.type === 'statsReset') { Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0, by: 'phone' }, 'phone'); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; }); showCredits(); refresh(); if (Admin.isOpen()) Admin.rerender(); ok = true; }
+      else if (d.type === 'volume') { const v = Math.max(0, Math.min(1, Number((d.data || {}).v))); if (isFinite(v)) { Store.transact((st) => { st.settings.volume = v; }); Sfx.setVolume(v); ok = true; } else reason = 'volume'; }
+      else if (d.type === 'update') { autoUpdate(true); ok = true; }
+      else if (d.type === 'logout') { ok = true; }
+      else reason = 'unknown';
+    } catch (e) { ok = false; reason = String(e && e.message || e).slice(0, 60); }
+    try { Store.transact(() => Store.log('PHONE_CMD', { type: d.type, ok, phone: d.phone })); } catch (e) { /* ログのみ */ }
+    Cloud.ackCmd(me.id, d.id, { state: ok ? 'ok' : 'error', ackAt: Date.now(), reason }).catch(() => {});
+    statSig = ''; statWatch();
+    if (ok && d.type === 'logout') setTimeout(logoutStore, 800);
+  }
   let phaseFailAt = 0;
   function phaseWatch() {
     if (!storeMode() || !Store.state.store || !billMode()) return;
@@ -805,6 +857,7 @@ const Game = (function () {
           s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
         s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
+        s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
         s.locked = true;
@@ -1935,6 +1988,8 @@ const Game = (function () {
     startFeed();
     if (unwatchIns) unwatchIns();
     unwatchIns = Cloud.watchInserts(me.id, Date.now() - INSERT_WINDOW_MS, onInserts); // b83: スマホの紙幣
+    if (unwatchCmds) unwatchCmds();
+    unwatchCmds = Cloud.watchCmds(me.id, Date.now() - 60000, onCmds); // b91: スマホからの指示
     let storeSig = '';
     unwatch = Cloud.watchStore(me.id, (doc) => {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
@@ -2049,6 +2104,7 @@ const Game = (function () {
     layout();
     window.addEventListener('resize', layout);
     setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); }, 500);
+    setInterval(statWatch, 5000); // b91: 端末の状態をスマホの設定画面へ（変わったときだけ書く）
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
     window.addEventListener('pageshow', () => { reelHeal(); setTimeout(reelHeal, 600); });
