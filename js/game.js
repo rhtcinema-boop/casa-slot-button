@@ -404,7 +404,7 @@ const Game = (function () {
       wrap.innerHTML = '<div class="billrot">' + BillArt.svg(484, { serial: 'C ' + String(Date.now() % 10000000).padStart(7, '0') + ' A' }) + '</div>'; // 縦向き・大きめ（b92）
       sand.classList.add('feeding');
       wrap.classList.add('in');
-      await wait(2000); // b88: ゆっくり（約 2 秒）
+      await wait(2200); // b88: ゆっくり（約 2 秒）
       sand.classList.remove('feeding'); sand.classList.add('accept');
       await wait(450);
       wrap.classList.remove('in'); wrap.innerHTML = '';
