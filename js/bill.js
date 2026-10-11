@@ -62,12 +62,14 @@
     geo.bh = bh; geo.bw = bw; geo.restTop = Math.round(clipH - bh * 0.62);
     bill.style.width = bw + 'px'; bill.style.height = bh + 'px'; bill.style.top = geo.restTop + 'px';
     if (svg) { svg.setAttribute('width', bh); svg.setAttribute('height', bw); svg.style.width = bh + 'px'; svg.style.height = bw + 'px'; svg.style.left = (bw / 2 - bh / 2) + 'px'; svg.style.top = (bh / 2 - bw / 2) + 'px'; }
-    $('acc').style.setProperty('--w', (bw + 60) + 'px'); // サンドの幅は紙幣に合わせる
+    $('acc').style.setProperty('--w', (bw + 60) + 'px'); $('lip').style.setProperty('--w', (bw + 60) + 'px'); // サンドの幅は紙幣に合わせる
   }
   function initSwipe() {
     const bill = $('bill'), clip = $('feedClip');
     let y0 = 0, dy = 0, dragging = false, pid = null;
-    const H = () => window.innerHeight;
+    // b94: 指で動かせるのは口の手前（溝の 100px 下）まで。そこまでの半分を越えて離すと投入。入る動きはテレビと同じ（せり上がる → 一拍 → 吸い込み）
+    const stopY = () => -(geo.restTop - 100);
+    const need = () => -stopY() * 0.5;
     clip.addEventListener('pointerdown', (e) => { // 紙幣の周り（枠の中）どこを触ってもよい
       unlockAudio();
       if (!armed) { buzz(40); return; }
@@ -77,16 +79,16 @@
     });
     clip.addEventListener('pointermove', (e) => {
       if (!dragging || e.pointerId !== pid) return;
-      dy = Math.min(0, e.clientY - y0); // 上方向だけ
+      dy = Math.max(stopY(), Math.min(0, e.clientY - y0)); // 上方向だけ、口の手前で止まる
       setY(dy);
-      $('acc').classList.toggle('hot', -dy > H() / 3);
+      $('acc').classList.toggle('hot', -dy > need());
     });
     const end = (e) => {
       if (!dragging || e.pointerId !== pid) return;
       dragging = false;
       bill.classList.remove('drag');
       $('acc').classList.remove('hot');
-      if (-dy > H() / 3) insert();
+      if (-dy > need()) insert();
       else { bill.classList.add('back'); setY(0); }
     };
     clip.addEventListener('pointerup', end);
@@ -101,14 +103,26 @@
     sending = true; lastSent = Date.now();
     render();
     const target = -(geo.restTop + geo.bh + 16); // 紙幣が口の中へ完全に入る位置
-    bill.classList.add('suck');
-    bill.style.setProperty('--s', '.94'); bill.style.setProperty('--b', '.6'); // 奥に入るほど少し小さく・暗く
-    $('acc').classList.add('feeding');
-    setY(target);
+    // b94: テレビと同じ動き。指を離した位置からせり上がり、口の手前で一拍止まってから、奥へ吸い込まれる（約 2.2 秒）
+    const startY = parseFloat(getComputedStyle(bill).getPropertyValue('--y')) || 0;
+    const yMouth = -geo.restTop; // 紙幣の上端が溝に届く位置
+    const tx = (y, s) => 'translateX(-50%) translateY(' + y + 'px) scale(' + s + ')';
+    bill.classList.add('drag'); bill.classList.remove('back', 'enter', 'suck');
+    $('acc').classList.add('feeding'); $('lip').classList.add('feeding');
     buzz([20, 30, 20, 30, 60]);
     setMsg('投入中…');
-    await new Promise((r) => setTimeout(r, 1150));
-    $('acc').classList.remove('feeding');
+    try {
+      const anim = bill.animate([
+        { transform: tx(startY, 1), filter: 'brightness(1)', offset: 0 },
+        { transform: tx(yMouth + 40, 1), filter: 'brightness(1)', offset: 0.35 },
+        { transform: tx(yMouth + 26, 1), filter: 'brightness(1)', offset: 0.55 },
+        { transform: tx(yMouth + 22, 1), filter: 'brightness(1)', offset: 0.62 },
+        { transform: tx(target, 0.94), filter: 'brightness(.6)', offset: 1 },
+      ], { duration: 2200, easing: 'cubic-bezier(.3, .05, .3, 1)', fill: 'forwards' });
+      await anim.finished; anim.cancel();
+    } catch (e) { /* 古いブラウザ: 動きなしで続ける */ }
+    setY(target); bill.style.setProperty('--s', '.94'); bill.style.setProperty('--b', '.6');
+    $('acc').classList.remove('feeding'); $('lip').classList.remove('feeding');
     saved.seq = (saved.seq || 0) + 1; save();
     let id = null;
     try { id = await Cloud.pushInsert(saved.storeId, { ts: Date.now(), phone: saved.phone, seq: saved.seq }); }
