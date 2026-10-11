@@ -22,7 +22,12 @@
   #app { position: fixed; inset: 0; }
   .top { position: absolute; top: 0; left: 0; right: 0; padding: calc(env(safe-area-inset-top) + 14px) 18px 0; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--dim); }
   .top b { color: var(--gold); letter-spacing: .25em; font-weight: 700; }
-  .top button { background: none; border: 0; color: var(--dim); font: inherit; padding: 6px 0; }
+  .top b { padding: 10px 16px; }
+  .sheet { position: absolute; inset: 0; z-index: 20; background: rgba(0, 0, 0, .7); display: flex; align-items: flex-end; }
+  .sheet .card { width: 100%; background: #15120a; border-top: 1px solid #c9a03e; border-radius: 18px 18px 0 0; padding: 18px 20px calc(env(safe-area-inset-bottom) + 20px); display: flex; flex-direction: column; gap: 10px; }
+  .sheet h2 { margin: 0 0 6px; font-size: 16px; color: var(--gold); letter-spacing: .2em; }
+  .sheet .item { width: 100%; padding: 16px; font-size: 17px; border-radius: 12px; border: 1px solid #c9a03e; background: #0d0c08; color: #ffe9a8; font-family: inherit; }
+  .sheet .item.ghost { border-color: #3a3a3a; color: #cfd6cc; background: #1a1a1a; }
   .store { position: absolute; top: calc(env(safe-area-inset-top) + 50px); left: 0; right: 0; text-align: center; font-size: 14px; color: #cfd6cc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px; }
   .store i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #35e07a; box-shadow: 0 0 8px #35e07a; margin-right: 6px; vertical-align: 1px; }
   .store.busy i { background: #ffb84d; box-shadow: 0 0 8px #ffb84d; }
@@ -66,7 +71,8 @@
 </head>
 <body>
 <div id="app">
-  <div class="top"><button id="btnLogout">ログアウト</button><b>casa SLOT</b><button id="btnReload">再接続</button></div>
+  <div class="top"><span></span><b id="crest">casa SLOT</b><span></span></div>
+  <div class="sheet hidden" id="sheet"><div class="card"><h2>設定</h2><button class="item" id="btnReload">画面を読み直す（再接続）</button><button class="item" id="btnLogout">店舗を切り替える（ログアウト）</button><button class="item ghost" id="btnClose">閉じる</button></div></div>
   <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
   <div class="slit" id="slit"></div>
   <div id="feedClip"><div class="bill" id="bill"></div></div>
@@ -75,10 +81,10 @@
   <div class="foot">紙幣 1 枚で 1 ゲーム。ゲーム中は入れられません。</div>
   <div class="login hidden" id="login"></div>
 </div>
-<script src="js/engine.js?v=b88"></script>
-<script src="cloud-config.js?v=b88"></script>
-<script src="js/cloud.js?v=b88"></script>
-<script src="js/bill-art.js?v=b88"></script>
-<script src="js/bill.js?v=b88"></script>
+<script src="js/engine.js?v=b90"></script>
+<script src="cloud-config.js?v=b90"></script>
+<script src="js/cloud.js?v=b90"></script>
+<script src="js/bill-art.js?v=b90"></script>
+<script src="js/bill.js?v=b90"></script>
 </body>
 </html>
