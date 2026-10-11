@@ -1717,3 +1717,15 @@ body.lite .lockbar .billwrap .billrot { filter: none; }
 .lockbar .sand .last b.zero { background: var(--silver-grad); -webkit-background-clip: text; background-clip: text; }
 .lockbar .sand .last b.none { background: none; -webkit-text-fill-color: #6b6354; color: #6b6354; }
 .lockbar .sand .arrow.l { left: 215px; }
+
+/* b91（オーナー指示）: テレビのサンドを枠（lockbar の高さ 150px）の中で大きく */
+.lockbar.sandbar { top: 698px; height: 130px; } /* リールの箱の下（690）と賞金表の上（820）の間に収める */
+.lockbar.sandbar .sand { height: 112px; }
+.lockbar .sand .lbl { top: 16px; font-size: 15px; }
+.lockbar .sand .slit { width: 190px; height: 28px; margin: -14px 0 0 -95px; border-radius: 14px; }
+.lockbar .sand .slit::after { top: 11px; height: 6px; }
+.lockbar .sand .last b { font-size: 36px; }
+.lockbar .sand .emb { width: 56px; height: 56px; margin-top: -28px; }
+.lockbar .sand .led { width: 16px; height: 16px; margin-top: -8px; }
+.lockbar .billwrap { width: 190px; margin-left: -95px; height: 52px; }
+@keyframes billin { 0% { transform: translateY(56px); } 12% { transform: translateY(34px); } 100% { transform: translateY(-304px); } }
