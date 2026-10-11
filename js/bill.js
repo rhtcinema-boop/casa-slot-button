@@ -62,7 +62,7 @@
     geo.bh = bh; geo.bw = bw; geo.restTop = Math.round(clipH - bh * 0.62);
     bill.style.width = bw + 'px'; bill.style.height = bh + 'px'; bill.style.top = geo.restTop + 'px';
     if (svg) { svg.setAttribute('width', bh); svg.setAttribute('height', bw); svg.style.width = bh + 'px'; svg.style.height = bw + 'px'; svg.style.left = (bw / 2 - bh / 2) + 'px'; svg.style.top = (bh / 2 - bw / 2) + 'px'; }
-    $('acc').style.setProperty('--w', (bw + 60) + 'px'); $('lip').style.setProperty('--w', (bw + 60) + 'px'); // サンドの幅は紙幣に合わせる
+    $('acc').style.setProperty('--w', (bw + 60) + 'px'); // サンドの幅は紙幣に合わせる
   }
   function initSwipe() {
     const bill = $('bill'), clip = $('feedClip');
@@ -108,7 +108,7 @@
     const yMouth = -geo.restTop; // 紙幣の上端が溝に届く位置
     const tx = (y, s) => 'translateX(-50%) translateY(' + y + 'px) scale(' + s + ')';
     bill.classList.add('drag'); bill.classList.remove('back', 'enter', 'suck');
-    $('acc').classList.add('feeding'); $('lip').classList.add('feeding');
+    $('acc').classList.add('feeding');
     buzz([20, 30, 20, 30, 60]);
     setMsg('投入中…');
     try {
@@ -122,7 +122,7 @@
       await anim.finished; anim.cancel();
     } catch (e) { /* 古いブラウザ: 動きなしで続ける */ }
     setY(target); bill.style.setProperty('--s', '.94'); bill.style.setProperty('--b', '.6');
-    $('acc').classList.remove('feeding'); $('lip').classList.remove('feeding');
+    $('acc').classList.remove('feeding');
     saved.seq = (saved.seq || 0) + 1; save();
     let id = null;
     try { id = await Cloud.pushInsert(saved.storeId, { ts: Date.now(), phone: saved.phone, seq: saved.seq }); }
