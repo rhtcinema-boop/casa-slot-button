@@ -189,7 +189,12 @@
     $('bill').innerHTML = BillArt.svg(470);
     layoutBill();
     initSwipe();
-    $('btnLogout').onclick = async () => { if (unwatchStore) { unwatchStore(); unwatchStore = null; } saved = null; try { localStorage.removeItem(KEY); } catch (e) { /* noop */ } await login(); drawBill(); watchStore(); };
+    { // casa ロゴを 2.5 秒以内に 5 回タップで設定（端末と同じ流儀。b90）
+      let taps = [];
+      $('crest').addEventListener('pointerdown', (e) => { e.preventDefault(); const now = Date.now(); taps = taps.filter((t) => now - t < 2500).concat(now); if (taps.length >= 5) { taps = []; $('sheet').classList.remove('hidden'); } });
+      $('btnClose').onclick = () => $('sheet').classList.add('hidden');
+    }
+    $('btnLogout').onclick = async () => { $('sheet').classList.add('hidden'); if (unwatchStore) { unwatchStore(); unwatchStore = null; } saved = null; try { localStorage.removeItem(KEY); } catch (e) { /* noop */ } await login(); drawBill(); watchStore(); };
     $('btnReload').onclick = () => location.reload();
     document.addEventListener('pointerdown', unlockAudio, { once: true });
     if (!Cloud.enabled) { $('login').classList.remove('hidden'); $('login').innerHTML = '<h1>casa SLOT 紙幣</h1><p>この公開先は店舗モードではないため、紙幣ページは使えません。</p>'; return; }
