@@ -401,7 +401,7 @@ const Game = (function () {
       if (!sand || !wrap || !window.BillArt) return;
       if (attracting) { Reel.setStage(curStage); attracting = false; attractAt = 0; } // b88: 待機中の見せ回しを止めて、吸い込みの間はリールを止めておく（回るのは吸い込みが終わってから）
       Sfx.unlock(); Sfx.play('bill');
-      wrap.innerHTML = '<div class="billrot">' + BillArt.svg(300, { serial: 'C ' + String(Date.now() % 10000000).padStart(7, '0') + ' A' }) + '</div>'; // 縦向き（b84）
+      wrap.innerHTML = '<div class="billrot">' + BillArt.svg(484, { serial: 'C ' + String(Date.now() % 10000000).padStart(7, '0') + ' A' }) + '</div>'; // 縦向き・大きめ（b92）
       sand.classList.add('feeding');
       wrap.classList.add('in');
       await wait(2000); // b88: ゆっくり（約 2 秒）
