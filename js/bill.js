@@ -46,7 +46,7 @@
     armed = !busy && !sending;
     bill.classList.toggle('gray', busy); // 送信中は色のまま（吸い込まれていく途中で灰色にしない）
     hint.classList.toggle('busy', !armed);
-    hint.innerHTML = armed ? '<span class="arr">▲</span>上にスライドで投入（1 GAME）' : busy ? '<span class="arr">▲</span>ゲームが終わるまでお待ちください' : '<span class="arr">▲</span>送信中…';
+    hint.innerHTML = '<span class="arr"></span>'; // 三角だけ（文字は出さない。b89）
   }
 
   /* ---------- スライド ---------- */
