@@ -214,6 +214,40 @@ const Cloud = (function () {
     return () => { dead = true; if (un) un(); };
   }
 
+  /* ---------- スマホからの指示（b91） ----------
+     stores/{storeId}/cmds/{id} { ts, phone, type, data, state, ackAt, reason }
+       … type: 'preset' {id} / 'statsReset' / 'volume' {v} / 'update' / 'logout'。端末が実行して state を 'ok' か 'error' にする */
+  async function pushCmd(storeId, data) {
+    await ready();
+    const doc = { ts: data.ts || now(), phone: String(data.phone || '').slice(0, 40), type: String(data.type || '').slice(0, 20), data: data.data || {}, state: 'new' };
+    if (isLocal) { const d = lread(); const id = lid(); (d.cmds = d.cmds || {}); (d.cmds[storeId] = d.cmds[storeId] || []).push(Object.assign({ id }, doc)); if (d.cmds[storeId].length > 50) d.cmds[storeId].splice(0, d.cmds[storeId].length - 50); lwrite(d); return id; }
+    const r = await db.collection('stores').doc(storeId).collection('cmds').add(doc);
+    return r.id;
+  }
+  function watchCmds(storeId, since, cb) {
+    let un = null, dead = false;
+    ready().then(() => {
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => ((lread().cmds || {})[storeId] || []).filter((x) => x.ts > since).slice(-5).reverse(), cb); return; }
+      un = watchDoc(db.collection('stores').doc(storeId).collection('cmds').where('ts', '>', since).orderBy('ts', 'desc').limit(5), (q) => cb(q.docs.map((x) => Object.assign({ id: x.id }, x.data()))));
+    }).catch(() => { /* 接続できない: 見張りなし */ });
+    return () => { dead = true; if (un) un(); };
+  }
+  async function ackCmd(storeId, id, fields) {
+    await ready();
+    if (isLocal) { const d = lread(); const list = (d.cmds || {})[storeId] || []; const x = list.find((y) => y.id === id); if (x) Object.assign(x, fields); lwrite(d); return; }
+    await db.collection('stores').doc(storeId).collection('cmds').doc(id).update(fields);
+  }
+  function watchCmd(storeId, id, cb) {
+    let un = null, dead = false;
+    ready().then(() => {
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => (((lread().cmds || {})[storeId] || []).find((x) => x.id === id) || null), cb); return; }
+      un = watchDoc(db.collection('stores').doc(storeId).collection('cmds').doc(id), (d) => cb(d.exists ? Object.assign({ id }, d.data()) : null));
+    }).catch(() => cb(null));
+    return () => { dead = true; if (un) un(); };
+  }
+
   /* ---------- マスター用 ---------- */
   async function masterLogin(email, password) {
     await ready();
@@ -277,7 +311,7 @@ const Cloud = (function () {
     return q.docs.map((x) => x.data());
   }
 
-  return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed, pushInsert, watchInserts, ackInsert, watchInsert,
+  return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed, pushInsert, watchInserts, ackInsert, watchInsert, pushCmd, watchCmds, ackCmd, watchCmd,
     masterLogin, masterUser, masterLogout, saveStore, deleteStore, savePreset, deletePreset, listDays, listPlays, listDaysRange, listPlaysRange, dayKey };
 })();
 window.Cloud = Cloud;
