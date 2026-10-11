@@ -1699,9 +1699,9 @@ body.lite .testbig b { text-shadow: 0 4px 0 #5a0000; }
 .lockbar .billwrap { position: absolute; left: 50%; width: 170px; margin-left: -85px; top: 50%; height: 330px; overflow: hidden; z-index: 5; pointer-events: none; display: none; }
 .lockbar .billwrap.in { display: block; }
 /* 紙幣は縦向き（スマホと同じ）。.billrot（128×300）が上へ動き、中の絵は横長のまま 90 度回しておく */
-.lockbar .billwrap .billrot { position: absolute; left: 50%; top: 0; width: 128px; height: 300px; margin-left: -64px; animation: billin 1.15s cubic-bezier(.35, .05, .2, 1) both; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .7)); }
+.lockbar .billwrap .billrot { position: absolute; left: 50%; top: 0; width: 128px; height: 300px; margin-left: -64px; animation: billin 2s cubic-bezier(.35, .05, .25, 1) both; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .7)); }
 .lockbar .billwrap .billrot svg { position: absolute; left: 50%; top: 50%; width: 300px; height: 128px; transform: translate(-50%, -50%) rotate(-90deg); }
-@keyframes billin { 0% { transform: translateY(330px); } 30% { transform: translateY(150px); } 55% { transform: translateY(60px); } 100% { transform: translateY(-310px); } }
+@keyframes billin { 0% { transform: translateY(330px); } 28% { transform: translateY(150px); } 48% { transform: translateY(70px); } 58% { transform: translateY(62px); } 100% { transform: translateY(-310px); } }
 .lockbar .res { flex: none; margin-right: 18px; }
 .lockbar .res b { font-size: 48px; }
 body.lite .lockbar .sand { box-shadow: 0 0 0 2px #000, 0 0 0 5px #c9a03e, 0 0 0 7px #000, 0 8px 0 #5c4414; }
