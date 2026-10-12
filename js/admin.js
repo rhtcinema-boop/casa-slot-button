@@ -213,7 +213,7 @@ const Admin = (function () {
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
-    INSERT: ['ops', 'スマホの紙幣で開始'], PHONE_CMD: ['cfg', 'スマホからの操作'], INSERT_BUSY: ['ops', 'スマホの紙幣（ゲーム中のため受け付けず）'], LONG_START: ['ops', '長押しで開始'],
+    INSERT: ['ops', 'スマホの紙幣で開始'], CHECKS_CLEAR: ['cfg', '会計の一覧を消した'], PHONE_CMD: ['cfg', 'スマホからの操作'], INSERT_BUSY: ['ops', 'スマホの紙幣（ゲーム中のため受け付けず）'], LONG_START: ['ops', '長押しで開始'],
   };
   const GROUPS = [['all', 'すべて'], ['play', 'プレイ'], ['ops', '営業'], ['cfg', '設定変更'], ['pin', 'PIN・認証']];
 
@@ -224,11 +224,11 @@ const Admin = (function () {
   let hist = { all: null, group: 'all', session: 'all', page: 0 };
 
   const tabsFor = (r) => (typeof Game !== 'undefined' && Game.storeMode && Game.storeMode())
-    ? [['preset', 'プリセット'], ['history', '全履歴'], ['misc', 'その他']] // 店舗モード: 確率の中身は見せない
+    ? [['preset', 'プリセット'], ['checks', '会計'], ['history', '全履歴'], ['misc', 'その他']] // 店舗モード: 確率の中身は見せない
     : r === 'admin'
     ? [['ops', '確率設定'], ['history', '全履歴'], ['changes', '設定変更履歴'], ['pins', 'PIN管理'], ['misc', 'その他']]
     : [['ops', '確率設定']];
-  const TITLES = { preset: 'プリセット', ops: '確率設定', history: '全履歴', changes: '設定変更履歴', caps: 'プライズ上限ルール', pins: 'PIN管理', misc: 'その他' };
+  const TITLES = { preset: 'プリセット', checks: '会計番号ごとの当たり', ops: '確率設定', history: '全履歴', changes: '設定変更履歴', caps: 'プライズ上限ルール', pins: 'PIN管理', misc: 'その他' };
   let probForm = null;  // 編集中の確率 { stage: { key: % } }
   const copyProbs = (p) => JSON.parse(JSON.stringify(p));
   const probLabel = (k) => (k === 'NEXT' ? 'NEXT STAGE' : fmtN(+k));
@@ -349,6 +349,7 @@ const Admin = (function () {
   }
   function body() {
     if (tab === 'preset') return viewPreset();
+    if (tab === 'checks') return viewChecks();
     if (tab === 'ops') return viewProbs();
     if (tab === 'history' || tab === 'changes') return viewHistory();
     if (tab === 'caps') return viewCaps();
@@ -495,6 +496,15 @@ const Admin = (function () {
       if (hist.session !== 'all' && String(e.sessionId) !== hist.session) return false;
       return true;
     });
+  }
+  /* b97: スマホの紙幣に付いてきた会計番号と、その回の当たり金額。当たり（0 より大きい）だけを溜める。最新が上 */
+  function viewChecks() {
+    const list = (Store.state.checks || []).slice().reverse();
+    const sum = {}; list.forEach((c) => { sum[c.check] = (sum[c.check] || 0) + c.value; });
+    const dt = (ts) => { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); };
+    return '<div class="panel"><h4>会計番号ごとの当たり</h4><p class="hint">スマホで入力した会計番号に、その回の当たり金額を付けて並べます。当たりなしの回は入りません。</p>' +
+      (list.length ? '<table class="tbl"><tr><th>日時</th><th>会計番号</th><th>STAGE</th><th class="n">金額</th><th class="n">この会計の合計</th></tr>' + list.map((c) => '<tr><td>' + dt(c.ts) + '</td><td><b>' + esc(c.check) + '</b></td><td>' + c.stage + '</td><td class="n">' + fmtN(c.value) + '</td><td class="n">' + fmtN(sum[c.check]) + '</td></tr>').join('') + '</table>' : '<p class="hint">まだありません。</p>') +
+      '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="checks-clear" ' + (list.length ? '' : 'disabled') + '>この一覧を消す</button></div></div>';
   }
   function viewHistory() {
     if (!hist.all) {
@@ -748,6 +758,11 @@ const Admin = (function () {
           if (!Engine.validateProbs(probForm).ok) return;
           Store.transact((st) => { const before = st.probs; st.probs = copyProbs(probForm); Store.log('PROB_SET', { before, after: st.probs }, role); }); Game.syncTable();
           UI.toast('確率を保存しました。次のプレイから反映されます。', 'ok');
+          return render();
+        }
+        case 'checks-clear': {
+          if (!(await UI.confirm({ title: '会計の一覧を消す', html: '<p>会計番号ごとの当たりの一覧を消します。全履歴と全店舗の配当履歴は消えません。</p>', ok: '消す', danger: true }))) return;
+          Store.transact((st) => { Store.log('CHECKS_CLEAR', { n: (st.checks || []).length }, role); st.checks = []; });
           return render();
         }
         case 'stats-reset': {
