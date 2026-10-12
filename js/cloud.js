@@ -184,6 +184,7 @@ const Cloud = (function () {
   async function pushInsert(storeId, data) {
     await ready();
     const doc = { ts: data.ts || now(), phone: String(data.phone || '').slice(0, 40), seq: Number(data.seq) || 0, state: 'new' };
+    if (data.check) doc.check = String(data.check).slice(0, 20); // b97: 会計番号（スマホで入力）
     if (isLocal) { const d = lread(); const id = lid(); (d.inserts = d.inserts || {}); (d.inserts[storeId] = d.inserts[storeId] || []).push(Object.assign({ id }, doc)); if (d.inserts[storeId].length > 50) d.inserts[storeId].splice(0, d.inserts[storeId].length - 50); lwrite(d); return id; }
     const r = await db.collection('stores').doc(storeId).collection('inserts').add(doc);
     return r.id;
