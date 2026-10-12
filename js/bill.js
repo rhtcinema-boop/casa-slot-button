@@ -9,7 +9,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtN = (n) => (Number(n) || 0).toLocaleString('ja-JP');
-  let saved = null;      // { storeId, name, phone, seq }
+  let saved = null;      // { storeId, name, phone, seq, check }  check = いま入力されている会計番号（b97）
   let storeDoc = null;   // 店舗ドキュメントの最新（phase / stat を見る）
   let unwatchStore = null, sending = false, lastSent = 0, armed = true;
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
@@ -49,6 +49,8 @@
     armed = !busy && !sending;
     bill.classList.toggle('gray', busy);
     hint.classList.toggle('busy', !armed);
+    const chk = $('chk');
+    if (saved.check) { chk.classList.remove('hidden'); chk.innerHTML = '会計 No.<b>' + esc(saved.check) + '</b><button type="button" data-act="end">終了</button>'; } else chk.classList.add('hidden');
     if (!$('adm').classList.contains('hidden')) renderAdm();
   }
 
@@ -99,7 +101,7 @@
   /* ---------- 投入 ---------- */
   async function insert() {
     const bill = $('bill');
-    if (!armed || sending || Date.now() - lastSent < 3000) { bill.classList.add('back'); setY(0); return; }
+    if (!armed || sending || Date.now() - lastSent < 3000 || !saved.check) { bill.classList.add('back'); setY(0); if (!saved.check) gameStart(); return; }
     sending = true; lastSent = Date.now();
     render();
     const target = -(geo.restTop + geo.bh + 16); // 紙幣が口の中へ完全に入る位置
@@ -125,7 +127,7 @@
     $('acc').classList.remove('feeding');
     saved.seq = (saved.seq || 0) + 1; save();
     let id = null;
-    try { id = await Cloud.pushInsert(saved.storeId, { ts: Date.now(), phone: saved.phone, seq: saved.seq }); }
+    try { id = await Cloud.pushInsert(saved.storeId, { ts: Date.now(), phone: saved.phone, seq: saved.seq, check: saved.check || undefined }); }
     catch (e) { finish(false, '届きませんでした。通信を確認してもう一度'); return; }
     let done = false;
     const un = Cloud.watchInsert(saved.storeId, id, (d) => {
@@ -205,7 +207,10 @@
         '<div class="panel"><h4>今日の当たり</h4><p class="note">毎日 ' + (Number.isInteger(st.resetHour) ? st.resetHour : 19) + ':00 からの合計。テストの回と当たりなしの回は入りません。</p>' +
         '<div class="stat"><span>今日の当たり本数</span><b>' + fmtN(today.wins) + '</b></div>' +
         '<div class="stat"><span>今日の当たり合計</span><b class="' + (Date.now() < todayShown ? '' : 'mask') + '">' + (Date.now() < todayShown ? fmtN(today.awarded) : '＊＊＊＊＊') + '</b></div>' +
-        '<button class="btn sm" data-act="today">10 秒だけ見る</button></div>';
+        '<button class="btn sm" data-act="today">10 秒だけ見る</button></div>' +
+        '<div class="panel"><h4>会計番号ごとの当たり（端末）</h4><div class="hist">' +
+        ((st.checks || []).length ? st.checks.map((c) => { const d = new Date(c.ts); return '<div class="row"><small>' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</small><span>No.' + esc(c.check) + '</span><b>' + fmtN(c.value) + '</b></div>'; }).join('') : '<p class="note">まだありません。当たりが出ると、そのとき入力されていた会計番号と金額がここに並びます。</p>') +
+        '</div></div>';
     } else if (admTab === 'preset') {
       const list = st.presets || [];
       body = '<div class="panel"><h4>プリセットを選ぶ</h4><p class="note">マスターから配られたプリセットの中から選びます。選ぶと端末の次のプレイから反映されます。</p><div class="plist">' +
@@ -240,6 +245,37 @@
     };
   }
 
+  /* ---------- b97: GAME START → 会計番号 → 紙幣 ---------- */
+  let starting = false;
+  async function gameStart() {
+    if (starting) return; starting = true;
+    const box = $('start');
+    box.classList.remove('hidden');
+    try {
+      for (;;) {
+        await new Promise((resolve) => {
+          box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big" id="gs">GAME START</button><p class="sub">タップして会計番号を入れると、紙幣の画面になります</p>';
+          $('gs').onclick = () => { buzz(20); resolve(); };
+        });
+        const no = await new Promise((resolve) => {
+          box.innerHTML = '<h1>会計番号</h1><p>お客様の会計番号（伝票の番号）を入れてください</p><input id="chkno" type="text" inputmode="numeric" autocomplete="off" maxlength="12"><div class="err" id="cerr"></div><div class="row"><button class="ghost" id="cback">戻る</button><button class="ok" id="cgo">決定</button></div>';
+          const inp = $('chkno'); setTimeout(() => inp.focus(), 100);
+          const go = () => { const v = inp.value.trim(); if (!v) { $('cerr').textContent = '会計番号を入れてください。'; inp.focus(); return; } resolve(v); };
+          $('cgo').onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
+          $('cback').onclick = () => resolve(null);
+        });
+        if (no === null) continue;
+        saved.check = no; save();
+        break;
+      }
+    } finally { starting = false; box.classList.add('hidden'); }
+    render();
+  }
+  async function endCheck() {
+    if (!(await confirmBox('会計 No.' + saved.check + ' を終了', 'このお客様の分を終わります。次は GAME START から会計番号を入れ直します。', '終了する'))) return;
+    saved.check = null; save(); render(); gameStart();
+  }
+
   /* ---------- 店舗へのログイン ---------- */
   async function login() {
     const box = $('login');
@@ -270,7 +306,7 @@
         $('back').onclick = () => resolve(false);
       });
       if (!ok) continue;
-      saved = { storeId: id, name: st.name, phone: phoneId(), seq: (load() && load().seq) || 0 };
+      saved = { storeId: id, name: st.name, phone: phoneId(), seq: (load() && load().seq) || 0, check: null };
       save();
       box.classList.add('hidden');
       return;
@@ -280,7 +316,7 @@
     if (unwatchStore) { unwatchStore(); unwatchStore = null; }
     saved = null; storeDoc = null;
     try { localStorage.removeItem(KEY); } catch (e) { /* noop */ }
-    await login(); drawBill(); watchStore();
+    await login(); drawBill(); watchStore(); gameStart();
   }
   function watchStore() {
     if (unwatchStore) unwatchStore();
@@ -308,6 +344,8 @@
     if (!saved || !saved.storeId) await login();
     drawBill();
     watchStore();
+    $('chk').addEventListener('click', (e) => { if (e.target.closest('[data-act="end"]')) endCheck(); });
+    if (!saved.check) gameStart();
     setInterval(render, 30000);
   }
   document.addEventListener('DOMContentLoaded', init);
