@@ -366,6 +366,8 @@ const Game = (function () {
   const INSERT_WINDOW_MS = 30000;
   const insertSeen = {};
   let insertBusy = false, unwatchIns = null, lastPhase = '';
+  let curCheck = null; // b97: 直近の紙幣に付いていた会計番号 { no, at }。10 分以内のプレイ（FREE SPIN の消化も）に付ける
+  const checkNo = () => (curCheck && Date.now() - curCheck.at < 10 * 60 * 1000) ? curCheck.no : null;
   const canStart = () => { const s = Store.state, p = s && s.play; return !busy && !pressing && !insertBusy && !updPending && !!s && (!p || p.phase === 'shown') && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && lockbar.classList.contains('show') && !!lockbar.querySelector('[data-act="next"]'); };
   const INSERT_GRACE_MS = 3000; // 待機に戻る途中（結果の片付け中など）に届いた投入は、少し待ってから判定する
   let insertQueue = Promise.resolve();
@@ -388,7 +390,8 @@ const Game = (function () {
       return;
     }
     Cloud.ackInsert(me.id, d.id, { state: 'ok', ackAt: Date.now() }).catch(() => {});
-    try { Store.transact(() => Store.log('INSERT', { id: d.id, phone: d.phone })); } catch (e) { /* ログのみ */ }
+    curCheck = d.check ? { no: String(d.check).slice(0, 20), at: Date.now() } : null;
+    try { Store.transact(() => Store.log('INSERT', { id: d.id, phone: d.phone, check: curCheck ? curCheck.no : undefined })); } catch (e) { /* ログのみ */ }
     await insertFx();
     const b = lockbar.querySelector('[data-act="next"]'); if (b && !busy && !pressing) b.click();
     await wait(300);
@@ -437,6 +440,7 @@ const Game = (function () {
       resetHour: Number.isInteger(s.limits && s.limits.resetHour) ? s.limits.resetHour : 19,
       volume: typeof s.settings.volume === 'number' ? s.settings.volume : 0.5,
       recent: (s.playsRecent || []).slice(-20).reverse(),
+      checks: (s.checks || []).slice(-40).reverse(), // b97: 会計番号ごとの当たり（新しい順）
     };
   }
   function statWatch() {
@@ -856,8 +860,10 @@ const Game = (function () {
           ses.awarded += res.value;
           s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
-        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now() };
-        s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
+        const chk = test ? null : checkNo(); // b97: 会計番号（スマホの紙幣に付いてきたもの）
+        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now(), check: chk || undefined };
+        s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined, check: chk || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
+        if (chk && res.value > 0) s.checks = ((s.checks || []).concat({ ts: s.play.ts, check: chk, stage: res.stage, value: res.value })).slice(-300); // b97: 会計番号ごとの当たり（端末の設定「会計」で見る）
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
         s.locked = true;
@@ -871,7 +877,7 @@ const Game = (function () {
     clearSure(); // b79: 前のゲームの「当選確定」の表示が（画面が隠れていた等で）遅れて付いても、新しいゲームには持ち越さない
     showCredits();
     lockbar.classList.remove('show');
-    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free }, Store.state.limits && Store.state.limits.resetHour).catch(cloudFail); }
+    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free, check: p.check || null }, Store.state.limits && Store.state.limits.resetHour).catch(cloudFail); }
     runStage(Store.state.play, 1);
   }
 
