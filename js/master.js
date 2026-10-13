@@ -22,6 +22,7 @@
       '<label class="f"><span>メールアドレス</span><input type="email" id="email" autocomplete="username"></label>' +
       '<label class="f"><span>パスワード</span><input type="password" id="pw" autocomplete="current-password"></label>' +
       '<div class="err" id="lerr"></div><div class="acts"><button class="btn" id="dologin">ログイン</button></div></div>';
+    $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('dologin').click(); }); // b99: Enter でログイン
     $('dologin').addEventListener('click', async () => {
       $('lerr').textContent = '';
       try { await Cloud.masterLogin($('email').value.trim(), $('pw').value); enter(); }
@@ -105,12 +106,16 @@
     if ((!s.id || pin) && !/^\d{4,8}$/.test(pin)) { err.textContent = 'パスワードは4〜8桁の数字にしてください。'; return; }
     if (staleMsg()) { err.textContent = staleMsg(); return; }
     const presetIds = Array.from(document.querySelectorAll('[data-pid]:checked')).map((x) => x.dataset.pid);
-    const active = $('sactive').value;
+    let active = $('sactive').value;
+    if (s.id && active === (s.activePresetId || '')) { // b99: フォームを開いている間に端末・スマホが使用中プリセットを変えていたら、それを上書きしない
+      try { const fresh = await Cloud.getStore(s.id); if (fresh && (fresh.activePresetId || '') !== (s.activePresetId || '')) active = fresh.activePresetId || ''; } catch (e) { /* 取れなければフォームの値 */ }
+    }
     if (active && presetIds.indexOf(active) < 0) presetIds.push(active);
     const notes = [0, 1, 2].map((i) => $('snote' + i).value.trim().slice(0, 80)).filter(Boolean); // 待機中に左側に出す説明（入力されたものだけ）
     const data = { name, presetIds, activePresetId: active || null, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン
     if (pin) data.pin = Engine.makePin(pin);
-    await Cloud.saveStore(s.id || null, data);
+    try { await Cloud.saveStore(s.id || null, data); }
+    catch (e) { err.textContent = '保存できませんでした。通信を確認して、もう一度押してください。'; throw e; }
     toast('保存しました');
     editStore = null; await reload(); render();
   }
