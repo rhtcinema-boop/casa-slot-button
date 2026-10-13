@@ -93,6 +93,8 @@
       [0, 1, 2].map((i) => '<label class="f"><span>説明 ' + (i + 1) + '</span><textarea id="snote' + i + '" rows="2" maxlength="80">' + esc((s.notes || [])[i] || '') + '</textarea></label>').join('') + '</div>' +
       '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">スマホの紙幣で始める</h3><p class="hint">ON にすると、この店舗の端末から NEXT GAME ボタンが消え、スタッフのスマホの紙幣ページ（公開 URL の bill.html）で紙幣をスライドしたときだけゲームが始まります。スマホが使えないときは、テレビはリモコンの決定を 2 秒長押し、iPad は左上のロゴを 2 秒長押しで始められます。</p>' +
       '<label class="check"><input type="checkbox" id="sbill" ' + (s.billMode ? 'checked' : '') + '> スマホの紙幣でゲームを始める（NEXT GAME ボタンを消す）</label></div>' +
+      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">季節の飾り</h3><p class="hint">ON にすると、この店舗の端末の光がオレンジと紫になり、四隅に薄いクモの巣、ロゴの横にかぼちゃが出ます。リールや文字は変わりません。</p>' +
+      '<label class="check"><input type="checkbox" id="shw" ' + (s.halloween ? 'checked' : '') + '> ハロウィンの飾り</label></div>' +
       '<div class="err" id="serr"></div>' +
       '<div class="acts">' + (s.id ? '<button class="btn ghost" data-act="store-logout">端末を強制ログアウト</button><button class="btn danger" data-act="store-del">削除</button>' : '') + '<button class="btn ghost" data-act="store-cancel">戻る</button><button class="btn" data-act="store-save">保存</button></div></div>';
   }
@@ -106,7 +108,7 @@
     const active = $('sactive').value;
     if (active && presetIds.indexOf(active) < 0) presetIds.push(active);
     const notes = [0, 1, 2].map((i) => $('snote' + i).value.trim().slice(0, 80)).filter(Boolean); // 待機中に左側に出す説明（入力されたものだけ）
-    const data = { name, presetIds, activePresetId: active || null, notes, billMode: !!($('sbill') && $('sbill').checked) }; // b83: スマホの紙幣で始めるか
+    const data = { name, presetIds, activePresetId: active || null, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン
     if (pin) data.pin = Engine.makePin(pin);
     await Cloud.saveStore(s.id || null, data);
     toast('保存しました');
