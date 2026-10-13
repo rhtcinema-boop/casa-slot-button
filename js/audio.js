@@ -603,14 +603,14 @@ const Sfx = (function () {
     key() { fm({ f: hz(pick([84, 86, 88, 91, 93])), d: 0.08, g: 0.1, ratio: 2, idx: 0.6 }); noise({ f: 3500, q: 2, d: 0.015, g: 0.07 }); },
     ok() { bell(hz(88), 0, 0.5, 0.16); bell(hz(95), 0.09, 0.7, 0.16); },
     bill() { // 紙幣が吸い込まれる（b88、オーナー指示「機械が紙を吸い込むような大きな音」。約 2 秒）: モーターの唸り＋ローラーの振動＋紙がこすれる音→最後にガチャンと止まる
-      tone({ type: 'sawtooth', f: 70, f2: 165, d: 1.95, g: 0.34, lp: 900, lp2: 2200, trem: 26 });
-      tone({ type: 'square', f: 140, f2: 330, d: 1.95, g: 0.14, lp: 1700, trem: 26 });
-      tone({ type: 'triangle', f: 35, f2: 55, d: 1.95, g: 0.3, lp: 300 });
-      noise({ f: 900, f2: 4200, q: 0.8, d: 1.9, g: 0.22 });
-      noise({ f: 5200, q: 2, d: 1.9, g: 0.08 });
-      noise({ f: 3200, q: 3, at: 1.98, d: 0.05, g: 0.4 });
-      tone({ type: 'square', f: 120, at: 2.0, d: 0.1, g: 0.3, lp: 1500 });
-      tone({ type: 'sine', f: 60, at: 2.0, d: 0.25, g: 0.3 });
+      tone({ type: 'sawtooth', f: 70, f2: 165, d: 2.15, g: 0.34, lp: 900, lp2: 2200, trem: 26 });
+      tone({ type: 'square', f: 140, f2: 330, d: 2.15, g: 0.14, lp: 1700, trem: 26 });
+      tone({ type: 'triangle', f: 35, f2: 55, d: 2.15, g: 0.3, lp: 300 });
+      noise({ f: 900, f2: 4200, q: 0.8, d: 2.1, g: 0.22 });
+      noise({ f: 5200, q: 2, d: 2.1, g: 0.08 });
+      noise({ f: 3200, q: 3, at: 2.2, d: 0.05, g: 0.4 });
+      tone({ type: 'square', f: 120, at: 2.22, d: 0.1, g: 0.3, lp: 1500 });
+      tone({ type: 'sine', f: 60, at: 2.22, d: 0.25, g: 0.3 });
     },
     error() {
       tone({ type: 'square', f: 170, d: 0.13, g: 0.16, lp: 1100 });
