@@ -213,11 +213,11 @@ const Admin = (function () {
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
-    INSERT: ['ops', 'スマホの紙幣で開始'], CHECKS_CLEAR: ['cfg', '会計の一覧を消した'], PHONE_CMD: ['cfg', 'スマホからの操作'], INSERT_BUSY: ['ops', 'スマホの紙幣（ゲーム中のため受け付けず）'], LONG_START: ['ops', '長押しで開始'],
+    INSERT: ['ops', 'スマホの紙幣で開始'], CHECKS_CLEAR: ['ops', '会計の一覧を消した'], PHONE_CMD: ['ops', 'スマホからの操作'], INSERT_BUSY: ['ops', 'スマホの紙幣（ゲーム中のため受け付けず）'], LONG_START: ['ops', '長押しで開始'],
   };
   const GROUPS = [['all', 'すべて'], ['play', 'プレイ'], ['ops', '営業'], ['cfg', '設定変更'], ['pin', 'PIN・認証']];
 
-  let el = null, role = null, tab = 'ops';
+  let el = null, role = null, tab = 'ops', resetScroll = false;
   let form = null;      // 営業開始前の編集中設定 { total, counts }
   let adjust = null;    // 営業途中の残存内訳編集 { counts } | null
   let capForm = null;
@@ -338,7 +338,7 @@ const Admin = (function () {
   function render() {
     const s = Store.state;
     const nav = tabsFor(role).map(([k, n]) => '<button class="tab ' + (k === tab ? 'on' : '') + '" data-act="tab" data-tab="' + k + '">' + n + '</button>').join('');
-    const keepScroll = el.querySelector('.adm-body') ? el.querySelector('.adm-body').scrollTop : 0;
+    const keepScroll = (!resetScroll && el.querySelector('.adm-body')) ? el.querySelector('.adm-body').scrollTop : 0; resetScroll = false; // b99: タブを変えたら先頭から
     el.innerHTML =
       '<nav class="adm-nav"><h2>SETTINGS</h2><div class="role">' + (Game.storeMode && Game.storeMode() ? esc(Store.state.store.name) : ROLE_JP[role] + 'PINでログイン中') + '</div>' + nav +
       '<div class="sp"></div><button class="btn ghost" data-act="close">閉じる</button></nav>' +
@@ -484,6 +484,11 @@ const Admin = (function () {
       case 'PIN_ADMIN_CHANGE': return '管理者PINを変更';
       case 'AUTH_LOCKOUT': return 'PIN入力を5回連続で失敗（60秒ロック）｜場面: ' + esc(d.context || '');
       case 'ADMIN_LOGIN': return '設定画面にログイン';
+      case 'INSERT': return 'スマホの紙幣' + (d.check ? '（会計 No.' + esc(d.check) + '）' : '') + (d.phone ? ' ' + esc(String(d.phone).slice(0, 8)) : '');
+      case 'INSERT_BUSY': return 'ゲーム中のため受け付けず' + (d.phone ? ' ' + esc(String(d.phone).slice(0, 8)) : '');
+      case 'LONG_START': return 'リモコン／ロゴの長押しで開始';
+      case 'PHONE_CMD': return ({ preset: 'プリセット切替', statsReset: '集計のリセット', volume: '音量', update: '更新', logout: 'ログアウト' }[d.type] || esc(String(d.type || ''))) + (d.ok === false ? '（受け付けず' + (d.reason ? '：' + esc(d.reason) : '') + '）' : '');
+      case 'CHECKS_CLEAR': return '会計の一覧を消した（' + (d.n || 0) + ' 件）';
       default: return esc(JSON.stringify(d));
     }
   }
@@ -500,9 +505,10 @@ const Admin = (function () {
   /* b97: スマホの紙幣に付いてきた会計番号と、その回の当たり金額。当たり（0 より大きい）だけを溜める。最新が上 */
   function viewChecks() {
     const list = (Store.state.checks || []).slice().reverse();
-    const sum = {}; list.forEach((c) => { sum[c.check] = (sum[c.check] || 0) + c.value; });
+    const sum = Object.create(null); list.forEach((c) => { sum[c.check] = (sum[c.check] || 0) + c.value; });
+    const billOn = typeof Game !== 'undefined' && Game.billMode && Game.billMode();
     const dt = (ts) => { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); };
-    return '<div class="panel"><h4>会計番号ごとの当たり</h4><p class="hint">スマホで入力した会計番号に、その回の当たり金額を付けて並べます。当たりなしの回は入りません。</p>' +
+    return '<div class="panel"><h4>会計番号ごとの当たり</h4><p class="hint">スマホで入力した会計番号に、その回の当たり金額を付けて並べます。当たりなしの回は入りません。' + (billOn ? '' : '<b>この店舗は「スマホの紙幣で始める」が OFF のため記録されません（マスター画面で ON にできます）。</b>') + '</p>' +
       (list.length ? '<table class="tbl"><tr><th>日時</th><th>会計番号</th><th>STAGE</th><th class="n">金額</th><th class="n">この会計の合計</th></tr>' + list.map((c) => '<tr><td>' + dt(c.ts) + '</td><td><b>' + esc(c.check) + '</b></td><td>' + c.stage + '</td><td class="n">' + fmtN(c.value) + '</td><td class="n">' + fmtN(sum[c.check]) + '</td></tr>').join('') + '</table>' : '<p class="hint">まだありません。</p>') +
       '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="checks-clear" ' + (list.length ? '' : 'disabled') + '>この一覧を消す</button></div></div>';
   }
@@ -517,7 +523,7 @@ const Admin = (function () {
     const rows = list.slice(hist.page * PAGE, hist.page * PAGE + PAGE);
     const sessions = Array.from(new Set(hist.all.map((e) => e.sessionId).filter((x) => x))).sort((a, b) => b - a);
     return '<div class="filters">' +
-      (tab === 'history' ? GROUPS.map(([k, n]) => '<button class="chip ' + (hist.group === k ? 'on' : '') + '" data-act="hist-group" data-g="' + k + '">' + n + '</button>').join('') : '') +
+      (tab === 'history' ? GROUPS.filter(([k]) => !(k === 'cfg' && typeof Game !== 'undefined' && Game.storeMode && Game.storeMode())).map(([k, n]) => '<button class="chip ' + (hist.group === k ? 'on' : '') + '" data-act="hist-group" data-g="' + k + '">' + n + '</button>').join('') : '') +
       '<select class="sel" data-sel="session"><option value="all">全セッション</option>' + sessions.map((id) => '<option value="' + id + '" ' + (String(id) === hist.session ? 'selected' : '') + '>' + sessLabel(id) + '</option>').join('') + '</select>' +
       '<span style="flex:1"></span><span style="color:#8e8672;font-size:16px">' + list.length + ' 件</span>' +
       '<button class="btn sm ghost" data-act="csv">CSV出力</button></div>' +
@@ -587,7 +593,7 @@ const Admin = (function () {
       '<div class="panel"><h4>アップデート</h4><dl class="kv"><dt>今のバージョン</dt><dd>' + esc(verNow()) + '</dd></dl>' +
       '<p class="hint" style="margin-top:10px">新しい版が公開されていれば、その場で取り込んで再読み込みします（入れ直し不要。インターネット接続が必要です）。</p>' +
       '<div class="acts" style="justify-content:flex-start"><button class="btn sm" data-act="update">最新版に更新</button></div></div>' +
-      '<div class="panel"><h4>データ</h4><dl class="kv"><dt>履歴件数</dt><dd>' + Store.state.logSeq + ' 件（営業終了しても削除されません）</dd><dt>保存先</dt><dd>この端末のブラウザ内ストレージ</dd></dl>' +
+      '<div class="panel"><h4>データ</h4><dl class="kv"><dt>履歴件数</dt><dd>' + Store.state.logSeq + ' 件（60 日より前の記録は自動で消えます）</dd><dt>保存先</dt><dd>この端末のブラウザ内ストレージ</dd></dl>' +
       '<p class="hint" style="margin-top:14px">ホーム画面に追加したアプリとして使用すると、データが自動削除されにくくなります。ブラウザの「履歴とWebサイトデータを消去」を行うと全データが失われます。</p></div>';
   }
 
@@ -681,7 +687,7 @@ const Admin = (function () {
           todayTimer = setTimeout(() => { const o = el && el.querySelector('#todaySum'); if (o) o.textContent = TODAY_MASK; }, TODAY_SHOW_MS);
           return;
         }
-        case 'tab': tab = b.dataset.tab; adjust = null; hist.page = 0; if (tab === 'history' || tab === 'changes') hist.all = null; return render();
+        case 'tab': tab = b.dataset.tab; adjust = null; hist.page = 0; resetScroll = true; if (tab === 'history' || tab === 'changes') hist.all = null; return render();
         case 'step': {
           const d = +b.dataset.d;
           const bump = (v) => Math.max(0, (Number.isFinite(v) ? Math.floor(v) : 0) + d);
