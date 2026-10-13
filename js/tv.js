@@ -58,6 +58,8 @@ const TV = (function () {
     const list = candidates();
     // ゲーム画面で NEXT GAME が消えている間（回転中）は、枠をロゴなどへ移さない。戻ってきたら NEXT GAME に付け直す
     if (layer().id === 'content' && !list.some((e) => e.dataset.act === 'next')) {
+      const help = document.getElementById('sand') && list.find((e) => e.id === 'helpBtn'); // b99: 紙幣モード（サンド表示中）は「?」から十字キーで動ける
+      if (help) { setFocus(help); return; }
       if (cur) cur.classList.remove('tvfocus', 'tvedit');
       cur = null; curKey = ''; editing = false;
       return;
