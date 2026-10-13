@@ -14,6 +14,8 @@
   let unwatchStore = null, sending = false, lastSent = 0, armed = true;
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* noop */ } };
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]); // b99: 圏外で永久に待たない
+  let deleted = false; // b99: 店舗がマスターで削除された
   const phoneId = () => { const s = load(); if (s && s.phone) return s.phone; return 'p' + Math.random().toString(36).slice(2, 10); };
 
   /* ---------- 音と振動 ---------- */
@@ -42,16 +44,17 @@
     const st = $('store'), bill = $('bill'), hint = $('hint');
     const busy = !!(storeDoc && storeDoc.phase === 'busy');
     if (!saved) return;
-    if (!storeDoc) { st.className = 'store off'; $('storeText').textContent = saved.name + ' … 接続中'; }
+    if (deleted) { st.className = 'store off'; $('storeText').textContent = saved.name + ' はマスターで削除されました'; }
+    else if (!storeDoc) { st.className = 'store off'; $('storeText').textContent = saved.name + ' … 接続中'; }
     else if (isStale()) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
     else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
     else { st.className = 'store'; $('storeText').textContent = saved.name + ' の端末につながっています'; }
-    armed = !busy && !sending;
-    bill.classList.toggle('gray', busy);
+    armed = !busy && !sending && !deleted && !isStale(); // b99: 端末が見つからないときも入れない
+    bill.classList.toggle('gray', busy || deleted || isStale());
     hint.classList.toggle('busy', !armed);
     const chk = $('chk');
     if (saved.check) { chk.classList.remove('hidden'); chk.innerHTML = '会計 No.<b>' + esc(saved.check) + '</b><button type="button" data-act="end">終了</button>'; } else chk.classList.add('hidden');
-    if (!$('adm').classList.contains('hidden')) renderAdm();
+    if (!$('adm').classList.contains('hidden')) renderAdmIfChanged();
   }
 
   /* ---------- 紙幣の大きさと置き場所 ---------- */
@@ -60,8 +63,15 @@
   function layoutBill() {
     const clip = $('feedClip'), bill = $('bill'), svg = bill.querySelector('svg');
     const H = window.innerHeight, clipH = clip.clientHeight;
-    const bh = Math.round(H * 0.9), bw = Math.round(bh / 2.35);
-    geo.bh = bh; geo.bw = bw; geo.restTop = Math.round(clipH - bh * 0.62);
+    let bw = Math.min(Math.round(H * 0.9 / 2.35), window.innerWidth - 76); // b99: 狭い画面ではサンドの枠（+60、外枠 +14）が画面に収まる幅まで
+    const bh = Math.round(bw * 2.35); bw = Math.round(bw);
+    geo.bh = bh; geo.bw = bw; geo.restTop = Math.max(60, Math.round(clipH - bh * 0.62));
+    { // b99: 三角とメッセージは紙幣の上端を基準に（小さい画面で紙幣に重ならない）
+      const sat = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0;
+      const billTop = clip.getBoundingClientRect().top + geo.restTop;
+      const hintTop = Math.max(sat + 200, billTop - 116);
+      $('hint').style.top = hintTop + 'px'; $('msg').style.top = (hintTop + 66) + 'px';
+    }
     bill.style.width = bw + 'px'; bill.style.height = bh + 'px'; bill.style.top = geo.restTop + 'px';
     if (svg) { svg.setAttribute('width', bh); svg.setAttribute('height', bw); svg.style.width = bh + 'px'; svg.style.height = bw + 'px'; svg.style.left = (bw / 2 - bh / 2) + 'px'; svg.style.top = (bh / 2 - bw / 2) + 'px'; }
     $('acc').style.setProperty('--w', (bw + 60) + 'px'); // サンドの幅は紙幣に合わせる
@@ -70,11 +80,12 @@
     const bill = $('bill'), clip = $('feedClip');
     let y0 = 0, dy = 0, dragging = false, pid = null;
     // b94: 指で動かせるのは口の手前（溝の 100px 下）まで。そこまでの半分を越えて離すと投入。入る動きはテレビと同じ（せり上がる → 一拍 → 吸い込み）
-    const stopY = () => -(geo.restTop - 100);
-    const need = () => -stopY() * 0.5;
+    const stopY = () => Math.min(-40, -(geo.restTop - 100)); // b99: 画面が低くても必ず上に動かせる
+    const need = () => Math.max(24, -stopY() * 0.5);
     clip.addEventListener('pointerdown', (e) => { // 紙幣の周り（枠の中）どこを触ってもよい
       unlockAudio();
-      if (!armed) { buzz(40); return; }
+      if (dragging) return; // b99: 2 本目の指は無視
+      if (!armed) { buzz(40); touchMsg(); return; } // b99: iPhone は振動しないので文字でも知らせる
       dragging = true; pid = e.pointerId; y0 = e.clientY; dy = 0;
       bill.classList.add('drag'); bill.classList.remove('back', 'enter', 'suck');
       try { clip.setPointerCapture(pid); } catch (x) { /* noop */ }
@@ -94,14 +105,16 @@
       else { bill.classList.add('back'); setY(0); }
     };
     clip.addEventListener('pointerup', end);
-    clip.addEventListener('pointercancel', end);
+    clip.addEventListener('pointercancel', (e) => { if (!dragging || e.pointerId !== pid) return; dragging = false; bill.classList.remove('drag'); $('acc').classList.remove('hot'); bill.classList.add('back'); setY(0); }); // b99: OS に取られたときは投入しない
+    clip.addEventListener('pointerup', unlockAudio);
     window.addEventListener('resize', layoutBill);
   }
 
   /* ---------- 投入 ---------- */
   async function insert() {
     const bill = $('bill');
-    if (!armed || sending || Date.now() - lastSent < 3000 || !saved.check) { bill.classList.add('back'); setY(0); if (!saved.check) gameStart(); return; }
+    if (!armed || sending || Date.now() - lastSent < 3000 || !saved.check) { bill.classList.add('back'); setY(0); if (!saved.check) gameStart(); else if (Date.now() - lastSent < 3000) setMsg('少し待ってからもう一度', 'err'); return; }
+    const who = { storeId: saved.storeId, phone: saved.phone, check: saved.check }; // b99: 途中で「終了」やログアウトをされても、この 1 枚の値は変えない
     sending = true; lastSent = Date.now();
     render();
     const target = -(geo.restTop + geo.bh + 16); // 紙幣が口の中へ完全に入る位置
@@ -125,21 +138,28 @@
     } catch (e) { /* 古いブラウザ: 動きなしで続ける */ }
     setY(target); bill.style.setProperty('--s', '.94'); bill.style.setProperty('--b', '.6');
     $('acc').classList.remove('feeding');
-    saved.seq = (saved.seq || 0) + 1; save();
+    if (saved) { saved.seq = (saved.seq || 0) + 1; save(); }
+    const seq = (saved && saved.seq) || 0;
     let id = null;
-    try { id = await Cloud.pushInsert(saved.storeId, { ts: Date.now(), phone: saved.phone, seq: saved.seq, check: saved.check || undefined }); }
-    catch (e) { finish(false, '届きませんでした。通信を確認してもう一度'); return; }
+    try { id = await withTimeout(Cloud.pushInsert(who.storeId, { ts: Date.now(), phone: who.phone, seq, check: who.check }), 8000); }
+    catch (e) { finish(false, navigator.onLine === false ? '通信できません。電波を確認してもう一度' : '届きませんでした。通信を確認してもう一度'); return; }
     let done = false;
-    const un = Cloud.watchInsert(saved.storeId, id, (d) => {
+    const un = Cloud.watchInsert(who.storeId, id, (d) => {
       if (done || !d || d.state === 'new') return;
       done = true; un();
       if (d.state === 'ok') finish(true, '投入しました。ゲームが始まります');
-      else finish(false, d.reason === 'credit' ? '端末は FREE SPIN の消化中です。終わってからもう一度' : 'ゲーム中のため入りませんでした。終わってからもう一度');
+      else finish(false, { credit: '端末は FREE SPIN（無料回転）の消化中です。終わってからもう一度', settings: '端末で設定画面が開いています。閉じてからもう一度', update: '端末が更新中です。少し待ってからもう一度', stale: '届くのが遅すぎました（スマホか端末の時計がずれています）', nobill: 'この店舗は紙幣モードが OFF です（マスターで ON にしてください）' }[d.reason] || 'ゲーム中のため入りませんでした。終わってからもう一度');
     });
-    setTimeout(() => { if (!done) { done = true; un(); finish(false, '端末から返事がありません。端末の画面と通信を確認してください'); } }, 5000);
+    setTimeout(() => { if (!done) { done = true; un(); finish(false, '端末から返事がありません。端末の画面と通信を確認してください'); } }, 9000); // b99: 端末の片付け待ち（最長 5 秒）＋往復分
+  }
+  let msgTimer = 0;
+  function touchMsg() { // 触ったのに動かないときの理由（1.5 秒）
+    const t = sending ? '送信中です' : deleted ? '店舗が削除されています' : isStale() ? '端末が見つかりません' : (storeDoc && storeDoc.phase === 'busy') ? '端末はゲーム中です' : '';
+    if (!t) return; setMsg(t, 'err'); clearTimeout(msgTimer); msgTimer = setTimeout(() => setMsg(''), 1500);
   }
   function finish(ok, text) {
     const bill = $('bill');
+    clearTimeout(msgTimer);
     setMsg(text, ok ? 'ok' : 'err');
     beep(ok);
     if (ok) buzz([20, 30, 60]); else buzz([80, 60, 80]);
@@ -152,7 +172,7 @@
       void bill.offsetHeight;
       bill.classList.remove('drag'); bill.classList.add('enter'); setY(0);
       render();
-      setTimeout(() => setMsg(''), 3000);
+      msgTimer = setTimeout(() => setMsg(''), 3000);
     }, ok ? 900 : 300);
   }
 
@@ -174,28 +194,38 @@
     if (isStale()) { toast('端末が見つかりません（電源・通信を確認）', true); return false; }
     cmdBusy = true; renderAdm();
     let id = null, result = false;
-    try { id = await Cloud.pushCmd(saved.storeId, { ts: Date.now(), phone: saved.phone, type, data: data || {} }); }
+    try { id = await withTimeout(Cloud.pushCmd(saved.storeId, { ts: Date.now(), phone: saved.phone, type, data: data || {} }), 8000); }
     catch (e) { cmdBusy = false; renderAdm(); toast('送れませんでした。通信を確認してください', true); return false; }
-    await new Promise((resolve) => {
+    try { await new Promise((resolve) => {
       let done = false;
       const un = Cloud.watchCmd(saved.storeId, id, (d) => {
         if (done || !d || d.state === 'new') return;
         done = true; un();
         if (d.state === 'ok') { toast(label + '：端末に反映しました'); result = true; }
-        else toast(label + '：端末が受け付けませんでした' + (d.reason ? '（' + d.reason + '）' : ''), true);
+        else toast(label + '：端末が受け付けませんでした' + (d.reason ? '（' + ({ playing: 'ゲーム中です。終わってからもう一度', preset: 'そのプリセットは使えません' }[d.reason] || d.reason) + '）' : ''), true);
         resolve();
       });
       setTimeout(() => { if (!done) { done = true; un(); toast(label + '：端末から返事がありません', true); resolve(); } }, 8000);
-    });
-    cmdBusy = false; renderAdm();
+    }); } finally { cmdBusy = false; }
+    renderAdm();
     return result;
   }
   const stat = () => (storeDoc && storeDoc.stat) || null;
+  let admSig = '';
+  function renderAdmIfChanged() { // b99: 端末の状態が変わったときだけ描き直す（スクロール位置や音量スライダーを守る）
+    const st = stat(); const sig = JSON.stringify([st && st.at, storeDoc && storeDoc.phase, storeDoc && storeDoc.lastSeen, deleted]);
+    if (sig === admSig) return;
+    const a = document.activeElement; if (a && a.id === 'vol') return; // 音量を動かしている最中は触らない
+    renderAdm();
+  }
+  const PHONE_PANEL = '<div class="panel"><h4>このスマホ</h4><button class="btn ghost" data-act="reload">画面を読み直す（再接続）</button><button class="btn ghost" data-act="phoneLogout">店舗を切り替える（ログアウト）</button></div>';
   function renderAdm() {
     const box = $('adm'), st = stat();
+    admSig = JSON.stringify([st && st.at, storeDoc && storeDoc.phase, storeDoc && storeDoc.lastSeen, deleted]);
+    const keep = box.querySelector('.body') ? box.querySelector('.body').scrollTop : 0;
     const tab = (id, name) => '<button data-tab="' + id + '" class="' + (admTab === id ? 'on' : '') + '">' + name + '</button>';
     let body = '';
-    if (!st) body = '<div class="panel"><p class="note">端末からの状態がまだ届いていません。端末が最新版（b91 以降）で起動していて、通信できているか確認してください。</p></div>';
+    if (!st) body = '<div class="panel"><p class="note">' + (deleted ? 'この店舗はマスターで削除されました。別の店舗に切り替えてください。' : '端末からの状態がまだ届いていません。端末が最新版（b91 以降）で起動していて、通信できているか確認してください。') + '</p></div>' + PHONE_PANEL;
     else if (admTab === 'stats') {
       const today = st.today || {};
       body = '<div class="panel"><h4>画面の集計（端末）</h4>' +
@@ -225,10 +255,11 @@
         '<div class="panel"><h4>端末</h4><p class="note">端末の版: ' + esc(st.ver || '—') + '　最終更新: ' + (st.at ? new Date(st.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '—') + '</p>' +
         '<button class="btn" data-act="update">端末を最新版に更新</button>' +
         '<button class="btn danger" data-act="logout">端末をこの店舗からログアウト</button></div>' +
-        '<div class="panel"><h4>このスマホ</h4><button class="btn ghost" data-act="reload">画面を読み直す（再接続）</button><button class="btn ghost" data-act="phoneLogout">店舗を切り替える（ログアウト）</button></div>';
+        PHONE_PANEL;
     }
     box.innerHTML = '<div class="head"><h2>設定 ・ ' + esc(saved ? saved.name : '') + '</h2><button data-act="close">閉じる</button></div><div class="tabs">' + tab('stats', '集計') + tab('preset', 'プリセット') + tab('other', '履歴・その他') + '</div><div class="body">' + body + '</div>';
-    box.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { admTab = b.dataset.tab; renderAdm(); }; });
+    const bodyEl = box.querySelector('.body'); if (bodyEl && keep) bodyEl.scrollTop = keep;
+    box.querySelectorAll('[data-tab]').forEach((b) => { b.onclick = () => { admTab = b.dataset.tab; renderAdm(); const be = box.querySelector('.body'); if (be) be.scrollTop = 0; }; });
     box.querySelectorAll('.btn, .plist button').forEach((b) => { if (cmdBusy && b.dataset.act !== 'close') b.disabled = true; });
     box.onclick = async (e) => {
       const b = e.target.closest('[data-act]'); if (!b) return;
@@ -236,7 +267,7 @@
       if (act === 'close') { box.classList.add('hidden'); return; }
       if (act === 'today') { todayShown = Date.now() + 10000; renderAdm(); setTimeout(renderAdm, 10100); return; }
       if (act === 'reload') { location.reload(); return; }
-      if (act === 'phoneLogout') { box.classList.add('hidden'); await phoneLogout(); return; }
+      if (act === 'phoneLogout') { if (sending) { toast('送信中です。少し待ってください', true); return; } box.classList.add('hidden'); await phoneLogout(); return; }
       if (act === 'preset') { const p = (st.presets || []).find((x) => x.id === b.dataset.id); if (!p || p.id === st.presetId) return; if (await confirmBox('プリセットを切り替え', '端末のプリセットを「' + p.name + '」にします。次のプレイから反映されます。', '切り替える')) await sendCmd('preset', { id: p.id }, 'プリセット'); return; }
       if (act === 'reset') { if (await confirmBox('集計をリセット', '端末のプレイ回数・最高額配当・当たりの記録を 0 に戻します。残っている CREDIT も 0 になります。全履歴と全店舗の配当履歴は消えません。', 'リセットする')) await sendCmd('statsReset', {}, '集計のリセット'); return; }
       if (act === 'volume') { const v = Number($('vol').value); await sendCmd('volume', { v }, '音量'); return; }
@@ -253,25 +284,26 @@
     box.classList.remove('hidden');
     try {
       for (;;) {
-        await new Promise((resolve) => {
-          box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big" id="gs">GAME START</button><p class="sub">タップして会計番号を入れると、紙幣の画面になります</p>';
-          $('gs').onclick = () => { buzz(20); resolve(); };
-        });
         const no = await new Promise((resolve) => {
-          box.innerHTML = '<h1>会計番号</h1><p>お客様の会計番号（伝票の番号）を入れてください</p><input id="chkno" type="text" inputmode="numeric" autocomplete="off" maxlength="12"><div class="err" id="cerr"></div><div class="row"><button class="ghost" id="cback">戻る</button><button class="ok" id="cgo">決定</button></div>';
-          const inp = $('chkno'); setTimeout(() => inp.focus(), 100);
-          const go = () => { const v = inp.value.trim(); if (!v) { $('cerr').textContent = '会計番号を入れてください。'; inp.focus(); return; } resolve(v); };
+          box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big" id="gs">GAME START</button><p class="sub">タップして会計番号を入れると、紙幣の画面になります</p>';
+          $('gs').onclick = () => { buzz(20); unlockAudio(); showEntry(); };
+          const showEntry = () => { // b99: タップの中で入力欄を出して focus（iPhone でキーボードが開く）
+          box.innerHTML = '<h1>会計番号</h1><p>お客様の会計番号（伝票の番号）を入れてください</p><input id="chkno" type="text" inputmode="numeric" autocomplete="off" maxlength="10"><div class="err" id="cerr"></div><div class="row"><button class="ghost" id="cback">戻る</button><button class="ok" id="cgo">決定</button></div>';
+          const inp = $('chkno'); inp.focus();
+          const go = () => { const v = inp.value.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[\s\u3000]/g, '').trim(); if (!v) { $('cerr').textContent = '会計番号を入れてください。'; inp.focus(); return; } if (!/^[0-9A-Za-z\-]{1,10}$/.test(v)) { $('cerr').textContent = '数字か英字で 10 文字までにしてください。'; inp.focus(); return; } resolve(v); };
           $('cgo').onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
           $('cback').onclick = () => resolve(null);
+          };
         });
         if (no === null) continue;
-        saved.check = no; save();
+        saved.check = no; saved.checkAt = Date.now(); save();
         break;
       }
     } finally { starting = false; box.classList.add('hidden'); }
     render();
   }
   async function endCheck() {
+    if (sending) { toast('送信中です。少し待ってください', true); return; }
     if (!(await confirmBox('会計 No.' + saved.check + ' を終了', 'このお客様の分を終わります。次は GAME START から会計番号を入れ直します。', '終了する'))) return;
     saved.check = null; save(); render(); gameStart();
   }
@@ -321,11 +353,13 @@
   function watchStore() {
     if (unwatchStore) unwatchStore();
     storeDoc = null; render();
+    deleted = false;
     unwatchStore = Cloud.watchStore(saved.storeId, (d) => {
-      if (!d) { storeDoc = null; setMsg('この店舗はマスターで削除されました', 'err'); return; }
+      if (!d) { storeDoc = null; deleted = true; render(); setMsg('この店舗はマスターで削除されました', 'err'); return; }
       storeDoc = d; render();
     });
   }
+  window.addEventListener('online', () => { if (saved && !storeDoc) watchStore(); }); // b99: 起動時に圏外だったら、戻ったときに見張り直す
 
   async function init() {
     $('bill').innerHTML = BillArt.svg(470);
@@ -345,6 +379,7 @@
     drawBill();
     watchStore();
     $('chk').addEventListener('click', (e) => { if (e.target.closest('[data-act="end"]')) endCheck(); });
+    if (saved.check && (!saved.checkAt || Date.now() - saved.checkAt > 6 * 60 * 60 * 1000)) { saved.check = null; save(); render(); } // b99: 6 時間以上前の会計番号は使わない（翌日に前の客の番号で入れない）
     if (!saved.check) gameStart();
     setInterval(render, 30000);
   }
