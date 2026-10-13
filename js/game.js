@@ -251,11 +251,11 @@ const Game = (function () {
     const rec = $('recent'), sand = $('sand');
     if (!rec) return;
     if (!sand || !billMode()) { rec.style.height = ''; showNotes(); return; }
-    const st = stageEl.getBoundingClientRect(), k = st.width ? 1600 / st.width : 1;
-    const sb = (sand.getBoundingClientRect().bottom - st.top) * k, rt = (rec.getBoundingClientRect().top - st.top) * k;
+    // b99: 出現アニメ（rise の transform）の影響を受けないよう offsetTop で測る（ステージ座標）
+    const sb = lockbar.offsetTop + sand.offsetTop + sand.offsetHeight, rt = rec.offsetTop;
     if (sb > rt + 100) {
       rec.style.height = Math.round(sb - rt) + 'px';
-      const over = (rec.getBoundingClientRect().bottom - st.top) * k - sb; // 影や枠のぶん下にはみ出たら引く
+      const over = (rec.offsetTop + rec.offsetHeight) - sb; // 影や枠のぶん下にはみ出たら引く
       if (Math.abs(over) > 1) rec.style.height = Math.round(sb - rt - over) + 'px';
     }
     showNotes();
@@ -296,7 +296,7 @@ const Game = (function () {
     if (!updPending) return;
     const onSplash = !!document.getElementById('splash');
     if (!onSplash) {
-      if (busy || pressing || $('ui').children.length || $('calib')) return;               // 回転中・設定中は待つ
+      if (busy || pressing || insertBusy || $('ui').children.length || $('calib')) return;  // 回転中・設定中・お札の吸い込み中は待つ
       const p = Store.state && Store.state.play;
       if (p && p.phase !== 'shown') return;                                                  // ゲームの途中
       if (p && resultSince && Date.now() - resultSince < 2000) return;                       // 結果は 2 秒見せてから
@@ -366,34 +366,36 @@ const Game = (function () {
   const INSERT_WINDOW_MS = 30000;
   const insertSeen = {};
   let insertBusy = false, unwatchIns = null, lastPhase = '';
+  let quietStart = false; // b99: 紙幣・長押しから始めるときはボタン音を鳴らさない
   let curCheck = null; // b97: 直近の紙幣に付いていた会計番号 { no, at }。10 分以内のプレイ（FREE SPIN の消化も）に付ける
   const checkNo = () => (curCheck && Date.now() - curCheck.at < 10 * 60 * 1000) ? curCheck.no : null;
   const canStart = () => { const s = Store.state, p = s && s.play; return !busy && !pressing && !insertBusy && !updPending && !!s && (!p || p.phase === 'shown') && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && lockbar.classList.contains('show') && !!lockbar.querySelector('[data-act="next"]'); };
-  const INSERT_GRACE_MS = 3000; // 待機に戻る途中（結果の片付け中など）に届いた投入は、少し待ってから判定する
+  const INSERT_GRACE_MS = 5000; // 待機に戻る途中（結果の片付け中など）に届いた投入は、少し待ってから判定する
   let insertQueue = Promise.resolve();
   function onInserts(list) {
     (list || []).slice().reverse().forEach((d) => { // 古い順に処理
       if (!d || insertSeen[d.id] || d.state !== 'new') return;
       insertSeen[d.id] = true;
-      if (Date.now() - d.ts > INSERT_WINDOW_MS) return; // 古い投入（読み直しの前のもの等）は無視
+      if (Date.now() - d.ts > INSERT_WINDOW_MS) { const me = Store.state.store; if (me) Cloud.ackInsert(me.id, d.id, { state: 'busy', ackAt: Date.now(), reason: 'stale' }).catch(() => {}); return; } // 古い投入（読み直しの前のもの等）は断る（b99: 黙って捨てない）
       insertQueue = insertQueue.then(() => handleInsert(d)).catch(() => {});
     });
   }
   async function handleInsert(d) {
     const me = Store.state.store;
     if (!me) return;
+    if (!billMode() || !$('sand')) { Cloud.ackInsert(me.id, d.id, { state: 'busy', ackAt: Date.now(), reason: 'nobill' }).catch(() => {}); return; } // b99: 紙幣モードが OFF の端末（サンドが無い）には入れない
     const t0 = Date.now();
     while (!canStart() && Date.now() - t0 < INSERT_GRACE_MS && !(Store.state.play && Store.state.play.phase === 'drawn' && busy)) await wait(150); // 回転中は待たずに断る。片付け中などの一瞬だけ待つ
     if (!canStart()) {
       try { Store.transact(() => Store.log('INSERT_BUSY', { id: d.id, phone: d.phone })); } catch (e) { /* ログのみ */ }
-      Cloud.ackInsert(me.id, d.id, { state: 'busy', ackAt: Date.now(), reason: busy || (Store.state.play && Store.state.play.phase !== 'shown') ? 'playing' : creditsLeft() > 0 ? 'credit' : 'other' }).catch(() => {});
+      Cloud.ackInsert(me.id, d.id, { state: 'busy', ackAt: Date.now(), reason: busy || (Store.state.play && Store.state.play.phase !== 'shown') ? 'playing' : creditsLeft() > 0 ? 'credit' : $('ui').children.length ? 'settings' : updPending ? 'update' : $('calib') ? 'settings' : 'other' }).catch(() => {});
       return;
     }
     Cloud.ackInsert(me.id, d.id, { state: 'ok', ackAt: Date.now() }).catch(() => {});
     curCheck = d.check ? { no: String(d.check).slice(0, 20), at: Date.now() } : null;
     try { Store.transact(() => Store.log('INSERT', { id: d.id, phone: d.phone, check: curCheck ? curCheck.no : undefined })); } catch (e) { /* ログのみ */ }
     await insertFx();
-    const b = lockbar.querySelector('[data-act="next"]'); if (b && !busy && !pressing) b.click();
+    const b = lockbar.querySelector('[data-act="next"]'); if (b && !busy && !pressing) { quietStart = true; b.click(); }
     await wait(300);
   }
   /* お札がサンドに吸い込まれる演出（約 1.3 秒）。軽量モードでも同じ（画像 1 枚の移動と光だけ） */
@@ -413,14 +415,15 @@ const Game = (function () {
       wrap.classList.remove('in'); wrap.innerHTML = '';
       sand.classList.remove('accept');
     } catch (e) { /* 演出だけ */ }
-    insertBusy = false;
+    finally { insertBusy = false; } // b99: 途中で抜けても必ず戻す
   }
   /* スマホが使えないときの逃げ道: テレビはリモコンの決定を長押し（tv.js）、iPad は casa ロゴを長押し。お札の演出なしで回す */
   function longStart() {
     if (!canStart()) return false;
     try { Store.transact(() => Store.log('LONG_START', {})); } catch (e) { /* ログのみ */ }
+    curCheck = null; // b99: 長押しで始めた分は前の客の会計番号に付けない
     Sfx.unlock(); Sfx.play('ok');
-    const b = lockbar.querySelector('[data-act="next"]'); if (b) b.click();
+    const b = lockbar.querySelector('[data-act="next"]'); if (b) { quietStart = true; b.click(); }
     return true;
   }
   /* 端末の状態（待機中か、ゲーム中か）をクラウドに書く。スマホの紙幣ページが「ゲーム中」の表示に使う。変わったときだけ書く */
@@ -465,22 +468,24 @@ const Game = (function () {
     if (!me) return;
     let ok = false, reason = '';
     try {
-      if (d.type === 'preset') { ok = await choosePreset(String((d.data || {}).id || '')); if (!ok) reason = 'preset'; }
+      const playing = busy || pressing || insertBusy || (Store.state.play && Store.state.play.phase !== 'shown') || creditsLeft() > 0;
+      if ((d.type === 'logout' || d.type === 'statsReset') && playing) { ok = false; reason = 'playing'; } // b99: 回転中・FREE SPIN 中は切らない
+      else if (d.type === 'preset') { ok = await choosePreset(String((d.data || {}).id || '')); if (!ok) reason = 'preset'; }
       else if (d.type === 'statsReset') { Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0, by: 'phone' }, 'phone'); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; }); showCredits(); refresh(); if (Admin.isOpen()) Admin.rerender(); ok = true; }
       else if (d.type === 'volume') { const v = Math.max(0, Math.min(1, Number((d.data || {}).v))); if (isFinite(v)) { Store.transact((st) => { st.settings.volume = v; }); Sfx.setVolume(v); ok = true; } else reason = 'volume'; }
       else if (d.type === 'update') { autoUpdate(true); ok = true; }
       else if (d.type === 'logout') { ok = true; }
       else reason = 'unknown';
     } catch (e) { ok = false; reason = String(e && e.message || e).slice(0, 60); }
-    try { Store.transact(() => Store.log('PHONE_CMD', { type: d.type, ok, phone: d.phone })); } catch (e) { /* ログのみ */ }
+    try { Store.transact(() => Store.log('PHONE_CMD', { type: d.type, ok, reason: reason || undefined, phone: d.phone })); } catch (e) { /* ログのみ */ }
     Cloud.ackCmd(me.id, d.id, { state: ok ? 'ok' : 'error', ackAt: Date.now(), reason }).catch(() => {});
     statSig = ''; statWatch();
     if (ok && d.type === 'logout') setTimeout(logoutStore, 800);
   }
   let phaseFailAt = 0;
   function phaseWatch() {
-    if (!storeMode() || !Store.state.store || !billMode()) return;
-    const ph = canStart() ? 'idle' : 'busy';
+    if (!storeMode() || !Store.state.store) return;
+    const ph = billMode() ? (canStart() ? 'idle' : 'busy') : 'idle'; // b99: 紙幣モード OFF のときは busy を残さない
     if (ph === lastPhase || Date.now() - phaseFailAt < 60000) return;
     lastPhase = ph;
     Cloud.updateStoreFields(Store.state.store.id, { phase: ph, phaseAt: Date.now() }).catch(() => { lastPhase = ''; phaseFailAt = Date.now(); }); // 書けないとき（決まりが古い等）は 60 秒あけてやり直す
@@ -493,7 +498,7 @@ const Game = (function () {
   function maintStart(now) { const s = Store.state, rh = s && s.limits && Number.isInteger(s.limits.resetHour) ? s.limits.resetHour : 19; return Engine.windowStart(now, (rh + 12) % 24); }
   function maintWatch() {
     const s = Store.state;
-    const idle = () => !updPending && !busy && !pressing && s && !s.play && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash');
+    const idle = () => !updPending && !busy && !pressing && !insertBusy && s && !s.play && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash');
     if (maintBusy || !idle()) return;
     const now = Date.now(), from = maintStart(now);
     if (!s.maintAt) { try { Store.transact((x) => { x.maintAt = from; }); } catch (e) { /* 設定のみ */ } return; }
@@ -527,7 +532,7 @@ const Game = (function () {
   let resultSince = 0;
   async function idleWatch() {
     const p = Store.state && Store.state.play;
-    if (!resultSince || busy || pressing || !p || p.phase !== 'shown') return;
+    if (!resultSince || busy || pressing || insertBusy || !p || p.phase !== 'shown') return;
     if ($('ui').children.length || $('calib') || document.getElementById('splash')) { resultSince = Date.now(); return; }
     if (Date.now() - resultSince < IDLE_BACK_MS) return;
     resultSince = 0;
@@ -803,7 +808,7 @@ const Game = (function () {
     const b = e.target.closest('[data-act]');
     if (!b || busy || pressing) return;
     Sfx.unlock();
-    Sfx.play('button');
+    if (!quietStart) Sfx.play('button'); quietStart = false;
     // 押し込んだ見た目を一瞬見せてから進む（面が土台に沈む。土台の位置は動かない）
     pressing = true;
     b.classList.add('pressed');
@@ -1809,10 +1814,10 @@ const Game = (function () {
           '<li>金額が当たるときは、金額のリールが最後に止まります。3本目は少し長く回ります。</li>' +
           '<li>先に止まった2本がそろいかけた時や、合計が大きい時は、3本目が回っている間に<b>音と光が一段ずつ強くなり、回転がゆっくりになる</b>ことがあります。</li></ul>' +
           '<h5>ゲームの流れ</h5><ol>' +
-          '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>' +
+          (billMode() ? '<li>スタッフがスマホで紙幣を入れると始まります。あとは自動で進みます。</li>' : '<li><b>NEXT GAME</b> を押すだけ。あとは自動で進みます。</li>') +
           '<li>STAGE 1 → STAGE 2 → STAGE 3 の順に上がり、上のステージほど大きな金額が出ます。STAGE 3 が最後です。</li>' +
           '<li>結果が出たら左下の <b>LAST</b> と右の<b>配当履歴</b>に記録され、右上の合計にも足されます。</li>' +
-          '<li>もう一度 <b>NEXT GAME</b> で次のゲームへ。</li></ol>' +
+          (billMode() ? '<li>次のゲームも、スタッフが紙幣を入れると始まります。</li></ol>' : '<li>もう一度 <b>NEXT GAME</b> で次のゲームへ。</li></ol>') +
           '<h5>当たる金額</h5><p>金額はランダムです。' + Engine.STAGE_DEFS.map((d) => 'STAGE ' + d.stage + ' は最大 <b>' + fmtN(Math.max.apply(null, d.values)) + '</b>').join('、') + '。</p>' +
           '<h5>演出について</h5><ul>' +
           '<li>止まりかけてから、もう1コマ滑ったり戻ったりすることがあります。最後の1本が止まるまで結果は分かりません。</li>' +
@@ -1823,7 +1828,7 @@ const Game = (function () {
           '<h5>設定（お店の方へ）</h5><ul>' +
           '<li>左上の casa ロゴを続けて5回タップ → パスワードで設定画面が開きます。</li>' +
           '<li>お客さまの画面に確率は表示されません。</li></ul>' +
-          '<h5>テレビ（リモコン）の操作</h5><ul><li>決定ボタン = NEXT GAME。十字キーで左上のロゴに枠を合わせて決定を5回で設定（メニューボタン3回、戻る長押しでも可）。</li></ul>' +
+          '<h5>テレビ（リモコン）の操作</h5><ul><li>' + (billMode() ? '決定ボタンの 2 秒長押しでもゲームを始められます（スマホが使えないとき）。' : '決定ボタン = NEXT GAME。') + '十字キーで左上のロゴに枠を合わせて決定を5回で設定（メニューボタン3回、戻る長押しでも可）。</li></ul>' +
           '</div>',
       });
     });
@@ -2033,7 +2038,7 @@ const Game = (function () {
         storeSig = sig;
         if (Admin.isOpen()) Admin.rerender();
         // b83: 「スマホの紙幣で始める」の ON/OFF が変わったら、待機中・結果表示中ならその場でサンド／ボタンを描き直す
-        if (!busy && !insertBusy && lockbar.classList.contains('show') && (!!lockbar.querySelector('.sand')) !== billMode()) { if (Store.state.play) renderLockbar(); else idleBar(); }
+        if (!busy && !insertBusy && lockbar.classList.contains('show') && (!!lockbar.querySelector('.sand')) !== billMode()) { if (Store.state.play && Store.state.play.phase === 'shown') renderLockbar(); else idleBar(); }
       }
     });
   }
