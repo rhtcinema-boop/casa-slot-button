@@ -437,7 +437,7 @@ const Game = (function () {
     const info = storeInfo();
     const hits = Engine.pruneHits(s.hits, now, s.limits && s.limits.resetHour);
     return {
-      at: 0, ver: APP_V, playNo: ses.playNo, awarded: ses.awarded, bestValue: s.bestValue || 0, credits: s.credits || 0, dud: s.dud || 0,
+      at: 0, ver: APP_V, playNo: ses.playNo, awarded: ses.awarded, bestValue: s.bestValue || 0, winCount: winsOf(s), credits: s.credits || 0, dud: s.dud || 0,
       presetId: info.activeId || null, presets: (info.presets || []).map((p) => ({ id: p.id, name: String(p.name || '').slice(0, 20) })),
       today: { wins: hits.length, awarded: hits.reduce((a, h) => a + (Number(String(h.key).split(':')[1]) || 0), 0) },
       resetHour: Number.isInteger(s.limits && s.limits.resetHour) ? s.limits.resetHour : 19,
@@ -471,7 +471,7 @@ const Game = (function () {
       const playing = busy || pressing || insertBusy || (Store.state.play && Store.state.play.phase !== 'shown') || creditsLeft() > 0;
       if ((d.type === 'logout' || d.type === 'statsReset') && playing) { ok = false; reason = 'playing'; } // b99: 回転中・FREE SPIN 中は切らない
       else if (d.type === 'preset') { ok = await choosePreset(String((d.data || {}).id || '')); if (!ok) reason = 'preset'; }
-      else if (d.type === 'statsReset') { Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0, by: 'phone' }, 'phone'); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; }); showCredits(); refresh(); if (Admin.isOpen()) Admin.rerender(); ok = true; }
+      else if (d.type === 'statsReset') { Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0, by: 'phone' }, 'phone'); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.winCount = 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; }); showCredits(); refresh(); if (Admin.isOpen()) Admin.rerender(); ok = true; }
       else if (d.type === 'volume') { const v = Math.max(0, Math.min(1, Number((d.data || {}).v))); if (isFinite(v)) { Store.transact((st) => { st.settings.volume = v; }); Sfx.setVolume(v); ok = true; } else reason = 'volume'; }
       else if (d.type === 'update') { autoUpdate(true); ok = true; }
       else if (d.type === 'logout') { ok = true; }
@@ -707,11 +707,16 @@ const Game = (function () {
     if (typeof s.bestValue === 'number') return s.bestValue;
     return (s.recent || []).reduce((m, r) => Math.max(m, Number(r.value) || 0), 0);
   }
+  /* 合計当たり本数（b100、オーナー指示: 右上は最高額配当ではなく当たりの本数）。集計をリセットしてからの、金額が当たった回数。まだ記録が無い端末は配当履歴の件数から始める */
+  function winsOf(s) {
+    if (typeof s.winCount === 'number') return s.winCount;
+    return (s.recent || []).filter((r) => r && r.value > 0).length;
+  }
   function showCredits() {
     showPreset();
     $('credit').textContent = fmtN(Store.state.session.playNo); // ボタン版: プレイ回数
     // 右上の2段目は「最高額配当」。回転中のプレイの分は、結果が出るまで反映しない（b53 で「合計当選額」から変更）
-    { const st = Store.state, p = st.play; $('total').textContent = fmtN(p && p.phase === 'drawn' && !p.test && typeof p.bestBefore === 'number' ? p.bestBefore : bestOf(st)); stageEl.classList.toggle('testmode', !!st.testMode);
+    { const st = Store.state, p = st.play; $('total').textContent = fmtN(winsOf(st)); // b100: 合計当たり本数（結果が出た時点で増える） stageEl.classList.toggle('testmode', !!st.testMode);
       // CREDIT: 残っている FREE SPIN（casa ロゴの 10 回と FREE SPIN ×1〜×3 の、当たりなしの回 ＋ スタッフが入れたクレジット）
       const cr = $('crd'), n = String(creditsLeft());
       if (cr && cr.textContent !== n) { const up = +n > +cr.textContent; cr.textContent = n; if (up) restart(cr, 'bump'); }
@@ -1090,7 +1095,7 @@ const Game = (function () {
       if (fxErrPlay !== play.ts) { fxErrPlay = play.ts; fxErrN = 0; }
       fxErrN += 1;
       if (fxErrN >= 3) {
-        try { Store.transact((s) => { if (s.play && s.play.phase !== 'shown') { s.play.phase = 'shown'; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); Store.log('FX_GIVEUP', { stage: st, value: s.play.value }); } }); } catch (e) { /* 保存できなければ次回また試す */ }
+        try { Store.transact((s) => { if (s.play && s.play.phase !== 'shown') { s.play.phase = 'shown'; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); Store.log('FX_GIVEUP', { stage: st, value: s.play.value }); } }); } catch (e) { /* 保存できなければ次回また試す */ }
         try { setStage(play.stage); } catch (e) { /* noop */ }
         showCredits();
       }
@@ -1226,7 +1231,7 @@ const Game = (function () {
     await resultFx(play);
     clearSure();
     const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
-    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
     if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === play.value ? last.ts : Date.now(), value: play.value }).catch(cloudFail); } // 全店舗の配当履歴へ（時刻は端末の履歴と同じにする）
