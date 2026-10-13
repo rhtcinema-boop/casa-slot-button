@@ -772,9 +772,9 @@ const Admin = (function () {
           return render();
         }
         case 'stats-reset': {
-          const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・最高額配当・この端末の当たりの記録を 0 に戻します。残っている CREDIT（FREE SPIN）も 0 になります。全履歴と、全店舗の「配当履歴」は消えません。</p>', ok: 'リセットする' });
+          const ok = await UI.confirm({ title: '集計をリセット', html: '<p>プレイ回数・合計当たり本数・この端末の当たりの記録を 0 に戻します。残っている CREDIT（FREE SPIN）も 0 になります。全履歴と、全店舗の「配当履歴」は消えません。</p>', ok: 'リセットする' });
           if (!ok) return;
-          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; });
+          Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0 }, role); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.winCount = 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; });
           UI.toast('集計をリセットしました。', 'ok');
           return render();
         }
