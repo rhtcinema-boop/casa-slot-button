@@ -1,9 +1,9 @@
 {
- "v": "b98",
+ "v": "b99",
  "files": [
   {
    "path": "index.html",
-   "sha256": "0a022c92b824a184fdb56592a4f62406e6b8536d1177959298eccd404ae6a95d"
+   "sha256": "6345ac6f4008596a72016733a73f79a8dbcf9fc14fbf3d93ac22d5aa1beaa4bb"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,15 +31,15 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "04814a72e30a279dbbcb39d268fadae58d6d45fae913abf402e916941dcec519"
+   "sha256": "7690e4a5ecfe69e60d8f7a1ac81b71d5e5f1ca2404bd6f77441f74aaaa87beff"
   },
   {
    "path": "js/admin.js",
-   "sha256": "e4aac6b42739b2fb2d20d0b01d9e0110efe3b2787b5eea2c7be6288ef8dedc17"
+   "sha256": "c51473443fbe916961abe2512ac4050b810664e4f8709bf62b0048c7da7116d6"
   },
   {
    "path": "js/audio.js",
-   "sha256": "6598661206abcd3ec0321bc3e6d7cd76b6629ec54d79657764f137ae2339691f"
+   "sha256": "2ac6ab0e2fa0c13e0b6af692e8316f705b88e38a2a92d34c0231a4f105a2f166"
   },
   {
    "path": "js/bill-art.js",
@@ -47,7 +47,7 @@
   },
   {
    "path": "js/bill.js",
-   "sha256": "a1b590f36fca6b22ce72d4d4d8e862e3876df7cc607476fe271c6d0235c7df0b"
+   "sha256": "f016969ce93a0703639efba211626fb20615846ec4f50728999efe729da46b7d"
   },
   {
    "path": "js/cloud.js",
@@ -63,11 +63,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "c265fa1906f28f501e1d0ff03996d587584a553e15eae33d52fe1fbb8873b97f"
+   "sha256": "3d4c2a222240a2d3153247697a728778a87ffec3bc1404de2535cbdf31fe85c5"
   },
   {
    "path": "js/master.js",
-   "sha256": "81836a9a86bc871de0fa19f90442c58f3c0bc928a1e9ce2ed38179aa3984c8d4"
+   "sha256": "ce4b0648032f7a53b04a564e28338515534e20cb6a9f595cf999a68c6b6811a0"
   },
   {
    "path": "js/reel.js",
@@ -79,7 +79,7 @@
   },
   {
    "path": "js/tv.js",
-   "sha256": "3ed02f8802dd77dfbb12ed900f4768fb3d03c17be571bdf8fe29315f45af5e34"
+   "sha256": "1abe98fad9e308cb7b6b8b95802441e6cd4bc0861840040075a2769c35397bcc"
   }
  ]
 }
