@@ -231,7 +231,7 @@
       body = '<div class="panel"><h4>画面の集計（端末）</h4>' +
         '<div class="stat"><span>合計回転数</span><b>' + fmtN(st.playNo) + '</b></div>' +
         '<div class="stat"><span>当選額の合計</span><b>' + fmtN(st.awarded) + '</b></div>' +
-        '<div class="stat"><span>最高額配当</span><b>' + fmtN(st.bestValue) + '</b></div>' +
+        '<div class="stat"><span>合計当たり本数</span><b>' + (typeof st.winCount === 'number' ? fmtN(st.winCount) + ' 本' : '—') + '</b></div>' +
         '<div class="stat"><span>CREDIT（残り）</span><b>' + fmtN((st.credits || 0) + (st.dud || 0)) + '</b></div>' +
         '<button class="btn danger" data-act="reset">画面の集計をリセット</button></div>' +
         '<div class="panel"><h4>今日の当たり</h4><p class="note">毎日 ' + (Number.isInteger(st.resetHour) ? st.resetHour : 19) + ':00 からの合計。テストの回と当たりなしの回は入りません。</p>' +
@@ -269,7 +269,7 @@
       if (act === 'reload') { location.reload(); return; }
       if (act === 'phoneLogout') { if (sending) { toast('送信中です。少し待ってください', true); return; } box.classList.add('hidden'); await phoneLogout(); return; }
       if (act === 'preset') { const p = (st.presets || []).find((x) => x.id === b.dataset.id); if (!p || p.id === st.presetId) return; if (await confirmBox('プリセットを切り替え', '端末のプリセットを「' + p.name + '」にします。次のプレイから反映されます。', '切り替える')) await sendCmd('preset', { id: p.id }, 'プリセット'); return; }
-      if (act === 'reset') { if (await confirmBox('集計をリセット', '端末のプレイ回数・最高額配当・当たりの記録を 0 に戻します。残っている CREDIT も 0 になります。全履歴と全店舗の配当履歴は消えません。', 'リセットする')) await sendCmd('statsReset', {}, '集計のリセット'); return; }
+      if (act === 'reset') { if (await confirmBox('集計をリセット', '端末のプレイ回数・合計当たり本数・当たりの記録を 0 に戻します。残っている CREDIT も 0 になります。全履歴と全店舗の配当履歴は消えません。', 'リセットする')) await sendCmd('statsReset', {}, '集計のリセット'); return; }
       if (act === 'volume') { const v = Number($('vol').value); await sendCmd('volume', { v }, '音量'); return; }
       if (act === 'update') { if (await confirmBox('最新版に更新', '端末が新しい版を確認して、ゲームが終わり次第読み直します。', '更新する')) await sendCmd('update', {}, '更新'); return; }
       if (act === 'logout') { if (await confirmBox('端末をログアウト', '端末は店舗の選び直しとパスワード入力が必要になります。', 'ログアウトする')) await sendCmd('logout', {}, 'ログアウト'); return; }
