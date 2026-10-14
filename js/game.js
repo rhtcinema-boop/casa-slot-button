@@ -1076,10 +1076,13 @@ const Game = (function () {
      画面の CREDIT は、その2つの合計を出す。テスト用プリセットでも増える（動きを確認できるように） */
   /* 画面に出す CREDIT の数（b78）: 回っている最中の FREE SPIN も、結果が出るまでは 1 として数える
      （b77 までは回り始めた瞬間に減らしていたので、最後の 1 回が「残り 0」と出ていた。保存している数は変えない） */
-  const creditsLeft = () => { const s = Store.state, p = s.play; return (s.credits || 0) + (s.dud || 0) + (p && p.free && p.phase !== 'shown' ? 1 : 0); };
+  const creditsLeft = () => { const s = Store.state, p = s.play; return (s.credits || 0) + (s.dud || 0) + (p && (p.free || p.freeCont) && p.phase !== 'shown' ? 1 : 0); };
+  /* b104（オーナー指摘「出た数 +1 回回る」）: そろったゲームは続けて回って自分の結果を出すので、その 1 回を FREE SPIN の 1 回目として数える。
+     追加で溜めるのは n - 1 回。画面の CREDIT は、続きの回（play.freeCont）を結果が出るまで 1 として数えるので、増える数の見た目は n のまま */
   async function addCredits(n, by) {
     const key = 'dud', before = creditsLeft();
-    try { Store.transact((s) => { s[key] = (s[key] || 0) + n; Store.log('CREDIT_ADD', { amount: n, before, after: before + n, by }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
+    try { Store.transact((s) => { s[key] = (s[key] || 0) + ((s.play && s.play.free) ? n : Math.max(0, n - 1)); /* CREDIT で回している回でそろったときは、その回は元の CREDIT の分なので n 回足す */ if (s.play && s.play.phase !== 'shown' && !s.play.free) s.play.freeCont = true; Store.log('CREDIT_ADD', { amount: n - 1, shown: n, before, after: before + n, by }); }); } catch (err) { /* 保存に失敗したら増やさない */ }
+    { const p = Store.state.play; if (p && p.phase !== 'shown' && !p.free) p.freeCont = true; }
     const after = creditsLeft(), cr = $('crd');
     for (let k = before + 1; k <= after; k++) { if (cr) { cr.textContent = String(k); restart(cr, 'bump'); } Sfx.play('count'); await wait(n > 3 ? 110 : 260); } // 1 ずつ増える
   }
@@ -1139,7 +1142,7 @@ const Game = (function () {
       await hideBanner();
       return runStage(play, warpTo);
     }
-    if (play.free && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + creditsLeft()); // CREDIT を使って回している
+    if ((play.free || play.freeCont) && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + creditsLeft()); // CREDIT を使って回している
     else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
 
     const extra = { fast: !!play.free, noFree: lockFree, noTension: !!play.dud }; // FREE SPIN で回る分は、どのステージでも STAGE 1 と同じ速さ。noFree: FREE SPIN の絵柄も出さない
