@@ -12,6 +12,8 @@
   let saved = null;      // { storeId, name, phone, seq, check }  check = いま入力されている会計番号（b97）
   let storeDoc = null;   // 店舗ドキュメントの最新（phase / stat を見る）
   let unwatchStore = null, sending = false, lastSent = 0, armed = true;
+  let meter = null; // b101: ハズレメーター（全店舗共有）。スタッフには残り回数も見せる
+  const meterText = () => { if (!meter || !meter.enabled) return ''; if (meter.superLeft > 0) return '★ SUPER MODE 残り ' + meter.superLeft + ' 回'; const left = Math.max(0, (meter.target || 300) - (meter.miss || 0)); return 'SUPER METER あと ' + left + ' 回で満タン'; };
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* noop */ } };
   const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]); // b99: 圏外で永久に待たない
@@ -48,7 +50,8 @@
     else if (!storeDoc) { st.className = 'store off'; $('storeText').textContent = saved.name + ' … 接続中'; }
     else if (isStale()) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
     else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
-    else { st.className = 'store'; $('storeText').textContent = saved.name + ' の端末につながっています'; }
+    else { st.className = 'store' + (meter && meter.superLeft > 0 ? ' super' : ''); $('storeText').textContent = saved.name + ' の端末につながっています'; }
+    { const ml = $('mline'); const t = meterText(); ml.textContent = t; ml.classList.toggle('hidden', !t); ml.classList.toggle('super', !!(meter && meter.superLeft > 0)); }
     armed = !busy && !sending && !deleted && !isStale(); // b99: 端末が見つからないときも入れない
     bill.classList.toggle('gray', busy || deleted || isStale());
     hint.classList.toggle('busy', !armed);
@@ -234,6 +237,7 @@
         '<div class="stat"><span>合計当たり本数</span><b>' + (typeof st.winCount === 'number' ? fmtN(st.winCount) + ' 本' : '—') + '</b></div>' +
         '<div class="stat"><span>CREDIT（残り）</span><b>' + fmtN((st.credits || 0) + (st.dud || 0)) + '</b></div>' +
         '<button class="btn danger" data-act="reset">画面の集計をリセット</button></div>' +
+        (meter && meter.enabled ? '<div class="panel"><h4>スーパーメーター（全店舗共有）</h4><div class="stat"><span>溜まったハズレ</span><b>' + fmtN(meter.miss) + ' / ' + fmtN(meter.target) + '</b></div><div class="stat"><span>スーパーモード</span><b>' + (meter.superLeft > 0 ? '残り ' + meter.superLeft + ' 回' : '—') + '</b></div></div>' : '') +
         '<div class="panel"><h4>今日の当たり</h4><p class="note">毎日 ' + (Number.isInteger(st.resetHour) ? st.resetHour : 19) + ':00 からの合計。テストの回と当たりなしの回は入りません。</p>' +
         '<div class="stat"><span>今日の当たり本数</span><b>' + fmtN(today.wins) + '</b></div>' +
         '<div class="stat"><span>今日の当たり合計</span><b class="' + (Date.now() < todayShown ? '' : 'mask') + '">' + (Date.now() < todayShown ? fmtN(today.awarded) : '＊＊＊＊＊') + '</b></div>' +
@@ -381,6 +385,7 @@
     $('chk').addEventListener('click', (e) => { if (e.target.closest('[data-act="end"]')) endCheck(); });
     if (saved.check && (!saved.checkAt || Date.now() - saved.checkAt > 6 * 60 * 60 * 1000)) { saved.check = null; save(); render(); } // b99: 6 時間以上前の会計番号は使わない（翌日に前の客の番号で入れない）
     if (!saved.check) gameStart();
+    Cloud.watchMeter((m) => { meter = m; render(); }); // b101
     setInterval(render, 30000);
   }
   document.addEventListener('DOMContentLoaded', init);
