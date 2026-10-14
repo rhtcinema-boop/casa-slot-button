@@ -834,7 +834,8 @@ const Game = (function () {
     if (busy || s0.locked || s0.play) return refresh();
     let res;
     // 抽選の前に、マスターから配られている今のプリセットをもう一度当てる（端末側の保存を書き換えられていても、配られた設定で抽選する。同じなら何もしない。b76）
-    if (storeMode() && cloudStore && cloudStore.activePresetId && cloudPresets[cloudStore.activePresetId]) applyPreset(cloudPresets[cloudStore.activePresetId]);
+    if (storeMode() && superActive() && superPreset) applyPreset(superPreset); // b101: スーパーモード中は当たりやすいプリセット
+    else if (storeMode() && cloudStore && cloudStore.activePresetId && cloudPresets[cloudStore.activePresetId]) applyPreset(cloudPresets[cloudStore.activePresetId]);
     syncTable(); // 念のため、抽選の前に配当表をそろえる（変わっていなければ何もしない）
     try {
       Store.transact((s) => {
@@ -871,7 +872,7 @@ const Game = (function () {
           s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
         const chk = test ? null : checkNo(); // b97: 会計番号（スマホの紙幣に付いてきたもの）
-        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now(), check: chk || undefined };
+        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now(), check: chk || undefined, sup: (!test && superActive()) || undefined };
         s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined, check: chk || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
         if (chk && res.value > 0) s.checks = ((s.checks || []).concat({ ts: s.play.ts, check: chk, stage: res.stage, value: res.value })).slice(-300); // b97: 会計番号ごとの当たり（端末の設定「会計」で見る）
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
@@ -1095,7 +1096,7 @@ const Game = (function () {
       if (fxErrPlay !== play.ts) { fxErrPlay = play.ts; fxErrN = 0; }
       fxErrN += 1;
       if (fxErrN >= 3) {
-        try { Store.transact((s) => { if (s.play && s.play.phase !== 'shown') { s.play.phase = 'shown'; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); Store.log('FX_GIVEUP', { stage: st, value: s.play.value }); } }); } catch (e) { /* 保存できなければ次回また試す */ }
+        try { Store.transact((s) => { if (s.play && s.play.phase !== 'shown') { s.play.phase = 'shown'; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; try { meterAfterPlay(s.play); } catch (e) { /* 集計のみ */ } if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); Store.log('FX_GIVEUP', { stage: st, value: s.play.value }); } }); } catch (e) { /* 保存できなければ次回また試す */ }
         try { setStage(play.stage); } catch (e) { /* noop */ }
         showCredits();
       }
@@ -1231,7 +1232,7 @@ const Game = (function () {
     await resultFx(play);
     clearSure();
     const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
-    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; try { meterAfterPlay(s.play); } catch (e) { /* 集計のみ */ } if (s.play.value > 0 && !s.play.test) s.recent = (s.recent || []).concat({ ts: Date.now(), value: s.play.value }).slice(-200); } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     showCredits();
     renderRecent();
     if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === play.value ? last.ts : Date.now(), value: play.value }).catch(cloudFail); } // 全店舗の配当履歴へ（時刻は端末の履歴と同じにする）
@@ -1845,6 +1846,41 @@ const Game = (function () {
   let cloudDown = false; // クラウドに接続できず、端末内の設定で動いている
   const storeMode = () => Cloud.enabled && !cloudDown && !!(Store.state && Store.state.store); // 起動直後（状態の読み込み前）に呼ばれても落ちない（b75）
   let cloudPresets = {};   // 配布されたプリセット { id: { name, probs, limits } }
+  /* ---------- ハズレメーター（b101、オーナー指示）: 全店舗のハズレが溜まって満タン（既定 300 回）になると、全店舗合計 10 回のスーパーモード
+     （マスターが決めた当たりやすいプリセットで抽選＋派手な演出）。お客さんにはメーターの溜まり具合だけ見せ、数字は出さない ---------- */
+  let meter = null, unwatchMeter = null, superPreset = null, superPresetId = '', unwatchSuperPreset = null, superStarting = false;
+  const superActive = () => !!(meter && meter.enabled && meter.superLeft > 0);
+  function renderMeter() {
+    const el = $('smeter'); if (!el) return;
+    const on = !!(meter && meter.enabled);
+    el.classList.toggle('hidden', !on);
+    document.body.classList.toggle('super', on && superActive());
+    if (!on) return;
+    const r = superActive() ? 1 : Math.max(0, Math.min(1, (meter.miss || 0) / Math.max(1, meter.target || 300)));
+    el.style.setProperty('--fill', (r * 100).toFixed(1) + '%');
+    el.classList.toggle('hot', !superActive() && r >= 0.8);
+    el.style.setProperty('--heat', r.toFixed(2));
+    el.querySelector('.mt').textContent = superActive() ? 'SUPER MODE' : 'SUPER METER';
+    el.querySelector('.goal').textContent = superActive() ? '★ SUPER MODE 突入中' : r >= 0.8 ? '★ もうすぐ！' : '★ SUPER MODE';
+  }
+  function onMeter(m) {
+    const wasSuper = superActive();
+    meter = m;
+    const pid = (m && m.enabled && m.superPresetId) || '';
+    if (pid !== superPresetId) { superPresetId = pid; if (unwatchSuperPreset) { unwatchSuperPreset(); unwatchSuperPreset = null; } superPreset = null; if (pid) unwatchSuperPreset = Cloud.watchPreset(pid, (p) => { superPreset = p && p.probs ? p : null; }); }
+    renderMeter();
+    if (superActive() !== wasSuper) { try { Sfx.unlock(); Sfx.play(superActive() ? 'win' : 'ok', superActive() ? 3 : undefined); } catch (e) { /* 音は無くてもよい */ } }
+    // 満タンを見つけたら切り替える（取引で 1 台だけが成功する）
+    if (m && m.enabled && m.superLeft <= 0 && (m.miss || 0) >= (m.target || 300) && !superStarting) { superStarting = true; Cloud.startSuper().then((ok) => { if (ok) { try { Store.transact(() => Store.log('SUPER_START', { miss: m.miss })); } catch (e) { /* ログのみ */ } } }).catch(() => {}).finally(() => { superStarting = false; }); }
+  }
+  /* プレイの結果が出たとき: ハズレならメーター +1、スーパーモードのプレイなら残り -1（テストと FREE SPIN の増えた回は数えない） */
+  function meterAfterPlay(p) {
+    if (!storeMode() || !meter || !meter.enabled || !p || p.test || p.dud) return;
+    const miss = (p.value > 0 || p.sup) ? 0 : 1, sup = p.sup ? -1 : 0; // スーパーモード中のハズレは次のメーターに数えない
+    if (!miss && !sup) return;
+    meter.miss = Math.max(0, (meter.miss || 0) + miss); meter.superLeft = Math.max(0, (meter.superLeft || 0) + sup); renderMeter(); // 返事を待たずに画面へ
+    Cloud.bumpMeter(miss, sup).catch(() => {});
+  }
   let cloudStore = null;   // 店舗ドキュメントの最新
   let updSeen = null;      // この端末が見た、マスターの「いますぐアップデート」の時刻（最初に読んだ値は実行しない）
   let unwatch = null, presetWatch = {};
@@ -2006,6 +2042,7 @@ const Game = (function () {
     unwatchIns = Cloud.watchInserts(me.id, Date.now() - INSERT_WINDOW_MS, onInserts); // b83: スマホの紙幣
     if (unwatchCmds) unwatchCmds();
     unwatchCmds = Cloud.watchCmds(me.id, Date.now() - 60000, onCmds); // b91: スマホからの指示
+    if (!unwatchMeter) unwatchMeter = Cloud.watchMeter(onMeter); // b101: ハズレメーター（全店舗共有）
     let storeSig = '';
     unwatch = Cloud.watchStore(me.id, (doc) => {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
