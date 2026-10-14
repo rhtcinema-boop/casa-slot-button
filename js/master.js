@@ -7,6 +7,7 @@
   const fmtDate = (ts) => { if (!ts) return '—'; const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); };
   const main = $('main');
   let tab = 'stores', stores = [], presets = [], editStore = null, editPreset = null, statsStore = null, statsData = null;
+  let meter = null; // b101: ハズレメーター（全店舗共有）の設定と今の状態
   let toastTimer = 0;
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600); }
 
@@ -44,6 +45,7 @@
     const st = await Cloud.listStores();
     stores = await Promise.all(st.map((s) => Cloud.getStore(s.id)));
     presets = (await Cloud.listPresets()).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ja'));
+    try { meter = await Cloud.getMeter(); } catch (e) { meter = null; } // b101
   }
   const presetName = (id) => { const p = presets.find((x) => x.id === id); return p ? p.name : '（未設定）'; };
 
@@ -60,10 +62,23 @@
     const p = presets.find((x) => x.id === s.activePresetId);
     return p && !Engine.validateProbs(p.probs).ok ? '<br><b style="color:var(--ng)">⚠ 使用中のプリセットに誤りがあるため、端末は前の設定のまま動いています。プリセットを直してください</b>' : '';
   }
+  /* b101: ハズレメーター（全店舗共有）。全店舗のハズレが target 回溜まると、全店舗合計 superPlays 回のスーパーモード（superPresetId のプリセットで抽選＋派手な演出） */
+  function viewMeter() {
+    const m = meter || { enabled: false, target: 300, superPlays: 10, superPresetId: null, miss: 0, superLeft: 0 };
+    const opts = '<option value="">（切り替えない。演出だけ）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '"' + (p.id === m.superPresetId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+    return '<div class="panel"><h3>スーパーメーター（全店舗共有）</h3><p class="hint">全店舗のハズレが溜まって満タンになると、全店舗合計で決めた回数だけ「スーパーモード」になります。その間は選んだプリセットで抽選し、画面が派手になります。お客さんにはメーターの溜まり具合だけ見え、数字は出ません。</p>' +
+      '<label class="check"><input type="checkbox" id="mon" ' + (m.enabled ? 'checked' : '') + '> スーパーメーターを使う</label>' +
+      '<div class="cols"><label class="f"><span>満タンまでのハズレ回数（全店舗合計）</span><input type="number" id="mtarget" min="10" max="100000" value="' + (m.target || 300) + '"></label>' +
+      '<label class="f"><span>スーパーモードの回数（全店舗合計）</span><input type="number" id="mplays" min="1" max="1000" value="' + (m.superPlays || 10) + '"></label>' +
+      '<label class="f"><span>スーパーモード中のプリセット</span><select id="mpreset">' + opts + '</select></label></div>' +
+      '<p class="hint">いまの状態: ハズレ <b style="color:var(--text)">' + (m.miss || 0) + ' / ' + (m.target || 300) + '</b>　スーパーモード: <b style="color:var(--text)">' + (m.superLeft > 0 ? '残り ' + m.superLeft + ' 回' : 'なし') + '</b></p>' +
+      '<div class="acts"><button class="btn ghost" data-act="meter-reset">ハズレを 0 に戻す</button><button class="btn ghost" data-act="meter-start">いますぐスーパーモードにする</button><button class="btn" data-act="meter-save">保存</button></div></div>';
+  }
   function viewStores() {
     return '<div class="panel"><h3>店舗</h3><p class="hint">店舗ごとにパスワードと、使えるプリセットを決めます。店舗の端末は起動時に店舗を選んでパスワードを入れます。</p>' +
       (stores.length ? '<div class="list">' + stores.map((s) => '<div class="item"><div class="name">' + esc(s.name) + '<small>使用中: ' + esc(presetName(s.activePresetId)) + '｜最終起動 ' + fmtDate(s.lastSeen) + (s.deviceVersion ? '（' + esc(s.deviceVersion) + '）' : '') + storeWarn(s) + '</small></div><button class="btn sm ghost" data-act="store-edit" data-id="' + esc(s.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだ店舗がありません</div>') +
       '<div class="acts"><button class="btn" data-act="store-new">店舗を追加</button></div></div>' +
+      viewMeter() +
       '<div class="panel"><h3>アップデート</h3><p class="hint">店舗の端末は、ふだんは 1 時間以内に自動で新しい版に切り替わります。すぐに切り替えたいときは下のボタンを押してください。ログイン中のすべての端末が、すぐに新しい版を確認して切り替わります（ゲーム中の端末は、そのゲームが終わり次第）。b61 より古い版の端末には届かないので、その端末は今までどおり 1 時間以内に切り替わります。</p>' +
       '<p class="hint">いまの最新版: <b style="color:var(--text)" id="latestVer">' + esc(latestVer || '確認中…') + '</b>　各店舗の版は、上の一覧の「最終起動」の横に出ます。</p>' +
       '<div class="acts"><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全店舗をいますぐアップデート</button><button class="btn ghost" data-act="stores-reload">一覧を読み直す</button></div></div>';
@@ -408,6 +423,13 @@
           return;
         }
         case 'stores-reload': await reload(); render(); loadLatest(); toast('読み直しました'); return;
+        case 'meter-save': {
+          const target = Math.max(10, Math.min(100000, Math.round(Number($('mtarget').value) || 300))), superPlays = Math.max(1, Math.min(1000, Math.round(Number($('mplays').value) || 10)));
+          await Cloud.saveMeter({ enabled: !!$('mon').checked, target, superPlays, superPresetId: $('mpreset').value || null });
+          meter = await Cloud.getMeter(); toast('スーパーメーターの設定を保存しました'); return render();
+        }
+        case 'meter-reset': if (!confirm('溜まったハズレを 0 に戻します。')) return; await Cloud.saveMeter({ miss: 0 }); meter = await Cloud.getMeter(); toast('0 に戻しました'); return render();
+        case 'meter-start': { const m = meter || {}; if (!m.enabled) { toast('先に「スーパーメーターを使う」を ON にして保存してください'); return; } if (!confirm('いますぐ全店舗をスーパーモードにします（' + (m.superPlays || 10) + ' 回）。')) return; await Cloud.saveMeter({ miss: 0, superLeft: m.superPlays || 10, superAt: Date.now() }); meter = await Cloud.getMeter(); toast('スーパーモードを開始しました'); return render(); }
         case 'store-edit': editStore = Object.assign({}, stores.find((s) => s.id === b.dataset.id)); return render();
         case 'store-cancel': editStore = null; return render();
         case 'store-save': if (b.disabled) return; b.disabled = true; try { return await saveStore(); } finally { b.disabled = false; }   // b79: 二度押しで同じ店舗が 2 つできないように。失敗したときに下の catch でメッセージを出すため await する
