@@ -37,6 +37,13 @@ service cloud.firestore {
         allow delete: if isMaster();
       }
     }
+    // ハズレメーター（b101、全店舗共有）: 端末は miss / superLeft / superAt だけ書ける。設定（enabled, target, superPlays, superPresetId）はマスターだけ
+    match /global/{id} {
+      allow read: if signedIn();
+      allow create, delete: if isMaster();
+      allow update: if isMaster()
+        || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['miss', 'superLeft', 'superAt']));
+    }
     // 配当履歴（全店舗）: どの店舗の端末も読める。足せるのは「時刻・金額・店舗」の4項目だけ。書き換えと削除はマスターだけ
     match /feed/{id} {
       allow read: if signedIn();
