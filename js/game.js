@@ -1850,17 +1850,14 @@ const Game = (function () {
      （マスターが決めた当たりやすいプリセットで抽選＋派手な演出）。お客さんにはメーターの溜まり具合だけ見せ、数字は出さない ---------- */
   let meter = null, unwatchMeter = null, superPreset = null, superPresetId = '', unwatchSuperPreset = null, superStarting = false;
   const superActive = () => !!(meter && meter.enabled && meter.superLeft > 0);
-  function renderMeter() {
-    const el = $('smeter'); if (!el) return;
+  function renderMeter() { // b103: リール左右の光の柱がゲージ（オーナー選択「案B」）。下から金色で満ちていき、満タンで SUPER MODE
     const on = !!(meter && meter.enabled);
-    el.classList.toggle('hidden', !on);
+    document.body.classList.toggle('meteron', on);
     document.body.classList.toggle('super', on && superActive());
     if (!on) return;
     const r = superActive() ? 1 : Math.max(0, Math.min(1, (meter.miss || 0) / Math.max(1, meter.target || 300)));
-    el.style.setProperty('--fill', (r * 100).toFixed(1) + '%');
-    el.classList.toggle('hot', !superActive() && r >= 0.8);
-    el.style.setProperty('--heat', r.toFixed(2));
-    el.querySelector('.mt').textContent = superActive() ? 'SUPER MODE' : 'SUPER METER';
+    stageEl.style.setProperty('--sfill', r.toFixed(3));
+    document.body.classList.toggle('meterhot', !superActive() && r >= 0.8);
   }
   function onMeter(m) {
     const wasSuper = superActive();
