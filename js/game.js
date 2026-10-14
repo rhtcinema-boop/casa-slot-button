@@ -1861,7 +1861,6 @@ const Game = (function () {
     el.classList.toggle('hot', !superActive() && r >= 0.8);
     el.style.setProperty('--heat', r.toFixed(2));
     el.querySelector('.mt').textContent = superActive() ? 'SUPER MODE' : 'SUPER METER';
-    el.querySelector('.goal').textContent = superActive() ? '★ SUPER MODE 突入中' : r >= 0.8 ? '★ もうすぐ！' : '★ SUPER MODE';
   }
   function onMeter(m) {
     const wasSuper = superActive();
