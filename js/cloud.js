@@ -312,7 +312,49 @@ const Cloud = (function () {
     return q.docs.map((x) => x.data());
   }
 
-  return { enabled, isLocal, ready, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed, pushInsert, watchInserts, ackInsert, watchInsert, pushCmd, watchCmds, ackCmd, watchCmd,
+  /* ---------- ハズレメーター（b101、全店舗共有）: global/meter { enabled, target, superPlays, superPresetId, miss, superLeft, superAt }
+     端末はハズレのたびに miss を +1、スーパーモード中のプレイで superLeft を -1。miss が target に届いたら（取引で 1 台だけが）miss=0, superLeft=superPlays にする */
+  const METER_DEF = { enabled: false, target: 300, superPlays: 10, superPresetId: null, miss: 0, superLeft: 0, superAt: 0 };
+  function watchMeter(cb) {
+    let un = null, dead = false;
+    ready().then(() => {
+      if (dead) return;
+      if (isLocal) { un = lwatch(() => Object.assign({}, METER_DEF, lread().meter || {}), cb); return; }
+      un = watchDoc(db.collection('global').doc('meter'), (d) => cb(Object.assign({}, METER_DEF, d.exists ? d.data() : {})));
+    }).catch(() => { /* 見張りなし */ });
+    return () => { dead = true; if (un) un(); };
+  }
+  async function getMeter() {
+    await ready();
+    if (isLocal) return Object.assign({}, METER_DEF, lread().meter || {});
+    const d = await retry(() => db.collection('global').doc('meter').get());
+    return Object.assign({}, METER_DEF, d.exists ? d.data() : {});
+  }
+  async function saveMeter(fields) { // マスター: 設定を書く（無ければ作る）
+    await ready();
+    if (isLocal) { const d = lread(); d.meter = Object.assign({}, METER_DEF, d.meter || {}, fields); lwrite(d); return; }
+    await retry(() => db.collection('global').doc('meter').set(fields, { merge: true }));
+  }
+  async function bumpMeter(miss, superDelta) { // 端末: ハズレ +1 ／ スーパーモードの残り -1（まとめて 1 回で）
+    await ready();
+    if (isLocal) { const d = lread(); const m = d.meter = Object.assign({}, METER_DEF, d.meter || {}); m.miss = Math.max(0, (m.miss || 0) + (miss || 0)); m.superLeft = Math.max(0, (m.superLeft || 0) + (superDelta || 0)); lwrite(d); return; }
+    const inc = firebase.firestore.FieldValue.increment, f = {};
+    if (miss) f.miss = inc(miss);
+    if (superDelta) f.superLeft = inc(superDelta);
+    await db.collection('global').doc('meter').update(f);
+  }
+  async function startSuper() { // 端末: 満タンを見つけたら呼ぶ。取引で「まだ満タンのまま」なら 1 台だけが切り替える。戻り値: 切り替えた側なら true
+    await ready();
+    if (isLocal) { const d = lread(); const m = d.meter = Object.assign({}, METER_DEF, d.meter || {}); if (!m.enabled || m.superLeft > 0 || (m.miss || 0) < (m.target || 300)) return false; m.miss = 0; m.superLeft = m.superPlays || 10; m.superAt = now(); lwrite(d); return true; }
+    const ref = db.collection('global').doc('meter');
+    return db.runTransaction(async (t) => {
+      const d = await t.get(ref); const m = Object.assign({}, METER_DEF, d.exists ? d.data() : {});
+      if (!m.enabled || m.superLeft > 0 || (m.miss || 0) < (m.target || 300)) return false;
+      t.update(ref, { miss: 0, superLeft: m.superPlays || 10, superAt: now() });
+      return true;
+    });
+  }
+  return { enabled, isLocal, ready, watchMeter, getMeter, saveMeter, bumpMeter, startSuper, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed, pushInsert, watchInserts, ackInsert, watchInsert, pushCmd, watchCmds, ackCmd, watchCmd,
     masterLogin, masterUser, masterLogout, saveStore, deleteStore, savePreset, deletePreset, listDays, listPlays, listDaysRange, listPlaysRange, dayKey };
 })();
 window.Cloud = Cloud;
