@@ -51,7 +51,6 @@
     else if (isStale()) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
     else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
     else { st.className = 'store' + (meter && meter.superLeft > 0 ? ' super' : ''); $('storeText').textContent = saved.name + ' の端末につながっています'; }
-    { const ml = $('mline'); const t = meterText(); ml.textContent = t; ml.classList.toggle('hidden', !t); ml.classList.toggle('super', !!(meter && meter.superLeft > 0)); }
     armed = !busy && !sending && !deleted && !isStale(); // b99: 端末が見つからないときも入れない
     bill.classList.toggle('gray', busy || deleted || isStale());
     hint.classList.toggle('busy', !armed);
