@@ -50,7 +50,7 @@
     else if (!storeDoc) { st.className = 'store off'; $('storeText').textContent = saved.name + ' … 接続中'; }
     else if (isStale()) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
     else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
-    else { st.className = 'store' + (meter && meter.superLeft > 0 ? ' super' : ''); $('storeText').textContent = saved.name + ' の端末につながっています'; }
+    else { st.className = 'store'; $('storeText').textContent = saved.name + ' の端末につながっています'; }
     armed = !busy && !sending && !deleted && !isStale(); // b99: 端末が見つからないときも入れない
     bill.classList.toggle('gray', busy || deleted || isStale());
     hint.classList.toggle('busy', !armed);
@@ -115,6 +115,7 @@
   /* ---------- 投入 ---------- */
   async function insert() {
     const bill = $('bill');
+    staleCheck();
     if (!armed || sending || Date.now() - lastSent < 3000 || !saved.check) { bill.classList.add('back'); setY(0); if (!saved.check) gameStart(); else if (Date.now() - lastSent < 3000) setMsg('少し待ってからもう一度', 'err'); return; }
     const who = { storeId: saved.storeId, phone: saved.phone, check: saved.check }; // b99: 途中で「終了」やログアウトをされても、この 1 枚の値は変えない
     sending = true; lastSent = Date.now();
@@ -143,8 +144,11 @@
     if (saved) { saved.seq = (saved.seq || 0) + 1; save(); }
     const seq = (saved && saved.seq) || 0;
     let id = null;
-    try { id = await withTimeout(Cloud.pushInsert(who.storeId, { ts: Date.now(), phone: who.phone, seq, check: who.check }), 8000); }
+    let sent = null;
+    try { const r = await withTimeout(Cloud.pushInsertNow(who.storeId, { ts: Date.now(), phone: who.phone, seq, check: who.check }), 8000); id = r.id; sent = r.sent; }
     catch (e) { finish(false, navigator.onLine === false ? '通信できません。電波を確認してもう一度' : '届きませんでした。通信を確認してもう一度'); return; }
+    let slow = false; // b105: 書き込みが 8 秒で終わらないときは「確認中」にして、返事を待ち続ける（あとから届いて二重に入るのを防ぐ）
+    withTimeout(sent, 8000).catch(() => { if (!done) { slow = true; setMsg('通信が遅れています… 届いたら自動で反映されます（もう一度入れないでください）', 'err'); } });
     let done = false;
     const un = Cloud.watchInsert(who.storeId, id, (d) => {
       if (done || !d || d.state === 'new') return;
@@ -152,7 +156,8 @@
       if (d.state === 'ok') finish(true, '投入しました。ゲームが始まります');
       else finish(false, { credit: '端末は FREE SPIN（無料回転）の消化中です。終わってからもう一度', settings: '端末で設定画面が開いています。閉じてからもう一度', update: '端末が更新中です。少し待ってからもう一度', stale: '届くのが遅すぎました（スマホか端末の時計がずれています）', nobill: 'この店舗は紙幣モードが OFF です（マスターで ON にしてください）' }[d.reason] || 'ゲーム中のため入りませんでした。終わってからもう一度');
     });
-    setTimeout(() => { if (!done) { done = true; un(); finish(false, '端末から返事がありません。端末の画面と通信を確認してください'); } }, 9000); // b99: 端末の片付け待ち（最長 5 秒）＋往復分
+    const giveUp = () => { if (done) return; if (slow && Date.now() - lastSent < 40000) { setTimeout(giveUp, 2000); return; } done = true; un(); finish(false, slow ? '届きませんでした（端末は 30 秒より古い紙幣を受け付けません）。もう一度入れてください' : '端末から返事がありません。端末の画面と通信を確認してください'); };
+    setTimeout(giveUp, 9000); // b99: 端末の片付け待ち（最長 5 秒）＋往復分。b105: 通信が遅いときは最長 40 秒まで待つ
   }
   let msgTimer = 0;
   function touchMsg() { // 触ったのに動かないときの理由（1.5 秒）
@@ -215,7 +220,7 @@
   const stat = () => (storeDoc && storeDoc.stat) || null;
   let admSig = '';
   function renderAdmIfChanged() { // b99: 端末の状態が変わったときだけ描き直す（スクロール位置や音量スライダーを守る）
-    const st = stat(); const sig = JSON.stringify([st && st.at, storeDoc && storeDoc.phase, storeDoc && storeDoc.lastSeen, deleted]);
+    const st = stat(); const sig = JSON.stringify([st && st.at, storeDoc && storeDoc.phase, storeDoc && storeDoc.lastSeen, deleted, meter && [meter.enabled, meter.miss, meter.superLeft]]);
     if (sig === admSig) return;
     const a = document.activeElement; if (a && a.id === 'vol') return; // 音量を動かしている最中は触らない
     renderAdm();
@@ -223,7 +228,7 @@
   const PHONE_PANEL = '<div class="panel"><h4>このスマホ</h4><button class="btn ghost" data-act="reload">画面を読み直す（再接続）</button><button class="btn ghost" data-act="phoneLogout">店舗を切り替える（ログアウト）</button></div>';
   function renderAdm() {
     const box = $('adm'), st = stat();
-    admSig = JSON.stringify([st && st.at, storeDoc && storeDoc.phase, storeDoc && storeDoc.lastSeen, deleted]);
+    admSig = JSON.stringify([st && st.at, storeDoc && storeDoc.phase, storeDoc && storeDoc.lastSeen, deleted, meter && [meter.enabled, meter.miss, meter.superLeft]]);
     const keep = box.querySelector('.body') ? box.querySelector('.body').scrollTop : 0;
     const tab = (id, name) => '<button data-tab="' + id + '" class="' + (admTab === id ? 'on' : '') + '">' + name + '</button>';
     let body = '';
@@ -288,12 +293,13 @@
     try {
       for (;;) {
         const no = await new Promise((resolve) => {
-          box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big" id="gs">GAME START</button><p class="sub">タップして会計番号を入れると、紙幣の画面になります</p>';
+          box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big" id="gs">GAME START</button><p class="sub">タップして会計番号を入れると、紙幣の画面になります</p><div class="row"><button class="ghost" id="gsw">店舗を切り替える</button></div>';
+          $('gsw').onclick = async () => { if (await confirmBox('店舗を切り替え', 'このスマホをいまの店舗からログアウトして、店舗を選び直します。', '切り替える')) { box.classList.add('hidden'); starting = false; await phoneLogout(); } };
           $('gs').onclick = () => { buzz(20); unlockAudio(); showEntry(); };
           const showEntry = () => { // b99: タップの中で入力欄を出して focus（iPhone でキーボードが開く）
           box.innerHTML = '<h1>会計番号</h1><p>お客様の会計番号（伝票の番号）を入れてください</p><input id="chkno" type="text" inputmode="numeric" autocomplete="off" maxlength="10"><div class="err" id="cerr"></div><div class="row"><button class="ghost" id="cback">戻る</button><button class="ok" id="cgo">決定</button></div>';
           const inp = $('chkno'); inp.focus();
-          const go = () => { const v = inp.value.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[\s\u3000]/g, '').trim(); if (!v) { $('cerr').textContent = '会計番号を入れてください。'; inp.focus(); return; } if (!/^[0-9A-Za-z\-]{1,10}$/.test(v)) { $('cerr').textContent = '数字か英字で 10 文字までにしてください。'; inp.focus(); return; } resolve(v); };
+          const go = () => { const v = inp.value.replace(/[０-９Ａ-Ｚａ-ｚ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[－ー―‐−]/g, '-').replace(/[\s\u3000]/g, '').trim(); if (!v) { $('cerr').textContent = '会計番号を入れてください。'; inp.focus(); return; } if (!/^[0-9A-Za-z\-]{1,10}$/.test(v)) { $('cerr').textContent = '数字か英字で 10 文字までにしてください。'; inp.focus(); return; } resolve(v); };
           $('cgo').onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
           $('cback').onclick = () => resolve(null);
           };
@@ -305,6 +311,11 @@
     } finally { starting = false; box.classList.add('hidden'); }
     render();
   }
+  function staleCheck() { // b105: 6 時間以上前の会計番号は使わない（裏に置いたまま翌日になった場合も）
+    if (saved && saved.check && (!saved.checkAt || Date.now() - saved.checkAt > 6 * 60 * 60 * 1000)) { saved.check = null; save(); render(); if (!starting) gameStart(); return true; }
+    return false;
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) staleCheck(); });
   async function endCheck() {
     if (sending) { toast('送信中です。少し待ってください', true); return; }
     if (!(await confirmBox('会計 No.' + saved.check + ' を終了', 'このお客様の分を終わります。次は GAME START から会計番号を入れ直します。', '終了する'))) return;
@@ -359,7 +370,7 @@
     deleted = false;
     unwatchStore = Cloud.watchStore(saved.storeId, (d) => {
       if (!d) { storeDoc = null; deleted = true; render(); setMsg('この店舗はマスターで削除されました', 'err'); return; }
-      storeDoc = d; render();
+      deleted = false; storeDoc = d; render();
     });
   }
   window.addEventListener('online', () => { if (saved && !storeDoc) watchStore(); }); // b99: 起動時に圏外だったら、戻ったときに見張り直す
@@ -385,6 +396,7 @@
     if (saved.check && (!saved.checkAt || Date.now() - saved.checkAt > 6 * 60 * 60 * 1000)) { saved.check = null; save(); render(); } // b99: 6 時間以上前の会計番号は使わない（翌日に前の客の番号で入れない）
     if (!saved.check) gameStart();
     Cloud.watchMeter((m) => { meter = m; render(); }); // b101
+    setInterval(() => { if (saved && !storeDoc && !deleted) watchStore(); }, 20000); // b105: 店舗の情報が届かないままなら、20 秒ごとに見張り直す
     setInterval(render, 30000);
   }
   document.addEventListener('DOMContentLoaded', init);
