@@ -43,6 +43,24 @@ const UI = (function () {
     });
   }
 
+  /* b107: いくつかの中から 1 つ選ぶ。items = [[値, 表示], ...]。Promise<値|null> */
+  function choose(o) {
+    return new Promise((resolve) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'scrim';
+      wrap.innerHTML = '<div class="card dialog"><h2>' + esc(o.title) + '</h2><div class="acts" style="flex-direction:column;align-items:stretch">' +
+        o.items.map((it) => '<button class="btn" data-r="' + esc(it[0]) + '" style="font-size:26px;padding:18px 0">' + esc(it[1]) + '</button>').join('') +
+        '<button class="btn ghost" data-r="0">キャンセル</button></div></div>';
+      wrap.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-r]');
+        if (!b) return;
+        Sfx.play('button');
+        wrap.remove();
+        resolve(b.dataset.r === '0' ? null : b.dataset.r);
+      });
+      root().appendChild(wrap);
+    });
+  }
   /* 1行の文字入力。Promise<string|null> */
   function askText(o) {
     return new Promise((resolve) => {
@@ -200,7 +218,7 @@ const UI = (function () {
     });
   }
 
-  return { toast, confirm, askPin, askNewPin, auth, askNumber, askText };
+  return { toast, confirm, choose, askPin, askNewPin, auth, askNumber, askText };
 })();
 
 const Admin = (function () {
