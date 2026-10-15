@@ -55,7 +55,9 @@ const Sfx = (function () {
     if (ctx.state !== 'running') { resumeAt = performance.now(); ctx.resume().catch(() => {}); }
   }
   // resume 直後（同じタッチ内）の音は、開始待ちの間でも予約して鳴らす
+  const MUTED = (() => { try { return /[?&]mute=1(&|$)/.test(location.search); } catch (e) { return false; } })(); // b105: テスト用。アドレスに mute=1 を付けると最初から一切鳴らさない
   function ready() {
+    if (MUTED) return false;
     return ensure() && (ctx.state === 'running' || performance.now() - resumeAt < 600);
   }
 
