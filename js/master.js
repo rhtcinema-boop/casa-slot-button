@@ -247,7 +247,9 @@
   const isoToDate = (s) => { const a = s.split('-').map(Number); return new Date(a[0], a[1] - 1, a[2]); };
   const addDays = (s, n) => { const d = isoToDate(s); d.setDate(d.getDate() + n); return iso(d); };
   // その店舗で使用中のプリセットのリセット時刻（営業日の切り替わり）。未設定は 19 時
+  const ALL = '__all__'; // b106: 集計の「全店舗の合計」
   function resetHourOf(storeId) {
+    if (storeId === ALL) storeId = stores[0] && stores[0].id; // 全店舗のときの「今日」の基準は先頭の店舗（日付の範囲は店舗ごとのリセット時刻で取る）
     const s = stores.find((x) => x.id === storeId), pr = s && presets.find((x) => x.id === s.activePresetId);
     return pr && pr.limits && Number.isInteger(pr.limits.resetHour) ? pr.limits.resetHour : 19;
   }
@@ -264,7 +266,7 @@
   }
   const QUICK = [['today', '今日'], ['yesterday', '昨日'], ['7', '直近7日'], ['month', '今月'], ['last', '先月'], ['31', '直近31日']];
   function viewStats() {
-    const sel = '<label class="f"><span>店舗</span><select id="stsel"><option value="">選んでください</option>' + stores.map((s) => '<option value="' + esc(s.id) + '" ' + (statsStore === s.id ? 'selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></label>';
+    const sel = '<label class="f"><span>店舗</span><select id="stsel"><option value="">選んでください</option>' + (stores.length > 1 ? '<option value="' + ALL + '" ' + (statsStore === ALL ? 'selected' : '') + '>全店舗の合計</option>' : '') + stores.map((s) => '<option value="' + esc(s.id) + '" ' + (statsStore === s.id ? 'selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></label>';
     if (!statsStore) return '<div class="panel"><h3>集計</h3>' + sel + '</div>';
     const R = statsRange || quickRange('31', statsStore), rh = resetHourOf(statsStore);
     const WD = ['日', '月', '火', '水', '木', '金', '土'];
@@ -272,21 +274,25 @@
     const isQ = (q) => { const x = quickRange(q, statsStore); return x.from === R.from && x.to === R.to; };
     const period = '<div class="range"><label class="f"><span>開始（営業日）</span><input type="date" id="stfrom" value="' + R.from + '" max="' + R.to + '"></label><label class="f"><span>終了（営業日）</span><input type="date" id="stto" value="' + R.to + '" min="' + R.from + '"></label></div>' +
       '<div class="quick">' + QUICK.map((q) => '<button class="btn sm ' + (isQ(q[0]) ? '' : 'ghost') + '" data-act="st-quick" data-q="' + q[0] + '">' + q[1] + '</button>').join('') + '</div>' +
-      '<p class="hint" style="margin-top:8px">営業日は、当たりのリセット時刻（' + rh + ':00）で切り替わります。たとえば ' + fmtDay(R.from.replace(/-/g, '')) + ' の営業日は、その日の ' + rh + ':00 から翌日の ' + rh + ':00 の直前までです。</p>';
+      (statsStore === ALL ? '<p class="hint" style="margin-top:8px">全店舗の合計です。営業日は店舗ごとの当たりのリセット時刻（' + stores.map((x) => x.name + ' ' + resetHourOf(x.id) + ':00').join('、') + '）で切り替わります。</p>' : '') +
+      (statsStore === ALL ? '' : '<p class="hint" style="margin-top:8px">営業日は、当たりのリセット時刻（' + rh + ':00）で切り替わります。たとえば ' + fmtDay(R.from.replace(/-/g, '')) + ' の営業日は、その日の ' + rh + ':00 から翌日の ' + rh + ':00 の直前までです。</p>');
     if (!statsData) return '<div class="panel"><h3>集計</h3>' + sel + period + '<div class="empty">読み込み中…</div></div>';
-    const d = statsData;
+    const d = statsData, all = statsStore === ALL;
+    const nameOf = (id) => { const x = stores.find((y) => y.id === id); return x ? x.name : ''; };
     const tot = d.days.reduce((a, x) => ({ plays: a.plays + (x.plays || 0), awarded: a.awarded + (x.awarded || 0), wins: a.wins + (x.wins || 0) }), { plays: 0, awarded: 0, wins: 0 });
     return '<div class="panel"><h3>集計</h3>' + sel + period +
       '<div class="summary"><div class="stat"><small>プレイ回数（この期間）</small><b>' + fmtN(tot.plays) + '</b></div><div class="stat"><small>当選額の合計</small><b>' + fmtN(tot.awarded) + '</b></div><div class="stat"><small>当たり本数</small><b>' + fmtN(tot.wins) + '</b></div><div class="stat"><small>1回あたりの平均</small><b>' + fmtN(tot.plays ? Math.round(tot.awarded / tot.plays) : 0) + '</b></div></div>' +
-      '<table><tr><th>営業日</th><th class="n">回転</th><th class="n">当たり</th><th class="n">当選額</th></tr>' + (d.days.length ? d.days.map((x) => '<tr><td>' + fmtDay(x.day) + '</td><td class="n">' + fmtN(x.plays || 0) + '</td><td class="n">' + fmtN(x.wins || 0) + '</td><td class="n">' + fmtN(x.awarded || 0) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のデータはありません</td></tr>') + '</table></div>' +
+      (all ? '<h4 style="margin:14px 0 6px">店舗ごと</h4><table><tr><th>店舗</th><th class="n">回転</th><th class="n">当たり</th><th class="n">当選額</th></tr>' + d.byStore.map((x) => '<tr><td>' + esc(x.name) + '</td><td class="n">' + fmtN(x.plays) + '</td><td class="n">' + fmtN(x.wins) + '</td><td class="n">' + fmtN(x.awarded) + '</td></tr>').join('') + '</table><h4 style="margin:14px 0 6px">営業日ごと（全店舗の合計）</h4>' : '') +
+      '<table><tr><th>営業日</th><th class="n">回転</th><th class="n">当たり</th><th class="n">当選額</th></tr>' + ((all ? d.dayTotals : d.days).length ? (all ? d.dayTotals : d.days).map((x) => '<tr><td>' + fmtDay(x.day) + '</td><td class="n">' + fmtN(x.plays || 0) + '</td><td class="n">' + fmtN(x.wins || 0) + '</td><td class="n">' + fmtN(x.awarded || 0) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のデータはありません</td></tr>') + '</table></div>' +
       '<div class="panel"><h3>この期間のプレイ</h3>' + (tot.plays > d.plays.length && d.plays.length >= PLAY_MAX ? '<p class="hint">この期間のプレイは ' + fmtN(tot.plays) + ' 回あります。新しい ' + PLAY_MAX + ' 件を表示しています。</p>' : '') +
-      '<table><tr><th>日時</th><th>ステージ</th><th class="n">結果</th><th>プリセット</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td><td>STAGE ' + x.stage + '</td><td class="n">' + fmtN(x.value) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のプレイはありません</td></tr>') + '</table></div>';
+      '<table><tr><th>日時</th>' + (all ? '<th>店舗</th>' : '') + '<th>ステージ</th><th class="n">結果</th><th>プリセット</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td>' + (all ? '<td>' + esc(nameOf(x.storeId)) + '</td>' : '') + '<td>STAGE ' + x.stage + '</td><td class="n">' + fmtN(x.value) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のプレイはありません</td></tr>') + '</table></div>';
   }
   async function loadStats(id, range) {
     if (id !== statsStore) statsRange = null; // 店舗を変えたら、期間は直近31日に戻す
     statsStore = id; statsData = null;
     if (range) statsRange = range;
     if (!id) return render();
+    if (id === ALL) return loadStatsAll();
     const R = statsRange || quickRange('31', id), rh = resetHourOf(id);
     render(); // 先に期間の欄だけ出す
     const from = isoToDate(R.from), to = isoToDate(R.to);
@@ -305,6 +311,33 @@
     }
     if (id !== statsStore) return; // 読み込み中に店舗を切り替えた
     statsData = { days, plays };
+    render();
+  }
+
+  /* b106: 全店舗の合計。店舗ごとに、その店のリセット時刻で期間を取り、合計する */
+  async function loadStatsAll() {
+    const R = statsRange || quickRange('31', ALL);
+    render();
+    const k0 = R.from.replace(/-/g, ''), k1 = R.to.replace(/-/g, '');
+    const per = await Promise.all(stores.map(async (s) => {
+      const rh = resetHourOf(s.id), from = isoToDate(R.from), to = isoToDate(R.to);
+      from.setHours(rh, 0, 0, 0); to.setDate(to.getDate() + 1); to.setHours(rh, 0, 0, 0);
+      const t0 = from.getTime(), t1 = to.getTime();
+      let days = [], plays = [];
+      try { [days, plays] = await Promise.all([Cloud.listDaysRange(s.id, k0, k1), Cloud.listPlaysRange(s.id, t0, t1, PLAY_MAX)]); }
+      catch (err) {
+        try { const a = await Promise.all([Cloud.listDays(s.id, 400), Cloud.listPlays(s.id, 500)]); days = a[0].filter((x) => x.day >= k0 && x.day <= k1); plays = a[1].filter((x) => x.ts >= t0 && x.ts < t1).slice(0, PLAY_MAX); }
+        catch (err2) { toast(s.name + ' の集計を読み込めませんでした'); }
+      }
+      return { s, days, plays: plays.map((x) => Object.assign({ storeId: s.id }, x)) };
+    }));
+    if (statsStore !== ALL) return; // 読み込み中に切り替えた
+    const days = [], dmap = {};
+    per.forEach((p) => p.days.forEach((x) => { days.push(x); const m = dmap[x.day] = dmap[x.day] || { day: x.day, plays: 0, wins: 0, awarded: 0 }; m.plays += x.plays || 0; m.wins += x.wins || 0; m.awarded += x.awarded || 0; }));
+    const dayTotals = Object.keys(dmap).sort().reverse().map((k) => dmap[k]);
+    const byStore = per.map((p) => p.days.reduce((a, x) => ({ name: a.name, plays: a.plays + (x.plays || 0), wins: a.wins + (x.wins || 0), awarded: a.awarded + (x.awarded || 0) }), { name: p.s.name, plays: 0, wins: 0, awarded: 0 }));
+    const plays = [].concat(...per.map((p) => p.plays)).sort((a, b) => b.ts - a.ts).slice(0, PLAY_MAX);
+    statsData = { days, dayTotals, byStore, plays };
     render();
   }
 
