@@ -31,7 +31,7 @@ service cloud.firestore {
       match /inserts/{i} {
         allow read: if signedIn();
         allow create: if signedIn()
-          && request.resource.data.keys().hasOnly(['ts', 'phone', 'seq', 'state', 'check'])
+          && request.resource.data.keys().hasOnly(['ts', 'phone', 'seq', 'state', 'check', 'stage'])
           && request.resource.data.ts is number && request.resource.data.phone is string && request.resource.data.state == 'new';
         allow update: if signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'ackAt', 'reason']);
         allow delete: if isMaster();
