@@ -263,11 +263,12 @@
     if (n <= 0 || min <= 0 || (Number(played) || 0) >= n) return [];
     return (p ? outcomesOf(p) : OUTCOMES).filter((o) => o.value >= min).map((o) => o.key);
   }
-  function drawProb(p, rng, blocked) {
+  function drawProb(p, rng, blocked, startStage) { // b107: startStage を渡すと、そのステージから抽選する（紙幣モードのステージ選び）
     rng = rng || secureRandomInt;
     blocked = blocked || [];
     const T = tableOf(p);
     for (let i = 0; i < T.length; i++) {
+      if (startStage && T[i].stage < startStage && T.some((x) => x.stage >= startStage)) continue;
       const d = T[i], row = p[d.stage] || {}, keys = probKeys(d); // b81: ステージの行が無い表でも落ちない（validateProbs で弾いているが念のため）
       const w = keys.map((k) => Math.max(0, units(row[k]) || 0));
       keys.forEach((k, j) => { if (k !== '0' && k !== 'NEXT' && blocked.indexOf(d.stage + ':' + k) >= 0) { w[0] += w[j]; w[j] = 0; } });
