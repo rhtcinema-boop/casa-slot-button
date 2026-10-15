@@ -213,6 +213,7 @@ const Admin = (function () {
     DRAFT_SAVE: ['cfg', '設定保存'], ADJUST: ['cfg', '残存内訳調整'], CAP_RULES: ['cfg', '上限ルール変更'],
     PIN_SETUP: ['pin', 'PIN初期登録'], PIN_STAFF_REISSUE: ['pin', '営業設定PIN再発行'], PIN_ADMIN_CHANGE: ['pin', '管理者PIN変更'],
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
+    AUTO_RESUME: ['ops', '自動で再開'], FX_GIVEUP: ['ops', '演出を省いて結果を表示'], FX_ERROR: ['ops', '演出のエラー'], CLOUD_ERR: ['ops', '通信エラー'], LOG_TRIM: ['ops', '古い記録の整理'], MAINT: ['ops', '毎日の軽量化'], REEL_RESTORE: ['ops', 'リールの描き直し'], FEED_SEED: ['ops', '配当履歴の初回送信'],
     INSERT: ['ops', 'スマホの紙幣で開始'], SUPER_START: ['ops', 'スーパーモード開始（全店舗）'], CHECKS_CLEAR: ['ops', '会計の一覧を消した'], PHONE_CMD: ['ops', 'スマホからの操作'], INSERT_BUSY: ['ops', 'スマホの紙幣（ゲーム中のため受け付けず）'], LONG_START: ['ops', '長押しで開始'],
   };
   const GROUPS = [['all', 'すべて'], ['play', 'プレイ'], ['ops', '営業'], ['cfg', '設定変更'], ['pin', 'PIN・認証']];
@@ -484,10 +485,15 @@ const Admin = (function () {
       case 'PIN_ADMIN_CHANGE': return '管理者PINを変更';
       case 'AUTH_LOCKOUT': return 'PIN入力を5回連続で失敗（60秒ロック）｜場面: ' + esc(d.context || '');
       case 'ADMIN_LOGIN': return '設定画面にログイン';
+      case 'SUPER_START': return 'スーパーメーターが満タン。全店舗がスーパーモードに入った';
+      case 'FREE_PLAY': return 'FREE SPIN の回（残り ' + (d.left || 0) + '）';
+      case 'OFFLINE_PLAY': return 'オフラインのため抽選なし（ハズレ）';
+      case 'FEED_SEED': return '配当履歴を ' + (d.count || 0) + ' 件送った';
+      case 'FX_ERROR': return 'STAGE ' + esc(d.stage) + ' の演出でエラー: ' + esc(String(d.message || '').slice(0, 60));
       case 'INSERT': return 'スマホの紙幣' + (d.check ? '（会計 No.' + esc(d.check) + '）' : '') + (d.phone ? ' ' + esc(String(d.phone).slice(0, 8)) : '');
       case 'INSERT_BUSY': return 'ゲーム中のため受け付けず' + (d.phone ? ' ' + esc(String(d.phone).slice(0, 8)) : '');
       case 'LONG_START': return 'リモコン／ロゴの長押しで開始';
-      case 'PHONE_CMD': return ({ preset: 'プリセット切替', statsReset: '集計のリセット', volume: '音量', update: '更新', logout: 'ログアウト' }[d.type] || esc(String(d.type || ''))) + (d.ok === false ? '（受け付けず' + (d.reason ? '：' + esc(d.reason) : '') + '）' : '');
+      case 'PHONE_CMD': return ({ preset: 'プリセット切替', statsReset: '集計のリセット', volume: '音量', update: '更新', logout: 'ログアウト' }[d.type] || esc(String(d.type || ''))) + (d.ok === false ? '（受け付けず' + (d.reason ? '：' + esc(({ playing: 'ゲーム中', preset: 'プリセットが使えない' })[d.reason] || d.reason) : '') + '）' : '');
       case 'CHECKS_CLEAR': return '会計の一覧を消した（' + (d.n || 0) + ' 件）';
       default: return esc(JSON.stringify(d));
     }
@@ -505,11 +511,14 @@ const Admin = (function () {
   /* b97: スマホの紙幣に付いてきた会計番号と、その回の当たり金額。当たり（0 より大きい）だけを溜める。最新が上 */
   function viewChecks() {
     const list = (Store.state.checks || []).slice().reverse();
-    const sum = Object.create(null); list.forEach((c) => { sum[c.check] = (sum[c.check] || 0) + c.value; });
+    const rh = Store.state.limits && Number.isInteger(Store.state.limits.resetHour) ? Store.state.limits.resetHour : 19;
+    const dayOf = (ts) => { try { return Engine.windowStart(ts, rh); } catch (e) { return Math.floor(ts / 86400000); } };
+    const key = (c) => dayOf(c.ts) + '|' + c.check; // b105: 伝票番号は毎日振り直すので、営業日ごとに合計する
+    const sum = Object.create(null); list.forEach((c) => { sum[key(c)] = (sum[key(c)] || 0) + c.value; });
     const billOn = typeof Game !== 'undefined' && Game.billMode && Game.billMode();
     const dt = (ts) => { const d = new Date(ts); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); };
     return '<div class="panel"><h4>会計番号ごとの当たり</h4><p class="hint">スマホで入力した会計番号に、その回の当たり金額を付けて並べます。当たりなしの回は入りません。' + (billOn ? '' : '<b>この店舗は「スマホの紙幣で始める」が OFF のため記録されません（マスター画面で ON にできます）。</b>') + '</p>' +
-      (list.length ? '<table class="tbl"><tr><th>日時</th><th>会計番号</th><th>STAGE</th><th class="n">金額</th><th class="n">この会計の合計</th></tr>' + list.map((c) => '<tr><td>' + dt(c.ts) + '</td><td><b>' + esc(c.check) + '</b></td><td>' + c.stage + '</td><td class="n">' + fmtN(c.value) + '</td><td class="n">' + fmtN(sum[c.check]) + '</td></tr>').join('') + '</table>' : '<p class="hint">まだありません。</p>') +
+      (list.length ? '<table class="tbl"><tr><th>日時</th><th>会計番号</th><th>STAGE</th><th class="n">金額</th><th class="n">この会計の合計</th></tr>' + list.map((c) => '<tr><td>' + dt(c.ts) + '</td><td><b>' + esc(c.check) + '</b></td><td>' + c.stage + '</td><td class="n">' + fmtN(c.value) + '</td><td class="n">' + fmtN(sum[key(c)]) + '</td></tr>').join('') + '</table>' : '<p class="hint">まだありません。</p>') +
       '<div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="checks-clear" ' + (list.length ? '' : 'disabled') + '>この一覧を消す</button></div></div>';
   }
   function viewHistory() {
