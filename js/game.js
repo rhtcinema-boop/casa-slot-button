@@ -366,7 +366,8 @@ const Game = (function () {
   const INSERT_WINDOW_MS = 30000;
   const insertSeen = {};
   let insertBusy = false, unwatchIns = null, lastPhase = '';
-  let quietStart = false; // b99: 紙幣・長押しから始めるときはボタン音を鳴らさない
+  let quietStart = false;
+  let pendingStart = 1; // b107: 次のゲームを始めるステージ（スマホで選んだ紙幣、または長押しで選んだもの） // b99: 紙幣・長押しから始めるときはボタン音を鳴らさない
   let curCheck = null; // b97: 直近の紙幣に付いていた会計番号 { no, at }。10 分以内のプレイ（FREE SPIN の消化も）に付ける
   const checkNo = () => (curCheck && Date.now() - curCheck.at < 10 * 60 * 1000) ? curCheck.no : null;
   const canStart = () => { const s = Store.state, p = s && s.play; return !busy && !pressing && !insertBusy && !updPending && !!s && (!p || p.phase === 'shown') && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && lockbar.classList.contains('show') && !!lockbar.querySelector('[data-act="next"]'); };
@@ -393,6 +394,7 @@ const Game = (function () {
     }
     Cloud.ackInsert(me.id, d.id, { state: 'ok', ackAt: Date.now() }).catch(() => {});
     curCheck = d.check ? { no: String(d.check).slice(0, 20), at: Date.now() } : null;
+    pendingStart = [1, 2, 3].indexOf(Number(d.stage)) >= 0 ? Number(d.stage) : 1; // b107
     try { Store.transact(() => Store.log('INSERT', { id: d.id, phone: d.phone, check: curCheck ? curCheck.no : undefined })); } catch (e) { /* ログのみ */ }
     await insertFx();
     const b = lockbar.querySelector('[data-act="next"]'); if (b && !busy && !pressing) { quietStart = true; b.click(); }
@@ -419,6 +421,18 @@ const Game = (function () {
   }
   /* スマホが使えないときの逃げ道: テレビはリモコンの決定を長押し（tv.js）、iPad は casa ロゴを長押し。お札の演出なしで回す */
   function longStart() {
+    if (!canStart()) return false;
+    if (billMode()) { pickStageThenStart(); return true; } // b107: 紙幣モードはテレビでステージを選んでから
+    return startByLong();
+  }
+  async function pickStageThenStart() {
+    let v = null;
+    try { v = await UI.choose({ title: 'どのステージから？', items: [['1', 'STAGE 1'], ['2', 'STAGE 2'], ['3', 'STAGE 3']] }); } catch (e) { v = null; }
+    if (!v || !canStart()) return;
+    pendingStart = Number(v) || 1;
+    startByLong();
+  }
+  function startByLong() {
     if (!canStart()) return false;
     try { Store.transact(() => Store.log('LONG_START', {})); } catch (e) { /* ログのみ */ }
     curCheck = null; // b99: 長押しで始めた分は前の客の会計番号に付けない
@@ -798,7 +812,8 @@ const Game = (function () {
     busy = true;
     try { // b79: 途中で例外が出ても busy が立ちっぱなしにならないように（立ちっぱなしだと NEXT GAME も自動アップデートも効かなくなる）
       lockbar.classList.remove('show');
-      if (curStage !== 1) await transition(1); else setStage(1);
+      const backTo = ((Store.state.dud || 0) > 0 && [1, 2, 3].indexOf(Store.state.dudStage) >= 0) ? Store.state.dudStage : 1; // b107: 続けて同じステージで FREE SPIN を回すときは戻さない
+      if (curStage !== backTo) await transition(backTo); else setStage(backTo);
       win.classList.remove('win', 'lose');
       showingResult = false;
       // 次のゲームの前に、リールに READY TO SPIN を一拍見せる
@@ -839,12 +854,14 @@ const Game = (function () {
     if (supOk && superUsable()) { if (!superBase) superBase = presetOfState(); applyPreset(superMerged()); } // b101: スーパーモードの回は当たりやすいプリセット（b105: 枠を確保できた回だけ。1日の区切りは店舗のプリセットのまま）
     else { supOk = false; if (storeMode() && cloudStore && cloudStore.activePresetId && cloudPresets[cloudStore.activePresetId]) applyPreset(cloudPresets[cloudStore.activePresetId]); else if (superBase) applyPreset(superBase); superBase = null; } // b105: 店舗のプリセットが見つからないときは、スーパー前の設定に戻す
     syncTable(); // 念のため、抽選の前に配当表をそろえる（変わっていなければ何もしない）
+    const startSt = [1, 2, 3].indexOf(pendingStart) >= 0 ? pendingStart : 1; pendingStart = 1; // b107
     try {
       Store.transact((s) => {
         const ses = s.session;
         if ((s.dud || 0) > 0) { // FREE SPIN ×1〜×3 で増えた回: 抽選しない。必ず 0。回転数・集計・当たり本数のどれにも数えない
           s.dud -= 1;
-          s.play = { playNo: ses.playNo, stage: 1, value: 0, overflow: false, phase: 'drawn', cur: 1, ts: Date.now(), free: true, dud: true };
+          const ds = [1, 2, 3].indexOf(s.dudStage) >= 0 ? s.dudStage : 1; // b107: 選んだステージの見た目で回る
+          s.play = { playNo: ses.playNo, stage: ds, startStage: ds, value: 0, overflow: false, phase: 'drawn', cur: ds, ts: Date.now(), free: true, dud: true };
           s.locked = true;
           Store.log('FREE_PLAY', { left: s.dud });
           return;
@@ -860,8 +877,8 @@ const Game = (function () {
         Engine.earlyBlocked(s.limits && s.limits.early, s.dayPlays.n, s.probs).forEach((k) => { if (blocked.indexOf(k) < 0) blocked.push(k); });
         // オフライン対策（b74、オーナー指示）: ネットにつながっていない間は抽選せず、必ず STAGE 1 の 0 で終わる（画面には何も出さない。設定画面にだけ出す）
         const off = storeMode() && !netOk;
-        if (off) { res = { overflow: false, key: '1:0', stage: 1, value: 0 }; Store.log('OFFLINE_PLAY', {}); }
-        else res = Engine.drawProb(s.probs, undefined, blocked);
+        if (off) { res = { overflow: false, key: startSt + ':0', stage: startSt, value: 0 }; Store.log('OFFLINE_PLAY', {}); }
+        else res = Engine.drawProb(s.probs, undefined, blocked, startSt); // b107: 選んだステージから
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
         const bestBefore = bestOf(s); // 今回の結果が出る前の最高額配当（回転中はこちらを表示する）
@@ -874,7 +891,7 @@ const Game = (function () {
           s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
         const chk = test ? null : checkNo(); curCheck = null; // b97: 会計番号（スマホの紙幣に付いてきたもの）。b105: この 1 回で使い切る（次の CREDIT や別の回に付かない）
-        s.play = { playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: 1, ts: Date.now(), check: chk || undefined, sup: (supOk && !test) || undefined, off: off || undefined };
+        s.play = { startStage: startSt, playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: startSt, ts: Date.now(), check: chk || undefined, sup: (supOk && !test) || undefined, off: off || undefined };
         s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined, check: chk || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
@@ -889,8 +906,10 @@ const Game = (function () {
     clearSure(); // b79: 前のゲームの「当選確定」の表示が（画面が隠れていた等で）遅れて付いても、新しいゲームには持ち越さない
     showCredits();
     lockbar.classList.remove('show');
-    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free, check: p.check || null }, Store.state.limits && Store.state.limits.resetHour).catch(cloudFail); }
-    runStage(Store.state.play, 1);
+    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, startStage: p.startStage || 1, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free, check: p.check || null }, Store.state.limits && Store.state.limits.resetHour).catch(cloudFail); }
+    { const p0 = Store.state.play, s1 = (p0 && p0.cur) || 1; // b107: STAGE 2/3 から始めるときは、いつものステージの切り替わり演出で移ってから回す
+      if (s1 > 1 && curStage !== s1) { busy = true; transition(s1).catch(() => { setStage(s1); }).then(() => { busy = false; runStage(Store.state.play, s1); }); }
+      else runStage(Store.state.play, s1); }
   }
 
   /* ---------- 停止パターンの抽選（結果は確定済み。見せ方だけを変える） ----------
@@ -1082,7 +1101,7 @@ const Game = (function () {
      追加で溜めるのは n - 1 回。画面の CREDIT は、続きの回（play.freeCont）を結果が出るまで 1 として数えるので、増える数の見た目は n のまま */
   async function addCredits(n, by) {
     const key = 'dud', before = creditsLeft();
-    try { Store.transact((s) => { const p = s.play, counted = !!(p && (p.free || p.freeCont)); /* このゲームの続きの 1 回をもう数えているか（CREDIT の回、または同じゲームで 2 回目にそろった） */ const add = counted ? n : Math.max(0, n - 1); s[key] = (s[key] || 0) + add; if (p && p.phase !== 'shown' && !counted) p.freeCont = true; Store.log('CREDIT_ADD', { amount: add, shown: n, before, after: before + n, by }); }); } catch (err) { try { UI.toast('FREE SPIN を保存できませんでした（端末の保存領域を確認してください）', 'err'); } catch (e) { /* 表示のみ */ } }
+    try { Store.transact((s) => { const p = s.play, counted = !!(p && (p.free || p.freeCont)); /* このゲームの続きの 1 回をもう数えているか（CREDIT の回、または同じゲームで 2 回目にそろった） */ const add = counted ? n : Math.max(0, n - 1); s[key] = (s[key] || 0) + add; if (add > 0) s.dudStage = (p && p.startStage) || 1; /* b107: FREE SPIN はそのゲームを始めたステージで回る */ if (p && p.phase !== 'shown' && !counted) p.freeCont = true; Store.log('CREDIT_ADD', { amount: add, shown: n, before, after: before + n, by }); }); } catch (err) { try { UI.toast('FREE SPIN を保存できませんでした（端末の保存領域を確認してください）', 'err'); } catch (e) { /* 表示のみ */ } }
     const after = creditsLeft(), cr = $('crd');
     for (let k = before + 1; k <= after; k++) { if (cr) { cr.textContent = String(k); restart(cr, 'bump'); } Sfx.play('count'); await wait(n > 3 ? 110 : 260); } // 1 ずつ増える
   }
