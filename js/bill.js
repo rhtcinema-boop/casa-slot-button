@@ -55,7 +55,8 @@
     bill.classList.toggle('gray', busy || deleted || isStale());
     hint.classList.toggle('busy', !armed);
     const chk = $('chk');
-    if (saved.check) { chk.classList.remove('hidden'); chk.innerHTML = '会計 No.<b>' + esc(saved.check) + '</b><button type="button" data-act="end">終了</button>'; } else chk.classList.add('hidden');
+    if (saved.check) { chk.classList.remove('hidden'); chk.innerHTML = '会計 No.<b>' + esc(saved.check) + '</b>' + (saved.stage ? '<span class="stg s' + saved.stage + '">STAGE ' + saved.stage + '</span>' : ''); } else chk.classList.add('hidden');
+    ['acc', 'bill', 'hint'].forEach((id) => { const el = $(id); [1, 2, 3].forEach((n) => el.classList.toggle('s' + n, saved.stage === n)); }); // b107: 選んだステージの色
     if (!$('adm').classList.contains('hidden')) renderAdmIfChanged();
   }
 
@@ -116,8 +117,8 @@
   async function insert() {
     const bill = $('bill');
     staleCheck();
-    if (!armed || sending || Date.now() - lastSent < 3000 || !saved.check) { bill.classList.add('back'); setY(0); if (!saved.check) gameStart(); else if (Date.now() - lastSent < 3000) setMsg('少し待ってからもう一度', 'err'); return; }
-    const who = { storeId: saved.storeId, phone: saved.phone, check: saved.check }; // b99: 途中で「終了」やログアウトをされても、この 1 枚の値は変えない
+    if (!armed || sending || Date.now() - lastSent < 3000 || !saved.check || !saved.stage) { bill.classList.add('back'); setY(0); if (!saved.check || !saved.stage) gameStart(); else if (Date.now() - lastSent < 3000) setMsg('少し待ってからもう一度', 'err'); return; }
+    const who = { storeId: saved.storeId, phone: saved.phone, check: saved.check, stage: saved.stage }; // b99: 途中で「終了」やログアウトをされても、この 1 枚の値は変えない
     sending = true; lastSent = Date.now();
     render();
     const target = -(geo.restTop + geo.bh + 16); // 紙幣が口の中へ完全に入る位置
@@ -145,7 +146,7 @@
     const seq = (saved && saved.seq) || 0;
     let id = null;
     let sent = null;
-    try { const r = await withTimeout(Cloud.pushInsertNow(who.storeId, { ts: Date.now(), phone: who.phone, seq, check: who.check }), 8000); id = r.id; sent = r.sent; }
+    try { const r = await withTimeout(Cloud.pushInsertNow(who.storeId, { ts: Date.now(), phone: who.phone, seq, check: who.check, stage: who.stage }), 8000); id = r.id; sent = r.sent; }
     catch (e) { finish(false, navigator.onLine === false ? '通信できません。電波を確認してもう一度' : '届きませんでした。通信を確認してもう一度'); return; }
     let slow = false; // b105: 書き込みが 8 秒で終わらないときは「確認中」にして、返事を待ち続ける（あとから届いて二重に入るのを防ぐ）
     withTimeout(sent, 8000).catch(() => { if (!done) { slow = true; setMsg('通信が遅れています… 届いたら自動で反映されます（もう一度入れないでください）', 'err'); } });
@@ -167,7 +168,8 @@
   function finish(ok, text) {
     const bill = $('bill');
     clearTimeout(msgTimer);
-    setMsg(text, ok ? 'ok' : 'err');
+    setMsg('');
+    if (!ok) showFail(text); // b107: 入らなかったときは画面いっぱいに赤で（入ったときは文字なし）
     beep(ok);
     if (ok) buzz([20, 30, 60]); else buzz([80, 60, 80]);
     setTimeout(() => {
@@ -179,7 +181,7 @@
       void bill.offsetHeight;
       bill.classList.remove('drag'); bill.classList.add('enter'); setY(0);
       render();
-      msgTimer = setTimeout(() => setMsg(''), 3000);
+      if (ok) nextCustomer(); // b107: 紙幣が入ったら、毎回まっさらな会計番号入力へ
     }, ok ? 900 : 300);
   }
 
@@ -241,7 +243,7 @@
         '<div class="stat"><span>合計当たり本数</span><b>' + (typeof st.winCount === 'number' ? fmtN(st.winCount) + ' 本' : '—') + '</b></div>' +
         '<div class="stat"><span>CREDIT（残り）</span><b>' + fmtN((st.credits || 0) + (st.dud || 0)) + '</b></div>' +
         '<button class="btn danger" data-act="reset">画面の集計をリセット</button></div>' +
-        (meter && meter.enabled ? '<div class="panel"><h4>スーパーメーター（全店舗共有）</h4><div class="stat"><span>溜まったハズレ</span><b>' + fmtN(meter.miss) + ' / ' + fmtN(meter.target) + '</b></div><div class="stat"><span>スーパーモード</span><b>' + (meter.superLeft > 0 ? '残り ' + meter.superLeft + ' 回' : '—') + '</b></div></div>' : '') +
+        (false ? '<div class="panel"><h4>スーパーメーター（全店舗共有）</h4><div class="stat"><span>溜まったハズレ</span><b>' + fmtN(meter.miss) + ' / ' + fmtN(meter.target) + '</b></div><div class="stat"><span>スーパーモード</span><b>' + (meter.superLeft > 0 ? '残り ' + meter.superLeft + ' 回' : '—') + '</b></div></div>' : '') +
         '<div class="panel"><h4>今日の当たり</h4><p class="note">毎日 ' + (Number.isInteger(st.resetHour) ? st.resetHour : 19) + ':00 からの合計。テストの回と当たりなしの回は入りません。</p>' +
         '<div class="stat"><span>今日の当たり本数</span><b>' + fmtN(today.wins) + '</b></div>' +
         '<div class="stat"><span>今日の当たり合計</span><b class="' + (Date.now() < todayShown ? '' : 'mask') + '">' + (Date.now() < todayShown ? fmtN(today.awarded) : '＊＊＊＊＊') + '</b></div>' +
@@ -250,7 +252,7 @@
         ((st.checks || []).length ? st.checks.map((c) => { const d = new Date(c.ts); return '<div class="row"><small>' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + '</small><span>No.' + esc(c.check) + '</span><b>' + fmtN(c.value) + '</b></div>'; }).join('') : '<p class="note">まだありません。当たりが出ると、そのとき入力されていた会計番号と金額がここに並びます。</p>') +
         '</div></div>';
     } else if (admTab === 'preset') {
-      const list = st.presets || [];
+      const list = (st.presets || []).filter((p) => !(meter && meter.superPresetId && p.id === meter.superPresetId)); // b107: スーパーモード用のプリセットはマスター画面だけで扱う
       body = '<div class="panel"><h4>プリセットを選ぶ</h4><p class="note">マスターから配られたプリセットの中から選びます。選ぶと端末の次のプレイから反映されます。</p><div class="plist">' +
         (list.length ? list.map((p) => '<button data-act="preset" data-id="' + esc(p.id) + '" class="' + (p.id === st.presetId ? 'on' : '') + '"><span>' + esc(p.name) + '</span><span class="chip">' + (p.id === st.presetId ? '使用中' : '') + '</span></button>').join('') : '<p class="note">配られているプリセットがありません。</p>') +
         '</div></div>';
@@ -284,35 +286,78 @@
     };
   }
 
-  /* ---------- b97: GAME START → 会計番号 → 紙幣 ---------- */
+  /* ---------- b107: GAME START → 会計番号入力（数字ボタン）→ どのステージから？ → 紙幣。紙幣を入れたら毎回、空っぽの会計番号入力に戻る ---------- */
   let starting = false;
-  async function gameStart() {
+  async function gameStart(skipStart) {
     if (starting) return; starting = true;
     const box = $('start');
     box.classList.remove('hidden');
     try {
       for (;;) {
-        const no = await new Promise((resolve) => {
-          box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big" id="gs">GAME START</button><p class="sub">タップして会計番号を入れると、紙幣の画面になります</p><div class="row"><button class="ghost" id="gsw">店舗を切り替える</button></div>';
-          $('gsw').onclick = async () => { if (await confirmBox('店舗を切り替え', 'このスマホをいまの店舗からログアウトして、店舗を選び直します。', '切り替える')) { box.classList.add('hidden'); starting = false; await phoneLogout(); } };
-          $('gs').onclick = () => { buzz(20); unlockAudio(); showEntry(); };
-          const showEntry = () => { // b99: タップの中で入力欄を出して focus（iPhone でキーボードが開く）
-          box.innerHTML = '<h1>会計番号</h1><p>お客様の会計番号（伝票の番号）を入れてください</p><input id="chkno" type="text" inputmode="numeric" autocomplete="off" maxlength="10"><div class="err" id="cerr"></div><div class="row"><button class="ghost" id="cback">戻る</button><button class="ok" id="cgo">決定</button></div>';
-          const inp = $('chkno'); inp.focus();
-          const go = () => { const v = inp.value.replace(/[０-９Ａ-Ｚａ-ｚ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[－ー―‐−]/g, '-').replace(/[\s\u3000]/g, '').trim(); if (!v) { $('cerr').textContent = '会計番号を入れてください。'; inp.focus(); return; } if (!/^[0-9A-Za-z\-]{1,10}$/.test(v)) { $('cerr').textContent = '数字か英字で 10 文字までにしてください。'; inp.focus(); return; } resolve(v); };
-          $('cgo').onclick = go; inp.onkeydown = (e) => { if (e.key === 'Enter') go(); };
-          $('cback').onclick = () => resolve(null);
-          };
-        });
+        if (!skipStart) {
+          await new Promise((resolve) => {
+            box.classList.remove('stagepick');
+            box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big2" id="gs">GAME<br>START</button><div class="sw"><button id="gsw">店舗を切り替える</button></div>';
+            $('gsw').onclick = async () => { if (await confirmBox('店舗を切り替え', 'このスマホをいまの店舗からログアウトして、店舗を選び直します。', '切り替える')) { box.classList.add('hidden'); starting = false; await phoneLogout(); } };
+            $('gs').onclick = () => { buzz(20); unlockAudio(); resolve(); };
+          });
+        }
+        skipStart = false;
+        const no = await askCheck(box);
         if (no === null) continue;
-        saved.check = no; saved.checkAt = Date.now(); save();
+        const stg = await askStage(box, no);
+        if (stg === null) { skipStart = true; continue; } // ステージ選びの［戻る］は会計番号入力へ
+        saved.check = no; saved.checkAt = Date.now(); saved.stage = stg; save();
         break;
       }
-    } finally { starting = false; box.classList.add('hidden'); }
+    } finally { starting = false; box.classList.add('hidden'); box.classList.remove('stagepick'); }
     render();
   }
+  function askCheck(box) { // 数字ボタンで会計番号（数字だけ、10 桁まで）
+    return new Promise((resolve) => {
+      let v = '';
+      box.classList.remove('stagepick');
+      box.innerHTML = '<h1>会計番号入力</h1><div class="numbox" id="nb"></div><div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => '<button data-k="' + n + '">' + n + '</button>').join('') +
+        '<button data-k="clr" class="del">全部消す</button><button data-k="0">0</button><button data-k="bs" class="del">← 1文字</button></div><div class="nrow"><button class="bk" id="cback">戻る</button><button class="nx" id="cgo">次へ</button></div>';
+      const show = () => { $('nb').textContent = v; $('cgo').disabled = !v; };
+      box.querySelector('.pad').onclick = (e) => { const k = e.target.closest('[data-k]'); if (!k) return; buzz(8); const x = k.dataset.k; if (x === 'clr') v = ''; else if (x === 'bs') v = v.slice(0, -1); else if (v.length < 10) v += x; show(); };
+      $('cback').onclick = () => resolve(null);
+      $('cgo').onclick = () => { if (v) { buzz(15); resolve(v); } };
+      show();
+    });
+  }
+  let presetCache = null, presetCacheId = '';
+  function stageMax() { // 使用中のプリセットで、各ステージの一番高い金額（確率が 0 より大きいもの）
+    const out = {}, p = presetCache && presetCache.probs;
+    if (!p) return out;
+    [1, 2, 3].forEach((n) => { const row = p[n] || {}; const vals = Object.keys(row).filter((k) => k !== '0' && k !== 'NEXT' && Number(row[k]) > 0).map(Number); if (vals.length) out[n] = Math.max.apply(null, vals); });
+    return out;
+  }
+  function askStage(box, no) {
+    return new Promise((resolve) => {
+      const mx = stageMax();
+      box.classList.add('stagepick');
+      box.innerHTML = '<h1>どのステージから？</h1><p class="chkno">会計 No.<b>' + esc(no) + '</b>　紙幣1枚でどれでも同じ</p><div class="stg">' +
+        [1, 2, 3].map((n) => '<button class="s' + n + '" data-s="' + n + '"><b>STAGE ' + n + '</b>' + (mx[n] ? '<i>MAX ' + fmtN(mx[n]) + '</i>' : '') + '</button>').join('') +
+        '</div><div class="nrow"><button class="bk" id="sback">戻る</button></div>';
+      box.querySelector('.stg').onclick = (e) => { const s = e.target.closest('[data-s]'); if (!s) return; buzz(20); resolve(Number(s.dataset.s)); };
+      $('sback').onclick = () => resolve(null);
+    });
+  }
+  function nextCustomer() { // 紙幣が入ったら、毎回まっさらな会計番号入力へ
+    if (!saved) return;
+    saved.check = null; saved.stage = null; save(); render();
+    gameStart(true);
+  }
+  function showFail(text) { // 入らなかったとき: 画面いっぱいに赤で。タップで紙幣の画面に戻る（同じ会計番号・ステージのまま）
+    const old = document.querySelector('.fail'); if (old) old.remove();
+    const f = document.createElement('div'); f.className = 'fail';
+    f.innerHTML = '<div class="x">×</div><h2>入りませんでした</h2><p>' + esc(text) + '</p><small>画面をタップすると紙幣の画面に戻ります（同じ会計番号・ステージのまま）</small>';
+    f.onclick = () => f.remove();
+    document.body.appendChild(f);
+  }
   function staleCheck() { // b105: 6 時間以上前の会計番号は使わない（裏に置いたまま翌日になった場合も）
-    if (saved && saved.check && (!saved.checkAt || Date.now() - saved.checkAt > 6 * 60 * 60 * 1000)) { saved.check = null; save(); render(); if (!starting) gameStart(); return true; }
+    if (saved && saved.check && (!saved.checkAt || Date.now() - saved.checkAt > 6 * 60 * 60 * 1000)) { saved.check = null; saved.stage = null; save(); render(); if (!starting) gameStart(); return true; }
     return false;
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) staleCheck(); });
@@ -371,6 +416,7 @@
     unwatchStore = Cloud.watchStore(saved.storeId, (d) => {
       if (!d) { storeDoc = null; deleted = true; render(); setMsg('この店舗はマスターで削除されました', 'err'); return; }
       deleted = false; storeDoc = d; render();
+      if (d.activePresetId && d.activePresetId !== presetCacheId) { presetCacheId = d.activePresetId; Cloud.getPreset(d.activePresetId).then((p) => { presetCache = p; }).catch(() => {}); } // b107: ステージ選びの MAX 金額
     });
   }
   window.addEventListener('online', () => { if (saved && !storeDoc) watchStore(); }); // b99: 起動時に圏外だったら、戻ったときに見張り直す
@@ -394,7 +440,7 @@
     watchStore();
     $('chk').addEventListener('click', (e) => { if (e.target.closest('[data-act="end"]')) endCheck(); });
     if (saved.check && (!saved.checkAt || Date.now() - saved.checkAt > 6 * 60 * 60 * 1000)) { saved.check = null; save(); render(); } // b99: 6 時間以上前の会計番号は使わない（翌日に前の客の番号で入れない）
-    if (!saved.check) gameStart();
+    if (!saved.check || !saved.stage) gameStart();
     Cloud.watchMeter((m) => { meter = m; render(); }); // b101
     setInterval(() => { if (saved && !storeDoc && !deleted) watchStore(); }, 20000); // b105: 店舗の情報が届かないままなら、20 秒ごとに見張り直す
     setInterval(render, 30000);
