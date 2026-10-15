@@ -11,19 +11,23 @@
   const docs = {};          // storeId → 店舗ドキュメント（stat を見る）
   let feed = null;          // 配当履歴（新しい順）または null（未取得）
   let sel = 'all', feedOk = true;
+  const presets = {};       // presetId → プリセット（1日の区切り limits.resetHour を見る。b105）
 
-  const resetHourOf = (id) => { const d = docs[id]; const h = d && d.stat && Number.isInteger(d.stat.resetHour) ? d.stat.resetHour : 19; return h; };
+  const resetHourOf = (id) => { // 店舗が使っているプリセットの区切り → 端末が送ってくる区切り → 19 時（b105: 紙幣モード OFF の店舗は stat が無いため）
+    const d = docs[id], p = d && d.activePresetId && presets[d.activePresetId];
+    if (p && p.limits && Number.isInteger(p.limits.resetHour)) return p.limits.resetHour;
+    return d && d.stat && Number.isInteger(d.stat.resetHour) ? d.stat.resetHour : 19;
+  };
   // 店舗ごとの「今日」の始まり（リセット時刻を過ぎていれば今日のその時刻、まだなら昨日のその時刻）
   function dayStart(id, now) {
     const h = resetHourOf(id), d = new Date(now); d.setHours(h, 0, 0, 0);
     if (d.getTime() > now) d.setDate(d.getDate() - 1);
     return d.getTime();
   }
-  function checkOf(storeId, ts) {
+  function checkOf(storeId, ts, value) { // b105: 端末は結果を出した時刻（配当履歴と同じ ts）で会計番号を記録する。同じ時刻・同じ金額のものだけ
     const d = docs[storeId], list = d && d.stat && Array.isArray(d.stat.checks) ? d.stat.checks : [];
-    let best = null;
-    list.forEach((c) => { const dt = Math.abs((c.ts || 0) - ts); if (dt < 5000 && (!best || dt < best.dt)) best = { dt, check: c.check }; });
-    return best ? best.check : '';
+    const c = list.find((x) => Math.abs((x.ts || 0) - ts) <= 1500 && x.value === value);
+    return c ? c.check : '';
   }
   function render() {
     const now = Date.now();
@@ -36,17 +40,19 @@
     $('total').textContent = feed ? fmtN(total) : '—';
     // 日付の表示: 選んだ店舗（全店舗なら最初の店舗）のリセット時刻を使う
     const refId = ids[0] || null, st = refId ? starts[refId] : now, sd = new Date(st);
-    $('day').textContent = (sd.getMonth() + 1) + '/' + sd.getDate() + '（' + '日月火水木金土'[sd.getDay()] + '）' + pad(sd.getHours()) + ':00 から いま（' + pad(new Date(now).getHours()) + ':' + pad(new Date(now).getMinutes()) + '）まで';
+    const hours = Array.from(new Set(ids.map((id) => resetHourOf(id))));
+    const nowS = pad(new Date(now).getHours()) + ':' + pad(new Date(now).getMinutes());
+    $('day').textContent = hours.length > 1 ? '店舗ごとのリセット時刻から いま（' + nowS + '）まで' : (sd.getMonth() + 1) + '/' + sd.getDate() + '（' + '日月火水木金土'[sd.getDay()] + '）' + pad(sd.getHours()) + ':00 から いま（' + nowS + '）まで';
     const list = $('list');
     if (!feed) list.innerHTML = '<div class="empty">' + (feedOk ? '読み込んでいます…' : 'クラウドに接続できません。通信を確認してください。') + '</div>';
     else if (!rows.length) list.innerHTML = '<div class="empty">今日の当たりはまだありません。<br>当たりが出ると、ここに自動で並びます。</div>';
     else list.innerHTML = rows.map((r) => {
-      const d = new Date(r.ts), chk = checkOf(r.storeId, r.ts);
+      const d = new Date(r.ts), chk = checkOf(r.storeId, r.ts, r.value);
       const cls = r.value >= 50000 ? ' huge' : r.value >= 5000 ? ' big' : '';
       return '<div class="row"><small>' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + '</small><div class="st">' + esc(r.store || '') + (chk ? '<i>会計 No.' + esc(chk) + '</i>' : '') + '</div><b class="' + cls + '">' + fmtN(r.value) + '</b></div>';
     }).join('');
     const alive = stores.map((s) => { const d = docs[s.id]; const ok = d && d.lastSeen && now - d.lastSeen < 25 * 60 * 1000; return '<b class="' + (ok ? '' : 'off') + '">●</b> ' + esc(s.name); }).join('　');
-    $('foot').innerHTML = (stores.length ? '端末: ' + alive + '<br>' : '') + '自動で更新されます。会計番号は、スマホの紙幣で始めた当たりにだけ付きます。';
+    $('foot').innerHTML = (stores.length ? '端末: ' + alive + '<br>' : '') + (feedOk ? '自動で更新されます。' : '<b class="off">●</b> 通信が止まっています（自動で再接続します）。') + '会計番号は、スマホの紙幣で始めた当たりにだけ付きます。';
   }
   function renderChips() {
     const chips = [{ id: 'all', name: '全店舗' }].concat(stores);
@@ -58,8 +64,10 @@
     try { stores = await Promise.race([Cloud.listStores(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000))]); }
     catch (e) { stores = []; feedOk = false; render(); setTimeout(init, 8000); return; }
     renderChips();
+    try { (await Cloud.listPresets()).forEach((p) => { presets[p.id] = p; }); } catch (e) { /* 区切りは端末の値か 19 時で */ }
     stores.forEach((s) => Cloud.watchStore(s.id, (d) => { if (d) docs[s.id] = d; render(); }));
-    Cloud.watchFeed(300, (list) => { if (list === null) { feedOk = false; if (!feed) render(); return; } feedOk = true; feed = list; render(); });
+    const since = Date.now() - 36 * 60 * 60 * 1000; // b105: 300 件の上限で今日の分が切れないよう、直近 36 時間だけを取る
+    Cloud.watchFeed(2000, (list) => { if (list === null) { feedOk = false; render(); return; } feedOk = true; feed = list; render(); }, since);
     render();
     setInterval(render, 60000); // 「いま」の時刻と、日付をまたいだときの表示を進める
   }
