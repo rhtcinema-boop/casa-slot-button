@@ -65,7 +65,7 @@
   /* b101: ハズレメーター（全店舗共有）。全店舗のハズレが target 回溜まると、全店舗合計 superPlays 回のスーパーモード（superPresetId のプリセットで抽選＋派手な演出） */
   function viewMeter() {
     const m = meter || { enabled: false, target: 300, superPlays: 10, superPresetId: null, miss: 0, superLeft: 0 };
-    const opts = '<option value="">（切り替えない。演出だけ）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '"' + (p.id === m.superPresetId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+    const opts = '<option value="">（切り替えない。演出だけ）</option>' + presets.filter((p) => !p.test || p.id === m.superPresetId).map((p) => '<option value="' + esc(p.id) + '"' + (p.id === m.superPresetId ? ' selected' : '') + '>' + esc(p.name) + (p.test ? '（テスト用・使えません）' : '') + '</option>').join('');
     return '<div class="panel"><h3>スーパーメーター（全店舗共有）</h3><p class="hint">全店舗のハズレが溜まって満タンになると、全店舗合計で決めた回数だけ「スーパーモード」になります。その間は選んだプリセットで抽選し、画面が派手になります。お客さんにはメーターの溜まり具合だけ見え、数字は出ません。</p>' +
       '<label class="check"><input type="checkbox" id="mon" ' + (m.enabled ? 'checked' : '') + '> スーパーメーターを使う</label>' +
       '<div class="cols"><label class="f"><span>満タンまでのハズレ回数（全店舗合計）</span><input type="number" id="mtarget" min="10" max="100000" value="' + (m.target || 300) + '"></label>' +
@@ -425,11 +425,14 @@
         case 'stores-reload': await reload(); render(); loadLatest(); toast('読み直しました'); return;
         case 'meter-save': {
           const target = Math.max(10, Math.min(100000, Math.round(Number($('mtarget').value) || 300))), superPlays = Math.max(1, Math.min(1000, Math.round(Number($('mplays').value) || 10)));
-          await Cloud.saveMeter({ enabled: !!$('mon').checked, target, superPlays, superPresetId: $('mpreset').value || null });
+          const cur = await Cloud.getMeter(), on = !!$('mon').checked;
+          if (on && (cur.superLeft || 0) <= 0 && (cur.miss || 0) >= target && !confirm('いま溜まっているハズレ（' + (cur.miss || 0) + '）が満タン回数（' + target + '）以上なので、保存するとすぐに全店舗が SUPER MODE になります。よいですか？')) return;
+          const f = { enabled: on, target, superPlays, superPresetId: $('mpreset').value || null }; if (!on) f.superLeft = 0; // b105: OFF にしたら、残っている SUPER MODE も終わらせる
+          await Cloud.saveMeter(f);
           meter = await Cloud.getMeter(); toast('スーパーメーターの設定を保存しました'); return render();
         }
         case 'meter-reset': if (!confirm('溜まったハズレを 0 に戻します。')) return; await Cloud.saveMeter({ miss: 0 }); meter = await Cloud.getMeter(); toast('0 に戻しました'); return render();
-        case 'meter-start': { const m = meter || {}; if (!m.enabled) { toast('先に「スーパーメーターを使う」を ON にして保存してください'); return; } if (!confirm('いますぐ全店舗をスーパーモードにします（' + (m.superPlays || 10) + ' 回）。')) return; await Cloud.saveMeter({ miss: 0, superLeft: m.superPlays || 10, superAt: Date.now() }); meter = await Cloud.getMeter(); toast('スーパーモードを開始しました'); return render(); }
+        case 'meter-start': { if (b.disabled) return; b.disabled = true; try { const m = await Cloud.getMeter(); if (!m.enabled) { toast('先に「スーパーメーターを使う」を ON にして保存してください'); return; } if (m.superLeft > 0 && !confirm('いまスーパーモード中です（残り ' + m.superLeft + ' 回）。最初の ' + (m.superPlays || 10) + ' 回からやり直しますか？')) return; if (!m.superLeft && !confirm('いますぐ全店舗をスーパーモードにします（' + (m.superPlays || 10) + ' 回）。')) return; await Cloud.saveMeter({ miss: 0, superLeft: m.superPlays || 10, superAt: Date.now() }); meter = await Cloud.getMeter(); toast('スーパーモードを開始しました'); return render(); } finally { b.disabled = false; } }
         case 'store-edit': editStore = Object.assign({}, stores.find((s) => s.id === b.dataset.id)); return render();
         case 'store-cancel': editStore = null; return render();
         case 'store-save': if (b.disabled) return; b.disabled = true; try { return await saveStore(); } finally { b.disabled = false; }   // b79: 二度押しで同じ店舗が 2 つできないように。失敗したときに下の catch でメッセージを出すため await する
@@ -443,6 +446,7 @@
           // 使用中（いま使う／配布中）の店舗があるプリセットは消せない（端末が前の設定のまま動き続け、マスターでは「未設定」に見えるため）
           const users = stores.filter((s) => s.activePresetId === editPreset.id || (s.presetIds || []).indexOf(editPreset.id) >= 0).map((s) => s.name);
           if (users.length) { $('perr').textContent = '店舗「' + users.join('」「') + '」で使っているので削除できません。先に店舗の編集で外してください。'; return; }
+          if (meter && meter.superPresetId === editPreset.id) { $('perr').textContent = 'スーパーメーターの「スーパーモード中のプリセット」に選ばれているので削除できません。先に店舗タブで外してください。'; return; } // b105
           if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
         }
         case 'test-on': editPreset.test = !editPreset.test; return render();
