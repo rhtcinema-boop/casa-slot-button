@@ -168,19 +168,33 @@ const Cloud = (function () {
   }
   /* 配当履歴（全店舗）を新しい順に n 件、見張る。cb(list)。読めないとき（データベースの決まりが古い・圏外など）は cb(null)
      → 呼ぶ側は端末内の履歴（自店ぶん）に戻す。返り値を呼ぶと見張りをやめる */
-  function watchFeed(n, cb) {
-    let un = null, dead = false;
-    ready().then(() => {
+  function watchFeed(n, cb, since) { // since（ms）を渡すと、その時刻以降だけを取る（b105）。エラーのときは cb(null) を出して、待ってから張り直す
+    let un = null, dead = false, delay = 2000;
+    const attach = () => {
       if (dead) return;
-      if (isLocal) { un = lwatch(() => (lread().feed || []).slice(-n).reverse(), cb); return; }
-      un = db.collection('feed').orderBy('ts', 'desc').limit(n).onSnapshot((q) => cb(q.docs.map((x) => x.data())), () => cb(null));
-    }).catch(() => cb(null));
+      ready().then(() => {
+        if (dead) return;
+        if (isLocal) { un = lwatch(() => (lread().feed || []).filter((f) => !since || f.ts >= since).slice(-n).reverse(), cb); return; }
+        let q = db.collection('feed'); if (since) q = q.where('ts', '>=', since); q = q.orderBy('ts', 'desc').limit(n);
+        un = q.onSnapshot((s) => { delay = 2000; cb(s.docs.map((x) => x.data())); }, () => { un = null; cb(null); if (!dead) setTimeout(attach, delay); delay = Math.min(delay * 2, 30000); });
+      }).catch(() => { cb(null); if (!dead) setTimeout(attach, delay); delay = Math.min(delay * 2, 30000); });
+    };
+    attach();
     return () => { dead = true; if (un) un(); };
   }
 
   /* ---------- スマホの紙幣（b83） ----------
      stores/{storeId}/inserts/{id} { ts, phone, seq, state, ackAt, reason }
        … スマホが紙幣をスライドすると 1 件作る（state: 'new'）。端末が受け取ったら state を 'ok'（回す）か 'busy'（ゲーム中で受け付けない）にする */
+  /* b105: 紙幣の 1 件を、ID を先に決めてから送る。戻り値 { id, sent }。sent は書き込みが終わったら解決する（圏外でも id はすぐ分かるので、返事を待ち続けられる） */
+  async function pushInsertNow(storeId, data) {
+    await ready();
+    const doc = { ts: data.ts || now(), phone: String(data.phone || '').slice(0, 40), seq: Number(data.seq) || 0, state: 'new' };
+    if (data.check) doc.check = String(data.check).slice(0, 20);
+    if (isLocal) { const id = await pushInsert(storeId, data); return { id, sent: Promise.resolve() }; }
+    const ref = db.collection('stores').doc(storeId).collection('inserts').doc();
+    return { id: ref.id, sent: ref.set(doc) };
+  }
   async function pushInsert(storeId, data) {
     await ready();
     const doc = { ts: data.ts || now(), phone: String(data.phone || '').slice(0, 40), seq: Number(data.seq) || 0, state: 'new' };
@@ -354,7 +368,18 @@ const Cloud = (function () {
       return true;
     });
   }
-  return { enabled, isLocal, ready, watchMeter, getMeter, saveMeter, bumpMeter, startSuper, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed, pushInsert, watchInserts, ackInsert, watchInsert, pushCmd, watchCmds, ackCmd, watchCmd,
+  async function takeSuper() { // b105: 端末: スーパーモードの 1 回分を、抽選の前に取引で確保する（残りが 0 なら false）。全店舗で回数を超えない
+    await ready();
+    if (isLocal) { const d = lread(); const m = d.meter = Object.assign({}, METER_DEF, d.meter || {}); if (!m.enabled || !(m.superLeft > 0)) return false; m.superLeft -= 1; lwrite(d); return true; }
+    const ref = db.collection('global').doc('meter');
+    return db.runTransaction(async (t) => {
+      const d = await t.get(ref); const m = Object.assign({}, METER_DEF, d.exists ? d.data() : {});
+      if (!m.enabled || !(m.superLeft > 0)) return false;
+      t.update(ref, { superLeft: m.superLeft - 1 });
+      return true;
+    });
+  }
+  return { enabled, isLocal, ready, pushInsertNow, takeSuper, watchMeter, getMeter, saveMeter, bumpMeter, startSuper, listStores, getStore, watchStore, getPreset, watchPreset, listPresets, updateStoreFields, pushPlay, pushWin, pushWins, watchFeed, pushInsert, watchInserts, ackInsert, watchInsert, pushCmd, watchCmds, ackCmd, watchCmd,
     masterLogin, masterUser, masterLogout, saveStore, deleteStore, savePreset, deletePreset, listDays, listPlays, listDaysRange, listPlaysRange, dayKey };
 })();
 window.Cloud = Cloud;
