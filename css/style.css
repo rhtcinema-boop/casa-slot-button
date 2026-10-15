@@ -1791,8 +1791,13 @@ body.super .stag { color: #fff; background: linear-gradient(180deg, #ff9ae8, #ff
 @keyframes superpillar { from { background-position: 0 0; } to { background-position: 0 200%; } }
 @keyframes supertxt { from { opacity: .55; } to { opacity: 1; } }
 /* スーパーモードの光: 全ステージで、ランプを速く・マゼンタと金に */
-body.super #stage { --acc: 255, 79, 216; --acc2: 255, 215, 120; --accent: #ff4fd8; --accent-dim: #8a2a78; --glow: rgba(255, 79, 216, .6); --bulb: .5s; --halo: 0 0 110px rgba(255, 79, 216, .35); }
-body.super .bulbs i:nth-child(2n) { background: radial-gradient(circle, #fff 0 14%, #ffd773 30%, rgba(255, 215, 120, .45) 46%, transparent 68%); }
+body.super #stage[data-stage="1"], body.super.hw #stage[data-stage="1"] { --acc: 255, 79, 216; --acc2: 255, 215, 120; --accent: #ff4fd8; --accent-dim: #8a2a78; --glow: rgba(255, 79, 216, .6); --bulb: .5s; --halo: 0 0 110px rgba(255, 79, 216, .35); }
+body.super #stage[data-stage="1"] .bulbs i:nth-child(2n), body.super.hw #stage[data-stage="1"] .bulbs i:nth-child(2n) { background: radial-gradient(circle, #fff 0 14%, #ffd773 30%, rgba(255, 215, 120, .45) 46%, transparent 68%); }
 body.super .edge i { animation-duration: .4s; }
-body.super .vignette { background: radial-gradient(ellipse 80% 78% at 50% 48%, transparent 45%, rgba(80, 10, 60, .55) 80%, rgba(30, 4, 24, .85) 100%); }
+body.super #stage[data-stage="1"] .vignette, body.super.hw #stage[data-stage="1"] .vignette { background: radial-gradient(ellipse 80% 78% at 50% 48%, transparent 45%, rgba(80, 10, 60, .55) 80%, rgba(30, 4, 24, .85) 100%); }
 body.lite .led .sfill::after, body.lite.meterhot .led .sfill, body.lite.super .led .sfill { animation: none; }
+
+/* b105: スーパーモードの色はステージ 1 だけ（ステージ 2/3 の青・赤は残す）。暗転と当たりの表示は賞金表や SUPER 札より前に。大きな演出中は SUPER 札を隠す */
+body.super.hw #stage[data-stage="1"] .bulbs i { background: radial-gradient(circle, #fff 0 14%, #ff4fd8 30%, rgba(255, 79, 216, .45) 46%, transparent 68%); }
+#dim { z-index: 8; } .banner { z-index: 9; }
+#stage.fxmode .stag { visibility: hidden; }
