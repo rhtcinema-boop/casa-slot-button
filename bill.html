@@ -45,7 +45,7 @@
 
   /* 紙幣: パネルの裏（z-index 低）。口の中に入るときは少し縮んで暗くなる */
   #feedClip { position: absolute; left: 0; right: 0; top: calc(var(--sat) + 76px + 25px + 3px); bottom: 0; overflow: hidden; touch-action: none; z-index: 6; }
-  /* b105: 紙幣は投入口（黒い箱）の上を通って、奥の細い溝に吸い込まれる。箱の下縁（金の枠）だけを紙幣より上に重ねて、箱の中に入って見えるようにする */
+  /* b106: 紙幣は投入口（黒い箱）の上を通って、奥の細い溝に吸い込まれる。箱の下縁（金の枠）だけを紙幣より上に重ねて、箱の中に入って見えるようにする */
   .bill { position: absolute; left: 50%; transform: translateX(-50%) translateY(var(--y, 0px)) scale(var(--s, 1)); transform-origin: 50% 0; filter: brightness(var(--b, 1)); will-change: transform; transition: transform .25s ease-out, filter .25s; }
   .bill svg { position: absolute; transform: rotate(-90deg); transform-origin: center; filter: drop-shadow(0 -10px 22px rgba(0, 0, 0, .8)); }
   .bill.suck { transition: transform 1.2s cubic-bezier(.5, 0, .9, .4), filter 1.2s; }
@@ -62,10 +62,10 @@
   .msg { position: absolute; left: 20px; right: 20px; top: calc(var(--sat) + 290px); text-align: center; font-size: 16px; color: #e8e3d2; min-height: 22px; pointer-events: none; z-index: 8; text-shadow: 0 2px 6px #000; }
   .msg.ok { color: #35e07a; } .msg.err { color: #ff8c7a; }
 
-  /* ---------- b105: GAME START と会計番号 ---------- */
+  /* ---------- b106: GAME START と会計番号 ---------- */
   .chk { position: absolute; left: 50%; bottom: calc(var(--sab) + 14px); transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 999px; max-width: calc(100% - 32px); pointer-events: none; background: rgba(10, 9, 6, .92); border: 1px solid #c9a03e; color: #ffe9a8; font-size: 15px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0, 0, 0, .7); }
   .chk b { font-size: 20px; letter-spacing: .06em; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-  .chk button { pointer-events: auto; } /* b105: ピルの文字の上から紙幣をスライドできる（押せるのはボタンだけ） */
+  .chk button { pointer-events: auto; } /* b106: ピルの文字の上から紙幣をスライドできる（押せるのはボタンだけ） */
   .chk button { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 999px; border: 1px solid #3a3320; background: #15120a; color: #cfd6cc; }
   .login.start .big { width: 100%; max-width: 360px; padding: 26px 0; font: 700 26px/1 "Helvetica Neue", Arial, sans-serif; letter-spacing: .3em; border-radius: 18px; border: 0; background: linear-gradient(180deg, #ffe9a8, #c9a03e); color: #1a1408; box-shadow: 0 0 0 2px #000, 0 0 0 4px #c9a03e, 0 10px 30px rgba(255, 215, 115, .35); animation: pulse 1.6s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
@@ -142,10 +142,10 @@
   <div class="login hidden" id="login"></div>
   <div class="adm hidden" id="adm"></div>
 </div>
-<script src="js/engine.js?v=b105"></script>
-<script src="cloud-config.js?v=b105"></script>
-<script src="js/cloud.js?v=b105"></script>
-<script src="js/bill-art.js?v=b105"></script>
-<script src="js/bill.js?v=b105"></script>
+<script src="js/engine.js?v=b106"></script>
+<script src="cloud-config.js?v=b106"></script>
+<script src="js/cloud.js?v=b106"></script>
+<script src="js/bill-art.js?v=b106"></script>
+<script src="js/bill.js?v=b106"></script>
 </body>
 </html>
