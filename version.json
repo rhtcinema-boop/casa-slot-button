@@ -1,9 +1,9 @@
 {
- "v": "b104",
+ "v": "b105",
  "files": [
   {
    "path": "index.html",
-   "sha256": "50340fe6ae3b60333dbb3760bbb4b2a5b7d42be5b9ada6ba78319565c986b133"
+   "sha256": "2b99a2c2fa823b3fe53037ccce551dcee5e662209d893958849b7c1e76490e08"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,15 +31,15 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "c12b63a859161af241da213d7f1eea5402a26c2c5afbf7c3eff6841eb11f26bb"
+   "sha256": "f0547a1130ff8a6c4c19a12735d76626f082b0a2d8d9f2afa578823bcc6fbb39"
   },
   {
    "path": "js/admin.js",
-   "sha256": "181d7c2be3ba0857acac5a8fb910d26c7500fbe656d419a695197c05c5dcc1b4"
+   "sha256": "ba1c3486148b03f1ff1cb3bfe95eb003056967f88e5eae33556ac205beda5d34"
   },
   {
    "path": "js/audio.js",
-   "sha256": "2ac6ab0e2fa0c13e0b6af692e8316f705b88e38a2a92d34c0231a4f105a2f166"
+   "sha256": "1b5acca83fece749670fdff201998f9c2006688e942e2461d6e44b9abce4676f"
   },
   {
    "path": "js/bill-art.js",
@@ -47,11 +47,11 @@
   },
   {
    "path": "js/bill.js",
-   "sha256": "bc411069f99390935ad7cb02a0d392aeb371de1876ee5afa538a16d16d4985ab"
+   "sha256": "ed8a98ae9fac002e1178c6243ea219bea4dad2634661471a838ba80592dda085"
   },
   {
    "path": "js/cloud.js",
-   "sha256": "ff55df0ce25da09f06e88219ceb228c72ad0c014237149d5fa98b19ff926c134"
+   "sha256": "2c37d84dc121a0fd49173812751f67f5f72da1ff35744fa4f00d2ab85f42988d"
   },
   {
    "path": "js/engine.js",
@@ -63,11 +63,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "0cc221eb011a4e38cbaeaa5ba8c53ff4080ea13662a7fa90fe376aed188667ce"
+   "sha256": "080b81b1a39596fb73014e3b307ec1cc94fb438c848ab6c1f119fa32162356bb"
   },
   {
    "path": "js/master.js",
-   "sha256": "b10cec59807bb648b225bbc96f9b7cffe4a9b9315492f22514655600aff00e57"
+   "sha256": "905009b7e5ba3e899c823dbdc8ce971b0982bb8ade8eddddcb13992a2ac6352e"
   },
   {
    "path": "js/reel.js",
@@ -79,7 +79,7 @@
   },
   {
    "path": "js/today.js",
-   "sha256": "6e35f5d88934b55a6f3c01aa37d137ce052c50d6ada2e6f85345c581458858d6"
+   "sha256": "48eea4f4a77a84f045bcd2d63218cbc8e54703a646145d4b7bcab5111b2a0be6"
   },
   {
    "path": "js/tv.js",
