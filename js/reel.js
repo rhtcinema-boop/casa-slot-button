@@ -170,7 +170,9 @@ const Reel = (function () {
     x.scale(S, S);
     const cx = COLW / 2;
     if (sym === 'READY' || sym === 'TO' || sym === 'SPIN') {
-      metalText(x, sym, cx, CH / 2, sym === 'TO' ? 96 : 84, LBL_FONT, nextPal || PAL.gold, COLW - 24, true);
+      x.font = 'italic 400 84px ' + LBL_FONT; // b111: 3語とも同じ大きさ（一番長い READY が列に収まる大きさ。オーナー指摘「文字の大きさまばら」）
+      const px = Math.min(84, Math.floor(84 * (COLW - 24) / x.measureText('READY').width));
+      metalText(x, sym, cx, CH / 2, px, LBL_FONT, nextPal || PAL.gold, COLW - 24, true);
     } else if (sym === 'NEXT') {
       metalText(x, 'NEXT', cx, CH / 2 - 34, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
       metalText(x, 'STAGE', cx, CH / 2 + 38, 62, LBL_FONT, nextPal || PAL.next, COLW - 30, true);
