@@ -766,7 +766,7 @@ const Game = (function () {
       '</div>';
     const content = $('content'); content.parentNode.insertBefore(el, content.nextSibling);
     { const n = el.querySelector('.hn-num'), max = n.parentNode.clientWidth - 20; let fs = 200; while (n.scrollWidth > max && fs > 80) { fs -= 4; n.style.fontSize = fs + 'px'; } } // 長い金額は枠に収まるまで小さく
-    try { Sfx.play('revive'); Sfx.play('kyuin'); } catch (e) { /* 音なしでも出す */ }
+    try { Sfx.play('newsHit'); } catch (e) { /* 音なしでも出す */ } // b116: 他店の当たり専用の音（オーナー指示「音出してね」）
     setTimeout(() => { if ($('hitnote') === el) { el.classList.add('out'); setTimeout(() => { if ($('hitnote') === el) hitClear(); }, 450); } }, HIT_SHOW_MS);
   }
   function stopFeed() { clearTimeout(feedRetry); if (unFeed) { unFeed(); unFeed = null; } feed = null; feedTop = 0; }
