@@ -1,9 +1,9 @@
 {
- "v": "b108",
+ "v": "b109",
  "files": [
   {
    "path": "index.html",
-   "sha256": "4b73ffa48b1e0c1d2d7e7579bef7e88bc27877ac042b05084cb152c4ad033346"
+   "sha256": "560d1ac0f73e5ec7bc2c53db4bcaf1c86804f0040fe422ae18172e9bd7af421f"
   },
   {
    "path": "manifest.webmanifest",
@@ -47,7 +47,7 @@
   },
   {
    "path": "js/bill.js",
-   "sha256": "556e73c6283cf1acb0af12dad4c6268d134e9dc807fc9dfd38d80f89b635afdb"
+   "sha256": "76c270e68ddc60242547b3183330ab83878ba245f07daf518dd019efe88fe0ac"
   },
   {
    "path": "js/cloud.js",
