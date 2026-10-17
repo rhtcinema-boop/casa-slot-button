@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DERBY スタッフ">
+<meta name="theme-color" content="#0b0f0c">
+<meta name="format-detection" content="telephone=no">
+<meta name="robots" content="noindex">
+<title>casa DERBY スタッフ</title>
+<link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<link rel="icon" href="../icon-derby-180.png" sizes="180x180" type="image/png">
+<link rel="apple-touch-icon" href="../icon-derby-180.png">
+<link rel="stylesheet" href="staff.css?v=7">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <b class="crest"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="86" height="28" alt="casa DERBY" draggable="false"><span>スタッフ</span></b>
+    <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
+  </header>
+  <nav class="tabs hidden" id="tabs">
+    <button data-mode="auth" class="on">認証</button>
+    <button data-mode="pay">受け取り</button>
+    <button data-mode="next">次へ</button>
+    <button data-mode="logs">記録</button>
+  </nav>
+  <div id="xstage" hidden></div>
+  <section class="body hidden" id="scanView">
+    <div class="cam" id="cam">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="aim"><i></i><i></i><i></i><i></i></div>
+      <div class="camMsg" id="camMsg">カメラを起動しています…</div>
+    </div>
+    <p class="guide" id="guide"></p>
+    <div class="row"><button class="btn ghost" id="manualBtn">番号を手で入れる</button><button class="btn ghost" id="camBtn">カメラを再起動</button></div>
+  </section>
+  <section class="body hidden" id="nextView"></section>
+  <section class="body hidden" id="logsView"></section>
+  <div class="login hidden" id="login"></div>
+  <div class="sheet hidden" id="sheet"></div>
+  <div class="toast hidden" id="toast"></div>
+</div>
+<script src="client.js?v=4"></script>
+<script src="staff.js?v=7"></script>
+</body>
+</html>
