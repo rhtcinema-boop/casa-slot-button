@@ -1,0 +1,464 @@
+/* casa DERBY v2 テレビ（index.html?store=<id>）。js/game.js の代わりに v2/tv.js が動き、#stage に .v2 と場面のクラスを付ける。
+   場面: .m-wait（待ち時間・次のレースのパドック）/ .m-hl（前のレースのハイライト）/ .m-open（受付）/ .m-live（締切〜レース〜勝ち馬）/ .m-result（結果）
+   設計座標 1600×900。テレビから 3m で読めるよう主な数字は 28px 以上。 */
+
+/* ---------- 一人用の部品は出さない（馬券のマス目・操作・メダル・チャンスボール・応援・自分の馬券・ボーナス） ---------- */
+#stage.v2 .board, #stage.v2 .controls, #stage.v2 .ballpod, #stage.v2 .medals, #stage.v2 .timer, #stage.v2 .cheer,
+#stage.v2 .mybets, #stage.v2 .broulette, #stage.v2 .result, #stage.v2 .gain, #stage.v2 .tenkai { display: none !important; }
+#stage.v2 .horse { cursor: default; }
+#stage.v2 .card { height: 500px; }
+#stage.v2 .side .card h4 .colh { display: none; }
+
+/* ---------- 上の帯: レース名・発走時刻・カウントダウン・全店の参加人数 ---------- */
+.v2clock { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 20px; border-radius: 28px; background: var(--hd-bg); box-shadow: 0 0 0 4px var(--hd-frame), 0 5px 12px rgba(0, 0, 0, .25); white-space: nowrap; }
+.v2clock small { font-size: 18px; font-weight: 800; color: var(--ink-sub); }
+.v2clock b { font: 900 38px/1 var(--font-num); color: var(--green-dark); font-variant-numeric: tabular-nums; min-width: 96px; text-align: right; }
+.v2clock.hot { background: #fff0ee; box-shadow: 0 0 0 4px #e53935, 0 0 22px rgba(229, 57, 53, .6); }
+.v2clock.hot b { color: #e53935; }
+.v2ppl { margin-left: auto; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 22px; border-radius: 28px; background: linear-gradient(180deg, #fff6c8, #ffd54f); box-shadow: 0 0 0 4px #b07400, 0 5px 12px rgba(0, 0, 0, .25); white-space: nowrap; }
+.v2ppl small { font-size: 18px; font-weight: 800; color: #8a5a00; }
+.v2ppl b { font: 900 38px/1 var(--font-num); color: #4a2c00; font-variant-numeric: tabular-nums; }
+.v2store { font-size: 18px; font-weight: 800; color: #fff; padding: 6px 14px; border-radius: 14px; background: rgba(0, 0, 0, .35); white-space: nowrap; }
+#stage.v2.m-live .v2clock, #stage.v2.m-hl .v2clock { display: none; }
+
+/* ---------- 下左: 発走までの大きなカウントダウンと遊び方 ---------- */
+.v2info { position: absolute; z-index: 2; left: 40px; top: 600px; width: 1000px; height: 280px; display: flex; gap: 18px; transition: opacity .45s, transform .6s var(--ease-out); }
+.v2info .cd { width: 430px; padding: 18px 26px; border-radius: 22px; background: linear-gradient(180deg, var(--navy-2), var(--navy)); color: #fff; box-shadow: 0 0 0 5px var(--wood), 0 0 0 8px var(--wood-dark), 0 14px 30px rgba(0, 0, 0, .3); display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.v2info .cd small { font-size: 26px; font-weight: 900; color: #9fb3d9; letter-spacing: .06em; }
+.v2info .cd b { font: 900 118px/1 var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: .02em; color: #ffe14d; text-shadow: 0 4px 0 rgba(0, 0, 0, .35); }
+.v2info .cd span { font-size: 22px; font-weight: 800; color: #dfe7f3; }
+.v2info .cd.hot b { color: #ff6b5a; animation: pulse 1s ease-in-out infinite; }
+.v2info .how { flex: 1; padding: 16px 22px; border-radius: 22px; background: var(--cream); box-shadow: 0 0 0 5px var(--wood), 0 0 0 8px var(--wood-dark), 0 14px 30px rgba(0, 0, 0, .3); color: var(--ink); display: flex; flex-direction: column; gap: 6px; }
+.v2info .how h4 { margin: 0 0 4px; font-size: 26px; color: var(--wood-dark); letter-spacing: .04em; }
+.v2info .how ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; counter-reset: st; }
+.v2info .how li { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 800; counter-increment: st; white-space: nowrap; }
+.v2info .how li::before { content: counter(st); flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--orange); color: #fff; font: 900 22px/1 var(--font-num); }
+.v2info .how p { margin: 4px 0 0; font-size: 18px; font-weight: 700; color: var(--ink-sub); }
+#stage.v2.m-live .v2info, #stage.v2.m-hl .v2info, #stage.v2.m-result .v2info { opacity: 0; transform: translateY(50px); pointer-events: none; }
+
+/* ---------- QR（画面の右下の隅に大きく。受付・待ち時間はずっと） ---------- */
+.v2qr { position: absolute; z-index: 5; left: 1060px; top: 616px; width: 500px; height: 264px; padding: 14px; border-radius: 22px; background: #fff; box-shadow: 0 0 0 5px var(--orange), 0 0 0 9px #fff, 0 14px 30px rgba(0, 0, 0, .35); display: flex; align-items: center; gap: 16px; transition: all .6s var(--ease-out); }
+.v2qr .code { flex: none; width: 236px; height: 236px; display: grid; place-items: center; }
+.v2qr .code svg, .v2qr .code canvas { width: 100%; height: 100%; display: block; }
+.v2qr .tx { display: flex; flex-direction: column; gap: 8px; color: var(--ink); }
+.v2qr .tx b { font-size: 34px; line-height: 1.15; color: #d84300; letter-spacing: .02em; }
+.v2qr .tx span { font-size: 21px; font-weight: 800; line-height: 1.35; }
+.v2qr .tx small { font-size: 16px; font-weight: 700; color: var(--ink-sub); word-break: break-all; }
+/* ハイライトと結果では小さく右下へ。レース中は出さない */
+#stage.v2.m-result .v2qr { z-index: 7; }
+#stage.v2.m-hl .v2qr, #stage.v2.m-result .v2qr { left: 1302px; top: 650px; width: 270px; height: 230px; padding: 10px; flex-direction: column; gap: 4px; }
+#stage.v2.m-hl .v2qr .code, #stage.v2.m-result .v2qr .code { width: 170px; height: 170px; }
+#stage.v2.m-hl .v2qr .tx, #stage.v2.m-result .v2qr .tx { align-items: center; gap: 0; }
+#stage.v2.m-hl .v2qr .tx b, #stage.v2.m-result .v2qr .tx b { font-size: 24px; }
+#stage.v2.m-hl .v2qr .tx span, #stage.v2.m-hl .v2qr .tx small, #stage.v2.m-result .v2qr .tx span, #stage.v2.m-result .v2qr .tx small { display: none; }
+#stage.v2.m-live .v2qr { opacity: 0; transform: translateY(40px); pointer-events: none; }
+
+/* ---------- レース中・ハイライト: 映像を 1.38 倍（1380×662、x24〜1404・y70〜732）、右に確定オッズの列 ---------- */
+#stage.v2.m-live .screen, #stage.v2.m-hl .screen { transform: translate(-16px, -30px) scale(1.38); border-radius: 10px; box-shadow: 0 0 0 3px #1d1d1d, 0 0 0 5px #8b5e34, 0 12px 30px rgba(0, 0, 0, .45); }
+#stage.v2.m-live .side, #stage.v2.m-hl .side, #stage.v2.m-result .side { opacity: 0; transform: translateX(60px); pointer-events: none; }
+#stage.v2.m-live::after, #stage.v2.m-hl::after { opacity: 1; }
+/* 中継のグラフィックスは 1.5 倍の映像（x50〜1550・y88）に合わせてあるので、1.38 倍の位置へ少し寄せる */
+#stage.v2 .bcast { transform: translate(-22px, -16px); }
+
+.v2odds { position: absolute; z-index: 3; left: 1420px; top: 70px; width: 164px; height: 662px; border-radius: 10px; background: rgba(14, 26, 44, .92); box-shadow: 0 0 0 3px #1d1d1d, 0 0 0 5px #8b5e34, 0 12px 30px rgba(0, 0, 0, .45); color: #fff; font-family: var(--font-tv); display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(40px); transition: opacity .5s, transform .6s var(--ease-out); pointer-events: none; }
+#stage.v2.m-live .v2odds { opacity: 1; transform: none; }
+.v2odds h5 { margin: 0; padding: 12px 4px 10px; text-align: center; font-size: 20px; white-space: nowrap; font-weight: 900; letter-spacing: .08em; background: #0a1322; border-bottom: 3px solid #f2b705; line-height: 1.2; }
+.v2odds h5 small { display: block; font: 800 13px/1.2 var(--font-num); letter-spacing: .12em; color: #9fb3d9; }
+.v2odds ol { margin: 0; padding: 6px 10px; list-style: none; flex: 1; display: flex; flex-direction: column; justify-content: space-around; }
+.v2odds li { display: flex; align-items: center; justify-content: space-between; gap: 6px; white-space: nowrap; height: 84px; border-bottom: 1px solid rgba(255, 255, 255, .1); transition: background .4s; border-radius: 8px; padding: 0 4px; }
+.v2odds li:last-child { border-bottom: 0; }
+.v2odds li i { flex: none; width: 46px; height: 46px; border-radius: 8px; display: grid; place-items: center; font: 900 30px/1 var(--font-num); font-style: normal; box-shadow: 0 0 0 2px rgba(255, 255, 255, .85); }
+.v2odds li b { font: 900 34px/1 var(--font-num); white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.v2odds li b small { font: 800 13px/1 var(--font-tv); margin-left: 1px; color: #9fb3d9; }
+.v2odds li.win { background: linear-gradient(90deg, rgba(242, 183, 5, .55), rgba(242, 183, 5, .15)); box-shadow: inset 0 0 0 2px #f2b705; }
+.v2odds li.win b { color: #ffe14d; }
+
+/* 下の帯（レース中・ハイライト）: レース名・参加人数 */
+.v2strip { position: absolute; z-index: 3; left: 24px; top: 752px; width: 1560px; height: 128px; display: flex; align-items: center; gap: 22px; padding: 0 28px; border-radius: 14px; background: rgba(14, 26, 44, .9); color: #fff; font-family: var(--font-tv); box-shadow: 0 10px 26px rgba(0, 0, 0, .35); opacity: 0; transform: translateY(40px); transition: opacity .5s, transform .6s var(--ease-out); pointer-events: none; }
+#stage.v2.m-live .v2strip { opacity: 1; transform: none; }
+#stage.v2.m-hl .v2strip { opacity: 1; transform: none; width: 1262px; }
+.v2strip .ttl { font-size: 34px; font-weight: 900; letter-spacing: .04em; white-space: nowrap; }
+.v2strip .ttl small { display: block; font-size: 18px; font-weight: 800; color: #9fb3d9; letter-spacing: .06em; }
+.v2strip .sep { width: 2px; align-self: stretch; margin: 22px 0; background: rgba(255, 255, 255, .2); }
+.v2strip .ppl { font-size: 24px; font-weight: 800; white-space: nowrap; }
+.v2strip .ppl b { font: 900 48px/1 var(--font-num); color: #ffe14d; margin: 0 6px; }
+.v2strip .stores { display: flex; gap: 10px; flex-wrap: wrap; font-size: 20px; font-weight: 800; color: #dfe7f3; }
+.v2strip .stores span { padding: 4px 12px; border-radius: 10px; background: rgba(255, 255, 255, .1); white-space: nowrap; }
+.v2strip .stores b { color: #ffe14d; margin-left: 6px; font-family: var(--font-num); font-size: 24px; }
+.v2strip .stores span.me { background: rgba(242, 183, 5, .28); box-shadow: inset 0 0 0 2px #f2b705; }
+
+/* 締切ました（2026-10-14: ゲートインが 8 秒になったので、画面の下寄りに小さめ・1.6 秒で消す。全景のゲートを隠さない） */
+.v2closed { position: absolute; z-index: 8; left: 0; right: 0; top: 560px; text-align: center; font: 900 76px/1 var(--font-ui); color: #fff; -webkit-text-stroke: 5px #c62828; paint-order: stroke fill; text-shadow: 0 6px 0 #7f1010, 0 0 40px rgba(0, 0, 0, .5); opacity: 0; transform: scale(1.6); pointer-events: none; }
+.v2closed.show { animation: v2closed 1.6s var(--ease-out) forwards; }
+@keyframes v2closed { 0% { opacity: 0; transform: scale(1.6); } 15% { opacity: 1; transform: scale(1); } 75% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(.96); } }
+
+/* ---------- ハイライト: 右の列に前のレースの当たった人 ---------- */
+.v2hlw { position: absolute; z-index: 4; left: 1302px; top: 70px; width: 270px; height: 560px; border-radius: 12px; background: rgba(14, 26, 44, .94); color: #fff; font-family: var(--font-tv); box-shadow: 0 0 0 3px #1d1d1d, 0 0 0 5px #8b5e34, 0 12px 30px rgba(0, 0, 0, .45); display: flex; flex-direction: column; overflow: hidden; opacity: 0; transform: translateX(40px); transition: opacity .5s, transform .6s var(--ease-out); pointer-events: none; }
+#stage.v2.m-hl .v2hlw { opacity: 1; transform: none; }
+.v2hlw h5 { margin: 0; padding: 12px 14px; font-size: 22px; font-weight: 900; background: #0a1322; border-bottom: 3px solid #f2b705; }
+.v2hlw h5 small { display: block; font-size: 15px; color: #9fb3d9; font-weight: 800; }
+.v2hlw .win1 { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 22px; font-weight: 900; border-bottom: 1px solid rgba(255, 255, 255, .12); }
+.v2hlw .win1 i { flex: none; width: 40px; height: 40px; border-radius: 8px; display: grid; place-items: center; font: 900 26px/1 var(--font-num); font-style: normal; box-shadow: 0 0 0 2px #fff; }
+.v2hlw .win1 span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.v2hlw .win1 em { margin-left: auto; font-style: normal; color: #ffe14d; font: 900 24px/1 var(--font-num); white-space: nowrap; }
+.v2hl-tag { position: absolute; z-index: 6; left: 46px; top: 88px; padding: 10px 22px; border-radius: 8px; background: #142436; color: #fff; font: 900 30px/1 var(--font-tv); letter-spacing: .06em; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); opacity: 0; pointer-events: none; transition: opacity .4s; }
+.v2hl-tag::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; border-radius: 8px 0 0 8px; background: #f2b705; }
+.v2hl-tag small { margin-left: 12px; font-size: 20px; color: #9fb3d9; }
+#stage.v2.m-hl .v2hl-tag { opacity: 0; } /* ハイライトの見出しは下の帯に出す（左上はリプレイ・写真判定のタグが使う） */
+#stage.v2.m-hl.bc-clean .v2hl-tag { opacity: 0; }
+
+/* 当たった人の一覧（ハイライトの列と結果画面で共通）。多いときは下から上へゆっくり流す（.scroll。2 回並べて継ぎ目なく回す） */
+.v2wl { position: relative; flex: 1; overflow: hidden; }
+.v2wl .inner { position: absolute; left: 0; right: 0; top: 0; }
+.v2wl.scroll .inner { animation: v2scroll var(--dur, 20s) linear infinite; }
+@keyframes v2scroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+.v2wl .row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.v2wl .row .st { font-size: 17px; font-weight: 900; padding: 3px 9px; border-radius: 8px; background: rgba(255, 255, 255, .14); white-space: nowrap; }
+.v2wl .row .st.me { background: #f2b705; color: #142436; }
+.v2wl .row .nk { font-size: 22px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2wl .row b { font: 900 28px/1 var(--font-num); color: #ffe14d; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.v2wl .row b small { font: 800 15px/1 var(--font-tv); color: #dfe7f3; margin-left: 3px; }
+.v2wl .none { padding: 30px 16px; text-align: center; font-size: 20px; font-weight: 800; color: #9fb3d9; line-height: 1.5; }
+
+/* ---------- 結果画面（着順と払戻金・全店の当たった人） ---------- */
+.v2res { position: absolute; z-index: 6; inset: 0; padding: 26px 40px; display: none; gap: 24px; background: radial-gradient(ellipse at 30% 30%, #1f3260, #0a1322 75%); color: #fff; font-family: var(--font-tv); }
+#stage.v2.m-result .v2res { display: flex; animation: v2resIn .6s var(--ease-out); }
+@keyframes v2resIn { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
+.v2res .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.v2res .l { width: 760px; }
+.v2res .r { flex: 1; }
+.v2res h2 { margin: 0; display: flex; align-items: baseline; gap: 16px; font-size: 44px; font-weight: 900; letter-spacing: .06em; white-space: nowrap; }
+.v2res h2 small { font-size: 22px; color: #9fb3d9; letter-spacing: .04em; }
+.v2res .ord { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 14px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .08); }
+.v2res .ord .o { display: grid; grid-template-columns: 64px 54px 1fr 120px 120px; align-items: center; gap: 12px; height: 60px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.v2res .ord .o:last-child { border-bottom: 0; }
+.v2res .ord .o .rk { font: 900 38px/1 var(--font-num); text-align: center; color: #dfe7f3; }
+.v2res .ord .o .rk small { font: 800 16px/1 var(--font-tv); margin-left: 2px; }
+.v2res .ord .o:first-child { height: 76px; background: linear-gradient(90deg, rgba(242, 183, 5, .35), rgba(242, 183, 5, 0)); border-radius: 10px; }
+.v2res .ord .o:first-child .rk { color: #ffd54f; font-size: 48px; }
+.v2res .ord .o i { width: 50px; height: 50px; border-radius: 8px; display: grid; place-items: center; font: 900 32px/1 var(--font-num); font-style: normal; box-shadow: 0 0 0 2px #fff; }
+.v2res .ord .o .nm { font-size: 30px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2res .ord .o:first-child .nm { font-size: 36px; }
+.v2res .ord .o .mg { font-size: 22px; font-weight: 800; color: #ffa31a; text-align: right; white-space: nowrap; }
+.v2res .ord .o .od { font: 900 26px/1 var(--font-num); text-align: right; color: #dfe7f3; white-space: nowrap; }
+.v2res .ord .o .od small { font: 800 14px/1 var(--font-tv); margin-left: 2px; color: #9fb3d9; }
+.v2res .pay { display: flex; align-items: center; gap: 20px; padding: 16px 22px; border-radius: 14px; background: linear-gradient(180deg, #fff6c8, #ffd54f); color: #4a2c00; box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffb300, 0 10px 30px rgba(0, 0, 0, .4); }
+.v2res .pay .k { font-size: 26px; font-weight: 900; white-space: nowrap; }
+.v2res .pay i { width: 56px; height: 56px; border-radius: 10px; display: grid; place-items: center; font: 900 36px/1 var(--font-num); font-style: normal; box-shadow: 0 0 0 3px #4a2c00; }
+.v2res .pay b { margin-left: auto; font: 900 64px/1 var(--font-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.v2res .pay b small { font: 900 26px/1 var(--font-tv); margin-left: 4px; }
+.v2res .pay .x { font-size: 22px; font-weight: 800; white-space: nowrap; color: #6a4a00; }
+.v2res .r .head { display: flex; align-items: baseline; gap: 14px; }
+.v2res .r .head h3 { margin: 0; font-size: 34px; font-weight: 900; letter-spacing: .04em; white-space: nowrap; }
+.v2res .r .head span { font-size: 22px; font-weight: 800; color: #9fb3d9; white-space: nowrap; }
+.v2res .r .head span b { color: #ffe14d; font: 900 32px/1 var(--font-num); margin: 0 4px; }
+.v2res .r .v2wl { border-radius: 14px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .08); }
+.v2res .r .v2wl .row { height: 62px; padding: 0 20px; grid-template-columns: 120px 1fr auto; }
+.v2res .r .v2wl .row .st { font-size: 20px; text-align: center; }
+.v2res .r .v2wl .row .nk { font-size: 28px; }
+.v2res .r .v2wl .row b { font-size: 36px; }
+.v2res .r .v2wl .none { font-size: 26px; padding-top: 80px; }
+.v2res .foot { display: flex; align-items: center; gap: 16px; height: 60px; padding: 0 20px; margin-top: auto; border-radius: 12px; background: rgba(255, 255, 255, .08); font-size: 22px; font-weight: 800; color: #dfe7f3; white-space: nowrap; }
+.v2res .foot b { color: #ffe14d; font: 900 32px/1 var(--font-num); }
+.v2res .foot .bar { flex: 1; min-width: 80px; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, .15); overflow: hidden; }
+.v2res .foot .bar i { display: block; height: 100%; background: #f2b705; transition: width 1s linear; }
+
+/* ---------- 通信中の印・音の案内 ---------- */
+.v2net { position: absolute; z-index: 70; right: 18px; bottom: 14px; display: none; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 18px; background: rgba(0, 0, 0, .7); color: #fff; font: 800 18px/1 var(--font-ui); }
+.v2net::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #ffb300; animation: blink 1s step-end infinite; }
+.v2net.show { display: flex; }
+.v2key { bottom: 60px; max-width: 60%; line-height: 1.3; } /* テレビの合言葉が無い・違う（v2/tv.js） */
+.v2snd { position: absolute; z-index: 70; left: 18px; bottom: 14px; display: none; padding: 8px 16px; border-radius: 18px; background: rgba(0, 0, 0, .6); color: #fff; font: 800 18px/1 var(--font-ui); }
+.v2snd.show { display: block; }
+#splash .v2sub { font-size: 30px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 rgba(0, 0, 0, .35); }
+#stage.v2.m-live .onair { display: flex; }
+#stage.v2.m-live .raceinfo, #stage.v2.m-live .v2ppl { opacity: 0; }
+#stage.v2.m-hl .raceinfo, #stage.v2.m-hl .v2ppl { opacity: 0; }
+#stage.v2.m-hl .v2strip .ttl { color: #ffe14d; }
+.v2store.test { background: #c62828; }
+.v2info .cd span { white-space: pre-line; }
+.v2res .pay b small:first-child { font-size: 22px; margin: 0 10px 0 0; }
+.v2res .pay .x { line-height: 1.35; }
+/* QA 2026-10-14: 長い店舗名が枠からはみ出してニックネームに重なる → 省略（…）。結果画面の当たった人の一覧は右下の QR の上で止める（枚数が QR に隠れない） */
+.v2wl .row .st { display: block; min-width: 0; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; }
+.v2res .r .v2wl .row .st { max-width: none; }
+.v2res .r { padding-bottom: 236px; }
+
+/* ======================================================================================================
+   見た目の講評 2026-10-14（screens/v2review1 の写真の講評 ＋ ChatGPT の REVIEW_TODO 3〜6）。上の決まりを上書きする
+   ====================================================================================================== */
+/* ---------- 受付・待ち時間: 発走までの時計（時刻は 1 つ＋状態の札。途中で折り返さない） ---------- */
+.v2info .cd { gap: 6px; }
+.v2info .cd .cdl { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.v2info .cd .cdl i { flex: none; font-style: normal; padding: 6px 14px; border-radius: 999px; font: 900 22px/1 var(--font-tv); background: rgba(255, 255, 255, .14); color: #dfe7f3; white-space: nowrap; }
+.v2info .cd .cdl i.on { background: #2e9d4f; color: #fff; }
+.v2info .cd .cdl i.hot { background: #e53935; color: #fff; animation: pulse 1s ease-in-out infinite; }
+.v2info .cd .cdl i[hidden] { display: none; }
+.v2info .cd .cdl span { flex: 1; min-width: 0; overflow: hidden; white-space: pre; font-size: 24px; font-weight: 800; color: #dfe7f3; line-height: 1.3; }
+/* 遊び方は 3 つに（本文 26px） */
+.v2info .how { justify-content: center; gap: 10px; }
+.v2info .how h4 { font-size: 28px; }
+.v2info .how ol { gap: 12px; }
+.v2info .how li { font-size: 26px; }
+.v2info .how li::before { width: 38px; height: 38px; font-size: 24px; }
+.v2info .how p { font-size: 20px; }
+/* 出馬表の馬名は大きく（入りきらない名前だけ v2/tv.js が小さくする。…で切らない） */
+#stage.v2 .horse .l1 b { font-size: 28px; letter-spacing: -.04em; text-overflow: clip; }
+/* QR: 周りの余白 18px・URL は出さない（短い案内だけ） */
+.v2qr { padding: 18px; }
+.v2qr .code { width: 228px; height: 228px; }
+.v2qr .tx { gap: 10px; }
+.v2qr .tx span { font-size: 23px; }
+.v2qr .tx em { font-style: normal; font-size: 18px; font-weight: 800; color: var(--ink-sub); }
+.v2qr .tx small, #v2qrUrl { display: none !important; }
+
+/* ---------- レース中: 映像 1.42 倍（x18〜1438・y66〜748）、右に確定オッズの細い列（x1446〜1586）。左上のロゴは映像の局ロゴに任せて消す ---------- */
+#stage.v2.m-live .screen { transform: translate(-22px, -34px) scale(1.42); }
+#stage.v2.m-live .top .logo, #stage.v2.m-hl .top .logo { opacity: 0; transition: opacity .4s; }
+#stage.v2 .bcast { transform: none; }
+#stage.v2 .rankp { left: 34px; top: 82px; }
+#stage.v2 .bc-tag.replay { left: 34px; top: 82px; }
+#stage.v2 .bc-tag.photo { left: 34px; top: 160px; }
+#stage.v2 .wincard { left: 34px; top: 82px; max-width: 900px; }  /* 勝ち馬のカードは映像の枠の中（左上のロゴに重ならない） */
+#stage.v2 .v2strip { left: 18px; top: 758px; width: 1568px; height: 122px; }
+.v2odds { left: 1446px; top: 66px; width: 140px; height: 682px; transition: opacity .3s, transform .6s var(--ease-out), background .3s; }
+.v2odds h5 { font-size: 19px; padding: 10px 2px 8px; transition: padding .3s, font-size .3s; }
+.v2odds ol { padding: 4px 6px; }
+.v2odds li { height: 86px; gap: 4px; padding: 0 3px; transition: height .3s, background .4s; }
+.v2odds li i { width: 42px; height: 42px; font-size: 28px; transition: width .3s, height .3s, font-size .3s; }
+.v2odds li b { font-size: 30px; transition: font-size .3s; }
+.v2odds li b small { font-size: 11px; }
+/* 道中は小さく（0.3 秒で）、ゴール前は薄く、1 着が決まったら元へ */
+#stage.v2.m-live .v2odds.cmp { background: rgba(14, 26, 44, .72); }
+.v2odds.cmp h5 { font-size: 16px; padding: 6px 2px 5px; }
+.v2odds.cmp li { height: 70px; }
+.v2odds.cmp li i { width: 36px; height: 36px; font-size: 24px; }
+.v2odds.cmp li b { font-size: 26px; }
+#stage.v2.m-live .v2odds.fade { opacity: .3; }
+/* 実況テロップ: ステージの x350〜1050・y580〜640 あたり（映像 1.42 倍なので ÷1.42）。#0E1F2B 84%、3 秒、節目は黄色 */
+#stage.v2 .announce { top: 362px; height: 42px; max-width: 493px; font-size: 20px; background: rgba(14, 31, 43, .84); transition: opacity .25s, transform .25s var(--ease-out), top .3s var(--ease-out); }
+#stage.v2 .announce.mark { color: #ffd54a; }
+#stage.v2 .announce.hi { top: 16px; }
+
+/* ---------- ハイライト: 映像 1.27 倍（x18〜1288・y66〜676）。右の当たりの列・TIME の時計に重ならない ---------- */
+#stage.v2.m-hl .screen { transform: translate(-22px, -34px) scale(1.27); }
+#stage.v2.m-hl .v2strip { top: 690px; width: 1270px; height: 190px; gap: 26px; }
+#stage.v2.m-hl .v2strip .ttl { font-size: 38px; }
+#stage.v2.m-hl .v2strip .ttl small { font-size: 20px; margin-top: 4px; }
+#stage.v2.m-hl .v2strip .stores { flex-wrap: nowrap; }
+.v2strip .nx { display: none; }
+#stage.v2.m-hl .v2strip .nx { display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; white-space: nowrap; }
+.v2strip .nx small { font-size: 20px; font-weight: 800; color: #9fb3d9; }
+.v2strip .nx b { font: 900 60px/1 var(--font-num); color: #ffe14d; font-variant-numeric: tabular-nums; }
+.v2hlw { left: 1298px; top: 66px; width: 288px; height: 576px; }
+.v2hlw h5 { position: relative; }
+.v2hlw h5 .pg, .v2res .r .head .pg { margin-left: auto; font: 800 18px/1 var(--font-num); color: #9fb3d9; }
+.v2hlw h5 .pg { position: absolute; right: 14px; top: 16px; }
+.v2hlw .win1 { display: grid; grid-template-columns: auto auto 1fr; grid-template-rows: auto auto; gap: 4px 10px; align-items: center; padding: 10px 14px 12px; background: rgba(242, 183, 5, .14); }
+.v2hlw .win1 small { font: 900 20px/1 var(--font-tv); color: #ffd54f; }
+.v2hlw .win1 span { min-width: 0; font-size: 26px; text-overflow: clip; }
+.v2hlw .win1 em { grid-column: 1 / -1; margin-left: 0; font: 800 18px/1 var(--font-tv); color: #ffe14d; }
+.v2hlw .v2wl .row { height: var(--rh, 52px); }
+.v2wl.dense .row .nk { font-size: 19px; }
+.v2wl.dense .row b { font-size: 24px; }
+.v2wl.paged .inner { transition: transform .6s var(--ease-out); }
+#stage.v2.m-hl .v2qr { left: 1298px; top: 656px; width: 288px; height: 224px; }
+#stage.v2.m-hl .v2qr .code { width: 160px; height: 160px; }
+#stage.v2.m-hl .v2qr .tx em, #stage.v2.m-result .v2qr .tx em { display: none; }
+
+/* ---------- 結果画面: 着順（x40〜790・y104〜649）／当たった人（x825〜1555）／下に横長の払戻（y663〜783）と次のレースの帯（y797〜871）、右下に QR ---------- */
+#stage.v2.m-result .v2res { display: grid; }
+.v2res { grid-template-columns: 750px 730px; grid-template-rows: 60px 545px 120px 74px; column-gap: 35px; row-gap: 14px; padding: 30px 45px 26px 40px; align-content: start; }
+.v2res .col { display: contents; }
+.v2res h2 { grid-column: 1; grid-row: 1; align-self: center; font-size: 42px; }
+.v2res .ord { grid-column: 1; grid-row: 2; gap: 4px; padding: 10px 14px; }
+.v2res .ord .o { height: auto; flex: 1; grid-template-columns: 70px 56px minmax(0, 1fr) 150px 104px; }
+.v2res .ord .o:first-child { height: auto; flex: 1.35; }
+.v2res .ord .o:first-child .rk { font-size: 54px; }
+.v2res .ord .o:first-child i { width: 62px; height: 62px; font-size: 40px; }
+.v2res .ord .o:first-child .nm { font-size: 42px; }
+.v2res .ord .o .nm { text-overflow: clip; }
+.v2res .ord .o .mg { font-size: 26px; font-weight: 900; }
+.v2res .ord .o .mg small { font-size: 16px; margin-left: 3px; color: #ffc46b; }
+.v2res .ord .o:first-child .mg { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font: 900 30px/1 var(--font-num); color: #ffe14d; }
+.v2res .ord .o:first-child .mg small { margin: 0; font: 800 14px/1 var(--font-tv); color: #9fb3d9; }
+.v2res .ord .o .od { font-size: 28px; }
+.v2res .r .head { grid-column: 2; grid-row: 1; align-self: center; }
+.v2res .r .v2wl { grid-column: 2; grid-row: 2; }
+.v2res .r { padding-bottom: 0; }
+.v2res .r .v2wl .row { height: var(--rh, 62px); }
+.v2res .r .v2wl.dense .row .nk { font-size: 24px; }
+.v2res .r .v2wl.dense .row b { font-size: 30px; }
+.v2res .r .v2wl.dense .row .st { font-size: 17px; }
+.v2res .pay { grid-column: 1 / 3; grid-row: 3; margin-right: 275px; gap: 22px; padding: 0 28px; }
+.v2res .pay .k { display: flex; flex-direction: column; align-items: center; font-size: 30px; line-height: 1.1; }
+.v2res .pay .k small { font-size: 20px; }
+.v2res .pay i { width: 66px; height: 66px; font-size: 42px; flex: none; }
+.v2res .pay .hn { flex: 0 1 auto; min-width: 0; max-width: 330px; overflow: hidden; white-space: nowrap; font-size: 32px; font-weight: 900; }
+.v2res .pay .x { display: flex; align-items: baseline; gap: 6px; font-size: 26px; color: #6a4a00; padding: 8px 14px; border-radius: 10px; background: rgba(255, 255, 255, .45); }
+.v2res .pay .x small { font-size: 18px; }
+.v2res .pay .x b { font: 900 38px/1 var(--font-num); color: #4a2c00; }
+.v2res .pay b.o { margin-left: auto; font-size: 66px; }
+.v2res .pay b.o small:first-child { font-size: 22px; margin: 0 10px 0 0; }
+/* 1 着が出てから 1.5 秒、倍率と「10 枚 → 36 枚」を強調 */
+#stage.v2.m-result .v2res .pay .x, #stage.v2.m-result .v2res .pay b.o { animation: v2payHi 1.5s ease-out .8s both; }
+@keyframes v2payHi { 0% { transform: scale(1); } 25% { transform: scale(1.12); filter: drop-shadow(0 0 12px rgba(255, 255, 255, .95)); } 100% { transform: scale(1); } }
+.v2res .foot { grid-column: 1 / 3; grid-row: 4; margin: 0 275px 0 0; height: auto; gap: 22px; padding: 0 24px; font-size: 22px; }
+.v2res .foot .nx { display: flex; align-items: baseline; gap: 8px; }
+.v2res .foot .nx small { font-size: 20px; color: #9fb3d9; }
+.v2res .foot .nx b { font: 900 36px/1 var(--font-num); color: #ffe14d; }
+.v2res .foot .nx em { font-style: normal; margin-left: 6px; padding: 4px 10px; border-radius: 8px; background: #2e9d4f; color: #fff; font-size: 18px; }
+.v2res .foot .cdn { display: flex; align-items: baseline; gap: 8px; padding-left: 22px; border-left: 2px solid rgba(255, 255, 255, .18); }
+.v2res .foot .cdn small { font-size: 20px; color: #9fb3d9; }
+.v2res .foot .cdn b { font: 900 40px/1 var(--font-num); color: #fff; font-variant-numeric: tabular-nums; }
+.v2res .foot .rest { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 18px; color: #9fb3d9; }
+.v2res .foot .rest b { font: 900 24px/1 var(--font-num); color: #dfe7f3; font-variant-numeric: tabular-nums; }
+.v2res .foot .rest .bar { flex: none; width: 120px; }
+#stage.v2.m-result .v2qr { left: 1300px; top: 663px; width: 255px; height: 208px; padding: 10px; }
+#stage.v2.m-result .v2qr .code { width: 150px; height: 150px; }
+.v2info .cd { flex: none; width: 400px; min-width: 0; }
+.v2info .how p { white-space: nowrap; font-size: 19px; }
+.v2res .ord .o .mg small { font: 800 18px/1 var(--font-tv); margin-left: 4px; color: #ffc46b; }
+.v2res .ord .o .rk small { font-size: 18px; }
+#stage.v2.m-hl .v2strip { gap: 18px; padding: 0 24px; }
+#stage.v2.m-hl .v2strip .ttl { font-size: 34px; }
+#stage.v2.m-hl .v2strip .ttl small { font-size: 18px; }
+#stage.v2.m-hl .v2strip .ppl b { font-size: 44px; }
+#stage.v2.m-hl .v2strip .stores span { padding: 4px 10px; }
+#stage.v2.m-hl .v2strip .nx { flex: none; }
+#stage.v2.m-hl .v2strip .nx b { font-size: 54px; }
+
+/* ======================================================================================================
+   結果画面の 5 分の流れ（REVIEW_TODO「92→95」の 4。v2/tv.js resStage）。配置は上のまま、場面のクラスで見せ場だけ移す
+   .v2res.ph-top（0:00〜0:20）/ .ph-win（〜1:30）/ .ph-look（〜2:30）/ .ph-next（〜残り 1 分）/ .ph-cd（最後の 1 分）。.sub-on で右下の小さな枠を出す
+   ====================================================================================================== */
+.v2res .ord .o { transition: opacity .6s, box-shadow .6s; }
+.v2res .pay { transition: box-shadow .6s; }
+/* 0:00〜0:20 1 着と払戻 */
+.v2res.ph-top .ord .o:first-child { box-shadow: inset 0 0 0 3px #ffd54f, 0 0 26px rgba(255, 213, 79, .4); }
+.v2res.ph-top .ord .o:not(:first-child) { opacity: .8; }
+.v2res.ph-top .pay { box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffb300, 0 0 44px rgba(255, 190, 0, .7); }
+/* 倍率がぽんと弾む（1.0 → 1.08 → 1.0 を 0.6 秒） */
+#stage.v2.m-result .v2res .pay .x, #stage.v2.m-result .v2res .pay b.o { animation: v2pop .6s ease-out .8s both; }
+.v2res .pay b.o { transform-origin: 100% 60%; }
+@keyframes v2pop { 0% { transform: scale(1); } 45% { transform: scale(1.08); filter: drop-shadow(0 0 10px rgba(255, 255, 255, .9)); } 100% { transform: scale(1); } }
+/* 0:20〜1:30 当たった人を 1 人ずつ */
+.v2res .r .v2wl .row { transition: background .3s, box-shadow .3s; }
+.v2res .r .v2wl .row.hi { background: linear-gradient(90deg, rgba(242, 183, 5, .45), rgba(242, 183, 5, .1) 70%, rgba(242, 183, 5, 0)); box-shadow: inset 6px 0 0 #ffd54f; }
+.v2res .r .v2wl .row .nk::after { content: "おめでとう！"; margin-left: 12px; font-size: 18px; color: #ffe14d; opacity: 0; transition: opacity .3s; }
+.v2res .r .v2wl .row.hi .nk::after { opacity: 1; }
+/* 1:30〜 右下の小さな枠（振り返り・次のレース・カウントダウン） */
+.v2res .rsub { grid-column: 2; grid-row: 2; align-self: end; height: 250px; display: flex; flex-direction: column; gap: 10px; padding: 14px 20px; border-radius: 14px; background: rgba(0, 0, 0, .42); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .12); opacity: 0; transform: translateY(10px); transition: opacity .3s, transform .3s; pointer-events: none; overflow: hidden; }
+.v2res.sub-on .rsub { opacity: 1; transform: none; }
+.v2res.sub-on .r .v2wl { margin-bottom: 264px; }
+.v2res .rsub.swap > * { animation: v2subIn .3s ease-out both; }
+@keyframes v2subIn { from { opacity: 0; } to { opacity: 1; } }
+.v2res .rsub h4 { margin: 0; display: flex; align-items: baseline; gap: 12px; font-size: 28px; font-weight: 900; letter-spacing: .04em; white-space: nowrap; }
+.v2res .rsub h4 small { margin-left: auto; font-size: 20px; color: #9fb3d9; }
+.v2res .rsub h4 em { font-style: normal; align-self: center; padding: 4px 12px; border-radius: 8px; background: #2e9d4f; color: #fff; font-size: 20px; }
+/* 振り返り */
+.v2res .rsub .lbs { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 10px; flex: 1; min-height: 0; }
+.v2res .rsub .lb { display: grid; grid-template-columns: 64px 1fr; grid-template-rows: auto auto auto; column-gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .06); min-width: 0; }
+.v2res .rsub .lb.w { background: linear-gradient(180deg, rgba(242, 183, 5, .3), rgba(242, 183, 5, .08)); box-shadow: inset 0 0 0 2px rgba(255, 213, 79, .6); }
+.v2res .rsub .lb .fc { grid-row: 1 / 3; width: 64px; height: 64px; border-radius: 50%; background: #e9f3dc; box-shadow: 0 0 0 2px #fff; }
+.v2res .rsub .lb .lt { display: flex; align-items: center; gap: 8px; }
+.v2res .rsub .lb .rk { font: 900 30px/1 var(--font-num); color: #dfe7f3; }
+.v2res .rsub .lb.w .rk { color: #ffd54f; }
+.v2res .rsub .lb .rk small { font: 800 15px/1 var(--font-tv); margin-left: 2px; }
+.v2res .rsub .lb i { width: 32px; height: 32px; border-radius: 6px; display: grid; place-items: center; font: 900 22px/1 var(--font-num); font-style: normal; box-shadow: 0 0 0 2px #fff; }
+.v2res .rsub .lb b { font-size: 21px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.v2res .rsub .lb em { grid-column: 1 / 3; font-style: normal; font-size: 20px; font-weight: 900; color: #ffa31a; white-space: nowrap; margin-top: 4px; }
+.v2res .rsub .lb.w em { color: #ffe14d; }
+.v2res .rsub .lf { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 800; color: #dfe7f3; white-space: nowrap; }
+.v2res .rsub .lf .ph { padding: 4px 12px; border-radius: 8px; background: #e53935; color: #fff; font-size: 20px; }
+.v2res .rsub .lf .ph.n { background: rgba(255, 255, 255, .16); }
+/* 次のレース */
+.v2res .rsub .nr { display: flex; align-items: flex-end; justify-content: space-between; flex: 1; }
+.v2res .rsub .nr .at b { font: 900 84px/1 var(--font-num); color: #fff; font-variant-numeric: tabular-nums; }
+.v2res .rsub .nr .at span { font-size: 28px; font-weight: 900; margin-left: 8px; color: #dfe7f3; }
+.v2res .rsub .nr .cdn { display: flex; flex-direction: column; align-items: flex-end; }
+.v2res .rsub .nr .cdn small { font-size: 20px; font-weight: 800; color: #9fb3d9; }
+.v2res .rsub .nr .cdn b { font: 900 56px/1 var(--font-num); color: #ffe14d; font-variant-numeric: tabular-nums; }
+.v2res .rsub .go { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; color: #dfe7f3; white-space: nowrap; }
+.v2res .rsub .go b { color: #ffe14d; font: 900 28px/1 var(--font-num); }
+.v2res .rsub .go em { font-style: normal; padding: 2px 10px; border-radius: 8px; background: #2e9d4f; color: #fff; font-size: 18px; }
+.v2res .rsub .go .arr { margin-left: auto; padding: 6px 14px; border-radius: 999px; background: #f2b705; color: #142436; font-size: 20px; font-weight: 900; }
+.v2res .rsub .go .arr::after { content: " ↘"; }
+.v2res .rsub .thx { margin: auto 0; font-size: 26px; font-weight: 800; line-height: 1.5; color: #dfe7f3; }
+.v2res.ph-next .rsub { box-shadow: inset 0 0 0 3px #2e9d4f, 0 0 26px rgba(46, 157, 79, .35); }
+/* 次のレースの間は下の帯と QR も目立たせる */
+.v2res.ph-next .foot, .v2res.ph-cd .foot { background: rgba(46, 157, 79, .2); box-shadow: inset 0 0 0 2px rgba(46, 157, 79, .8); }
+#stage.v2.m-result[data-resph="next"] .v2qr, #stage.v2.m-result[data-resph="cd"] .v2qr { box-shadow: 0 0 0 5px #2e9d4f, 0 0 0 9px #fff, 0 0 36px rgba(46, 157, 79, .8); }
+/* カウントダウン（最後の 60 秒は数字を強く） */
+.v2res .rsub .cdw { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.v2res .rsub .cdw small { font-size: 26px; font-weight: 900; color: #dfe7f3; white-space: nowrap; }
+.v2res .rsub .cdw b { font: 900 76px/1 var(--font-num); color: #fff; font-variant-numeric: tabular-nums; transition: color .6s, font-size .6s; }
+.v2res.cd-hot .rsub .cdw b { font-size: 104px; color: #ffe14d; text-shadow: 0 0 22px rgba(255, 225, 77, .45); }
+.v2res.cd-hot .foot .rest b { font-size: 32px; color: #ffe14d; }
+/* 下の帯が 30 秒に 1 回 0.4 秒だけ光る */
+.v2res .foot.glow { animation: v2glow .4s ease-out; }
+@keyframes v2glow { 0% { box-shadow: none; } 40% { background: rgba(255, 225, 77, .2); box-shadow: inset 0 0 0 2px #ffe14d, 0 0 26px rgba(255, 225, 77, .55); } 100% { } }
+
+/* ======================================================================================================
+   QR を大きく（オーナー 2026-10-14「QRはかなり大きくしていいかも」）。QR の一辺は v2/tv.js sizeQR が 1 マス＝整数の画素で決める
+   受付・待ち時間 --qo（340〜360px）/ ハイライト --qh（260〜280）/ 結果 --qr（240〜260）。白い枠 10px＋SVG の中の 3 マスで余白は 4 マス以上
+   「スマホで参加」は枠の上の札。レース中は今までどおり出さない
+   ====================================================================================================== */
+.v2qr { --qo: 351px; --qh: 273px; --qr: 234px; }
+#stage.v2 .v2qr { left: auto; right: 35px; top: 512px; width: auto; height: auto; padding: 10px; gap: 0; flex-direction: column; border-radius: 18px; }
+#stage.v2 .v2qr .code { width: var(--qo); height: var(--qo); }
+#stage.v2 .v2qr .tx { position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%); gap: 0; align-items: center; }
+#stage.v2 .v2qr .tx b { display: block; padding: 6px 24px; border-radius: 999px; background: #d84300; color: #fff; font-size: 28px; line-height: 1.2; white-space: nowrap; box-shadow: 0 0 0 3px #fff, 0 4px 12px rgba(0, 0, 0, .3); }
+#stage.v2 .v2qr .tx span, #stage.v2 .v2qr .tx em, #stage.v2 .v2qr .tx small { display: none; }
+/* 受付・待ち時間: 映像を 0.8 倍（800×384・y100〜484）にして、下の段を高く（y512〜883）。出馬表は右に広く・行を詰める */
+#stage.v2.m-open .screen, #stage.v2.m-wait .screen { transform: scale(.8); }
+#stage.v2 .side { left: 862px; width: 703px; }
+#stage.v2 .card { width: 703px; height: 384px; }
+#stage.v2 .horses { gap: 4px; }
+#stage.v2 .horse { grid-template-columns: 46px minmax(0, 1fr) 58px 124px; gap: 8px; height: 51px; padding: 0 8px 0 4px; }
+#stage.v2 .horse::before { top: 8px; bottom: 8px; }
+#stage.v2 .horse .face { width: 44px; height: 44px; margin-left: 6px; border-radius: 8px; }
+#stage.v2 .horse .mk { left: 2px; top: 1px; width: 18px; height: 18px; font-size: 11px; border-width: 1.5px; }
+#stage.v2 .horse .main { gap: 2px; }
+#stage.v2 .horse .l1 { gap: 8px; }
+#stage.v2 .horse .no { width: 30px; height: 30px; font-size: 22px; }
+#stage.v2 .horse .l1 b { line-height: 1.08; }
+#stage.v2 .horse .ty { font-size: 14px; padding: 0 7px; line-height: 1.25; }
+#stage.v2 .horse .st { font-size: 15px; }
+#stage.v2 .horse .cond { gap: 1px; }
+#stage.v2 .horse .cond b { font-size: 26px; }
+#stage.v2 .horse .cond small { font-size: 12px; }
+#stage.v2 .horse .odds { height: 44px; flex-direction: row; align-items: baseline; justify-content: center; gap: 6px; padding-top: 2px; }
+#stage.v2 .horse .odds small { font-size: 14px; }
+#stage.v2 .horse .odds b { font-size: 34px; }
+.v2info { top: 512px; width: 1110px; height: 371px; }
+.v2info .cd { width: 310px; padding: 18px 22px; }
+.v2info .cd b { font-size: 100px; }
+.v2info .how h4 small { margin-left: 12px; font-size: 20px; color: var(--ink-sub); letter-spacing: 0; }
+/* ハイライト: 右の当たりの列を短くして、その下に QR（273px） */
+.v2hlw { height: 496px; }
+#stage.v2.m-hl .v2qr { left: auto; right: 13px; top: 590px; width: auto; height: auto; padding: 10px; }
+#stage.v2.m-hl .v2qr .code { width: var(--qh); height: var(--qh); }
+/* 結果: 右下の角に QR（x1301〜1555・y630〜884。5 分のあいだ動かない）。当たった人の一覧と右下の小さな枠は QR の札の上で止める */
+#stage.v2.m-result .v2qr { left: auto; right: 45px; top: 630px; width: auto; height: auto; padding: 10px; }
+#stage.v2.m-result .v2qr .code { width: var(--qr); height: var(--qr); }
+#stage.v2.m-hl .v2qr .tx b, #stage.v2.m-result .v2qr .tx b { font-size: 22px; padding: 4px 18px; }
+.v2res .r .v2wl { margin-bottom: 44px; }
+.v2res .rsub { height: 232px; margin-bottom: 44px; gap: 8px; padding: 12px 18px; }
+.v2res.sub-on .r .v2wl { margin-bottom: 290px; }
+/* 発走までの時計: 状態の札（「14:32 受付開始」）と時刻を 2 段に（幅を詰めたので 1 行だと切れた） */
+.v2info .cd { width: 380px; }
+.v2info .cd .cdl { flex-direction: column; align-items: flex-start; gap: 8px; }
+.v2info .cd .cdl span { width: 100%; }
+/* 受付の 2 段（2026-10-16）: 参加受付の締切のあと（投票の段） */
+.v2info .cd .cdl i.shut { background: #e53935; color: #fff; }
+.v2qr.xshut { box-shadow: 0 0 0 5px #2459c9, 0 0 0 9px #fff, 0 14px 30px rgba(0, 0, 0, .35); }
+.v2qr.xshut .tx b { color: #1f4fb8; }
+.v2info .how.xshut h4 { color: #c62828; }
+.v2info .how.xshut li { white-space: normal; font-size: 23px; line-height: 1.25; }
+/* 払い戻しは額（2026-10-16）: 見出しの小さな「当選額」「100あたり」 */
+.v2res .r .head h3 small { font-size: 17px; font-weight: 800; color: #9fb3d9; margin-left: 10px; letter-spacing: 0; }
+/* 払い戻しは額（2026-10-16）: 出馬表の「100あたり」は数字の上に小さく（「3,640」のような 5〜6 文字の額が入るように） */
+#stage.v2 .horse .odds { flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding-top: 0; }
+#stage.v2 .horse .odds small { font-size: 11px; line-height: 1; white-space: nowrap; letter-spacing: .02em; }
+#stage.v2 .horse .odds b { font-size: 30px; line-height: 1; letter-spacing: -.02em; white-space: nowrap; }
