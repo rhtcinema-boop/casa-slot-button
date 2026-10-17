@@ -682,6 +682,7 @@ const Game = (function () {
     stopFeed();
     if (!storeMode()) return;
     unFeed = Cloud.watchFeed(RECENT_MAX + 20, (listOrNull) => { // 二重の行をまとめると減るので、少し多めに読む
+      if (Array.isArray(listOrNull)) hitFeed(listOrNull); // b112: 他店の当たりの知らせ
       feed = Array.isArray(listOrNull) ? dedupeFeed(listOrNull.filter((x) => x && x.value > 0 && x.ts)).slice(0, RECENT_MAX) : null;
       if (feed && !feed.length && (Store.state.recent || []).length) feed = null; // 全店舗の履歴がまだ空なら、この端末の履歴を出す（空の枠を見せない。b75）
       if (feed) { clearTimeout(feedRetry); seedFeed(); } // 読めたら、予約していた再試行は消す（b75）
@@ -711,6 +712,47 @@ const Game = (function () {
     seeding = false;
   }
   let feedRetry = 0;
+  /* ---------- 他店の当たりの知らせ（b112、オーナー指示「他店舗で当たりが出たら通知」） ----------
+     全店舗の配当履歴に、ほかの店舗の新しい当たりが入ったら、待機中のテレビに画面いっぱいで「○○ で 5,000 HIT!」を約 4 秒出す（全部の当たり）。
+     ゲーム中・設定中・紙幣の吸い込み中は待って、終わってから順番に出す。15 分より古いものは出さない。起動時にすでにある分は出さない */
+  const HIT_SHOW_MS = 4200, HIT_MAX_AGE = 15 * 60 * 1000;
+  const hitSeen = {}, hitQueue = [];
+  let hitPrimed = false, hitShowing = false;
+  const hitKey = (x) => x.storeId + '|' + x.ts + '|' + x.value;
+  function hitFeed(list) {
+    const me = Store.state.store && Store.state.store.id;
+    list.forEach((x) => {
+      if (!x || !(x.value > 0) || !x.ts || !x.storeId) return;
+      const k = hitKey(x);
+      if (hitSeen[k]) return;
+      hitSeen[k] = true;
+      if (!hitPrimed || x.storeId === me || Date.now() - x.ts > HIT_MAX_AGE) return;
+      if (hitQueue.some((y) => y.storeId === x.storeId && y.value === x.value && Math.abs(y.ts - x.ts) <= 8000)) return; // 二重の行
+      hitQueue.push({ storeId: x.storeId, store: x.store || '', value: x.value, ts: x.ts });
+    });
+    hitPrimed = true;
+    hitQueue.sort((a, b) => a.ts - b.ts);
+  }
+  function hitIdle() {
+    const s = Store.state;
+    return !busy && !pressing && !insertBusy && !updPending && s && s.pins && !s.play && creditsLeft() === 0 && !$('ui').children.length && !$('calib') && !document.getElementById('splash') && !document.hidden;
+  }
+  function hitClear() { const el = $('hitnote'); if (el) el.remove(); hitShowing = false; }
+  function hitWatch() {
+    if (hitShowing) { if (!hitIdle()) hitClear(); return; } // 紙幣が入ったらすぐ消す
+    while (hitQueue.length && Date.now() - hitQueue[0].ts > HIT_MAX_AGE) hitQueue.shift();
+    if (!hitQueue.length || !hitIdle()) return;
+    const x = hitQueue.shift();
+    hitShowing = true;
+    const el = document.createElement('div'); el.id = 'hitnote';
+    const lv = Math.max(1, WIN_LEVELS.filter((v) => v <= x.value).length);
+    el.className = 'lv' + lv;
+    el.innerHTML = '<div class="hn-rays"></div><div class="hn-in"><div class="hn-store">' + storeLabel(x.store) + ' で当たり！</div><div class="hn-val">' + fmtN(x.value) + '</div><div class="hn-hit">HIT!</div></div>';
+    const content = $('content'); content.parentNode.insertBefore(el, content.nextSibling);
+    try { Sfx.play('revive'); Sfx.play('kyuin'); } catch (e) { /* 音なしでも出す */ }
+    try { if (!window.LITE) { FX.ring(CX, CY, 'gold', 1100, 0.8); FX.burst(CX, CY, 160 + lv * 20, { max: 1300, life: 1.6 }); } } catch (e) { /* noop */ }
+    setTimeout(() => { if ($('hitnote') === el) { el.classList.add('out'); setTimeout(() => { if ($('hitnote') === el) hitClear(); }, 450); } }, HIT_SHOW_MS);
+  }
   function stopFeed() { clearTimeout(feedRetry); if (unFeed) { unFeed(); unFeed = null; } feed = null; feedTop = 0; }
 
   /* 画面に出す合計当選額。演出中のプレイの分は、結果が出るまで含めない */
@@ -2300,7 +2342,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); hitWatch(); }, 500);
     setInterval(statWatch, 5000); // b91: 端末の状態をスマホの設定画面へ（変わったときだけ書く）
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
