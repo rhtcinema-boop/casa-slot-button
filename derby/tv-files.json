@@ -1,0 +1,330 @@
+{
+ "note": "casa DERBY のテレビが使うファイル（casa SLOT の tools/make-version.js が derby/ を付けて version.json に足す）",
+ "files": [
+  {
+   "path": "art/logo-3d/B/icon-3d-B.svg",
+   "size": 108481,
+   "sha256": "117a6865e677a1be8338f177642fdf0a97851c5e20a14e6aff23bbcd6f84a1ad"
+  },
+  {
+   "path": "art/logo-3d/B/lockup-3d-B-casaWhite.svg",
+   "size": 225262,
+   "sha256": "25719eb285da171cf304c53fd5e2ad64c7c0b728c5294002e199f743a1804e7e"
+  },
+  {
+   "path": "art/logo-3d/B/png/icon-3d-B-2x.png",
+   "size": 211771,
+   "sha256": "0a0006563e2d870d91bf16e809e93fc47e988f7ab8548a54207b41173c8c5e37"
+  },
+  {
+   "path": "art/logo-3d/B/png/lockup-3d-B-casaWhite-2x.png",
+   "size": 54905,
+   "sha256": "b515569e2b077454400f27cc83ebe67ff4d8f52476bb50f3735f55bc79615ab9"
+  },
+  {
+   "path": "art/logo-3d/B/png/title-3d-B-casaWhite-2x.png",
+   "size": 432865,
+   "sha256": "cb94ef171f53db362168adc6ae3f6aca2327499152c5e485777a33a79809889f"
+  },
+  {
+   "path": "art/logo-3d/B/title-3d-B-casaWhite.svg",
+   "size": 228179,
+   "sha256": "494120a6a8a5caad18a81df1e2ac459f5b3fc04265839be81bb6d4cdb42a7455"
+  },
+  {
+   "path": "art/sfx/sfx.json",
+   "size": 2910,
+   "sha256": "ce21ef271438c9c163efa6770a2ea15653d66ac91ca08e6e11840f033c5823e9"
+  },
+  {
+   "path": "art/sfx/src/horse-dash1.mp3",
+   "size": 92736,
+   "sha256": "63e6bae3666c885ec9b57a6bb61b5f0db1fcd2ab6f9e50fc3c6c86dbdf8c110b"
+  },
+  {
+   "path": "art/sfx/src/horse-walk1.mp3",
+   "size": 98176,
+   "sha256": "eb384586a7cfcb401528fa69f75a9c786a7b2de32ffefe887c13acf15b64cbdc"
+  },
+  {
+   "path": "art/sfx/src/iron-door-close1.mp3",
+   "size": 32640,
+   "sha256": "3555c7c998ffc4c1358c16df78af869af891ef15d63621dce3ac83dcb8f888c8"
+  },
+  {
+   "path": "art/sfx/src/jail-door-close1.mp3",
+   "size": 28838,
+   "sha256": "0280481c44820a1e6afb3dbba1776c903f2194f6805615024143f1b7fb60647a"
+  },
+  {
+   "path": "art/sprites/bay_back.png",
+   "size": 280576,
+   "sha256": "d07a2da364235d2f4dfcc13ff2a9cb835e6b52c99ac0c1a3c9b7642fcb41f9f5"
+  },
+  {
+   "path": "art/sprites/bay_front.png",
+   "size": 219296,
+   "sha256": "7031f761083ba821f3299a880b6ba59bef14f706e4ad9456047e5fcd7056c76c"
+  },
+  {
+   "path": "art/sprites/bay_side.png",
+   "size": 514350,
+   "sha256": "3acba8a0b0bc1101fd43d195c5afad64f480866b894c4ca3b34a3f94da2b4f15"
+  },
+  {
+   "path": "art/sprites/black_back.png",
+   "size": 192364,
+   "sha256": "84c45eb519c987df9266e98b18cbb81044947f22281b4ea4ef00b8ec7d2b7896"
+  },
+  {
+   "path": "art/sprites/black_front.png",
+   "size": 194321,
+   "sha256": "8e0eebc247c73c57f05ed7b19e56fa44423e50b4702f3bec8ec2fd789499d5f9"
+  },
+  {
+   "path": "art/sprites/black_side.png",
+   "size": 456260,
+   "sha256": "3ab9eb357c5ee577999340c9f385d5839063adda403f86ca794d81a4677fb90d"
+  },
+  {
+   "path": "art/sprites/chestnut_back.png",
+   "size": 184018,
+   "sha256": "77869677c188550c40ae34f834576e865287e7097d8f165fb56c08f0a749d0c3"
+  },
+  {
+   "path": "art/sprites/chestnut_front.png",
+   "size": 212766,
+   "sha256": "3755859b4137f1f917fe542ec2d594333fe37af1dbad5abe1745e79f45c9ec21"
+  },
+  {
+   "path": "art/sprites/chestnut_side.png",
+   "size": 526590,
+   "sha256": "fba3ac9fc28073f4b0fe1a211b533607ae75d3d16cbaa695cd1112cb0323353a"
+  },
+  {
+   "path": "art/sprites/gray_back.png",
+   "size": 274473,
+   "sha256": "b17d14401514af80db7a52477ea850f4f009b14bda710b2900c9ad63c2eb0427"
+  },
+  {
+   "path": "art/sprites/gray_front.png",
+   "size": 216417,
+   "sha256": "1857d70f1db378da42cf78fc194c0a1cb4334d618a2b832a18ec86e6cb893aee"
+  },
+  {
+   "path": "art/sprites/gray_side.png",
+   "size": 523699,
+   "sha256": "bea47f024e45df44b0a25967fd8aa1c936707335c44c3f97901fdb75dade1094"
+  },
+  {
+   "path": "art/sprites/index.json",
+   "size": 4115,
+   "sha256": "cc97bf1c239c57228db5ff585224c6ea0f4c7a677358be987133f69681cedc45"
+  },
+  {
+   "path": "art/sprites/palomino_back.png",
+   "size": 279649,
+   "sha256": "c77098ac14537916caa41834ea0d33e674450c929724135d444dc19c6f832fb1"
+  },
+  {
+   "path": "art/sprites/palomino_front.png",
+   "size": 201831,
+   "sha256": "e0ba265dc9d3292180559cdcc05f4fda9e529ef6e09f18bb566a2b99aaf4867d"
+  },
+  {
+   "path": "art/sprites/palomino_side.png",
+   "size": 557269,
+   "sha256": "ae82ab6ddb1d43c29f6c9d29d38fa4841b0d02aedd7cba7252e7423e29750105"
+  },
+  {
+   "path": "art/sprites/white_back.png",
+   "size": 267223,
+   "sha256": "9218eeb511127f80c8671868f32dda2dc929643328fabe83bd5dc3bcd0522e24"
+  },
+  {
+   "path": "art/sprites/white_front.png",
+   "size": 212135,
+   "sha256": "d022d526c4b7af0006075a9d3f70f68b66cea2ae90d25260aae23eeda58db91d"
+  },
+  {
+   "path": "art/sprites/white_side.png",
+   "size": 494433,
+   "sha256": "dcf73982dcc0882528dc768b85f7e0719149450ee7069766e25cf43bff3ad6fc"
+  },
+  {
+   "path": "art/voice/c.m4a",
+   "size": 1442845,
+   "sha256": "b601ee1bc1f3606ed49cdcb4344545b8f8692607568c18655d08f3a9c3906baf"
+  },
+  {
+   "path": "art/voice/e.m4a",
+   "size": 850291,
+   "sha256": "837ed39ada8c97b578d5b60389840d73d676f156d58bc71d57eb4855cdabc1ee"
+  },
+  {
+   "path": "art/voice/g.m4a",
+   "size": 855411,
+   "sha256": "4c962f90b1db71089d0acbb8ef1abc6261fc8c777e261c46a428d94d95028f90"
+  },
+  {
+   "path": "art/voice/index.json",
+   "size": 30694,
+   "sha256": "327c5320baa1f3b1f8195a149a9905abf13eb5387203ba23bcd418563933059b"
+  },
+  {
+   "path": "art/voice/x.m4a",
+   "size": 704968,
+   "sha256": "070ba7e6fe1a2be6f89d4aef4cedb86bbd5721aab5cfb82fadb1773ea3a6237c"
+  },
+  {
+   "path": "css/style.css",
+   "size": 49499,
+   "sha256": "d0b9e7082862fa043622d6f6395f11048911b5512ef192e1a6001cda1e873cf0"
+  },
+  {
+   "path": "icon-derby-180.png",
+   "size": 29458,
+   "sha256": "e471da5af93040c7f15a8f368d46c6487837c603cd0e97d760e02c9afa444ecf"
+  },
+  {
+   "path": "index.html",
+   "size": 21496,
+   "sha256": "ebc929b544cb3089541c6869736c4ef3ea30bb44dc7a3aa1eb6af5357e06cc7f"
+  },
+  {
+   "path": "js/audio.js",
+   "size": 21247,
+   "sha256": "dda8e987dd704c886aed925a0445bf34fae7fce4794878d385d49085e4a6bcf0"
+  },
+  {
+   "path": "js/bonus.js",
+   "size": 9183,
+   "sha256": "54d04c6634807ae9423fd90683d94b088d0572ebc43ee4b2c93726c793f1771a"
+  },
+  {
+   "path": "js/commentary.js",
+   "size": 58556,
+   "sha256": "29e0a840d7840f6d29d00ed83443a3f27ca47b3b8fcbbd1809e4b7bdd50967ea"
+  },
+  {
+   "path": "js/engine.js",
+   "size": 20239,
+   "sha256": "c520e60b180cc03f0c3bf99d421f4202a0d12e54f570edf174fb8e7eeea01732"
+  },
+  {
+   "path": "js/game.js",
+   "size": 44585,
+   "sha256": "5288da1f88003e70c5281c872abdbc19d2861a5556653d56b970ec2c57518e09"
+  },
+  {
+   "path": "js/hooves.js",
+   "size": 11841,
+   "sha256": "12845494cde9b6b55e864259a382ddf3959bb084e29aeb6d4388621bda88c468"
+  },
+  {
+   "path": "js/horse.js",
+   "size": 26180,
+   "sha256": "cae417f74449799f7214e671ae3ef56d898aeef097afad6c709c5baaa7bb28f1"
+  },
+  {
+   "path": "js/r3d/course.js",
+   "size": 2952,
+   "sha256": "d0110e059927c1c55ba18214793cad305890aef75ac12aa93f67c06baa97378c"
+  },
+  {
+   "path": "js/r3d/director3d.js",
+   "size": 106144,
+   "sha256": "e32d186911f95d658caaff2d1b2b5fb4d6b310455ce986fe553d938a40e7e90c"
+  },
+  {
+   "path": "js/r3d/horse3d-real.js",
+   "size": 160067,
+   "sha256": "45aec4eb8003fe0659677d6e2d8c3514f007be021bb701345460233e5fdbefa3"
+  },
+  {
+   "path": "js/r3d/horse3d.js",
+   "size": 152199,
+   "sha256": "470199d167285f57277b91ca18bf6de423002297c0105cbe501ac1b979f232fb"
+  },
+  {
+   "path": "js/r3d/look3d.js",
+   "size": 52434,
+   "sha256": "c4319d53ddff3133d03346d7cb12291bd14cd177593afc33c2d86ba35e99b12b"
+  },
+  {
+   "path": "js/r3d/venue3d.js",
+   "size": 180640,
+   "sha256": "0ae3f1ec3b7560f28d8554af2a8f7fa490b9ab25b3dd5c4c7555f2004d2e9e40"
+  },
+  {
+   "path": "js/race.js",
+   "size": 113471,
+   "sha256": "097106ab028027c7d3da049ed358393be0dd44c7684db8b64c58c82c8a7a5ae9"
+  },
+  {
+   "path": "js/race3d.js",
+   "size": 176035,
+   "sha256": "530208f90f54651f8fdf7e45400cb8ca6c438e0e845b665ef6b4b6471c6be59c"
+  },
+  {
+   "path": "js/splash3d.js",
+   "size": 10133,
+   "sha256": "e7e574105df841b4388aff786c58c340f931f76c397d7b5bc9f82c3ea7658b3e"
+  },
+  {
+   "path": "js/sprites.js",
+   "size": 13150,
+   "sha256": "dd891fc324fedb6026b5efe1b20e2a9111afee874b4fbb6ab80999667426dc63"
+  },
+  {
+   "path": "js/voice.js",
+   "size": 3897,
+   "sha256": "db42051c35992be2549bcd80020098a3700fa08cbc57ae9705bafe275d6fa898"
+  },
+  {
+   "path": "v2/client-firestore.js",
+   "size": 84561,
+   "sha256": "9f9e1b33de1d3943583211dcd53aa415e17321a183d0abdd1c865f99279fcb37"
+  },
+  {
+   "path": "v2/client.js",
+   "size": 15902,
+   "sha256": "c503b4a5cd04fad07296e66e7e1bc7dc8fe329894a5016d30df800fe36df585e"
+  },
+  {
+   "path": "v2/config.js",
+   "size": 880,
+   "sha256": "4fc5a5fb4b4b86109433ca6eac0ac1420305fe70147fa7405889da019ec800f8"
+  },
+  {
+   "path": "v2/core.js",
+   "size": 50761,
+   "sha256": "63db642cbd9323f5b2e06792efc3a64cc750b388841b30f2a40d3f54ab2c2fbc"
+  },
+  {
+   "path": "v2/outcome.js",
+   "size": 14301,
+   "sha256": "64cc0fa15bcfd15bc6479517d523503b95f347cfa2b2a29ba3d5ac4f54ad1571"
+  },
+  {
+   "path": "v2/qr.js",
+   "size": 6360,
+   "sha256": "44559d2dd83db6d975130edfbf228c4da4f9091c2843dcd10b2880307aeeecad"
+  },
+  {
+   "path": "v2/tv.css",
+   "size": 44744,
+   "sha256": "56beca806c4d8cab753ce264cebd4b6d45316e70730abb2b97bda3513ddb239b"
+  },
+  {
+   "path": "v2/tv.js",
+   "size": 74179,
+   "sha256": "7873726ffe2e2735163f7c231207182528a50482f6c274aba3204db04b368b50"
+  },
+  {
+   "path": "v2/tvswitch.js",
+   "size": 7778,
+   "sha256": "e53b80ceffd3c0c321187de1e22c4d3125ea4242a3e2b0053e3333df85770c81"
+  }
+ ]
+}
