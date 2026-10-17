@@ -29,6 +29,8 @@ jobs:
           node tools/make-version.js --check
           cp index.html version.json manifest.webmanifest cloud-config.js *.png tv/app/src/main/assets/www/
           cp css/*.css tv/app/src/main/assets/www/css/ && cp js/*.js tv/app/src/main/assets/www/js/
+          # casa DERBY（テレビのゲームの切り替え）: version.json に入っている derby/ のテレビ用ファイルも同じ場所に入れる（新しく入れたアプリでも casa DERBY を開けるように）
+          node -e "const fs=require('fs'),p=require('path');(JSON.parse(fs.readFileSync('version.json','utf8')).files||[]).filter((f)=>f.path.startsWith('derby/')).forEach((f)=>{const o=p.join('tv/app/src/main/assets/www',f.path);fs.mkdirSync(p.dirname(o),{recursive:true});fs.copyFileSync(f.path,o);})"
           echo "APP_VERSION_NAME=$(grep -o 'id=\"ver\">[^<]*' index.html | sed 's/.*>//')" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
       - name: Prepare signing key
