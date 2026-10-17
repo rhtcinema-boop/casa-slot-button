@@ -109,6 +109,8 @@
       [0, 1, 2].map((i) => '<label class="f"><span>説明 ' + (i + 1) + '</span><textarea id="snote' + i + '" rows="2" maxlength="80">' + esc((s.notes || [])[i] || '') + '</textarea></label>').join('') + '</div>' +
       '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">スマホの紙幣で始める</h3><p class="hint">ON にすると、この店舗の端末から NEXT GAME ボタンが消え、スタッフのスマホの紙幣ページ（公開 URL の bill.html）で紙幣をスライドしたときだけゲームが始まります。スマホが使えないときは、テレビはリモコンの決定を 2 秒長押し、iPad は左上のロゴを 2 秒長押しで始められます。</p>' +
       '<label class="check"><input type="checkbox" id="sbill" ' + (s.billMode ? 'checked' : '') + '> スマホの紙幣でゲームを始める（NEXT GAME ボタンを消す）</label></div>' +
+      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">3つの扉</h3><p class="hint">ON にすると、当たりの回の 5 回に 1 回くらい、最後にリールの代わりに扉が 3 つ出ます。スタッフのスマホ（またはリモコンの左右と決定）で扉を選ぶと、その回の当たり金額が出ます。見せ方が変わるだけで、当たりの確率と金額は変わりません。「スマホの紙幣で始める」が ON の店舗だけで動きます。</p>' +
+      '<label class="check"><input type="checkbox" id="sdoor" ' + (s.doors ? 'checked' : '') + '> 3つの扉を出す</label></div>' +
       '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">季節の飾り</h3><p class="hint">ON にすると、この店舗の端末の光がオレンジと紫になり、四隅に薄いクモの巣、ロゴの横にかぼちゃが出ます。リールや文字は変わりません。</p>' +
       '<label class="check"><input type="checkbox" id="shw" ' + (s.halloween ? 'checked' : '') + '> ハロウィンの飾り</label></div>' +
       '<div class="err" id="serr"></div>' +
@@ -127,7 +129,7 @@
     }
     if (active && presetIds.indexOf(active) < 0) presetIds.push(active);
     const notes = [0, 1, 2].map((i) => $('snote' + i).value.trim().slice(0, 80)).filter(Boolean); // 待機中に左側に出す説明（入力されたものだけ）
-    const data = { name, presetIds, activePresetId: active || null, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン
+    const data = { name, presetIds, activePresetId: active || null, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
     if (pin) data.pin = Engine.makePin(pin);
     try { await Cloud.saveStore(s.id || null, data); }
     catch (e) { err.textContent = '保存できませんでした。通信を確認して、もう一度押してください。'; throw e; }
