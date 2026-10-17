@@ -1,0 +1,456 @@
+/* casa DERBY v2 お客さんのスマホ（縦向き）。casa SLOT の紙幣ページと同じ色づかい（暗い緑と金） */
+:root { --gold: #ffd773; --gold2: #c9a03e; --cream: #ffe9a8; --dim: #9aa89c; --ink: #e8e3d2; --bg: #0b0f0c; --ok: #35e07a; --err: #ff8c7a; --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { background: #070a08; -webkit-text-size-adjust: 100%; }
+html, body { margin: 0; min-height: 100%; background-color: #070a08; color: var(--ink); font-family: -apple-system, "Helvetica Neue", "Hiragino Sans", "Noto Sans JP", sans-serif; overscroll-behavior: none; touch-action: manipulation; }
+body { user-select: none; -webkit-user-select: none; }
+#app { min-height: 100vh; min-height: 100dvh; background: radial-gradient(ellipse at 50% 20%, #13231a, #070a08 70%) fixed; padding-bottom: calc(var(--sab) + 24px); }
+.hidden { display: none !important; }
+
+/* ---------- 上の帯 ---------- */
+.top { position: sticky; top: 0; z-index: 20; padding: calc(var(--sat) + 8px) 14px 8px; background: linear-gradient(180deg, rgba(7, 10, 8, .97) 70%, rgba(7, 10, 8, .85)); border-bottom: 1px solid #1d2a20; text-align: center; }
+.crest { padding: 0 0 4px; line-height: 0; } /* 新しいロゴ（art/logo-3d/B/lockup-3d-B-casaWhite.svg。2026-10-14） */
+.crest img { display: inline-block; width: 98px; height: 32px; pointer-events: none; -webkit-user-drag: none; }
+.store { font-size: 12px; color: #cfd6cc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.store i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); margin-right: 6px; vertical-align: 1px; }
+.store.off i { background: #6b7570; box-shadow: none; }
+.race { margin-top: 6px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.race:empty { display: none; }
+.race span { padding: 4px 10px; border-radius: 999px; background: #15120a; border: 1px solid #3a3320; color: #cfd6cc; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.race span b { color: var(--cream); font-size: 15px; margin-left: 2px; }
+.race span.hot { border-color: #7a2a22; color: #ffb3a6; } .race span.hot b { color: #ffd0c6; }
+.net { position: sticky; top: 0; z-index: 30; margin: 0; padding: 10px 14px; background: #3a120d; color: #ffd0c6; font-size: 14px; text-align: center; border-bottom: 1px solid #7a2a22; }
+
+/* ---------- 画面（カード） ---------- */
+main { padding: 16px 16px 0; max-width: 520px; margin: 0 auto; }
+.scr { display: flex; flex-direction: column; gap: 14px; animation: fade .25s ease-out; }
+@keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.scr h1 { margin: 6px 0 0; font-size: 22px; color: var(--gold); text-align: center; letter-spacing: .08em; }
+.scr .lead { margin: 0; color: #cfd6cc; font-size: 15px; text-align: center; line-height: 1.7; }
+.scr .sub { margin: 0; color: var(--dim); font-size: 13px; text-align: center; line-height: 1.6; }
+.step { text-align: center; font-size: 12px; color: var(--dim); letter-spacing: .2em; }
+.step b { color: var(--gold); }
+.panel { background: #141109; border: 1px solid #2a2416; border-radius: 16px; padding: 14px; }
+.err { color: var(--err); font-size: 14px; min-height: 20px; text-align: center; margin: 0; }
+.note { background: #1d1a0c; border: 1px solid #5a4a1a; color: var(--cream); border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.6; }
+.note.red { background: #22100c; border-color: #7a2a22; color: #ffd0c6; }
+
+input.big { width: 100%; padding: 16px 12px; font-size: 28px; text-align: center; letter-spacing: .12em; border-radius: 14px; border: 1px solid var(--gold2); background: #0d0c08; color: #fff; font-family: inherit; -webkit-user-select: text; user-select: text; outline: none; }
+input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
+input.big.nick { letter-spacing: .04em; font-size: 26px; }
+.count-hint { text-align: right; font-size: 12px; color: var(--dim); margin-top: -8px; }
+
+.btn { display: block; width: 100%; min-height: 58px; padding: 14px; font: inherit; font-size: 18px; font-weight: 700; border-radius: 14px; border: 0; background: linear-gradient(180deg, var(--cream), var(--gold2)); color: #1a1408; box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--gold2), 0 8px 24px rgba(255, 215, 115, .18); cursor: pointer; }
+.btn:active { transform: translateY(1px) scale(.99); }
+.btn:disabled { opacity: .35; box-shadow: none; }
+.btn.ghost { background: #1a1a1a; color: #cfd6cc; box-shadow: none; border: 1px solid #3a3a3a; font-weight: 400; font-size: 16px; min-height: 50px; }
+.btn.red { background: linear-gradient(180deg, #ffb3a6, #d2553f); color: #2a0c06; box-shadow: 0 0 0 2px #000, 0 0 0 3px #d2553f; }
+.row { display: flex; gap: 10px; } .row > * { flex: 1; }
+
+/* ---------- 枚数 ---------- */
+.counter { text-align: center; padding: 10px 0 4px; }
+.counter .num { font-size: 64px; font-weight: 800; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1.05; text-shadow: 0 0 18px rgba(255, 215, 115, .35); }
+.counter .unit { font-size: 20px; color: var(--gold); margin-left: 4px; }
+.counter .eq { font-size: 13px; color: var(--dim); margin-top: 4px; }
+.plus { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.plus button { min-height: 64px; font: inherit; font-size: 22px; font-weight: 800; border-radius: 14px; border: 1px solid var(--gold2); background: #1c170a; color: var(--cream); cursor: pointer; }
+.plus button:active { background: #3a2f12; }
+.plus button:disabled { opacity: .3; }
+.minor { display: flex; gap: 10px; justify-content: center; }
+.minor button { font: inherit; font-size: 14px; padding: 10px 16px; min-height: 44px; border-radius: 999px; border: 1px solid #3a3320; background: #15120a; color: #cfd6cc; }
+
+/* ---------- 認証 QR・受け取り QR ---------- */
+.qrbox { background: #fff; border-radius: 18px; padding: 14px; margin: 0 auto; width: min(86vw, 340px); aspect-ratio: 1; box-shadow: 0 0 0 3px var(--gold2), 0 0 40px rgba(255, 215, 115, .3); position: relative; }
+.qrbox svg { width: 100%; height: 100%; display: block; }
+.qrbox.done { box-shadow: 0 0 0 3px #3a3a3a; }
+.qrbox.done svg { opacity: .12; }
+.qrbox .stamp { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.qrbox .stamp b { transform: rotate(-12deg); border: 5px solid #1e9e52; color: #1e9e52; font-size: 30px; padding: 8px 16px; border-radius: 12px; background: rgba(255, 255, 255, .85); letter-spacing: .1em; }
+.show { text-align: center; font-size: 22px; font-weight: 800; color: var(--gold); letter-spacing: .1em; animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 15px; }
+.facts dt { color: var(--dim); } .facts dd { margin: 0; color: var(--cream); font-weight: 700; text-align: right; word-break: break-all; }
+.facts dd.big { font-size: 22px; }
+
+/* ---------- 出馬表と割り振り ---------- */
+.left { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 14px; background: #141109; border: 1px solid #2a2416; position: sticky; top: calc(var(--sat) + 92px); z-index: 10; }
+.left .l1 { font-size: 13px; color: var(--dim); }
+.left .l2 { font-size: 30px; font-weight: 800; color: var(--cream); font-variant-numeric: tabular-nums; }
+.left .l2 small { font-size: 15px; color: var(--dim); font-weight: 400; }
+.left.zero .l2 { color: var(--ok); }
+.card { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px 10px 10px; border-radius: 14px; background: #100e08; border: 2px solid #2a2416; min-height: 70px; cursor: pointer; }
+.card.sel { border-color: var(--gold); background: #1f1909; box-shadow: 0 0 18px rgba(255, 215, 115, .25); }
+.card.has:not(.sel) { border-color: #6b5520; }
+.waku { width: 52px; height: 52px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35); }
+.hname { font-size: 17px; font-weight: 700; color: #fff; line-height: 1.25; word-break: keep-all; overflow-wrap: anywhere; }
+.hmeta { font-size: 12px; color: var(--dim); margin-top: 3px; display: flex; gap: 8px; align-items: center; }
+.tag { padding: 1px 7px; border-radius: 6px; font-size: 12px; color: #111; font-weight: 700; }
+.odds { text-align: right; }
+.odds .o { font-size: 20px; font-weight: 800; color: var(--cream); font-variant-numeric: tabular-nums; }
+.odds .o small { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 1px; }
+.odds .mine { margin-top: 2px; font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.odds .mine b { font-size: 20px; color: var(--gold); }
+.dock { position: sticky; bottom: 0; z-index: 15; margin: 0 -16px; padding: 8px 12px calc(var(--sab) + 10px); background: #0a0d0b; border-top: 1px solid #2a2416; box-shadow: 0 -10px 24px rgba(0, 0, 0, .6); display: flex; flex-direction: column; gap: 8px; }
+.dock .plus button { min-height: 54px; }
+.dock .minor { gap: 6px; }
+.dock .minor button { flex: 1; min-height: 38px; padding: 6px 4px; font-size: 13px; white-space: nowrap; }
+.dock .btn { min-height: 54px; }
+.dock .who { text-align: center; font-size: 14px; color: #cfd6cc; min-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock .who b { color: var(--gold); }
+
+/* ---------- 確認・待ち・結果 ---------- */
+.list { display: flex; flex-direction: column; gap: 8px; }
+.line { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #100e08; border: 1px solid #2a2416; }
+.line .waku { width: 38px; height: 38px; font-size: 20px; }
+.line .nm { flex: 1; font-size: 16px; font-weight: 700; }
+.line .nm small { display: block; font-size: 12px; color: var(--dim); font-weight: 400; }
+.line .n { font-size: 22px; font-weight: 800; color: var(--cream); font-variant-numeric: tabular-nums; }
+.line .n small { font-size: 13px; color: var(--dim); font-weight: 400; }
+.line.win { border-color: var(--gold); background: #2a210a; }
+.tv { text-align: center; padding: 18px 10px; border-radius: 16px; border: 1px dashed #5a4a1a; color: var(--cream); font-size: 18px; line-height: 1.6; }
+.tv .ico { font-size: 40px; display: block; margin-bottom: 4px; }
+.clock { text-align: center; }
+.clock .k { font-size: 13px; color: var(--dim); }
+.clock .v { font-size: 52px; font-weight: 800; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.hit { text-align: center; padding: 6px 0; }
+.hit .t { font-size: 22px; color: var(--gold); letter-spacing: .3em; font-weight: 800; }
+.hit .a { font-size: 72px; font-weight: 900; color: #fff; line-height: 1.05; text-shadow: 0 0 24px rgba(255, 215, 115, .8); font-variant-numeric: tabular-nums; }
+.hit .a small { font-size: 26px; color: var(--gold); margin-left: 4px; }
+.miss { text-align: center; padding: 18px 0 6px; }
+.miss .t { font-size: 34px; font-weight: 800; color: #cfd6cc; letter-spacing: .2em; }
+.paid { text-align: center; font-size: 20px; color: var(--ok); font-weight: 800; }
+.order { display: flex; gap: 8px; justify-content: center; }
+.order div { text-align: center; font-size: 11px; color: var(--dim); }
+.order .waku { width: 44px; height: 44px; font-size: 22px; margin-bottom: 3px; }
+
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--sab) + 20px); z-index: 50; padding: 14px 16px; border-radius: 14px; background: #1c170a; border: 1px solid var(--gold2); color: var(--cream); text-align: center; font-size: 15px; pointer-events: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
+.toast.err { border-color: #7a2a22; color: #ffb3a6; background: #1a0d0b; }
+.modal { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, .78); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal .box { width: 100%; max-width: 380px; background: #15120a; border: 1px solid var(--gold2); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.modal h3 { margin: 0; color: var(--gold); font-size: 18px; text-align: center; }
+.modal p { margin: 0; color: #cfd6cc; font-size: 15px; line-height: 1.6; text-align: center; }
+.qrid { margin: -6px 0 0; text-align: center; font-size: 12px; color: var(--dim); letter-spacing: .06em; font-family: ui-monospace, Menlo, monospace; -webkit-user-select: text; user-select: text; }
+
+/* ---------- 低い画面（小さい Android・文字を大きくした端末）と横向き: 出馬表が上下の帯に隠れないように（QA 2026-10-14） ---------- */
+@media (max-height: 600px) {
+  .top { position: relative; }                       /* 上の帯はスクロールで消える */
+  .left { top: 0; padding: 6px 12px; } .left .l2 { font-size: 24px; }
+  .dock { gap: 6px; padding-top: 6px; }
+  .dock .who { min-height: 0; font-size: 13px; }
+  .dock .plus button { min-height: 46px; font-size: 20px; }
+  .dock .minor button { min-height: 34px; }
+  .dock .btn { min-height: 48px; font-size: 16px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  main { max-width: 900px; }
+  .scr.vote { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 42%); column-gap: 12px; row-gap: 10px; align-items: start; }
+  .scr.vote > .left, .scr.vote > .list { grid-column: 1; }
+  .scr.vote > .dock { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 8px; bottom: auto; margin: 0; border: 1px solid #2a2416; border-radius: 14px; box-shadow: none; padding: 10px; }
+}
+
+/* ======================================================================================================
+   見た目の講評 2026-10-14（screens/v2review1 の講評 ＋ ChatGPT の REVIEW_TODO 7）。上の決まりを上書きする
+   ====================================================================================================== */
+.scr h1 { font-size: 26px; }
+.scr .lead { font-size: 16px; }
+input.big { padding: 18px 12px; font-size: 32px; }
+.btn { min-height: 58px; font-size: 19px; }
+/* 進み具合（4 段） */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; counter-reset: s; }
+.steps li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: var(--dim); white-space: nowrap; }
+.steps li::after { content: ""; position: absolute; top: 13px; left: calc(50% + 17px); right: calc(-50% + 11px); height: 2px; background: #2a2416; }
+.steps li:last-child::after { display: none; }
+.steps li i { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 800; border: 1.5px solid #3a3320; color: var(--dim); background: #0d0c08; }
+.steps li.done i { background: #2a210a; border-color: var(--gold2); color: var(--gold); }
+.steps li.done::after { background: var(--gold2); }
+.steps li.now { color: var(--cream); font-weight: 800; }
+.steps li.now i { background: linear-gradient(180deg, var(--cream), var(--gold2)); border-color: var(--gold); color: #1a1408; box-shadow: 0 0 12px rgba(255, 215, 115, .45); }
+.steps + .step { margin-top: -6px; font-size: 11px; }
+/* 次のレースの札 */
+.rcard { margin-top: 6px; padding: 14px 16px; border-radius: 16px; background: linear-gradient(180deg, #17261b, #0f1811); border: 1px solid #2c4a33; }
+.rc-h { font-size: 13px; color: #9fd3ae; font-weight: 800; letter-spacing: .08em; }
+.rc-m { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 4px; }
+.rc-m b { font-size: 34px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.rc-m small { font-size: 14px; color: #cfd6cc; }
+.rc-l { text-align: right; } .rc-l small { display: block; font-size: 12px; color: var(--dim); } .rc-l b { font-size: 28px; color: var(--cream); }
+.rc-s { margin-top: 6px; font-size: 12px; color: var(--dim); } .rc-s b { color: var(--cream); font-size: 14px; }
+/* 遊び方・このあと */
+.howto { padding: 14px 16px; border-radius: 16px; background: #100e08; border: 1px solid #2a2416; }
+.howto h3 { margin: 0 0 8px; font-size: 14px; color: var(--gold); letter-spacing: .1em; }
+.howto ol { margin: 0; padding: 0; list-style: none; counter-reset: h; display: flex; flex-direction: column; gap: 10px; }
+.howto li { counter-increment: h; display: grid; grid-template-columns: 26px 1fr; column-gap: 10px; align-items: start; font-size: 15px; line-height: 1.45; color: #e8e3d2; }
+.howto li::before { content: counter(h); grid-row: 1 / span 2; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #2a210a; border: 1px solid var(--gold2); color: var(--gold); font-size: 13px; font-weight: 800; }
+.howto li small { grid-column: 2; font-size: 12px; color: var(--dim); }
+/* 枚数 */
+.counter .num { font-size: 76px; }
+.plus button { min-height: 68px; font-size: 24px; }
+/* 「スタッフに見せてください」は金色の帯ではっきり（暗くて目立たなかった） */
+.show { margin: 2px 0; padding: 14px 12px; border-radius: 14px; background: linear-gradient(180deg, #ffe7a0, #e8c56b); color: #1a1408; font-size: 21px; font-weight: 900; letter-spacing: .04em; box-shadow: 0 0 0 2px #000, 0 0 0 3px #e8c56b, 0 0 28px rgba(232, 197, 107, .45); animation: showPulse 1.8s ease-in-out infinite; }
+@keyframes showPulse { 0%, 100% { box-shadow: 0 0 0 2px #000, 0 0 0 3px #e8c56b, 0 0 18px rgba(232, 197, 107, .3); } 50% { box-shadow: 0 0 0 2px #000, 0 0 0 3px #e8c56b, 0 0 34px rgba(232, 197, 107, .7); } }
+.qrbox { width: min(86vw, 330px); }
+/* 確認の合計（ラベルと数字を同じ高さに） */
+.total { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-radius: 16px; background: #141109; border: 1px solid #2a2416; }
+.total span { font-size: 16px; color: var(--dim); }
+.total b { font-size: 34px; font-weight: 900; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1; }
+.total b small { font-size: 16px; color: var(--dim); font-weight: 400; margin-left: 4px; }
+/* 投票のあと */
+.done-h { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 4px; font-size: 26px; font-weight: 900; color: var(--gold); letter-spacing: .06em; }
+.done-h i { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 20px; background: #22c55e; color: #04220f; }
+.betsum { padding: 12px; border-radius: 16px; background: #141109; border: 1px solid #5a4a1a; display: flex; flex-direction: column; gap: 8px; }
+.bs-h { display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px; }
+.bs-h span { font-size: 22px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; } .bs-h small { font-size: 12px; color: var(--dim); }
+.bs-f { display: flex; justify-content: space-between; padding: 0 4px; font-size: 13px; color: var(--dim); } .bs-f span { color: var(--cream); }
+.line.big { padding: 10px 12px; } .line.big .waku { width: 46px; height: 46px; font-size: 24px; } .line.big .nm { font-size: 18px; } .line.big .n { font-size: 28px; }
+.clock .v { font-size: 60px; }
+/* 認証が完了（2 秒） */
+.okfx { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .55); pointer-events: none; animation: fade .2s ease-out; transition: opacity .35s; }
+.okfx.bye { opacity: 0; }
+.okfx > div { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px 30px; border-radius: 22px; background: #0f2416; border: 2px solid #22c55e; box-shadow: 0 0 40px rgba(34, 197, 94, .45); animation: okPop .45s cubic-bezier(.2, 1.4, .4, 1); }
+.okfx i { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 38px; font-weight: 900; background: #22c55e; color: #04220f; }
+.okfx b { font-size: 24px; color: #fff; } .okfx small { font-size: 14px; color: #cfe9d6; }
+@keyframes okPop { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+/* 受け取り済みは緑、未受け取りは金（REVIEW_TODO 7） */
+.paid { color: #22c55e; }
+.qrbox .stamp b { border-color: #22c55e; color: #16a34a; }
+.note:not(.red) { border-color: #e8c56b; }
+.card { min-height: 72px; }
+/* 確認画面: 確定ボタンを下に固定（投票画面の「確認へ」と同じ場所） */
+.scr.confirm { padding-bottom: 150px; }
+.dock.cdock { position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto; max-width: 520px; padding: 8px 12px calc(var(--sab) + 10px); }
+.dock.cdock .err:empty { display: none; }
+.dock.cdock .btn.ghost { min-height: 46px; }
+.dock.cdock .btn:not(.ghost) { min-height: 58px; font-size: 18px; line-height: 1.3; }
+.show { white-space: nowrap; font-size: clamp(16px, 5vw, 21px); letter-spacing: .02em; }
+.facts { align-items: baseline; }
+
+/* ======================================================================================================
+   はじめての人に文字を少なく（REVIEW_TODO「92→95」の 5）。上の決まりを上書きする
+   見出し 22〜24px・本文 14〜16・補足 12〜13・ボタンの高さ 56〜60・左右の余白 20〜24・カードの間 12〜16・進み具合 28〜34・QR 240〜260 角
+   ====================================================================================================== */
+main { padding: 16px 20px 0; }
+.scr { gap: 14px; }
+.scr h1 { margin: 2px 0 0; font-size: 23px; letter-spacing: .04em; line-height: 1.35; }
+.scr .lead { font-size: 15px; line-height: 1.6; }
+.scr .sub { font-size: 13px; }
+.note { font-size: 14px; }
+.list { gap: 12px; }
+.btn { min-height: 58px; font-size: 18px; }
+.btn.ghost { min-height: 56px; font-size: 16px; }
+.plus { gap: 12px; }
+.plus button { min-height: 58px; font-size: 22px; }
+.minor button { min-height: 44px; font-size: 14px; }
+.dock { margin: 0 -20px; padding: 10px 20px calc(var(--sab) + 12px); gap: 10px; }
+.dock .plus button { min-height: 56px; }
+.dock .btn { min-height: 58px; }
+.counter { padding: 4px 0 0; }
+.counter .num { font-size: 72px; }
+.counter .eq { font-size: 13px; }
+/* 進み具合（4 段）: 丸 30px */
+.steps li { font-size: 12px; gap: 5px; }
+.steps li i { width: 30px; height: 30px; font-size: 14px; }
+.steps li::after { top: 15px; left: calc(50% + 19px); right: calc(-50% + 13px); }
+.steps + .step { font-size: 12px; margin-top: -8px; }
+/* QR は 250 角（白い余白つき） */
+.qrbox { width: 250px; padding: 10px; border-radius: 16px; }
+/* 「スタッフにQRを見せる」 */
+.show { font-size: clamp(16px, 5vw, 20px); min-height: 56px; display: flex; align-items: center; justify-content: center; }
+/* くわしい説明は折りたたみ */
+details.howto { padding: 0; }
+details.howto summary { list-style: none; display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 16px; font-size: 14px; font-weight: 800; color: var(--gold); letter-spacing: .08em; cursor: pointer; }
+details.howto summary::-webkit-details-marker { display: none; }
+details.howto summary::after { content: "＋"; font-size: 18px; color: var(--gold2); }
+details.howto[open] summary::after { content: "－"; }
+details.howto ol { padding: 0 16px 14px; }
+details.howto li { font-size: 14px; }
+details.howto li small { font-size: 12px; }
+/* 次のレースの札 */
+.rcard { margin-top: 2px; }
+.rc-s { font-size: 12px; }
+/* 確認: 馬番・馬名・枚数を大きく */
+.picks .pick { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: #1f1909; border: 2px solid var(--gold2); }
+.picks .pick .waku { width: 52px; height: 52px; font-size: 28px; }
+.picks .pick .nm { font-size: 20px; font-weight: 900; color: #fff; line-height: 1.3; min-width: 0; overflow-wrap: anywhere; }
+.picks .pick .nm .no { display: block; font-size: 13px; font-weight: 800; color: var(--gold); letter-spacing: .06em; }
+.picks .pick .nm small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--dim); }
+.picks .pick .n { font-size: 36px; font-weight: 900; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
+.picks .pick .n small { font-size: 15px; color: var(--gold); font-weight: 700; margin-left: 2px; }
+.picks.one .pick { padding: 18px 16px; box-shadow: 0 0 24px rgba(255, 215, 115, .18); }
+.picks.one .pick .waku { width: 64px; height: 64px; font-size: 34px; }
+.picks.one .pick .nm { font-size: 24px; }
+.picks.one .pick .nm .no { font-size: 15px; }
+.picks.one .pick .n { font-size: 48px; }
+.scr.confirm { padding-bottom: 160px; }
+.dock.cdock { padding: 10px 20px calc(var(--sab) + 12px); }
+.dock.cdock .btn.ghost { min-height: 48px; font-size: 15px; }
+.dock.cdock .btn:not(.ghost) { min-height: 60px; font-size: 18px; }
+/* 投票のあと: 次にすること（テレビでレースを見る）を 1 つだけ大きく */
+.nexta { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 16px; border-radius: 18px; background: linear-gradient(180deg, #17261b, #0f1811); border: 2px solid #2e9d4f; box-shadow: 0 0 24px rgba(46, 157, 79, .25); text-align: center; }
+.nexta .na-h { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 900; color: #fff; }
+.nexta .na-h .ico { font-size: 30px; }
+.nexta .clock .k { font-size: 13px; }
+.nexta .clock .v { font-size: 48px; }
+.nexta > small { font-size: 13px; color: #cfe9d6; }
+.done-h { font-size: 23px; }
+/* 結果 */
+.hit .a { font-size: 64px; }
+.line .nm { font-size: 15px; }
+/* 確認画面は透明度だけで出す（動かすと、出る途中だけ下に固定した確定ボタンの位置がずれた） */
+.scr.confirm { animation-name: fadeOnly; }
+@keyframes fadeOnly { from { opacity: 0; } to { opacity: 1; } }
+/* 1 頭だけのとき: 馬番・馬名を 1 行目、投票する枚数を 2 行目に大きく（長い馬名が折り返さないように） */
+.picks.one .pick { grid-template-columns: auto 1fr; row-gap: 12px; }
+.picks.one .pick .n { grid-column: 1 / -1; text-align: right; padding-top: 12px; border-top: 1px solid #3a3320; font-size: 52px; }
+.picks.one .pick .n::before { content: "投票する枚数"; float: left; margin-top: 22px; font-size: 15px; font-weight: 700; color: var(--dim); }
+/* お店が分からないときの画面の見出し: 新しいロゴ（2026-10-14） */
+.scr h1.logo-h1 { margin: 24px 0 4px; line-height: 0; }
+.scr h1.logo-h1 img { display: inline-block; width: 148px; height: 48px; pointer-events: none; -webkit-user-drag: none; }
+
+/* 確定オッズの注意書き（投票・確認の画面。確定オッズを動かさない設定のときは出さない） */
+.oddsnote { font-size: 12.5px; line-height: 1.5; color: var(--dim); text-align: center; margin: 6px 4px 8px; }
+/* 受付の 2 段（2026-10-16）: 参加受付の締切・返却 */
+.note.xclosed { font-size: 15px; text-align: center; }
+.note.xclosed b { display: block; font-size: 16px; color: #fff; margin-bottom: 4px; }
+.note.xclosed span b { display: inline; font-size: inherit; color: #ffe08a; margin: 0; }
+.qrbox.wait { box-shadow: 0 0 0 3px #555; }
+.qrbox.wait svg { opacity: .25; }
+.rc-h.shut { color: #ff9c8a; }
+.hit.ret .t { color: #8fd3ff; }
+.hit.ret .a { text-shadow: 0 0 24px rgba(120, 190, 255, .7); }
+.hit.ret .a small { color: #8fd3ff; }
+/* 払い戻しは額（2026-10-16）: 「1枚あたり」は数字の上に小さく、「当選額」の見出し */
+.odds .o small { display: block; margin: 0 0 1px; font-size: 10px; text-align: right; }
+.hit .k { font-size: 14px; color: var(--dim); letter-spacing: .2em; margin-top: 2px; }
+
+/* ======================================================================================================
+   投票画面をシンプルに（2026-10-17 オーナー「投票中は払い戻し額がわかるように・出走中も当選したらいくらが見えるように」）。上の決まりを上書きする
+   一覧 6 頭（枠色の番号・馬名・1枚あたりを大きく）＋ 当たったら額、下に －1/＋1/＋10/＋100/0 と「投票を確認」。押す所はどれも 48px 以上
+   ====================================================================================================== */
+/* 進み具合（小）: 投票・確認の画面 */
+.steps.mini { gap: 4px; }
+.steps.mini li { flex-direction: row; justify-content: center; gap: 4px; font-size: 11px; }
+.steps.mini li i { width: 20px; height: 20px; font-size: 11px; border-width: 1px; flex: none; }
+.steps.mini li::after { display: none; }
+.steps.mini li.now { color: var(--gold); }
+.scr.vote, .scr.confirm { gap: 8px; margin-top: -6px; }
+/* 上の帯: 残り ○枚 ｜ 当たったら 最大 ○○ */
+.scr.vote .left { top: 107px; min-height: 58px; padding: 6px 14px; gap: 10px; background: rgba(20, 17, 9, .97); border-color: #3a3320; }
+.left .lt { display: flex; align-items: baseline; gap: 2px; white-space: nowrap; }
+.left .lt .l1 { font-size: 15px; color: #cfd6cc; margin-right: 4px; }
+.left .lt b { font-size: 36px; font-weight: 900; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1; }
+.left .lt small { font-size: 16px; color: var(--cream); font-weight: 700; margin-left: 2px; }
+.left.zero .lt b, .left.zero .lt small { color: var(--ok); }
+.ifsum { display: grid; grid-template-columns: auto auto; justify-content: end; align-items: baseline; column-gap: 6px; text-align: right; min-width: 0; }
+.ifsum .k { grid-column: 1 / -1; font-size: 12px; color: var(--dim); }
+.ifsum b { font-size: 22px; font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.ifsum small { grid-column: 1 / -1; font-size: 12px; color: #cfd6cc; font-variant-numeric: tabular-nums; }
+.ifsum:empty { display: none; }
+i.mey { font-style: normal; font-size: 10px; font-weight: 700; color: #b9b08c; border: 1px solid #5a5236; border-radius: 4px; padding: 0 4px; margin-left: 4px; vertical-align: 2px; letter-spacing: .04em; white-space: nowrap; }
+.oddsnote { margin: -2px 0 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 出馬表 */
+.scr.vote .list { gap: 6px; }
+.scr.vote .card { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; min-height: 58px; padding: 6px 14px 6px 7px; background: #100e08; }
+.scr.vote .card .waku { width: 44px; height: 44px; font-size: 25px; grid-row: 1 / span 2; }
+.scr.vote .card:not(.has) .waku { grid-row: auto; }
+.scr.vote .card.sel { border-color: var(--gold); background: #231c09; box-shadow: 0 0 0 1px var(--gold), 0 0 16px rgba(255, 215, 115, .22); }
+.scr.vote .card.has:not(.sel) { border-color: #7a6324; }
+.card .cm { min-width: 0; }
+.card .hname { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .if { grid-column: 2 / -1; margin-top: -2px; font-size: 13px; color: #cfd6cc; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.card .if b { color: var(--cream); font-size: 14px; }
+.card .if em { font-style: normal; font-weight: 900; color: var(--gold); font-size: 16px; }
+.card .per { text-align: right; line-height: 1; }
+.card .per small { display: block; font-size: 10px; color: var(--dim); margin-bottom: 3px; }
+.card .per b { font-size: 26px; font-weight: 900; color: var(--cream); font-variant-numeric: tabular-nums; }
+/* 下の操作 */
+.scr.vote .dock { gap: 8px; padding-top: 8px; }
+.scr.vote .dock .who { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; text-align: left; white-space: nowrap; }
+.dock .who .wn { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; color: #cfd6cc; }
+.dock .who .wn:only-child { flex: 1; text-align: center; color: var(--dim); }
+.dock .who .rest { flex: none; min-height: 48px; padding: 0 16px; font: inherit; font-size: 14px; font-weight: 700; border-radius: 999px; border: 1px solid var(--gold2); background: #1c170a; color: var(--cream); }
+.plus.five { grid-template-columns: 1fr 1fr 1.1fr 1.25fr 1fr; gap: 6px; }
+.plus.five button { min-height: 54px; padding: 0; font-size: 20px; }
+.plus.five [data-act] { background: #15120a; border-color: #4a4128; color: #cfd6cc; font-size: 18px; }
+.plus.five button:disabled { opacity: .28; }
+.scr.vote .dock .btn { min-height: 56px; }
+.scr.vote .dock .btn:disabled { opacity: 1; background: #2a2414; color: #b9ae88; box-shadow: none; }
+.scr.vote details.howto { margin-top: 2px; }
+/* 確認: 1 頭ごとに 枚数 と 当たったら額 */
+.picks .pick { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 8px; padding: 12px 14px; }
+.picks .pick .nm { font-size: 19px; }
+.picks .pick .n { font-size: 32px; }
+.picks .pick .pif { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid #3a3320; }
+.picks .pick .pif span { font-size: 14px; color: #cfd6cc; margin-right: auto; }
+.picks .pick .pif b { font-size: 26px; font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; line-height: 1; }
+.total { gap: 10px; padding: 12px 16px; }
+.total > span:first-child b { font-size: 30px; font-weight: 900; color: var(--cream); margin-left: 6px; }
+.total > span:first-child small { font-size: 15px; color: var(--dim); margin-left: 2px; }
+.total .ifsum b { font-size: 22px; color: var(--gold); }
+.total .ifsum small { margin: 0; color: #cfd6cc; }
+/* 待ち・レース中: 札「2番 ウエノパンダ 30枚 → 当たったら 18,300」 */
+.mycards { display: flex; flex-direction: column; gap: 8px; }
+.mycard { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: #100e08; border: 1px solid #3a3320; }
+.mycard .waku { width: 44px; height: 44px; font-size: 24px; }
+.mycard .mc-h { font-size: 17px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mycard .mc-b { margin-top: 2px; font-size: 14px; color: #cfd6cc; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mycard .mc-b b { font-size: 16px; color: var(--cream); }
+.mycard .mc-b em { font-style: normal; font-size: 22px; font-weight: 900; color: var(--gold); }
+.ifsum.wide { padding: 6px 4px 0; border-top: 1px solid #2a2416; }
+.bs-f { justify-content: flex-start; }
+@media (max-height: 600px) {
+  .scr.vote .left { top: 0; min-height: 52px; } .left .lt b { font-size: 28px; }
+  .scr.vote .dock .who { min-height: 48px; }
+}
+
+/* ======================================================================================================
+   とことんシンプルに（2026-10-17 オーナー「細かい説明がいらない」）: 各画面 = 短い見出し ＋ 入力か数字 ＋ 主なボタン 1 つ
+   進み具合の丸・次のレースの札・遊び方の折りたたみ・注意書きは出さない。上の帯は店名と時刻だけ
+   ====================================================================================================== */
+.top { padding-bottom: 6px; }
+.store { font-size: 12px; }
+.scr.min { gap: 16px; padding-top: 18px; }
+.scr.min > h1 { margin: 0; font-size: 28px; letter-spacing: .06em; }
+.scr.min input.big { font-size: 34px; }
+.link { display: block; margin: 0 auto; min-height: 48px; padding: 0 18px; font: inherit; font-size: 15px; color: var(--dim); background: none; border: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.btn.ghost.unpaid { min-height: 48px; font-size: 15px; font-weight: 700; color: var(--cream); border-color: var(--gold2); background: #1c170a; }
+.scr.min .counter { padding: 6px 0 0; }
+.scr.min .counter .num { font-size: 84px; }
+.scr.min .minor button { min-width: 72px; min-height: 48px; font-size: 18px; font-weight: 700; }
+/* 締切などの案内は 1 行 */
+.note { text-align: center; padding: 12px 14px; }
+.note b { display: block; font-size: 17px; color: #fff; }
+.note span { display: block; margin-top: 2px; font-size: 15px; color: var(--cream); }
+.note.red span { color: #ffd0c6; }
+.note.xclosed span b { display: inline; }
+/* スタッフに見せる QR */
+h1.show { margin: 0; letter-spacing: .06em; color: #1a1408; font-size: 22px; }
+.qrbox.big { width: min(78vw, 300px); }
+.authn { text-align: center; line-height: 1; color: var(--cream); font-size: 20px; font-weight: 700; }
+.authn b { font-size: 48px; font-weight: 900; margin-right: 4px; font-variant-numeric: tabular-nums; }
+/* 投票しました・レース中 */
+.scr.min h1.done-h { margin: 0; font-size: 24px; }
+.nexta { padding: 14px 16px; border-width: 1px; }
+.nexta .clock .k { font-size: 14px; color: #cfe9d6; }
+/* 結果 */
+.hit h1.t, .miss h1.t { margin: 0; }
+.hit h1.t { font-size: 34px; letter-spacing: .3em; padding-left: .3em; }
+.miss { padding: 40px 0 4px; }
+.miss h1.t { font-size: 40px; color: #cfd6cc; letter-spacing: .3em; padding-left: .3em; }
+.nextr { margin: 0; text-align: center; font-size: 18px; color: var(--cream); font-variant-numeric: tabular-nums; }
+.hit .a { font-size: 72px; }
+.modal .box h3 { font-size: 20px; padding: 6px 0; }
+.okfx b { font-size: 28px; }
+/* 投票画面: 一覧が短くても操作の帯は画面の下に（指の位置がいつも同じ） */
+.scr.vote { min-height: calc(100vh - 123px); min-height: calc(100dvh - 123px); }
+.scr.vote > .dock { margin-top: auto; }
+@media (orientation: landscape) and (max-height: 500px) { .scr.vote { min-height: 0; } .scr.vote > .dock { margin-top: 0; } }
+
+/* 交換の割合（2026-10-17）: 大きな枚数の下に小さく「リングバウンティ 600」 */
+.counter .eq.rb, .eq.rb { font-size: 15px; color: var(--gold); margin-top: 6px; font-weight: 700; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+.eq.authrb { text-align: center; margin-top: 4px; }
+
+/* casa DERBY CHIPS（2026-10-17）: ボタンが 100 刻み（＋1,000・＋10,000）になったので 1 行に収める */
+.plus button { white-space: nowrap; letter-spacing: -.02em; }
+.plus.five { grid-template-columns: .95fr .95fr 1.15fr 1.35fr .7fr; gap: 5px; }
+.plus.five button { font-size: 16px; white-space: nowrap; letter-spacing: -.03em; }
+.plus.five [data-act] { font-size: 16px; }
+@media (max-width: 350px) { .plus.five button, .plus.five [data-act] { font-size: 14px; } .plus button { font-size: 19px; } }
