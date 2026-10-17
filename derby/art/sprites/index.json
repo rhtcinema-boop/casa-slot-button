@@ -1,0 +1,370 @@
+{
+ "bay_side": {
+  "frames": 6,
+  "w": 360,
+  "h": 260,
+  "pad": 8,
+  "ground": 252,
+  "top": 8,
+  "legY": 167,
+  "splitX": 174,
+  "clear": [
+   0,
+   10,
+   17,
+   12,
+   17,
+   10
+  ],
+  "mirrored": false,
+  "walkFrame": 5
+ },
+ "bay_front": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 199,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 1
+ },
+ "bay_back": {
+  "frames": 8,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 196,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 2
+ },
+ "chestnut_side": {
+  "frames": 6,
+  "w": 360,
+  "h": 260,
+  "pad": 8,
+  "ground": 252,
+  "top": 8,
+  "legY": 167,
+  "splitX": 174,
+  "clear": [
+   0,
+   10,
+   17,
+   12,
+   17,
+   10
+  ],
+  "mirrored": false,
+  "walkFrame": 5
+ },
+ "chestnut_front": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 199,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 1
+ },
+ "chestnut_back": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 194,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 2
+ },
+ "black_side": {
+  "frames": 6,
+  "w": 360,
+  "h": 260,
+  "pad": 8,
+  "ground": 252,
+  "top": 8,
+  "legY": 167,
+  "splitX": 174,
+  "clear": [
+   0,
+   10,
+   17,
+   12,
+   17,
+   10
+  ],
+  "mirrored": false,
+  "walkFrame": 5
+ },
+ "black_front": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 199,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 1
+ },
+ "black_back": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 188,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 0
+ },
+ "gray_side": {
+  "frames": 6,
+  "w": 360,
+  "h": 260,
+  "pad": 8,
+  "ground": 252,
+  "top": 8,
+  "legY": 167,
+  "splitX": 174,
+  "clear": [
+   0,
+   10,
+   17,
+   12,
+   17,
+   10
+  ],
+  "mirrored": false,
+  "walkFrame": 5
+ },
+ "gray_front": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 199,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 1
+ },
+ "gray_back": {
+  "frames": 8,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 196,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 2
+ },
+ "white_side": {
+  "frames": 6,
+  "w": 360,
+  "h": 260,
+  "pad": 8,
+  "ground": 252,
+  "top": 8,
+  "legY": 167,
+  "splitX": 174,
+  "clear": [
+   0,
+   10,
+   17,
+   12,
+   17,
+   10
+  ],
+  "mirrored": false,
+  "walkFrame": 5
+ },
+ "white_front": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 199,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 1
+ },
+ "white_back": {
+  "frames": 8,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 196,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 2
+ },
+ "palomino_side": {
+  "frames": 6,
+  "w": 360,
+  "h": 260,
+  "pad": 8,
+  "ground": 252,
+  "top": 8,
+  "legY": 167,
+  "splitX": 174,
+  "clear": [
+   0,
+   10,
+   17,
+   12,
+   17,
+   10
+  ],
+  "mirrored": false,
+  "walkFrame": 5
+ },
+ "palomino_front": {
+  "frames": 6,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 192,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 1
+ },
+ "palomino_back": {
+  "frames": 8,
+  "w": 200,
+  "h": 280,
+  "pad": 8,
+  "ground": 272,
+  "top": 8,
+  "legY": 196,
+  "splitX": 100,
+  "clear": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "mirrored": true,
+  "walkFrame": 2
+ }
+}
