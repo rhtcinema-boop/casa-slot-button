@@ -6,6 +6,9 @@ const root = path.join(__dirname, '..');
 const ls = (dir, ext) => fs.readdirSync(path.join(root, dir)).filter((f) => f.endsWith(ext)).sort().map((f) => (dir === '.' ? f : dir + '/' + f));
 // APK に内蔵するものと同じ並び（.github/workflows/tv.yml の cp と合わせる）
 const list = ['index.html', 'manifest.webmanifest', 'cloud-config.js'].concat(ls('.', '.png'), ls('css', '.css'), ls('js', '.js'));
+// casa DERBY（テレビのゲームの切り替え・2026-10-17）: derby/tv-files.json に並んだテレビ用のファイルも取り込む（derby/ は casa-keiba の tools/build-derby-deploy.js で作る）
+const derbyList = path.join(root, 'derby', 'tv-files.json');
+if (fs.existsSync(derbyList)) JSON.parse(fs.readFileSync(derbyList, 'utf8')).files.forEach((f) => list.push('derby/' + f.path));
 const v = (/id="ver">([^<]*)</.exec(fs.readFileSync(path.join(root, 'index.html'), 'utf8')) || [])[1] || '';
 const body = JSON.stringify({ v, files: list.map((p) => ({ path: p, sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, p))).digest('hex') })) }, null, 1) + '\n';
 const out = path.join(root, 'version.json');
