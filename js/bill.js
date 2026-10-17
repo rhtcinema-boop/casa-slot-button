@@ -387,10 +387,9 @@
   }
   function askStage(box, no) {
     return new Promise((resolve) => {
-      const mx = stageMax();
-      box.classList.add('stagepick');
+      box.classList.add('stagepick'); // b109: MAX 金額は出さない（オーナー指示）
       box.innerHTML = '<h1>どのステージから？</h1><p class="chkno">会計 No.<b>' + esc(no) + '</b>　紙幣1枚でどれでも同じ</p><div class="stg">' +
-        [1, 2, 3].map((n) => '<button class="s' + n + '" data-s="' + n + '"><b>STAGE ' + n + '</b>' + (mx[n] ? '<i>MAX ' + fmtN(mx[n]) + '</i>' : '') + '</button>').join('') +
+        [1, 2, 3].map((n) => '<button class="s' + n + '" data-s="' + n + '"><b>STAGE ' + n + '</b></button>').join('') +
         '</div><div class="nrow"><button class="bk" id="sback">戻る</button></div>';
       box.querySelector('.stg').onclick = (e) => { const s = e.target.closest('[data-s]'); if (!s) return; buzz(20); resolve(Number(s.dataset.s)); };
       $('sback').onclick = () => resolve(null);
