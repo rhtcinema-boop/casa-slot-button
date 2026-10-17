@@ -1835,3 +1835,19 @@ body.super.hw #stage[data-stage="1"] .bulbs i { background: radial-gradient(circ
 @keyframes drtag { from { transform: translateX(-50%) rotate(-3deg) scale(.3); opacity: 0; } }
 body.lite #drfx .drr, body.lite #dr3 .in .burst, body.lite #dr3 .dr::after { animation: none; }
 body.is-tv #dr3 .dr::after, body.is-tv #dr3 .dr em, body.is-tv #dr3 .in b { filter: none; }
+
+/* ---------- 他店の当たりの知らせ（b112）: 待機中に画面いっぱいで「○○ で当たり！ 5,000 HIT!」 ---------- */
+#hitnote { position: absolute; inset: 0; z-index: 7; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden; background: radial-gradient(ellipse at 50% 50%, rgba(40, 20, 0, .72) 0%, rgba(0, 0, 0, .9) 70%); animation: hnIn .45s ease-out; }
+#hitnote.out { opacity: 0; transition: opacity .45s ease; }
+@keyframes hnIn { from { opacity: 0; } }
+#hitnote .hn-rays { position: absolute; left: 50%; top: 50%; width: 2600px; height: 2600px; margin: -1300px 0 0 -1300px; background: repeating-conic-gradient(from 0deg, rgba(255, 210, 90, .3) 0 7deg, transparent 7deg 18deg); -webkit-mask: radial-gradient(circle, #000 0, #000 14%, transparent 50%); mask: radial-gradient(circle, #000 0, #000 14%, transparent 50%); animation: drspin 18s linear infinite; }
+#hitnote .hn-in { position: relative; text-align: center; animation: hnPop .6s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes hnPop { from { transform: scale(.4); opacity: 0; } }
+#hitnote .hn-store { font: 900 64px/1.2 var(--font-label); color: #fff6d6; letter-spacing: .08em; text-shadow: 0 0 26px rgba(255, 220, 140, .9), 0 4px 0 #2a1a03; }
+#hitnote .hn-store em { font-style: normal; margin-right: .2em; }
+#hitnote .hn-val { margin-top: 16px; font: 700 240px/1 var(--font-num); background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; filter: drop-shadow(0 6px 0 #4a2c04) drop-shadow(0 10px 0 #1a0f02) drop-shadow(0 0 50px rgba(255, 210, 110, .85)); white-space: nowrap; }
+#hitnote .hn-hit { margin-top: 6px; font: italic 900 110px/1 "Arial Black", Impact, sans-serif; color: #fff; -webkit-text-stroke: 4px #5a0000; text-shadow: 0 6px 0 #5a0000, 0 0 30px #ff3030; letter-spacing: .04em; animation: hnBlink .5s steps(1) infinite; }
+@keyframes hnBlink { 50% { color: #ffe680; } }
+#hitnote.lv1 .hn-val { font-size: 200px; }
+body.lite #hitnote .hn-rays, body.lite #hitnote .hn-hit { animation: none; }
+body.is-tv #hitnote .hn-val { filter: drop-shadow(0 6px 0 #4a2c04) drop-shadow(0 0 30px rgba(255, 210, 110, .8)); }
