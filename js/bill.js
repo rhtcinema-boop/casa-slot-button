@@ -44,12 +44,14 @@
   const isStale = () => !storeDoc || !storeDoc.lastSeen || Date.now() - storeDoc.lastSeen > 25 * 60 * 1000; // 生存報告は 10 分ごと
   function render() {
     const st = $('store'), bill = $('bill'), hint = $('hint');
-    const busy = !!(storeDoc && storeDoc.phase === 'busy');
+    const door = doorPhase(); // b108: 端末が扉を選ぶのを待っている
+    const busy = !!(storeDoc && storeDoc.phase === 'busy') || !!door;
     if (!saved) return;
+    showDoor(door && !deleted && !isStale() ? door : null);
     if (deleted) { st.className = 'store off'; $('storeText').textContent = saved.name + ' はマスターで削除されました'; }
     else if (!storeDoc) { st.className = 'store off'; $('storeText').textContent = saved.name + ' … 接続中'; }
     else if (isStale()) { st.className = 'store off'; $('storeText').textContent = saved.name + ' の端末が見つかりません'; }
-    else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + ' の端末はゲーム中'; }
+    else if (busy) { st.className = 'store busy'; $('storeText').textContent = saved.name + (door ? ' の端末は扉を選んでいます' : ' の端末はゲーム中'); }
     else { st.className = 'store'; $('storeText').textContent = saved.name + ' の端末につながっています'; }
     armed = !busy && !sending && !deleted && !isStale(); // b99: 端末が見つからないときも入れない
     bill.classList.toggle('gray', busy || deleted || isStale());
@@ -58,6 +60,56 @@
     if (saved.check) { chk.classList.remove('hidden'); chk.innerHTML = '会計 No.<b>' + esc(saved.check) + '</b>' + (saved.stage ? '<span class="stg s' + saved.stage + '">STAGE ' + saved.stage + '</span>' : ''); } else chk.classList.add('hidden');
     ['acc', 'bill', 'hint'].forEach((id) => { const el = $(id); [1, 2, 3].forEach((n) => el.classList.toggle('s' + n, saved.stage === n)); }); // b107: 選んだステージの色
     if (!$('adm').classList.contains('hidden')) renderAdmIfChanged();
+  }
+
+  /* ---------- 3つの扉（b108） ----------
+     端末が当たりの回を扉で見せるとき、店舗ドキュメントの phase が 'door|会計番号|ステージ' になる。その間は画面いっぱいに扉を 3 つ出し、
+     タップした扉を端末に送る（cmds の type 'door'）。端末が扉を開けると phase が戻るので、扉の画面を閉じる */
+  function doorPhase() {
+    const ph = storeDoc && typeof storeDoc.phase === 'string' ? storeDoc.phase : '';
+    if (ph.indexOf('door') !== 0) return null;
+    const a = ph.split('|');
+    return { key: ph + '@' + (storeDoc.phaseAt || 0), check: a[1] || '', stage: Number(a[2]) || 0 };
+  }
+  let doorKey = '', doorSent = false;
+  function showDoor(d) {
+    const old = $('doorpick');
+    if (!d) { if (old) old.remove(); doorKey = ''; doorSent = false; return; }
+    if (old && doorKey === d.key) return;
+    if (old) old.remove();
+    doorKey = d.key; doorSent = false;
+    const w = document.createElement('div'); w.id = 'doorpick';
+    let cf = '';
+    const cols = ['#ffd040', '#ff4040', '#fff', '#40c0ff', '#ff80d0', '#80ff80'];
+    for (let k = 0; k < 24; k++) cf += '<i style="left:' + (Math.random() * 100).toFixed(1) + '%;animation-delay:-' + (Math.random() * 4).toFixed(2) + 's;background:' + cols[k % 6] + '"></i>';
+    w.innerHTML = '<div class="rays"></div><div class="cf">' + cf + '</div><div class="dwrap"><div class="top">casa SLOT</div><div class="tag">DOOR CHANCE!</div><h1>扉をタップ</h1>' +
+      '<div class="doors">' + [0, 1, 2].map((i) => '<button class="dr" data-i="' + i + '"><b class="q">?</b><em>' + (i + 1) + '</em><i></i></button>').join('') + '</div>' +
+      '<p class="dmsg" id="dmsg"></p>' +
+      (d.check || d.stage ? '<div class="foot">' + (d.check ? '会計 No. <b>' + esc(d.check) + '</b>' : '') + (d.stage ? '<span>STAGE ' + d.stage + '</span>' : '') + '</div>' : '') + '</div>';
+    document.body.appendChild(w);
+    buzz([30, 40, 30]);
+    w.querySelector('.doors').onclick = (e) => { const b = e.target.closest('.dr'); if (b) sendDoor(Number(b.dataset.i), b); };
+  }
+  async function sendDoor(i, btn) {
+    if (doorSent || !saved) return;
+    doorSent = true; unlockAudio(); buzz(40);
+    const w = $('doorpick'), key = doorKey;
+    if (w) w.classList.add('sent');
+    btn.classList.add('tap');
+    const msg = (t) => { const m = $('dmsg'); if (m) m.textContent = t || ''; };
+    const fail = (t) => { if (doorKey !== key) return; doorSent = false; btn.classList.remove('tap'); if (w) w.classList.remove('sent'); msg(t); buzz([80, 60, 80]); };
+    msg('');
+    let id = null;
+    try { id = await withTimeout(Cloud.pushCmd(saved.storeId, { ts: Date.now(), phone: saved.phone, type: 'door', data: { i } }), 8000); }
+    catch (e) { fail('送れませんでした。通信を確認してもう一度タップ'); return; }
+    let done = false;
+    const un = Cloud.watchCmd(saved.storeId, id, (d) => {
+      if (done || !d || d.state === 'new') return;
+      done = true; un();
+      if (d.state === 'ok') { beep(true); return; } // 扉の画面は phase が戻ったら閉じる
+      fail(d.reason === 'nodoor' ? '扉はもう開いています' : 'もう一度タップしてください');
+    });
+    setTimeout(() => { if (!done) { done = true; un(); fail('端末から返事がありません。もう一度タップ'); } }, 8000);
   }
 
   /* ---------- 紙幣の大きさと置き場所 ---------- */
@@ -162,7 +214,7 @@
   }
   let msgTimer = 0;
   function touchMsg() { // 触ったのに動かないときの理由（1.5 秒）
-    const t = sending ? '送信中です' : deleted ? '店舗が削除されています' : isStale() ? '端末が見つかりません' : (storeDoc && storeDoc.phase === 'busy') ? '端末はゲーム中です' : '';
+    const t = sending ? '送信中です' : deleted ? '店舗が削除されています' : isStale() ? '端末が見つかりません' : doorPhase() ? '端末で扉を選んでいます' : (storeDoc && storeDoc.phase === 'busy') ? '端末はゲーム中です' : '';
     if (!t) return; setMsg(t, 'err'); clearTimeout(msgTimer); msgTimer = setTimeout(() => setMsg(''), 1500);
   }
   function finish(ok, text) {
