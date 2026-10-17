@@ -2026,7 +2026,7 @@ const Game = (function () {
      （マスターが決めた当たりやすいプリセットで抽選＋派手な演出）。お客さんにはメーターの溜まり具合だけ見せ、数字は出さない ---------- */
   let meter = null, unwatchMeter = null, superPreset = null, superPresetId = '', unwatchSuperPreset = null, superStarting = false;
   const superActive = () => !!(meter && meter.enabled && meter.superLeft > 0);
-  function renderMeter() { // b103: リール左右の光の柱がゲージ（オーナー選択「案B」）。下から金色で満ちていき、満タンで SUPER MODE
+  function renderMeter() { // b103: リール左右の光の柱がゲージ（オーナー選択「案B」）。下から金色で満ちていき、満タンで SUPER MODE。b117: 柱の上に ％ を出す
     const on = !!(meter && meter.enabled);
     document.body.classList.toggle('meteron', on);
     const supNow = superActive() || !!(Store.state && Store.state.play && Store.state.play.sup && Store.state.play.phase !== 'shown'); // b105: 最後の 1 回を回している間もスーパーの見た目
@@ -2035,6 +2035,10 @@ const Game = (function () {
     const r = supNow ? 1 : Math.max(0, Math.min(1, (meter.miss || 0) / Math.max(1, meter.target || 300)));
     stageEl.style.setProperty('--sfill', r.toFixed(3));
     document.body.classList.toggle('meterhot', !supNow && r >= 0.8);
+    document.body.classList.toggle('meter90', !supNow && r >= 0.9); // b117: 段階（オーナー指示「80パー超えてきたら虹色や点滅で、もうそろ貯まる感」）。80%〜虹色、90%〜点滅、95%〜速く強く
+    document.body.classList.toggle('meter95', !supNow && r >= 0.95);
+    const pct = Math.min(99, Math.floor(r * 100)) + '%'; // b117: ％で出す（満タンになるとスーパーモードなので 100% は出さない）
+    ['spctL', 'spctR'].forEach((id) => { const el = $(id); if (el && el.textContent !== pct) el.textContent = pct; });
   }
   function onMeter(m) {
     const wasSuper = superActive();
