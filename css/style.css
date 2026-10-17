@@ -1783,7 +1783,22 @@ body.meteron .led .sfill::after { content: ""; position: absolute; left: 0; righ
 @keyframes sfilltop { 50% { opacity: .45; } }
 body.meteron .stag { display: grid; place-items: center; position: absolute; top: 6px; width: 64px; height: 24px; margin-left: -32px; z-index: 7; border-radius: 12px; font: 900 11px/1 var(--font-label); letter-spacing: .2em; color: #1a1408; background: linear-gradient(180deg, #ffe9a8, #c9a03e); box-shadow: 0 0 0 2px #000, 0 0 calc(8px + 18px * var(--sfill, 0)) rgba(255, 215, 115, calc(.35 + .6 * var(--sfill, 0))); pointer-events: none; }
 body.meteron .stag.l { left: -26px; } body.meteron .stag.r { left: calc(100% + 26px); }
-body.meterhot .led .sfill { animation: sfillhot .7s ease-in-out infinite; }
+/* b117: 柱の上の ％ と、80% / 90% / 95% の段階 */
+.spct { display: none; }
+body.meteron .spct { display: block; position: absolute; top: 38px; width: 90px; margin-left: -45px; z-index: 7; text-align: center; font: 700 24px/1 var(--font-num); letter-spacing: .02em; color: #ffe9a8; text-shadow: 0 0 8px rgba(255, 215, 115, .8), 0 2px 0 #000; pointer-events: none; }
+body.meteron .spct.l { left: -26px; } body.meteron .spct.r { left: calc(100% + 26px); }
+body.super .spct { display: none; }
+body.meterhot .led .sfill { background: linear-gradient(180deg, #ff4fd8, #ffd773, #4fd8ff, #7dff9a, #ff4fd8); background-size: 100% 200%; box-shadow: 0 0 20px rgba(255, 170, 240, .85); animation: superpillar 1.6s linear infinite; }
+body.meterhot .spct { background: linear-gradient(90deg, #ff4fd8, #ffd773, #4fd8ff, #7dff9a, #ff4fd8); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; text-shadow: none; filter: drop-shadow(0 2px 0 #000) drop-shadow(0 0 6px rgba(255, 255, 255, .5)); animation: spctflow 1.2s linear infinite; }
+body.meter90 .led .sfill { animation: superpillar 1.2s linear infinite, meterblink 1s ease-in-out infinite; }
+body.meter90 .spct { animation: spctflow .9s linear infinite, meterblink 1s ease-in-out infinite; }
+body.meter95 .led .sfill { animation: superpillar .6s linear infinite, meterblink .4s ease-in-out infinite; box-shadow: 0 0 30px 6px rgba(255, 170, 240, 1); }
+body.meter95 .spct { animation: spctflow .5s linear infinite, meterblink .4s ease-in-out infinite, spctpulse .4s ease-in-out infinite alternate; }
+@keyframes spctflow { to { background-position: 200% 0; } }
+@keyframes meterblink { 50% { opacity: .35; } }
+@keyframes spctpulse { to { transform: scale(1.25); } }
+#stage.fxmode .spct { visibility: hidden; }
+body.lite .spct, body.lite.meterhot .led .sfill { animation: none !important; }
 body.meterhot .stag { animation: supertxt .35s ease-in-out infinite alternate; }
 @keyframes sfillhot { 50% { box-shadow: 0 0 30px 6px rgba(255, 225, 140, 1); filter: brightness(1.25); } }
 body.super .led .sfill { height: calc(100% - 6px); background: linear-gradient(180deg, #ff4fd8, #ffd773, #4fd8ff, #ff4fd8); background-size: 100% 200%; animation: superpillar 1s linear infinite; box-shadow: 0 0 22px rgba(255, 79, 216, .95); }
