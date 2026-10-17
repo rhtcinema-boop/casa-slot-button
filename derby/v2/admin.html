@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0d">
+<meta name="robots" content="noindex">
+<title>casa DERBY 管理</title>
+<link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<link rel="icon" href="../icon-derby-180.png" sizes="180x180" type="image/png">
+<link rel="stylesheet" href="admin.css?v=v2a4">
+</head>
+<body>
+<header><h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="98" height="32" alt="casa DERBY" draggable="false"><span>管理</span></h1><span class="sp"></span><small id="clock"></small><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
+<nav class="tabs" id="tabs" style="display:none">
+  <button data-tab="stores" class="on">店舗</button><button data-tab="timetable">時刻表</button><button data-tab="races">今日のレース</button><button data-tab="tuning">裏の調整</button><button data-tab="stats">集計</button><button data-tab="ops">運用</button>
+</nav>
+<main id="main"></main>
+<div id="toast"></div>
+<script src="client.js?v=v2a4"></script>
+<script src="admin.js?v=v2a9"></script>
+</body>
+</html>
