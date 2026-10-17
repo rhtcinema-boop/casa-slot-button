@@ -1836,13 +1836,13 @@ body.super.hw #stage[data-stage="1"] .bulbs i { background: radial-gradient(circ
 body.lite #drfx .drr, body.lite #dr3 .in .burst, body.lite #dr3 .dr::after { animation: none; }
 body.is-tv #dr3 .dr::after, body.is-tv #dr3 .dr em, body.is-tv #dr3 .in b { filter: none; }
 
-/* ---------- 他店の当たりの知らせ（b112、b113 で速報カードに）: 待機中に右から「CASA NEWS ● LIVE ／ 渋谷 JUST HIT 5,000」 ---------- */
-#hitnote { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; background: linear-gradient(90deg, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, .6)); animation: hnFade .5s ease-out; }
+/* ---------- 他店の当たりの知らせ（b112、b113 で速報カードに、b114 でまん中に）: 待機中にまん中へ「CASA NEWS ● LIVE ／ 渋谷 JUST HIT 5,000」 ---------- */
+#hitnote { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, .25) 30%, rgba(0, 0, 0, .7)); animation: hnFade .5s ease-out; }
 @keyframes hnFade { from { opacity: 0; } }
-#hitnote .hn-card { position: absolute; right: 70px; top: 190px; width: 900px; height: 420px; border-radius: 24px; overflow: hidden; background: linear-gradient(135deg, #1b1206, #0a0703); box-shadow: 0 0 0 2px #e9c25e, 0 0 0 6px #000, 0 0 0 8px #8f5f14, 0 30px 80px rgba(0, 0, 0, .85), 0 0 90px rgba(255, 190, 80, .3); animation: hnIn .6s cubic-bezier(.2, .9, .25, 1); }
-@keyframes hnIn { from { transform: translateX(1100px); } }
+#hitnote .hn-card { position: absolute; left: 50%; margin-left: -450px; top: 210px; width: 900px; height: 420px; border-radius: 24px; overflow: hidden; background: linear-gradient(135deg, #1b1206, #0a0703); box-shadow: 0 0 0 2px #e9c25e, 0 0 0 6px #000, 0 0 0 8px #8f5f14, 0 30px 80px rgba(0, 0, 0, .85), 0 0 90px rgba(255, 190, 80, .3); animation: hnIn .6s cubic-bezier(.2, .9, .25, 1); }
+@keyframes hnIn { from { transform: scale(.82); opacity: 0; } }
 #hitnote.out { opacity: 0; transition: opacity .45s ease; }
-#hitnote.out .hn-card { transform: translateX(1100px); transition: transform .45s cubic-bezier(.6, 0, .8, .4); }
+#hitnote.out .hn-card { transform: scale(.9); transition: transform .45s ease; }
 #hitnote .hn-head { position: relative; height: 84px; display: flex; align-items: center; padding: 0 34px; overflow: hidden; background: linear-gradient(180deg, #f6d571, #c8922e 55%, #8f5f14); }
 #hitnote .hn-head::after { content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 30%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .55), transparent); transform: skewX(-20deg); animation: hnShine 2.4s .5s ease-in-out infinite; }
 @keyframes hnShine { to { left: 130%; } }
@@ -1850,7 +1850,7 @@ body.is-tv #dr3 .dr::after, body.is-tv #dr3 .dr em, body.is-tv #dr3 .in b { filt
 #hitnote .hn-live { margin-left: auto; display: flex; align-items: center; gap: 10px; font: 700 24px/1 var(--font-label); letter-spacing: .2em; color: #1a1003; }
 #hitnote .hn-live i { width: 16px; height: 16px; border-radius: 50%; background: #d1180b; box-shadow: 0 0 10px #ff3020; animation: hnLive 1s steps(1) infinite; }
 @keyframes hnLive { 50% { opacity: .25; } }
-#hitnote .hn-body { display: flex; align-items: center; height: 336px; padding: 0 44px; gap: 40px; }
+#hitnote .hn-body { display: flex; align-items: center; justify-content: center; height: 336px; padding: 0 44px; gap: 48px; }
 #hitnote .hn-em { flex: none; width: 150px; height: 150px; border-radius: 50%; display: grid; place-items: center; font-size: 84px; line-height: 1; background: radial-gradient(circle at 40% 35%, #3a2808, #0e0903); box-shadow: 0 0 0 3px #e9c25e, 0 0 30px rgba(255, 210, 110, .5); }
 #hitnote .hn-store { font: 600 64px/1 "Hiragino Mincho ProN", "Yu Mincho", serif; letter-spacing: .1em; color: #fff6d6; white-space: nowrap; }
 #hitnote .hn-store small { display: block; margin-top: 14px; font: 700 24px/1 var(--font-label); letter-spacing: .4em; color: #c9a24a; }
