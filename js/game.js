@@ -488,6 +488,7 @@ const Game = (function () {
       else if (d.type === 'statsReset') { Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0, by: 'phone' }, 'phone'); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.winCount = 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; }); showCredits(); refresh(); if (Admin.isOpen()) Admin.rerender(); ok = true; }
       else if (d.type === 'volume') { const v = Math.max(0, Math.min(1, Number((d.data || {}).v))); if (isFinite(v)) { Store.transact((st) => { st.settings.volume = v; }); Sfx.setVolume(v); ok = true; } else reason = 'volume'; }
       else if (d.type === 'update') { autoUpdate(true); ok = true; }
+      else if (d.type === 'door') { const i = Number((d.data || {}).i); if (doorWait && doorWait.pick(i)) ok = true; else reason = 'nodoor'; } // b108: スマホで選んだ扉
       else if (d.type === 'logout') { ok = true; }
       else reason = 'unknown';
     } catch (e) { ok = false; reason = String(e && e.message || e).slice(0, 60); }
@@ -499,7 +500,7 @@ const Game = (function () {
   let phaseFailAt = 0;
   function phaseWatch() {
     if (!storeMode() || !Store.state.store) return;
-    const ph = billMode() ? (canStart() ? 'idle' : 'busy') : 'idle'; // b99: 紙幣モード OFF のときは busy を残さない
+    const ph = doorWait ? 'door|' + String(doorWait.check || '').slice(0, 10) + '|' + doorWait.stage : billMode() ? (canStart() ? 'idle' : 'busy') : 'idle'; // b108: 扉を選んでいる間はスマホに扉の画面を出させる // b99: 紙幣モード OFF のときは busy を残さない
     if (ph === lastPhase || Date.now() - phaseFailAt < 60000) return;
     lastPhase = ph;
     Cloud.updateStoreFields(Store.state.store.id, { phase: ph, phaseAt: Date.now() }).catch(() => { lastPhase = ''; phaseFailAt = Date.now(); }); // 書けないとき（決まりが古い等）は 60 秒あけてやり直す
@@ -808,6 +809,7 @@ const Game = (function () {
         if (s.play) s.lastValue = s.play.value;
         s.play = null; s.locked = false;
       });
+      doorClear(); // b108
     } catch (err) { UI.toast('保存に失敗しました: ' + err.message, 'err'); return false; }
     busy = true;
     try { // b79: 途中で例外が出ても busy が立ちっぱなしにならないように（立ちっぱなしだと NEXT GAME も自動アップデートも効かなくなる）
@@ -895,8 +897,9 @@ const Game = (function () {
         s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined, check: chk || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
+        if (res.value > 0 && !test && !off && !s.play.free && !s.play.sup && rollDoor()) s.play.door = true; // b108: 当たりの回の一部を 3 つの扉で見せる（FREE SPIN・スーパーモードの回は出さない）
         s.locked = true;
-        Store.log('PLAY', { sup: s.play.sup || undefined, playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
+        Store.log('PLAY', { sup: s.play.sup || undefined, door: s.play.door || undefined, playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
       });
     } catch (err) {
       UI.toast(err.message === 'probs' ? '確率の設定に誤りがあります。設定画面で確認してください。' : '抽選を開始できませんでした（保存エラー）。', 'err');
@@ -951,6 +954,92 @@ const Game = (function () {
     return Math.random() < REVERSE_RATE;
   }
   const RESPIN_RATE = [0, 0.1, 0.12, 0.15]; // 当たりのとき ONE MORE CHANCE になる割合（ステージ別）
+
+  /* ---------- 3つの扉（b108、オーナー指示） ----------
+     紙幣モードで扉が ON（店舗ドキュメントの doors）の店舗で、当たりが決まった回の 5 回に 1 回は、最後のステージでリールの代わりに扉を 3 つ出す。
+     スマホ（cmds の type 'door'）・リモコンの左右と決定・タッチで選ぶまで待ち、選んだ扉からその回の当たり金額が出る。
+     見せ方だけで、金額は抽選で確定済み（どの扉でも同じ）。残りの 2 つは演出用の金額（そのステージで出る金額まで）。
+     待っている間は店舗ドキュメントの phase を 'door|会計番号|ステージ' にして、スマホに扉の画面を出させる */
+  const DOOR_RATE = 0.2;
+  let doorWait = null; // { pick(i), check, stage }
+  function rollDoor() {
+    if (FXT() && FXT().door !== undefined) return !!FXT().door; // 演出確認用
+    return billMode() && !!(cloudStore && cloudStore.doors) && Math.random() < DOOR_RATE; // 店舗ごとの ON/OFF（店舗ドキュメントの doors。最初はテスト店だけ）
+  }
+  function doorClear() {
+    ['dr3', 'drtag', 'drfx', 'drdk'].forEach((id) => { const el = $(id); if (el) el.remove(); });
+    stageEl.classList.remove('doormode');
+  }
+  /* 残りの 2 つの扉の金額: そのステージで出る金額（確率が 0 より大きいもの）までの中から、当たり金額と違うものを、上と下から 1 つずつ */
+  function doorFakes(v, st) {
+    const row = (Store.state.probs || {})[st] || {};
+    const real = Object.keys(row).filter((k) => k !== '0' && k !== 'NEXT' && Number(row[k]) > 0).map(Number);
+    const mx = Math.max.apply(null, real.concat(v));
+    const pool = Array.from(new Set(real.concat([100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 100000]))).filter((x) => x > 0 && x <= mx && x !== v);
+    const pick = (a) => a.splice(Math.floor(Math.random() * a.length), 1)[0];
+    const hi = pool.filter((x) => x > v), lo = pool.filter((x) => x < v), out = [];
+    if (hi.length) out.push(pick(hi));
+    if (lo.length) out.push(pick(lo));
+    const rest = hi.concat(lo);
+    while (out.length < 2 && rest.length) out.push(pick(rest));
+    while (out.length < 2) out.push(v);
+    return Math.random() < 0.5 ? out : out.reverse();
+  }
+  function doorAsk(play, st) {
+    return new Promise((resolve) => {
+      doorClear();
+      stageEl.classList.add('doormode');
+      const fx = document.createElement('div'); fx.id = 'drfx'; fx.innerHTML = '<div class="drr"></div>';
+      const content = $('content'); content.parentNode.insertBefore(fx, content);
+      const dk = document.createElement('div'); dk.id = 'drdk'; content.parentNode.insertBefore(dk, content.nextSibling); // 画面のまわりを暗く
+      const box = document.createElement('div'); box.id = 'dr3';
+      box.innerHTML = [0, 1, 2].map((i) => '<div class="col" data-i="' + i + '"><div class="in"><div class="burst"></div><b></b></div><div class="dr"><b class="q">?</b><em>' + (i + 1) + '</em><i></i></div></div>').join('');
+      $('window').appendChild(box);
+      const tag = document.createElement('div'); tag.id = 'drtag'; tag.textContent = 'DOOR CHANCE!';
+      $('cabwrap').appendChild(tag);
+      setPlate('spin', 'CHOOSE A DOOR', '');
+      Sfx.play('stageReady'); Sfx.play('revive'); flash(true);
+      let sel = -1, done = false;
+      const cols = box.querySelectorAll('.col');
+      const hl = () => cols.forEach((c, i) => c.classList.toggle('hl', i === sel));
+      const pick = (i) => {
+        if (done || !(i >= 0 && i <= 2)) return false;
+        done = true; doorWait = null;
+        try { if (window.TV) TV.setCapture(null); } catch (e) { /* noop */ }
+        phaseWatch();
+        resolve(i);
+        return true;
+      };
+      box.addEventListener('click', (e) => { const c = e.target.closest('.col'); if (c) { Sfx.unlock(); pick(Number(c.dataset.i)); } });
+      try {
+        if (window.TV) TV.setCapture((k) => {
+          if (k === 'ArrowLeft') { sel = sel < 0 ? 0 : Math.max(0, sel - 1); hl(); Sfx.play('button'); }
+          else if (k === 'ArrowRight') { sel = sel < 0 ? 2 : Math.min(2, sel + 1); hl(); Sfx.play('button'); }
+          else if (k === 'Enter') { if (sel < 0) { sel = 1; hl(); } else pick(sel); }
+        });
+      } catch (e) { /* リモコンなし */ }
+      doorWait = { pick, check: play.check || '', stage: st };
+      phaseWatch();
+    });
+  }
+  async function doorFx(play, st) {
+    lastCombo = null;
+    try { Store.transact(() => Store.log('DOOR', { stage: st, value: play.value })); } catch (e) { /* ログのみ */ }
+    const i = await doorAsk(play, st);
+    try { Store.transact(() => Store.log('DOOR_PICK', { door: i + 1 })); } catch (e) { /* ログのみ */ }
+    const fakes = doorFakes(play.value, st), vals = [];
+    for (let k = 0, f = 0; k < 3; k++) vals.push(k === i ? play.value : fakes[f++]);
+    const cols = document.querySelectorAll('#dr3 .col');
+    cols.forEach((c, k) => { c.classList.remove('hl'); c.querySelector('.in b').textContent = fmtN(vals[k]); });
+    if (cols[i]) { cols[i].classList.add('pick'); await wait(350); cols[i].classList.add('open'); }
+    Sfx.play('kyuin'); flash(false); quake();
+    FX.ring(CX, CY, 'gold', 1100, 0.8);
+    FX.burst(CX, CY, 180, { max: 1300, life: 1.6 });
+    await wait(1300);
+    cols.forEach((c, k) => { if (k !== i) c.classList.add('open', 'dim'); });
+    Sfx.play('button');
+    await wait(900);
+  }
 
   /* 停止パターンのカタログ（100通り）。止まりかけ回数(1〜3) × 各回の間(短/普通/長) × 行き過ぎて戻る × じわじわ入る の
      組み合わせを、固定の乱数で並べ替えて先頭100個を使う（毎回同じ100通り）。重さは変わらない（数値の組み合わせだけ）。 */
@@ -1135,16 +1224,18 @@ const Game = (function () {
     tense(0); // 念のため（前の回の期待の演出が残らないように）
     lockbar.classList.remove('show');
     const sym = st < play.stage ? 'NEXT' : play.value;
+    doorClear();
+    const doorPlay = !!play.door && sym !== 'NEXT' && !oneMore; // b108: この回は最後にリールの代わりに扉を出す
     const noSp = skipSpecial; skipSpecial = false;
     // 獲得した FREE SPIN（CREDIT）で回しているゲームでは、さらに FREE SPIN を出さない設定（プリセットで ON/OFF。未設定は ON）
-    const lockFree = (!!play.free && (!!play.dud || Store.state.noRetrigger !== false)) || (storeMode() && !netOk); // 当たりなしの FREE SPIN（dud）の回と、オフラインの間は、FREE SPIN もロゴも出さない（b75）
+    const lockFree = (!!play.free && (!!play.dud || Store.state.noRetrigger !== false)) || (storeMode() && !netOk) || doorPlay; // 当たりなしの FREE SPIN（dud）の回と、オフラインの間は、FREE SPIN もロゴも出さない（b75）
     const logoHit = !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
     const freeN = !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
-    const rev = !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
-    const pat = oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
-    if (!oneMore && !freeN && !logoHit && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
-    const warpTo = oneMore || freeN || logoHit || noSp ? 0 : pickWarp(play, st);
+    const rev = !doorPlay && !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
+    const pat = doorPlay || oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    if (!doorPlay && !oneMore && !freeN && !logoHit && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
+    const warpTo = doorPlay || oneMore || freeN || logoHit || noSp ? 0 : pickWarp(play, st);
     showCredits();
     if (warpTo) { // 普通に回り始めて 5 秒たったところで、いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
@@ -1170,7 +1261,9 @@ const Game = (function () {
     if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
     Sfx.play('shuffle');
 
-    if (oneMore) {
+    if (doorPlay) {
+      await doorFx(play, st); // b108: 扉を選ぶまで待ち、開けてから下の当たりの演出へ
+    } else if (oneMore) {
       // ワンモアチャンス後の引き直し: 短めの回転で本当の結果へ
       oneMore = false;
       await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain' }, extra); // 回り直しも通常と同じ速さ・間隔
