@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<script>window.DERBY_SLOT_HOME = '../index.html';</script><!-- casa SLOT の下に置いた公開版（tools/build-derby-deploy.js が足した 1 行）: テレビのゲームが SLOT になったら戻る先 -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="casa DERBY">
+<meta name="theme-color" content="#5fb53a">
+<meta name="format-detection" content="telephone=no">
+<title>casa DERBY</title>
+<link rel="icon" href="art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<link rel="icon" href="icon-derby-180.png" sizes="180x180" type="image/png">
+<link rel="apple-touch-icon" href="icon-derby-180.png">
+<link rel="preload" href="art/logo-3d/B/title-3d-B-casaWhite.svg" as="image">
+<link rel="stylesheet" href="css/style.css?v=k11">
+</head>
+<body>
+<div id="viewport">
+  <div id="stage">
+    <div class="sun"></div>
+
+    <!-- 上の帯: ロゴ、レース情報、ベットの残り時間（レース中は LIVE）、チャンスボール、メダル -->
+    <header class="top">
+      <div class="logo"><!--logo:compact--><img class="logo-svg" src="art/logo-3d/B/lockup-3d-B-casaWhite.svg" onerror="this.onerror=null;this.src='art/logo-3d/B/png/lockup-3d-B-casaWhite-2x.png'" width="197" height="64" alt="casa DERBY" draggable="false"><!--/logo:compact--></div><!-- ロゴ: art/logo-3d/B/lockup-3d-B-casaWhite.svg（横長。2026-10-14 に新しいロゴへ。レース映像の左下の局のロゴも同じファイル） -->
+      <div class="raceinfo">
+        <b id="raceNo">第1レース</b>
+        <span class="chip" id="raceDist">1000m</span>
+        <span class="chip" id="raceSurf">芝</span>
+        <span class="chip wx" id="raceWeather">晴れ</span>
+      </div>
+      <div class="timer" id="timer"><small>締切まで</small><div class="bar"><i id="timerBar"></i></div><b id="timerNum">30</b></div>
+      <div class="onair"><i></i>LIVE</div>
+      <div class="ballpod"><small>チャンス<br>ボール</small><span id="balls"></span></div>
+      <!-- 音のオン・オフ（いつでも押せる。状態は端末に保存） -->
+      <button class="soundbtn" id="soundBtn" type="button" aria-label="音を消す" title="音のオン・オフ（S キー）"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="x" d="M16 9l6 6M22 9l-6 6"/></svg><small>音</small></button>
+      <div class="medals" id="medalPod"><span class="coin"></span><small>メダル</small><b id="medals">0</b></div>
+    </header>
+
+    <!-- レース画面（レース中は大きくなる） -->
+    <div class="screen" id="screen">
+      <canvas id="race" width="1000" height="480"></canvas>
+      <div class="announce" id="announce"></div>
+      <div class="count" id="count"></div>
+      <!-- 応援（ニンジン）ボタンとルーレット -->
+      <div class="cheer" id="cheer" hidden>
+        <div class="cheer-roulette" id="cheerRoulette"></div>
+        <button class="cheer-btn" id="cheerBtn"><span class="carrot"></span><b>応援！</b><small id="cheerLeft"></small></button>
+      </div>
+      <!-- 結果（表彰台と払い戻し） -->
+      <div class="result" id="result" hidden>
+        <div class="coins" id="coinRain"></div>
+        <h3>レース結果</h3>
+        <div class="podium" id="podium"></div>
+        <div class="hits" id="hits"></div>
+      </div>
+      <!-- 着順掲示板（ターフビジョン風）→ 確定ランプ → 払戻金 -->
+      <div class="tvboard" id="board" hidden>
+        <div class="bd-frame">
+          <div class="bd-head"><b id="bdRace">第1レース</b><span id="bdCond"></span></div>
+          <div class="bd-body">
+            <div class="bd-rows" id="bdRows"></div>
+            <div class="bd-side">
+              <div class="lamp" id="bdLamp">審議</div>
+              <div class="bd-time"><small>タイム</small><b id="bdTime">0:00.0</b></div>
+              <div class="bd-time"><small>上がり3F</small><b id="bdLast">00.0</b></div>
+            </div>
+          </div>
+          <div class="bd-pay" id="bdPay"></div>
+        </div>
+      </div>
+      <!-- ボーナスルーレット -->
+      <div class="broulette" id="broulette" hidden><h3><small>CHANCE!</small>ボーナスルーレット</h3><div class="wheel" id="wheel"></div><p id="brouletteMsg"></p></div>
+    </div>
+
+    <!-- レース中だけ: 自分の馬券 -->
+    <div class="mybets" id="myBets"></div>
+
+    <!-- 中継のグラフィックス（左上のミニ順位・REPLAY / PHOTO FINISH のタグ・勝ち馬のカード・獲得枚数。js/game.js が出し入れする） -->
+    <div class="bcast" id="bcast">
+      <div class="rankp" id="rankPanel"></div>
+      <div class="bc-tag replay" id="tagReplay">REPLAY</div>
+      <div class="bc-tag photo" id="tagPhoto">写真判定<small>PHOTO FINISH</small></div>
+      <div class="wincard" id="winCard"><p class="w1"><b>1着</b><i id="wcNo">1</i><span>番</span><small id="wcOdds"></small></p><p class="w2" id="wcName"></p></div>
+      <div class="gain" id="gainBadge">獲得<b id="gainNum">0</b>枚</div>
+    </div>
+
+    <!-- 右: 出馬表と展開予想 -->
+    <aside class="side">
+      <div class="panel card">
+        <h4>出馬表 <span class="colh" style="left:112px">脚質・能力（前走は選んだ馬）</span><span class="colh" style="left:322px">調子</span><span class="colh" style="left:386px">100あたり</span></h4>
+        <div class="horses" id="horses"></div>
+      </div>
+      <div class="panel tenkai">
+        <h4>展開予想 <small>序盤 → 中盤 → 終盤の位置取り</small></h4>
+        <canvas id="tenkai" width="952" height="364"></canvas>
+      </div>
+    </aside>
+
+    <!-- 下: 馬券のマス目（1 行目が単勝、下の三角が馬連） -->
+    <section class="panel board">
+      <div class="grid" id="grid"></div>
+      <div class="legend"><b>倍率</b><i class="white">10倍未満</i><i class="yellow">10倍〜</i><i class="red">100倍〜</i><small>1マス 99枚まで</small></div>
+    </section>
+
+    <!-- 下右: 操作 -->
+    <section class="panel controls">
+      <div class="sel">
+        <div class="sel-label" id="selLabel">単勝 1</div>
+        <b class="sel-odds" id="selOdds">—</b>
+        <div class="sel-bet"><b id="selBet">0</b><small>枚</small></div>
+      </div>
+      <div class="sub">
+        <span class="sel-win"><small>当たれば</small><b id="selWin">0</b><small>枚</small></span>
+        <span class="sel-total"><small>合計</small><b id="totalBet">0</b><small>枚</small></span>
+        <span class="carrots" title="応援チャンス（10枚ごとに1回）"><small>応援</small><span id="carrots"></span></span>
+      </div>
+      <div class="btns" id="btns">
+        <button class="bbtn b1" data-act="bet1"><b>1枚</b><small>BET</small></button>
+        <button class="bbtn b10" data-act="bet10"><b>10枚</b><small>BET</small></button>
+        <button class="bbtn bclr" data-act="clear"><b>取消</b></button>
+        <button class="bbtn bclrall" data-act="clearAll"><b>全消し</b></button>
+        <button class="bbtn bgo" data-act="go"><b>レース スタート</b><small>START</small></button>
+      </div>
+      <div class="msg" id="msg">馬券を買ってレースを待とう！</div>
+    </section>
+
+    <div id="toast"></div>
+    <div id="splash">
+      <!-- 遠景（空・雲・旗・スタンド・木立）。tools/make-logo.js が埋め込む -->
+      <!--title:decor--><svg class="sp-decor" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+  <g class="sp-clouds"><g transform="translate(90 150) scale(1.1)"><path d="M0 40C-4 22 14 10 30 16C36 -2 66 -6 78 10C92 0 116 8 114 28C130 30 134 52 116 56H8C-6 56 -8 44 0 40Z" fill="#fff"/><path d="M8 56H116C126 54 130 46 126 40C112 48 30 50 4 46C2 52 4 55 8 56Z" fill="#d6ecfa"/></g><g transform="translate(1270 110) scale(1.3)"><path d="M0 40C-4 22 14 10 30 16C36 -2 66 -6 78 10C92 0 116 8 114 28C130 30 134 52 116 56H8C-6 56 -8 44 0 40Z" fill="#fff"/><path d="M8 56H116C126 54 130 46 126 40C112 48 30 50 4 46C2 52 4 55 8 56Z" fill="#d6ecfa"/></g><g transform="translate(330 330) scale(0.8)"><path d="M0 40C-4 22 14 10 30 16C36 -2 66 -6 78 10C92 0 116 8 114 28C130 30 134 52 116 56H8C-6 56 -8 44 0 40Z" fill="#fff"/><path d="M8 56H116C126 54 130 46 126 40C112 48 30 50 4 46C2 52 4 55 8 56Z" fill="#d6ecfa"/></g><g transform="translate(1180 300) scale(0.75)"><path d="M0 40C-4 22 14 10 30 16C36 -2 66 -6 78 10C92 0 116 8 114 28C130 30 134 52 116 56H8C-6 56 -8 44 0 40Z" fill="#fff"/><path d="M8 56H116C126 54 130 46 126 40C112 48 30 50 4 46C2 52 4 55 8 56Z" fill="#d6ecfa"/></g></g>
+  <path d="M0 450C200 420 380 436 560 440C760 446 900 414 1120 430C1300 442 1460 422 1600 438V500H0Z" fill="#a9d98f"/>
+  <g fill="#4f9a45"><circle cx="-10" cy="476" r="12"/><circle cx="6.200000000000003" cy="475" r="20"/><circle cx="33.2" cy="474" r="19"/><circle cx="58.85000000000001" cy="473" r="18"/><circle cx="83.15" cy="472" r="17"/><circle cx="106.10000000000001" cy="476" r="16"/><circle cx="127.70000000000002" cy="475" r="15"/><circle cx="147.95000000000002" cy="474" r="14"/><circle cx="166.85000000000002" cy="473" r="13"/><circle cx="184.40000000000003" cy="472" r="12"/><circle cx="200.60000000000002" cy="476" r="20"/><circle cx="227.60000000000002" cy="475" r="19"/><circle cx="253.25000000000003" cy="474" r="18"/><circle cx="277.55" cy="473" r="17"/><circle cx="300.5" cy="472" r="16"/><circle cx="322.1" cy="476" r="15"/><circle cx="342.35" cy="475" r="14"/><circle cx="361.25" cy="474" r="13"/><circle cx="378.8" cy="473" r="12"/><circle cx="395" cy="472" r="20"/><circle cx="422" cy="476" r="19"/><circle cx="447.65" cy="475" r="18"/><circle cx="471.95" cy="474" r="17"/><circle cx="494.9" cy="473" r="16"/><circle cx="516.5" cy="472" r="15"/><circle cx="536.75" cy="476" r="14"/><circle cx="555.65" cy="475" r="13"/><circle cx="573.1999999999999" cy="474" r="12"/><circle cx="589.4" cy="473" r="20"/><circle cx="616.4" cy="472" r="19"/><circle cx="642.05" cy="476" r="18"/><circle cx="666.3499999999999" cy="475" r="17"/><circle cx="689.3" cy="474" r="16"/><circle cx="710.9" cy="473" r="15"/><circle cx="731.15" cy="472" r="14"/><circle cx="750.05" cy="476" r="13"/><circle cx="767.5999999999999" cy="475" r="12"/><circle cx="783.8" cy="474" r="20"/><circle cx="810.8" cy="473" r="19"/><circle cx="836.4499999999999" cy="472" r="18"/><circle cx="860.7499999999999" cy="476" r="17"/><circle cx="883.6999999999999" cy="475" r="16"/><circle cx="905.3" cy="474" r="15"/><circle cx="925.55" cy="473" r="14"/><circle cx="944.4499999999999" cy="472" r="13"/><circle cx="961.9999999999999" cy="476" r="12"/><circle cx="978.1999999999999" cy="475" r="20"/><circle cx="1005.1999999999999" cy="474" r="19"/><circle cx="1030.85" cy="473" r="18"/><circle cx="1055.1499999999999" cy="472" r="17"/><circle cx="1078.1" cy="476" r="16"/><circle cx="1099.6999999999998" cy="475" r="15"/><circle cx="1119.9499999999998" cy="474" r="14"/><circle cx="1138.85" cy="473" r="13"/><circle cx="1156.3999999999999" cy="472" r="12"/><circle cx="1172.6" cy="476" r="20"/><circle cx="1199.6" cy="475" r="19"/><circle cx="1225.25" cy="474" r="18"/><circle cx="1249.55" cy="473" r="17"/><circle cx="1272.5" cy="472" r="16"/><circle cx="1294.1" cy="476" r="15"/><circle cx="1314.35" cy="475" r="14"/><circle cx="1333.25" cy="474" r="13"/><circle cx="1350.8" cy="473" r="12"/><circle cx="1367" cy="472" r="20"/><circle cx="1394" cy="476" r="19"/><circle cx="1419.65" cy="475" r="18"/><circle cx="1443.95" cy="474" r="17"/><circle cx="1466.9" cy="473" r="16"/><circle cx="1488.5" cy="472" r="15"/><circle cx="1508.75" cy="476" r="14"/><circle cx="1527.65" cy="475" r="13"/><circle cx="1545.2" cy="474" r="12"/><circle cx="1561.4" cy="473" r="20"/><circle cx="1588.4" cy="472" r="19"/><circle cx="1614.0500000000002" cy="476" r="18"/></g>
+  <g transform="translate(110 418)">
+      <path d="M0 62V30L40 18H360L420 30V62Z" fill="#eef4f8"/><path d="M-6 30L40 6H364L428 30Z" fill="#2a62d9"/><path d="M-6 30L40 6H364L428 30" fill="none" stroke="#1c4aa8" stroke-width="3"/>
+      <g fill="#c9d8e4"><rect x="14" y="34" width="396" height="4" rx="2"/><rect x="14" y="42" width="396" height="4" rx="2"/><rect x="14" y="50" width="396" height="4" rx="2"/></g>
+      <g fill="#7a8fa3"><rect x="24" y="22" width="3" height="40"/><rect x="45" y="22" width="3" height="40"/><rect x="66" y="22" width="3" height="40"/><rect x="87" y="22" width="3" height="40"/><rect x="108" y="22" width="3" height="40"/><rect x="129" y="22" width="3" height="40"/><rect x="150" y="22" width="3" height="40"/><rect x="171" y="22" width="3" height="40"/><rect x="192" y="22" width="3" height="40"/><rect x="213" y="22" width="3" height="40"/><rect x="234" y="22" width="3" height="40"/><rect x="255" y="22" width="3" height="40"/><rect x="276" y="22" width="3" height="40"/><rect x="297" y="22" width="3" height="40"/><rect x="318" y="22" width="3" height="40"/><rect x="339" y="22" width="3" height="40"/><rect x="360" y="22" width="3" height="40"/><rect x="381" y="22" width="3" height="40"/></g></g><g transform="translate(1110 396)"><rect x="22" y="56" width="8" height="28" fill="#5b6b78"/><rect x="170" y="56" width="8" height="28" fill="#5b6b78"/><rect x="0" y="0" width="200" height="60" rx="6" fill="#26384a"/><rect x="8" y="7" width="184" height="46" rx="3" fill="#3f7fb3"/><path d="M8 40Q60 26 100 36T192 32V53H8Z" fill="#57b14b"/></g>
+  <rect x="0" y="478" width="1600" height="24" fill="#b8e2b0"/>
+  <g class="sp-bunting"><path d="M-20 6Q400 78 820 10" fill="none" stroke="#14213d" stroke-width="3"/><path d="M-10.3 7.6L34.9 14.8L14.1 45.3Z" fill="#ffffff" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M54.3 17.6L99.5 23.7L78.4 54.8Z" fill="#1e1e1e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M118.9 26L164.2 30.8L142.7 62.5Z" fill="#e8322e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M183.5 32.7L228.8 36.4L207.1 68.6Z" fill="#2a62d9" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M248.2 37.7L293.4 40.2L271.4 73.1Z" fill="#f7d21e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M312.8 41.1L358 42.4L335.7 75.9Z" fill="#2fa84f" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M377.4 42.8L422.6 43L400.1 77Z" fill="#ffffff" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M442 42.9L487.2 41.9L464.4 76.5Z" fill="#1e1e1e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M506.6 41.3L551.8 39.1L528.7 74.3Z" fill="#e8322e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M571.2 38L616.5 34.7L593 70.5Z" fill="#2a62d9" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M635.8 33.1L681.1 28.7L657.4 65Z" fill="#f7d21e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M700.5 26.5L745.7 20.9L721.7 57.8Z" fill="#2fa84f" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M765.1 18.3L810.3 11.6L786 49Z" fill="#ffffff" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M780 10Q1200 77 1620 4" fill="none" stroke="#14213d" stroke-width="3"/><path d="M789.7 11.5L834.9 18.2L814 48.9Z" fill="#2a62d9" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M854.3 20.8L899.5 26.2L878.3 57.6Z" fill="#f7d21e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M918.9 28.3L964.2 32.6L942.6 64.6Z" fill="#2fa84f" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M983.5 34.2L1028.8 37.4L1007 69.9Z" fill="#ffffff" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1048.2 38.5L1093.4 40.5L1071.3 73.6Z" fill="#1e1e1e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1112.8 41.1L1158 42L1135.6 75.6Z" fill="#e8322e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1177.4 42.1L1222.6 41.7L1199.9 76Z" fill="#2a62d9" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1242 41.4L1287.2 39.9L1264.2 74.7Z" fill="#f7d21e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1306.6 39L1351.8 36.3L1328.5 71.8Z" fill="#2fa84f" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1371.2 35L1416.5 31.2L1392.9 67.2Z" fill="#ffffff" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1435.8 29.3L1481.1 24.3L1457.3 60.9Z" fill="#1e1e1e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1500.5 21.9L1545.7 15.8L1521.6 53Z" fill="#e8322e" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/><path d="M1565.1 12.9L1610.3 5.7L1585.9 43.4Z" fill="#2a62d9" stroke="#14213d" stroke-width="3" stroke-linejoin="round"/></g></svg><!--/title:decor-->
+      <!-- 走る馬: 3D（js/splash3d.js）。WebGL が無いときは下の 2D の絵 -->
+      <div class="sp-run" id="splashRun"><canvas id="splashHorses" width="1000" height="260"></canvas></div>
+      <div class="splash-in">
+        <div class="logo big"><!--logo:large--><img class="logo-svg big" src="art/logo-3d/B/title-3d-B-casaWhite.svg" onerror="this.onerror=null;this.src='art/logo-3d/B/png/title-3d-B-casaWhite-2x.png'" width="940" height="309" alt="casa DERBY" draggable="false"><!--/logo:large--></div>
+        <p class="sub">6 頭立て　メダル競馬ゲーム</p>
+      </div>
+      <div class="splash-go">
+        <p class="tap">TAP TO START</p>
+        <p class="keys">決定ボタン（Enter）でもスタートできます</p>
+      </div>
+      <button class="soundbtn onsplash" type="button" aria-label="音を消す" title="音のオン・オフ（S キー）"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="x" d="M16 9l6 6M22 9l-6 6"/></svg><small>音</small></button><!-- タイトル画面でも音のオン・オフ -->
+      <small id="ver">k3</small>
+      <small id="voiceCredit" style="position:absolute;z-index:1;left:18px;bottom:12px;font-size:13px;color:rgba(255,255,255,.7)"></small><!-- 実況の声の表記（js/commentary.js が art/voice/index.json の credit を入れる） -->
+    </div>
+  </div>
+  <div id="rotate"><div>端末を横向きにしてご利用ください</div></div>
+</div>
+
+<script>
+window.addEventListener('error', function (e) {
+  var d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'fatal' }));
+  d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;padding:10px 14px;border-radius:10px;background:#7a211a;color:#fff;font:14px/1.5 sans-serif;white-space:pre-wrap';
+  d.textContent = 'エラー (k3): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
+});
+</script>
+<script src="js/engine.js?v=k3"></script>
+<script src="js/audio.js?v=k8"></script>
+<script src="js/sprites.js?v=k3"></script>
+<script src="js/horse.js?v=k3"></script>
+<script src="js/race.js?v=k5"></script>
+<!-- 3D のレース映像（three.js r149）。読めないとき・WebGL が無いときは 2D の Race のまま -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script src="js/r3d/course.js?v=k3d"></script>
+<script src="js/r3d/look3d.js?v=k3e"></script>
+<script src="js/r3d/horse3d.js?v=k3m"></script>
+<!-- 本物寄りの馬（R3D.HorseReal）: 管理画面で「本物寄り」にしたときだけ js/race3d.js があとから読む（Fire TV のメモリの節約）。?horse=real なら最初から読む（確認用） -->
+<script>window.R3D_LAZY = { HorseReal: 'js/r3d/horse3d-real.js?v=r7' }; if (/[?&]horse=real\b/.test(location.search)) document.write('<script src="' + window.R3D_LAZY.HorseReal + '"><\/script>');</script>
+<script src="js/r3d/venue3d.js?v=k3g"></script>
+<script src="js/r3d/director3d.js?v=k3n"></script>
+<script src="js/race3d.js?v=k3s"></script>
+<script src="js/bonus.js?v=k3"></script>
+<script src="js/voice.js?v=k4"></script>
+<script src="js/commentary.js?v=k6"></script>
+<script src="js/hooves.js?v=h1"></script>
+<script src="js/splash3d.js?v=k7"></script>
+<!-- ?store=<店舗> なら v2 のテレビ（全店同時・スマホ投票。v2/tv.js）、無ければ今までの一人用（js/game.js） -->
+<script>
+(function () {
+  // _r＝管理画面の「テレビを読み込み直す」で付く印。v2 のファイルの版に足して、古いファイル（キャッシュ）を使わない
+  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't13' + (r ? '-' + r : '');
+  if (/[?&]store=[^&]/.test(location.search)) document.write('<link rel="stylesheet" href="v2/tv.css?v=' + v + '"><script src="v2/client.js?v=' + v + '"><\/script><script src="v2/qr.js?v=' + v + '"><\/script><script src="v2/tv.js?v=' + v + '"><\/script><script src="v2/tvswitch.js?v=' + v + '"><\/script>');
+  else document.write('<script src="js/game.js?v=k10"><\/script>');
+})();
+</script>
+</body>
+</html>
