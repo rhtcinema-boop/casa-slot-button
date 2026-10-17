@@ -713,7 +713,7 @@ const Game = (function () {
   }
   let feedRetry = 0;
   /* ---------- 他店の当たりの知らせ（b112、オーナー指示「他店舗で当たりが出たら通知」） ----------
-     全店舗の配当履歴に、ほかの店舗の新しい当たりが入ったら、待機中のテレビに速報カード（CASA NEWS ／ 店舗 JUST HIT 金額。b113）を約 4 秒出す（全部の当たり）。
+     全店舗の配当履歴に、ほかの店舗の新しい当たりが入ったら、待機中のテレビにニュースのカード（b115 で高級カジノ風。店名の紋章・JACKPOT・金額）を約 4 秒出す（全部の当たり）。
      ゲーム中・設定中・紙幣の吸い込み中は待って、終わってから順番に出す。15 分より古いものは出さない。起動時にすでにある分は出さない */
   const HIT_SHOW_MS = 4200, HIT_MAX_AGE = 15 * 60 * 1000;
   const hitSeen = {}, hitQueue = [];
@@ -747,9 +747,25 @@ const Game = (function () {
     const el = document.createElement('div'); el.id = 'hitnote';
     const lv = Math.max(1, WIN_LEVELS.filter((v) => v <= x.value).length);
     el.className = 'lv' + lv;
-    const em = STORE_EMOJI.find((e) => String(x.store).indexOf(e[0]) >= 0); // b113: 速報カード（オーナーが案 C を選んだ）
-    el.innerHTML = '<div class="hn-card"><div class="hn-head"><b>CASA NEWS</b><span class="hn-live"><i></i>LIVE</span></div><div class="hn-body"><div class="hn-em">' + (em ? em[1] : '★') + '</div><div class="hn-txt"><div class="hn-store">' + escH(x.store) + '<small>JUST HIT</small></div><div class="hn-val' + (x.value >= 100000 ? ' long' : '') + '">' + fmtN(x.value) + '</div></div></div></div>';
+    // b115: 高級カジノ風のカード（デザインチームの案 1。オーナーが選んだ）
+    const ROMAN = { '渋谷': 'SHIBUYA', '上野': 'UENO', '札幌': 'SAPPORO' };
+    const sname = String(x.store || ''), vtxt = fmtN(x.value);
+    el.innerHTML = '<div class="hn-card">' +
+      '<svg class="hn-frame" viewBox="0 0 1080 500" preserveAspectRatio="none"><defs><linearGradient id="hnG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset=".3" stop-color="#e2b95a"/><stop offset=".5" stop-color="#9a6a1c"/><stop offset=".7" stop-color="#e9c25e"/><stop offset="1" stop-color="#fff1b8"/></linearGradient></defs>' +
+      '<polygon points="28,1.5 1052,1.5 1078.5,28 1078.5,472 1052,498.5 28,498.5 1.5,472 1.5,28" fill="none" stroke="url(#hnG)" stroke-width="3"/>' +
+      '<polygon points="38,24 1042,24 1056,38 1056,462 1042,476 38,476 24,462 24,38" fill="none" stroke="#c99a3e" stroke-opacity=".7" stroke-width="1"/>' +
+      '<g stroke="#d9b25a" stroke-width="1" fill="none"><line x1="44" y1="100" x2="508" y2="100"/><line x1="572" y1="100" x2="1036" y2="100"/><line x1="44" y1="104" x2="508" y2="104" stroke-opacity=".45"/><line x1="572" y1="104" x2="1036" y2="104" stroke-opacity=".45"/><polygon points="540,90 552,102 540,114 528,102" fill="#0b0a08"/><polygon points="540,96 546,102 540,108 534,102" fill="#d9b25a" stroke="none"/></g>' +
+      '<g stroke="#d9b25a" stroke-width="1.2" fill="none"><path d="M36,62 V36 H62 M36,54 L54,36"/><path d="M1044,62 V36 H1018 M1044,54 L1026,36"/><path d="M36,438 V464 H62 M36,446 L54,464"/><path d="M1044,438 V464 H1018 M1044,446 L1026,464"/></g></svg>' +
+      '<div class="hn-bulbs top"></div><div class="hn-bulbs bot"></div><div class="hn-fan"></div>' +
+      '<div class="hn-head"><div class="hn-brand"><b>CASA NEWS</b><i>BREAKING</i></div><div class="hn-live">LIVE</div></div>' +
+      '<div class="hn-crest"><div class="hn-medal"><svg viewBox="0 0 200 228"><defs><linearGradient id="hnCG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset=".45" stop-color="#d9a640"/><stop offset=".55" stop-color="#8f5f14"/><stop offset="1" stop-color="#f3d27a"/></linearGradient><radialGradient id="hnCF" cx=".5" cy=".3" r=".8"><stop offset="0" stop-color="#2a2318"/><stop offset="1" stop-color="#0a0907"/></radialGradient></defs>' +
+      '<polygon points="50,2 150,2 198,50 198,178 150,226 50,226 2,178 2,50" fill="url(#hnCF)" stroke="url(#hnCG)" stroke-width="3"/><polygon points="56,14 144,14 186,56 186,172 144,214 56,214 14,172 14,56" fill="none" stroke="#c99a3e" stroke-width="1" stroke-opacity=".75"/><polygon points="100,6 108,14 100,22 92,14" fill="#e3bd62"/><polygon points="100,206 108,214 100,222 92,214" fill="#e3bd62"/></svg>' +
+      '<div class="hn-kanji">' + Array.from(sname).slice(0, 2).map((c) => '<span>' + escH(c) + '</span>').join('') + '</div></div><div class="hn-roman">' + (ROMAN[sname] || '') + '</div></div>' +
+      '<div class="hn-vrule"></div>' +
+      '<div class="hn-main"><div class="hn-kicker">JACKPOT</div><div class="hn-amount"><div class="hn-num" data-t="' + vtxt + '"><span>' + vtxt + '</span></div></div><div class="hn-unit"><em></em>CREDITS WON<em></em></div></div>' +
+      '</div>';
     const content = $('content'); content.parentNode.insertBefore(el, content.nextSibling);
+    { const n = el.querySelector('.hn-num'), max = n.parentNode.clientWidth - 20; let fs = 200; while (n.scrollWidth > max && fs > 80) { fs -= 4; n.style.fontSize = fs + 'px'; } } // 長い金額は枠に収まるまで小さく
     try { Sfx.play('revive'); Sfx.play('kyuin'); } catch (e) { /* 音なしでも出す */ }
     setTimeout(() => { if ($('hitnote') === el) { el.classList.add('out'); setTimeout(() => { if ($('hitnote') === el) hitClear(); }, 450); } }, HIT_SHOW_MS);
   }
