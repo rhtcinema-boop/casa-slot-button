@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f0c">
+<meta name="format-detection" content="telephone=no">
+<meta name="robots" content="noindex">
+<title>casa DERBY 投票</title>
+<link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<link rel="icon" href="../icon-derby-180.png" sizes="180x180" type="image/png">
+<link rel="apple-touch-icon" href="../icon-derby-180.png">
+<link rel="stylesheet" href="bet.css?v=12">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="crest"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="98" height="32" alt="casa DERBY" draggable="false"></div>
+    <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
+    <div class="race" id="raceChip"></div>
+  </header>
+  <div class="net hidden" id="net" role="alert">通信が切れています</div>
+  <main id="main"></main>
+  <div class="toast hidden" id="toast"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" crossorigin="anonymous"></script>
+<script src="qr.js?v=1"></script>
+<script src="client.js?v=4"></script>
+<script src="bet.js?v=11"></script>
+</body>
+</html>
