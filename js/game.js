@@ -244,6 +244,7 @@ const Game = (function () {
     lockbar.classList.toggle('sandbar', billMode()); // サンドのときは箱の飾りを消し、幅をリールの箱に合わせる
     lockbar.classList.add('show');
     resultSince = 0;
+    stageEl.dataset.lamp = 'idle';
     fitSide();
   }
   /* b84（オーナー指示）: 紙幣モードのときは、右の配当履歴と左の説明をサンドの下端まで伸ばす。ボタンのときは CSS の高さのまま */
@@ -1278,6 +1279,7 @@ const Game = (function () {
   }
   async function runStageInner(play, st) {
     busy = true;
+    stageEl.dataset.lamp = 'spin'; // b120: 上下の電飾の状態（待機中・回転中・当たり・大当たり）
     setNotes(false); // ゲーム中は、左側をステージの表示に戻す
     tense(0); // 念のため（前の回の期待の演出が残らないように）
     lockbar.classList.remove('show');
@@ -1531,7 +1533,7 @@ const Game = (function () {
       onSpeed: (n) => Sfx.spin(n),
       onNear: () => { extra.onNear && extra.onNear(); },
       onReverse: () => { Sfx.play('kyuin'); flash(true); quake(); stageEl.classList.add('reach'); setPlate('spin', 'REVERSE', '当選確定'); }, // 突然の逆回転（当たり確定）
-      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop'); restart(cabinet, 'thud'); runningSum(combo, order, kk); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; calm(); puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
+      onReelStop: (ri, kk) => { if (kk < 2) { Sfx.play('stop', kk); restart(cabinet, 'thud'); runningSum(combo, order, kk); } if (kk === 1 && puchunPlan) { const pl = puchunPlan; puchunPlan = null; calm(); puchun(pl); } }, // 1本目・2本目の停止。2本目のあとにプチュン
       onGear: (g) => { if (tn) tense(g + 1); }, // 期待の段階が一段上がる（3本目が一段ゆっくりになる瞬間）
       onTease: (dur) => {
         Sfx.play('tease', dur);
@@ -1546,7 +1548,7 @@ const Game = (function () {
         stageEl.classList.remove('reach');
         $('dim').classList.remove('on');
         $('content').querySelector('.spot').style.opacity = '';
-        Sfx.play('stop');
+        Sfx.play('stop', 2); // b120: 3 本目は一番高い音
         restart(cabinet, 'thud');
         bump();
       },
@@ -1780,16 +1782,16 @@ const Game = (function () {
        特大（レベル 7〜8、50,000〜） … 長いため ＋ 長いカウントアップ ＋ 花火と衝撃波が続く（約 11 秒） */
   const WIN_LEVELS = [500, 1000, 2000, 3000, 5000, 10000, 50000, 100000];
   const CHIP_LV = [['red'], ['blue', 'red'], ['green', 'red', 'blue'], ['black', 'green', 'blue'], ['purple', 'black', 'red'], ['gold', 'black', 'purple'], ['gold', 'black', 'white', 'purple'], ['gold', 'gold', 'black', 'white']];
-  const WIN_FX = [
-    //  ため(秒)    秒数  ラベル        粒子  金粉  花火間隔(秒)  揺れ回数  カウントアップ(秒)
-    { charge: 0,   dur: 1.8, label: 'WIN',       burst: 70,  rain: 0,   fire: 0,    shake: 0, count: 0 },
-    { charge: 0,   dur: 2.0, label: 'WIN',       burst: 110, rain: 0,   fire: 0,    shake: 0, count: 0 },
-    { charge: 1.0, dur: 2.2, label: 'NICE WIN',  burst: 150, rain: 70,  fire: 0,    shake: 0, count: 0.5 },
-    { charge: 1.0, dur: 2.5, label: 'BIG WIN',   burst: 190, rain: 130, fire: 0.7,  shake: 0, count: 0.6 },
-    { charge: 1.0, dur: 2.8, label: 'BIG WIN',   burst: 230, rain: 200, fire: 0.5,  shake: 1, count: 0.7 },
-    { charge: 1.5, dur: 5.5, label: 'SUPER WIN', burst: 280, rain: 420, fire: 0.45, shake: 2, count: 1.4 },
-    { charge: 2.2, dur: 8.3, label: 'MEGA WIN',  burst: 340, rain: 700, fire: 0.42, shake: 4, count: 2.2 },
-    { charge: 2.4, dur: 9.0, label: 'JACKPOT',   burst: 420, rain: 900, fire: 0.36, shake: 5, count: 2.6 },
+  const WIN_FX = [ // b120: 看板の名前を本物のスロットの段階に（500=WIN … 100,000=JACKPOT）。数え上げを長めに。秒数と粒の数は今のまま（重くしない）
+    //  ため(秒)    秒数  ラベル            粒子  金粉  花火間隔(秒)  揺れ回数  カウントアップ(秒)
+    { charge: 0,   dur: 1.8, label: 'WIN',           burst: 70,  rain: 0,   fire: 0,    shake: 0, count: 0 },
+    { charge: 0,   dur: 2.0, label: 'NICE WIN',      burst: 110, rain: 0,   fire: 0,    shake: 0, count: 0.9 },
+    { charge: 1.0, dur: 2.2, label: 'BIG WIN',       burst: 150, rain: 70,  fire: 0,    shake: 0, count: 1.2 },
+    { charge: 1.0, dur: 2.5, label: 'SUPER WIN',     burst: 190, rain: 130, fire: 0.7,  shake: 0, count: 1.5 },
+    { charge: 1.0, dur: 2.8, label: 'MEGA WIN',      burst: 230, rain: 200, fire: 0.5,  shake: 1, count: 1.8 },
+    { charge: 1.5, dur: 5.5, label: 'EPIC WIN',      burst: 280, rain: 420, fire: 0.45, shake: 2, count: 3.6 },
+    { charge: 2.2, dur: 8.3, label: 'LEGENDARY WIN', burst: 340, rain: 700, fire: 0.42, shake: 4, count: 5.6 },
+    { charge: 2.4, dur: 9.0, label: 'JACKPOT',       burst: 420, rain: 900, fire: 0.36, shake: 5, count: 6.4 },
   ];
 
   async function resultFx(res) {
@@ -1835,8 +1837,10 @@ const Game = (function () {
       FX.streaks(CX, CY, 100 + L * 12, 0.8, { colors });
     }
     stageEl.dataset.win = L;
-    setPlate('spin', fx.label, '');
-    showBanner('win lv' + L, fx.label, fx.count ? '0' : fmtN(v), v);
+    const startTier = L >= 3 ? 2 : L - 1; let shownTier = startTier; // b120: 本物のスロットのように、BIG WIN から始めて数え上げの途中で SUPER → MEGA … と看板を 1 段ずつ上げる
+    setPlate('spin', WIN_FX[startTier].label, '');
+    showBanner('win lv' + L, WIN_FX[startTier].label, fx.count ? '0' : fmtN(v), v);
+    stageEl.dataset.lamp = L >= 7 ? 'jackpot' : 'win';
     Sfx.play('win', L);
 
     // 開幕の一撃
@@ -1855,13 +1859,17 @@ const Game = (function () {
       let lastTick = 0;
       const step = (now) => {
         const u = Math.min(1, (now - t0) / (fx.count * 1000));
-        const e = 1 - Math.pow(1 - u, 3);
-        if (now - lastTick > 70 && u < 1) { lastTick = now; setBannerText(fmtN(Math.round((v * e) / 100) * 100)); Sfx.play('count', u); }
+        const e = u < 0.85 ? (u / 0.85) * 0.94 : 0.94 + 0.06 * (1 - Math.pow(1 - (u - 0.85) / 0.15, 2)); // b120: 速く一定に数え、最後の 15% だけゆっくり（本物の数え上げ）
+        const cv = Math.round((v * e) / 100) * 100;
+        if (now - lastTick > 60 && u < 1) { lastTick = now; setBannerText(fmtN(cv)); Sfx.play('count', u); }
+        let tier = shownTier; for (let k = startTier + 1; k < L; k++) if (cv >= WIN_LEVELS[k]) tier = k;
+        if (tier > shownTier) { shownTier = tier; $('bannerLabel').textContent = WIN_FX[tier].label; setPlate('spin', WIN_FX[tier].label, ''); restart($('bannerLabel'), 'tierup'); flash(true); Sfx.play('impact'); }
         if (u < 1 && stageEl.dataset.win) return requestAnimationFrame(step);
         setBannerText(fmtN(v));
       };
       requestAnimationFrame(step);
       later(fx.count, () => {
+        if (shownTier < L - 1) { shownTier = L - 1; $('bannerLabel').textContent = fx.label; setPlate('spin', fx.label, ''); restart($('bannerLabel'), 'tierup'); }
         restart($('bannerCv'), 'slam');
         Sfx.play('stop');
         FX.burst(CX, CY, 60 + L * 20, { max: 900, colors });
