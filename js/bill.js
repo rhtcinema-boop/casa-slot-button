@@ -340,6 +340,7 @@
 
   /* ---------- b107: GAME START → 会計番号入力（数字ボタン）→ どのステージから？ → 紙幣。紙幣を入れたら毎回、空っぽの会計番号入力に戻る ---------- */
   let starting = false;
+  let step = '', typed = false; // 2026-10-19: いまの段（'start' GAME START・'check' 会計番号入力・'stage' ステージ選び・'' 紙幣の画面）と、会計番号を打ち始めたか（js/phoneswitch.js が見る）
   async function gameStart(skipStart) {
     if (starting) return; starting = true;
     const box = $('start');
@@ -347,6 +348,7 @@
     try {
       for (;;) {
         if (!skipStart) {
+          step = 'start';
           await new Promise((resolve) => {
             box.classList.remove('stagepick');
             box.innerHTML = '<h1>' + esc(saved.name) + '</h1><button class="big2" id="gs">GAME<br>START</button><div class="sw"><button id="gsw">店舗を切り替える</button></div>';
@@ -362,16 +364,17 @@
         saved.check = no; saved.checkAt = Date.now(); saved.stage = stg; save();
         break;
       }
-    } finally { starting = false; box.classList.add('hidden'); box.classList.remove('stagepick'); }
+    } finally { starting = false; step = ''; typed = false; box.classList.add('hidden'); box.classList.remove('stagepick'); }
     render();
   }
   function askCheck(box) { // 数字ボタンで会計番号（数字だけ、10 桁まで）
+    step = 'check'; typed = false;
     return new Promise((resolve) => {
       let v = '';
       box.classList.remove('stagepick');
       box.innerHTML = '<h1>会計番号入力</h1><div class="numbox" id="nb"></div><div class="pad">' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => '<button data-k="' + n + '">' + n + '</button>').join('') +
         '<button data-k="clr" class="del">全部消す</button><button data-k="0">0</button><button data-k="bs" class="del">← 1文字</button></div><div class="nrow"><button class="bk" id="cback">戻る</button><button class="nx" id="cgo">次へ</button></div>';
-      const show = () => { $('nb').textContent = v; $('cgo').disabled = !v; };
+      const show = () => { $('nb').textContent = v; $('cgo').disabled = !v; typed = !!v; };
       box.querySelector('.pad').onclick = (e) => { const k = e.target.closest('[data-k]'); if (!k) return; buzz(8); const x = k.dataset.k; if (x === 'clr') v = ''; else if (x === 'bs') v = v.slice(0, -1); else if (v.length < 10) v += x; show(); };
       $('cback').onclick = () => resolve(null);
       $('cgo').onclick = () => { if (v) { buzz(15); resolve(v); } };
@@ -386,6 +389,7 @@
     return out;
   }
   function askStage(box, no) {
+    step = 'stage';
     return new Promise((resolve) => {
       box.classList.add('stagepick'); // b109: MAX 金額は出さない（オーナー指示）
       box.innerHTML = '<h1>どのステージから？</h1><p class="chkno">会計 No.<b>' + esc(no) + '</b>　紙幣1枚でどれでも同じ</p><div class="stg">' +
@@ -497,4 +501,15 @@
     setInterval(render, 30000);
   }
   document.addEventListener('DOMContentLoaded', init);
+  /* 2026-10-19 スタッフのスマホの画面の入れ替え（js/phoneswitch.js）が見る: 紙幣の流れの途中でないとき（GAME START か、空の会計番号入力）だけ true。
+     送信中・端末の扉（#doorpick）・会計番号を入れたあと（ステージ選び・紙幣の画面）・ログインや設定・確認・入らなかった の画面では false */
+  window.BillPage = {
+    get saved() { return saved; },
+    idle() {
+      if (!saved || !saved.storeId || sending || saved.check || doorPhase() || deleted) return false;
+      if (!$('login').classList.contains('hidden') || !$('adm').classList.contains('hidden')) return false;
+      if (document.querySelector('.confirm, .fail, #doorpick')) return false;
+      return step === 'start' || (step === 'check' && !typed);
+    },
+  };
 })();
