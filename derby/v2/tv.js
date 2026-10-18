@@ -35,12 +35,35 @@
     show();
   })();
 
-  // ---------- 拡縮（game.js と同じ） ----------
+  // ---------- 拡縮（game.js と同じ。2026-10-18: casa SLOT の「画面サイズ調整」をそのまま使う） ----------
+  // SLOT はこのテレビで調整した枠を localStorage 'casa-slot-button.state.v1' の settings.screen（画面に対する割合 0〜1 の { x0, y0, x1, y1 }）に保存している。
+  // Fire TV のアプリでは SLOT と DERBY が同じ場所から開くので、同じ値を読める。DERBY は読むだけで、書き換えない。
+  // Web デモ（demo-config.js が先に読まれる）では使わない。枠があるときは SLOT と同じ計算（枠の左上へ動かし、縦と横を別々に伸縮して枠にぴったり合わせる）。枠が無い・小さすぎる・全画面なら今までどおり。
+  const SLOT_KEY = 'casa-slot-button.state.v1';
+  const IS_DEMO = !!(window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo) || !!window.__derbyDemoPage;
+  function slotScreen() {
+    if (IS_DEMO) return null;
+    let s = null;
+    try { const raw = localStorage.getItem(SLOT_KEY); const st = raw ? JSON.parse(raw) : null; s = st && st.settings && st.settings.screen; } catch (e) { s = null; }
+    if (!s || !(s.x1 - s.x0 >= 0.3 && s.y1 - s.y0 >= 0.3)) return null;
+    if (s.x0 <= 0 && s.y0 <= 0 && s.x1 >= 1 && s.y1 >= 1) return null;
+    return s;
+  }
   function layout() {
-    const vw = window.innerWidth, vh = window.innerHeight, s = Math.min(vw / 1600, vh / 900);
-    stageEl.style.transform = 'translate(' + (vw - 1600 * s) / 2 + 'px,' + (vh - 900 * s) / 2 + 'px) scale(' + s + ')';
+    const vw = window.innerWidth, vh = window.innerHeight, sr = slotScreen();
+    if (sr) {
+      const w = Math.max(1, (sr.x1 - sr.x0) * vw), h = Math.max(1, (sr.y1 - sr.y0) * vh);
+      stageEl.style.transform = 'translate(' + sr.x0 * vw + 'px,' + sr.y0 * vh + 'px) scale(' + w / 1600 + ',' + h / 900 + ')';
+      stageEl.dataset.calib = '1';
+    } else {
+      const s = Math.min(vw / 1600, vh / 900);
+      stageEl.style.transform = 'translate(' + (vw - 1600 * s) / 2 + 'px,' + (vh - 900 * s) / 2 + 'px) scale(' + s + ')';
+      delete stageEl.dataset.calib;
+    }
     $('rotate').style.display = vh > vw && vw < 700 ? 'grid' : 'none';
   }
+  window.addEventListener('storage', (e) => { if (!e.key || e.key === SLOT_KEY) layout(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) layout(); });
   window.addEventListener('resize', layout);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', layout);
   layout();
