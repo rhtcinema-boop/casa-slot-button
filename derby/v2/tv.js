@@ -126,6 +126,7 @@
   let seenSeq = null;              // store.nextSeq（スタッフの「次へ」）
   let seenReload = null;           // store.reloadSeq（管理画面の「テレビを読み込み直す」）
   // 管理画面からの読み込み直し: アドレスに _r=（時刻）を付けて開き直す（index.html が v2 のファイルの版にも使う＝古いファイルを使わない）
+  // 合図（reloadSeq・reload）は reloadWithUpdate へ: Fire TV のアプリの中なら、先に新しい版を取り込んでから開き直す（下の「自動アップデート」）
   function doReload() { if (TV.reloading) return; TV.reloading = true; try { const u = new URL(location.href); u.searchParams.set('_r', Date.now().toString(36)); let kept = null; try { kept = localStorage.getItem('casa.derby.tvkey'); } catch (e) { } if (TVKEY && kept !== TVKEY) u.searchParams.set('tvkey', TVKEY); location.replace(u.toString()); } catch (e) { location.reload(); } } // 保存に合言葉が無い端末は URL で渡す（開いたらまた消える）
   function keepRace(r) { if (!r || !r.id) return r; const o = cache[r.id]; cache[r.id] = o ? Object.assign(o, r) : r; if (view && view.id === r.id && cache[r.id].cues) applyCues(cache[r.id]); /* 結果と一緒に演出が届いた: 映しているレースならすぐ渡す（ゲートインの前） */ return cache[r.id]; }
   function applyState(s) {
@@ -138,7 +139,7 @@
     const seq = s.store && s.store.nextSeq;
     if (seq != null) { if (seenSeq != null && seq > seenSeq) onNext(); seenSeq = seq; }
     const rs = s.store && s.store.reloadSeq;
-    if (rs != null) { if (seenReload != null && rs > seenReload) doReload(); seenReload = rs; }
+    if (rs != null) { if (seenReload != null && rs > seenReload) reloadWithUpdate(); seenReload = rs; }
     if (s.store && s.store.name) { $('v2store').textContent = s.store.name + (/店$/.test(s.store.name) ? '' : '店') + (ST().test ? '（テスト）' : ''); $('v2store').classList.toggle('test', !!ST().test); }
     renderQR();
   }
@@ -174,7 +175,7 @@
         state(s) { applyState(s); },
         race(r) { keepRace(r); lastOk = performance.now(); },
         next(n) { lastOk = performance.now(); if (!n || !n.store || n.store === STORE) { if (n && n.nextSeq != null) seenSeq = n.nextSeq; onNext(); } },
-        reload(x) { lastOk = performance.now(); if (!x || !x.store || x.store === STORE) doReload(); },
+        reload(x) { lastOk = performance.now(); if (!x || !x.store || x.store === STORE) reloadWithUpdate(); },
         error() { sseErr = true; },
       });
     } catch (e) { console.error(e); }
@@ -783,9 +784,82 @@
   ['keydown', 'pointerdown', 'touchend'].forEach((ev) => document.addEventListener(ev, () => unlockAudio(), { passive: true }));
   Sprites.load().then(() => { if (view) { raceView.draw(); renderHorses(); } }).catch(() => {});
 
+  /* ---------- 自動アップデート（Fire TV のアプリの中だけ。2026-10-18） ----------
+     アプリ（casa SLOT の APK）は、ページが /__update を呼んだときだけ公開サイトの version.json に並んだファイル（derby/ も入っている）を端末に取り込む。
+     casa SLOT の画面（js/game.js の autoUpdate）と同じ考え方で、DERBY のテレビも 起動して少したったら・1 時間ごと・画面に戻ってきたときに呼ぶ。
+     新しい版が端末に入ったら（done、または latest で今の版より新しい）、読み直してよい時（待ち時間・前のレースのハイライト）まで待って開き直す。
+     受付・発走前・レース中・結果の画面では読み直さない。ただし待ち時間が来ないまま 20 分たったら（レースの間隔が詰まっている日）、
+     結果の画面が出て 30 秒たったあと（次の受付の 15 秒前まで）か、受付が始まったばかり（参加受付の締切まで 75 秒以上）のときにも開き直す。
+     今の版: アプリの中の ../version.json（casa SLOT の版。例 b122。アプリが取り込んだ版を出す）を起動のときに読んで覚える。読めなければ done のときだけ開き直す。
+     ブラウザ・Web デモ・模擬では何もしない。圏外・更新に未対応の古いアプリ（/__update が無い・json でない）は黙って何もしない。 */
+  const IN_APP = location.hostname === 'appassets.androidplatform.net';
+  const UPD_EVERY_MS = 60 * 60 * 1000, UPD_LONG_MS = 20 * 60 * 1000;
+  const UPD = { running: false, run: null, last: 0, pending: false, pendingSince: 0, pageV: null, st: null, n: 0, why: '' };
+  const verNum = (v) => parseInt(String(v == null ? '' : v).replace(/\D/g, ''), 10) || 0;
+  const getJson = async (u) => { const r = await fetch(u + (u.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error('http ' + r.status); return r.json(); };
+  let pageVP = null;
+  function pageVersion() { // 今このページに入っている版（起動のときの 1 回だけ読む）
+    if (!pageVP) pageVP = Promise.resolve().then(() => getJson(new URL('../version.json', location.href).href)).then((j) => { UPD.pageV = (j && j.v) || ''; return UPD.pageV; }, () => { UPD.pageV = ''; return ''; });
+    return pageVP;
+  }
+  const newerOnDisk = (st, pv) => !!st && (st.state === 'done' || (st.state === 'latest' && !!pv && verNum(st.v) > verNum(pv)));
+  function autoUpdate(force) { // force: 管理画面の「テレビの再読み込み」から。間隔あけ（60 秒）を飛ばす。走っている途中なら、その終わりを待つ
+    if (!IN_APP) return Promise.resolve(false);
+    if (UPD.running) return UPD.run;
+    if (!force && Date.now() - UPD.last < 60000) return Promise.resolve(UPD.pending);
+    UPD.running = true; UPD.last = Date.now(); UPD.n++;
+    UPD.run = (async () => {
+      try {
+        const pv = await pageVersion();
+        let st = await getJson('/__update');
+        for (let i = 0; i < 180 && st && st.state === 'running'; i++) { await sleep(1000); st = await getJson('/__update_status'); }
+        UPD.st = st;
+        if (newerOnDisk(st, pv) && !UPD.pending) { UPD.pending = true; UPD.pendingSince = Date.now(); }
+      } catch (e) { UPD.st = { state: 'fail' }; /* 圏外・古いアプリ: 何もしない（次の確認でまた試す） */ }
+      UPD.running = false;
+      return UPD.pending;
+    })();
+    return UPD.run;
+  }
+  // 読み直してよい時か（longWait: 待ち時間が来ないまま長く待った）
+  function updSafe(longWait) {
+    if (TV.reloading || TV.playing || document.getElementById('tvkeyBox')) return false;
+    const m = TV.mode;
+    if (!S || !m) return true; // まだ何も映していない
+    const t = now(), open = S.open, openSoon = !!open && t >= (open.openAt || 0) - 10000;
+    if (m === 'wait' || m === 'hl') return !openSoon; // 次の受付の 10 秒前からは待つ
+    if (!longWait) return false;
+    if (m === 'result') return !!TV.resBase && t - TV.resBase.t >= 30000 && !(open && t >= (open.openAt || 0) - 15000);
+    if (m === 'open' && open) return xAt(open) - t >= 75000;
+    return false;
+  }
+  function updWatch() {
+    if (!UPD.pending || TV.reloading) return;
+    const long = Date.now() - UPD.pendingSince >= UPD_LONG_MS;
+    if (!updSafe(long)) return;
+    UPD.pending = false; UPD.why = long ? 'long' : 'safe';
+    doReload();
+  }
+  // 管理画面の「テレビの再読み込み」: アプリの中なら先に取り込み（終わるまで最大 180 秒）→ 取り込めても・失敗しても・未対応でも開き直す
+  let reloadAsked = false;
+  async function reloadWithUpdate() {
+    if (TV.reloading || reloadAsked) return; reloadAsked = true;
+    if (IN_APP) { try { await autoUpdate(true); } catch (e) { } }
+    UPD.pending = false; UPD.why = 'signal';
+    doReload();
+  }
+  if (IN_APP) {
+    pageVersion();
+    setTimeout(() => autoUpdate(), 20000 + Math.floor(Math.random() * 40000)); // 起動して 20〜60 秒後（全店のテレビが同時に取りに行かないようにばらす）
+    setInterval(() => autoUpdate(), UPD_EVERY_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) autoUpdate(); });
+    setInterval(() => { try { updWatch(); } catch (e) { console.error(e); } }, 1000);
+  }
+
   // ---------- テスト・確認用 ----------
   window.DERBY = {
     v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV,
+    upd: UPD, updCheck: (force) => autoUpdate(force), updSafe, // 自動アップデート（tests/v2-tv-update.test.js）
     get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now,
     get cues() { return TV.cues || null; }, cueOverride: CUE_Q, // 確定演出: いま映像に渡しているもの（tests/v2-tv.plan.js）と ?cues= の上書き
     // 結果画面の 5 分の流れの確認用: resultAt(秒) で「結果画面が出てから 秒」の場面にする（表示の時計だけ進める。閉じる時刻は本物のまま）。resultAt(null) で戻す
