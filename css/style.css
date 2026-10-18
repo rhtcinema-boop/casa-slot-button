@@ -1895,3 +1895,20 @@ body.is-tv #dr3 .dr::after, body.is-tv #dr3 .dr em, body.is-tv #dr3 .in b { filt
 #hitnote .hn-unit { display: flex; align-items: center; gap: 16px; margin-top: 6px; font-family: var(--font-label); font-size: 18px; letter-spacing: .6em; color: #d9b25a; padding-left: .6em; }
 #hitnote .hn-unit em { font-style: normal; width: 8px; height: 8px; transform: rotate(45deg); border: 1px solid #d9b25a; }
 body.lite #hitnote .hn-bulbs, body.lite #hitnote .hn-live::before { animation: none; }
+
+/* ---------- b120: 本物のカジノ寄せ（調査チームの結果）。色と速さだけを変える（重くしない） ----------
+   上下の電飾: 待機中＝暖かい金色でゆっくり／回転中＝今のステージの色のまま／当たり＝金で速く／50,000 以上＝電球ごとに色違い。スーパーモード中は変えない
+   期待の段階: 1 段目 青 → 2 段目 赤 → 3 段目 金（パチスロの色の順番。リール窓の枠と上下の帯） */
+body:not(.super) #stage[data-lamp="idle"] .edge { --acc: 255, 200, 110; --accent: #ffcf7a; }
+body:not(.super) #stage[data-lamp="idle"] .edge i { animation-duration: 2.4s; }
+body:not(.super) #stage[data-lamp="win"] .edge { --acc: 255, 205, 80; --accent: #ffd24a; }
+body:not(.super) #stage[data-lamp="win"] .edge i, body:not(.super) #stage[data-lamp="jackpot"] .edge i { animation-duration: .5s; }
+body:not(.super) #stage[data-lamp="jackpot"] .edge i:nth-child(4n+1) { --acc: 255, 79, 216; --accent: #ff4fd8; }
+body:not(.super) #stage[data-lamp="jackpot"] .edge i:nth-child(4n+2) { --acc: 255, 210, 74; --accent: #ffd24a; }
+body:not(.super) #stage[data-lamp="jackpot"] .edge i:nth-child(4n+3) { --acc: 79, 216, 255; --accent: #4fd8ff; }
+body:not(.super) #stage[data-lamp="jackpot"] .edge i:nth-child(4n) { --acc: 125, 255, 154; --accent: #7dff9a; }
+#stage[data-tense="1"] .tglow, #stage[data-tense="1"] .edge { --acc: 79, 139, 255; }
+#stage[data-tense="2"] .tglow, #stage[data-tense="2"] .edge { --acc: 255, 59, 59; }
+#stage[data-tense="3"] .tglow, #stage[data-tense="3"] .edge { --acc: 255, 210, 74; }
+#bannerLabel.tierup { animation: tierUp .5s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes tierUp { from { transform: translate(-50%, -50%) scale(1.7); opacity: .4; } }
