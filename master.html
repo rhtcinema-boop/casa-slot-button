@@ -163,15 +163,71 @@
   .stepper button { background: #2e2e36; border-color: #3a3a44; } /* ◀ ▶ を数字と見分けやすく */
   .tscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .summary { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  /* ===== 2026-10-19 その 2: 店長が初めて見ても分かるように（見出しはやりたいことの言葉・説明は 1 行・専門用語なし） ===== */
+  .phead .fsum { color: var(--sub); font-size: 13px; }
+  .ago { color: var(--sub); font-size: 12px; }
+  .badge.none:empty { display: none; }
+  .slist .scard { flex-wrap: wrap; }
+  .sctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .qpre { display: flex; align-items: center; gap: 6px; margin: 0; }
+  .qpre span { color: var(--sub); font-size: 12px; white-space: nowrap; }
+  .qpre select { width: auto; min-width: 150px; height: 36px; font-size: 15px; }
+  .btn[hidden] { display: none; }
+  .updbox { display: flex; align-items: center; justify-content: space-between; gap: 10px 12px; flex-wrap: wrap; margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px; background: #111115; border: 1px solid var(--line); }
+  .updbox.warn { background: rgba(255, 179, 71, .10); border-color: rgba(255, 179, 71, .45); }
+  .updbox .oldnote { font-size: 15px; font-weight: 600; }
+  .updbox.ok .oldnote { color: var(--ok); font-size: 13px; font-weight: 400; }
+  .updbox .oldnote:empty { display: block; } /* ボタンの位置がずれないように */
+  .updbox .btn { margin-left: auto; }
+  /* テレビに映すゲーム（js/derbyswitch-master.js の中身は変えない約束なので、見出しの言葉と長い説明だけを見た目で差し替える） */
+  #dswPanel > h3 { font-size: 0; }
+  #dswPanel > h3::before { content: 'テレビに映すゲーム'; font-size: 16px; }
+  #dswPanel > h3 + p.hint { display: none; } /* 約 200 字の説明（文は部品の中に残っている） */
+  #dswPanel .panel > p.hint { display: none; } /* ログイン欄の 2 行目（見出しの「切り替えるときだけ」で足りる） */
+  #dswPanel .list .item .name small { display: none; } /* 「casa DERBY の店舗 shibuya｜いま: …」→ 今の値は ✓ つきの銀のボタンで分かる */
+  #dswPanel .btn[aria-pressed="true"]::before { content: '✓ '; }
+  .updbox .oldnote small { display: block; color: var(--sub); font-size: 12px; font-weight: 400; margin-top: 2px; }
+  .sname .badge.warn, .sname .badge.ok { background: transparent; border: 1px solid currentColor; } /* 「更新が必要」（版）は枠だけ。「つながっていません」（塗り）と見分ける */
+  .stage h4 { position: sticky; top: 0; z-index: 1; margin: -10px -12px 6px; padding: 10px 12px 6px; background: #111115; border-radius: 14px 14px 0 0; border-bottom: 1px solid var(--line); font-size: 16px; color: var(--gold); } /* いまどの STAGE を直しているか、スクロールしても見える */
+  .stage .row .lbl.wrap { white-space: normal; line-height: 1.25; font-size: 15px; } /* 「次の STAGE へ」がスマホで「次の STAGE…」と切れていた */
+  .nw, .panel h3 small { white-space: nowrap; }
+  label.f span small.lsub { display: inline; margin-left: 8px; color: var(--sub); font-size: 12px; }
+  .sub h4 small { display: block; margin: 2px 0 0; }
+  .qnote { color: var(--warn); font-size: 12px; white-space: nowrap; }
+  .qnote[hidden] { display: none; }
+  .usenote { margin: 0 0 6px; padding: 8px 12px; border-radius: 10px; background: rgba(255, 179, 71, .10); border: 1px solid rgba(255, 179, 71, .35); color: var(--text); font-size: 14px; }
+  .usenote b { color: var(--warn); }
+  td:first-child { white-space: nowrap; }
+  /* ログインする前は、テレビの切り替えのボタンが押せない理由を 1 行で（部品の中身は変えない） */
+  #dswPanel:has(#dswPw) .list::before { content: 'ログインすると、下のボタンで切り替えられます'; display: block; color: var(--sub); font-size: 13px; margin: 4px 0 2px; }
+  @media (max-width: 600px) {
+    .slist .scard { padding: 8px 0; gap: 4px; position: relative; }
+    .qpre select { height: 34px; }
+    table { font-size: 13px; } th, td { padding: 8px 4px; }
+    .slist .badge { font-size: 11px; padding: 1px 8px; } .slist .smeta { margin-top: 2px; } .slist .sname { font-size: 16px; } /* 一覧を少しでも短く */
+    .row:has(.swatches) { flex-wrap: wrap; } .swatches { max-width: none; justify-content: flex-start; } /* 名前の色: 説明を 1 行に、色は下の段に */
+    .sctl .qnote { flex-basis: 100%; text-align: right; } /* 選ぶと出る知らせは下の段に（選択欄を狭めない） */
+    #dswPanel .panel > h3 { font-size: 13px !important; } /* 「casa DERBY にログイン（切り替えるときだけ）」を 1 行に */
+    .slist .scard .sinfo { flex: 1 1 100%; } /* 名前の段を横いっぱいに（ボタンは下の段へ）。当たりの設定の一覧で名前が 1 文字ずつ折り返していた */
+    .slist .scard .sname { padding-right: 120px; min-height: 36px; } /* 右上の「お店の設定」の場所をあける */
+    .sctl .sedit { position: absolute; top: 8px; right: 0; }
+    .sctl { width: 100%; justify-content: flex-start; }
+    .qpre { flex: 1; min-width: 0; }
+    .qpre select { flex: 1; min-width: 0; width: 100%; }
+    .updbox .btn { width: 100%; margin-left: 0; }
+    #dswPanel .list .item .name { flex-basis: auto; flex: 1; } /* スマホでも 店名 [✓ casa SLOT] [casa DERBY] を 1 行に */
+    #dswPanel .list .item .btn { padding: 0 10px; }
+  }
   @media (max-width: 600px) {
     header { padding: 10px 12px; gap: 8px; }
     header h1 { font-size: 15px; letter-spacing: .02em; }
     header .btn.sm { height: 34px; padding: 0 10px; font-size: 13px; }
     header { position: static; } /* スマホでは上に張り付けない（画面を広く使う） */
     header .sp { display: none; }
-    header h1 { flex: 1; }
-    header #logout { order: 2; }
-    header a.btn { order: 3; margin-left: auto; } /* 1段に入らないときは 2段目の右へ */
+    header { flex-wrap: nowrap; gap: 6px; }
+    header h1 { flex: 1 1 auto; min-width: 0; font-size: 14px; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; }
+    header .btn.sm { padding: 0 8px; font-size: 12px; }
+    header a.btn { order: 1; } header #logout { order: 2; } /* 題名・DERBY の管理画面・ログアウトを 1 段に */
     .list .item { flex-wrap: wrap; } /* 一覧の行（テレビのゲームの枠も）: 名前の段を横いっぱいにして、ボタンはその下に */
     .list .item .name { flex-basis: 100%; }
     header #who, .wide-only { display: none; }
@@ -190,14 +246,14 @@
 <body>
 <header><h1>casa SLOT マスター</h1><span class="sp"></span><a class="btn sm ghost" href="derby/v2/admin.html" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none"><span class="wide-only">casa&nbsp;</span>DERBY<span class="wide-only">&nbsp;の</span>&nbsp;管理画面&nbsp;↗</a><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
 <nav class="tabs" id="tabs" style="display:none">
-  <button data-tab="stores" class="on">店舗</button><button data-tab="presets">プリセット</button><button data-tab="stats">集計</button>
+  <button data-tab="stores" class="on">お店</button><button data-tab="presets">当たりの設定</button><button data-tab="stats">集計</button>
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
-<script src="cloud-config.js?v=b123"></script>
-<script src="js/engine.js?v=b123"></script>
-<script src="js/cloud.js?v=b123"></script>
-<script src="js/derbyswitch-master.js?v=b123"></script><!-- テレビのゲームの切り替え（casa DERBY の Firebase に書く。casa SLOT のクラウドとは別） -->
-<script src="js/master.js?v=b123"></script>
+<script src="cloud-config.js?v=b124"></script>
+<script src="js/engine.js?v=b124"></script>
+<script src="js/cloud.js?v=b124"></script>
+<script src="js/derbyswitch-master.js?v=b124"></script><!-- テレビのゲームの切り替え（casa DERBY の Firebase に書く。casa SLOT のクラウドとは別） -->
+<script src="js/master.js?v=b124"></script>
 </body>
 </html>
