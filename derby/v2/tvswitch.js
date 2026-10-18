@@ -10,6 +10,7 @@
 (function () {
   'use strict';
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo) return; /* Web デモ（webdemo/）: casa SLOT は無いので何もしない（戻らない・リモコンも足さない） */
   const QS = location.search;
   const STORE = decodeURIComponent((QS.match(/[?&]store=([^&#]+)/) || [])[1] || '');
   const UA_TV = /casaTV/.test(navigator.userAgent || '');
