@@ -9,7 +9,12 @@
    - このテレビだけの設定（2026-10-18。casa SLOT の設定画面「このテレビのゲーム」）: localStorage casa.tvGameLocal = 'slot' | 'derby'（無し＝店の設定どおり）。
      店の設定より優先: 'derby' なら店の設定が SLOT でも戻らない、'slot' なら（レースが終わってから）戻る。
      戻るの長押しの画面に「casa SLOT に戻す」（このテレビを casa SLOT に固定して戻る。店の設定どおりに戻すのは casa SLOT の設定画面で）
-   - テスト用: localhost のときだけ ?tvgameUrl=<URL> で読む先を差し替えられる（sessionStorage に覚える） */
+   - 数秒で切り替える（2026-10-19）: 同じ 1 件を Firestore の「変更の通知」（SDK の onSnapshot）でも見張る。変わったらすぐ確かめ直す。
+     SDK は client.js が読み込む 'derby' のアプリをそのまま使う（2 回読まない）。通知が届いている間は、念のための読み取り（REST）を 5 分ごとに減らす。
+     通知が使えない（模擬クラウド・SDK を読めない）ときは今までどおり 30 秒ごとの読み取り。端末の中の古い写し（fromCache）は使わない。
+     スタッフのスマホ（v2/staffswitch.js）も DerbyTvSwitch.watch で同じ通知を使う。
+   - テスト用: localhost のときだけ ?tvgameUrl=<URL> で読む先を差し替えられる（sessionStorage に覚える）。
+     ?fbSdk=<にせの SDK の場所> のときだけ通知も使う（localhost では本物の casa-derby の SDK にはつながない） */
 (function () {
   'use strict';
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -20,14 +25,57 @@
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   const S = (st) => ({ get(k) { try { return st().getItem(k); } catch (e) { return null; } }, set(k, v) { try { st().setItem(k, v); } catch (e) { /* noop */ } } });
   const ss = S(() => sessionStorage), ls = S(() => localStorage);
-  const POLL_MS = 30000, FIRST_MS = 5000, BUSY_MS = 3000, LOOP_N = 6, LOOP_MS = 10 * 60000;
-  let stub = null;
-  if (LOCAL) { const m = QS.match(/[?&]tvgameUrl=([^&#]+)/); if (m) { try { stub = decodeURIComponent(m[1]); ss.set('casa.tvgameUrl', stub); } catch (e) { stub = null; } } else stub = ss.get('casa.tvgameUrl'); }
+  const POLL_MS = 30000, SAFE_MS = 5 * 60000, FIRST_MS = 5000, BUSY_MS = 3000, LOOP_N = 6, LOOP_MS = 10 * 60000;
+  let stub = null, sdkStub = null;
+  if (LOCAL) {
+    const m = QS.match(/[?&]tvgameUrl=([^&#]+)/); if (m) { try { stub = decodeURIComponent(m[1]); ss.set('casa.tvgameUrl', stub); } catch (e) { stub = null; } } else stub = ss.get('casa.tvgameUrl');
+    const m2 = QS.match(/[?&]fbSdk=([^&#]+)/); if (m2) { try { sdkStub = decodeURIComponent(m2[1]); ss.set('casa.fbSdk', sdkStub); } catch (e) { sdkStub = null; } } else sdkStub = ss.get('casa.fbSdk');
+  }
   const home = () => window.DERBY_SLOT_HOME || '';
   const active = () => !!home() && !!STORE && (UA_TV || ls.get('casa.tvswitch') === '1' || /[?&]via=slot\b/.test(QS));
   const LKEY = 'casa.tvGameLocal';
   const local = () => { const v = ls.get(LKEY); return v === 'slot' || v === 'derby' ? v : null; };
-  const state = { last: null, at: 0, err: '', leaving: false, local: null };
+  const state = { last: null, at: 0, err: '', leaving: false, local: null, via: '' };
+  const gameOf = (doc, id) => (doc && doc[id] === 'derby' ? 'derby' : 'slot');
+
+  /* ---------- 変更の通知（2026-10-19） ---------- */
+  const live = { on: false, doc: null, at: 0, err: '', n: 0 };
+  const fns = [];
+  let watchP = null;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); });
+  async function getDb() {
+    if (LOCAL) {
+      if (!sdkStub) return null;
+      if (!window.firebase) await loadScript(sdkStub + 'firebase-app-compat.js');
+      if (!window.firebase.firestore) await loadScript(sdkStub + 'firebase-firestore-compat.js');
+      const a = window.firebase.apps.find((x) => x.name === 'derbySwitch') || window.firebase.initializeApp({ projectId: 'stub', apiKey: 'stub' }, 'derbySwitch');
+      return a.firestore();
+    }
+    if (!(window.DERBY_FIREBASE && window.DERBY_FIREBASE.firebase)) return null; // 模擬クラウド
+    for (let i = 0; i < 180; i++) { // client.js が SDK を読み込んで 'derby' のアプリを作るのを待つ（最長 3 分）
+      const f = window.firebase, a = f && f.apps && f.firestore && f.apps.find((x) => x.name === 'derby');
+      if (a) return a.firestore();
+      await sleep(1000);
+    }
+    return null;
+  }
+  function listen(db) {
+    try {
+      db.collection('derbySwitch').doc('tv').onSnapshot((snap) => {
+        if (snap.metadata && snap.metadata.fromCache) return; // 端末の中の写しは使わない（オフラインの間は今のまま）
+        live.doc = snap.exists ? (snap.data() || {}) : {}; live.on = true; live.at = Date.now(); live.err = ''; live.n++;
+        fns.slice().forEach((fn) => { try { fn(live.doc); } catch (e) { /* noop */ } });
+      }, (e) => { live.on = false; live.err = 'listen ' + ((e && e.code) || ''); setTimeout(() => listen(db), 60000); });
+    } catch (e) { live.on = false; live.err = 'listen'; }
+  }
+  function startWatch() { if (!watchP) watchP = getDb().then((db) => { if (db) listen(db); else live.err = live.err || 'no sdk'; }, () => { live.err = 'sdk'; }); return watchP; }
+  /* fn(doc): 店の設定が届くたび（最初の 1 回と、変わるたび）。返り値で見張りをやめる */
+  function watch(fn) {
+    if (typeof fn === 'function') { fns.push(fn); if (live.on) setTimeout(() => fn(live.doc), 0); }
+    startWatch();
+    return () => { const i = fns.indexOf(fn); if (i >= 0) fns.splice(i, 1); };
+  }
 
   function docUrl() {
     if (stub) return stub;
@@ -35,19 +83,22 @@
     if (c && c.projectId && c.apiKey) return 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(c.projectId) + '/databases/(default)/documents/derbySwitch/tv?key=' + encodeURIComponent(c.apiKey);
     return '/api/tvgame';
   }
-  /* 'slot' | 'derby' | null（分からない＝今のまま） */
-  async function readGame() {
+  /* { <店舗ID>: 'slot' | 'derby' } | null（分からない＝今のまま）。REST で 1 回読む */
+  async function readDoc() {
     if (navigator.onLine === false) { state.err = 'offline'; return null; }
     const c = typeof AbortController === 'function' ? new AbortController() : null, t = c && setTimeout(() => c.abort(), 8000);
     try {
       const r = await fetch(docUrl(), Object.assign({ cache: 'no-store', credentials: 'omit' }, c ? { signal: c.signal } : {}));
-      if (r.status === 404) { state.err = ''; return 'slot'; }
+      if (r.status === 404) { state.err = ''; return {}; }
       if (!r.ok) { state.err = 'http ' + r.status; return null; }
-      const j = await r.json(), f = j && j.fields && j.fields[STORE];
+      const j = await r.json(), o = {};
+      Object.keys((j && j.fields) || {}).forEach((k) => { o[k] = j.fields[k].stringValue === 'derby' ? 'derby' : 'slot'; });
       state.err = '';
-      return f && f.stringValue === 'derby' ? 'derby' : 'slot';
+      return o;
     } catch (e) { state.err = 'net'; return null; } finally { if (t) clearTimeout(t); }
   }
+  /* 'slot' | 'derby' | null（分からない＝今のまま） */
+  async function readGame() { const d = await readDoc(); return d ? gameOf(d, STORE) : null; }
   function looping() {
     let log = []; try { log = JSON.parse(ss.get('casa.tvswitchLog') || '[]'); } catch (e) { log = []; }
     const now = Date.now(); log = log.filter((x) => now - x < LOOP_MS);
@@ -55,15 +106,18 @@
   }
   function mark() { let log = []; try { log = JSON.parse(ss.get('casa.tvswitchLog') || '[]'); } catch (e) { log = []; } log.push(Date.now()); ss.set('casa.tvswitchLog', JSON.stringify(log.slice(-LOOP_N * 2))); }
   const busy = () => { const st = document.getElementById('stage'); return !!(st && st.classList.contains('m-live')) || !!document.getElementById('tvkeyBox'); };
-  let timer = 0;
+  let timer = 0, lastRest = 0;
   const later = (ms) => { clearTimeout(timer); timer = setTimeout(check, ms); };
   async function check() {
     if (!active() || state.leaving) return;
-    const g = await readGame(), loc = local();
+    let g;
+    if (live.on && navigator.onLine !== false && Date.now() - lastRest < SAFE_MS) { g = gameOf(live.doc, STORE); state.err = ''; state.via = 'live'; } // 通知で届いた値（読み取りなし）
+    else { g = await readGame(); lastRest = Date.now(); state.via = 'rest'; }
+    const loc = local(), wait = live.on ? SAFE_MS : POLL_MS;
     state.at = Date.now(); state.local = loc;
     if (g) state.last = g;
-    if ((loc || g) !== 'slot') return later(POLL_MS); // DERBY のまま・分からないときは今のゲームのまま（このテレビの設定が先）
-    if (looping()) { state.err = 'loop'; return later(POLL_MS); }
+    if ((loc || g) !== 'slot') return later(wait); // DERBY のまま・分からないときは今のゲームのまま（このテレビの設定が先）
+    if (looping()) { state.err = 'loop'; return later(wait); }
     if (busy()) return later(BUSY_MS);
     leave();
   }
@@ -74,8 +128,8 @@
   }
   /* 「casa SLOT に戻す」: このテレビを casa SLOT に固定して戻る（すぐ。レース中なら終わってから＝店の設定で戻るときと同じ） */
   function backToSlot() { if (!home() || state.leaving) return; ls.set(LKEY, 'slot'); state.local = 'slot'; clearTimeout(timer); if (busy()) later(BUSY_MS); else leave(); }
-  window.DerbyTvSwitch = { check, state, active, docUrl, local, backToSlot };
-  if (active()) later(FIRST_MS);
+  window.DerbyTvSwitch = { check, state, active, docUrl, local, backToSlot, watch, live, readDoc, gameOf };
+  if (active()) { watch(() => { if (active() && !state.leaving) later(200); }); later(FIRST_MS); }
 
   /* ---------- Fire TV のアプリのリモコン（window.TV が無いときだけ） ---------- */
   if (!UA_TV || window.TV) return;
