@@ -286,8 +286,9 @@ const Sfx = (function () {
       tone({ type: 'sawtooth', f: 55, f2: 190, a: 0.3, d: 0.25, g: 0.12, lp: 900 });
       [0, 7, 12, 19].slice(0, stage + 1).forEach((iv, i) => chime(hz(ROOT[stage] + 12 + iv), i * 0.07, 0.4, 0.08, { pan: -0.5 + i * 0.3 }));
     },
-    stop() {
-      [0, 4, 7, 12].forEach((iv, i) => tone({ type: 'square', f: hz(ROOT[stage] + 24 + iv), at: 0.02 + i * 0.045, d: i === 3 ? 0.3 : 0.06, g: 0.08, lp: 5200, pan: -0.3 + i * 0.2, rev: i === 3 ? 0.4 : 0 }));
+    stop(k) { // b120: 1 本目・2 本目・3 本目で ド・ミ・ソ と高くする（本物のスロットの止まる音）
+      const up = [0, 4, 7][k] || 0;
+      [0, 4, 7, 12].forEach((iv, i) => tone({ type: 'square', f: hz(ROOT[stage] + 24 + iv + up), at: 0.02 + i * 0.045, d: i === 3 ? 0.3 : 0.06, g: 0.08, lp: 5200, pan: -0.3 + i * 0.2, rev: i === 3 ? 0.4 : 0 }));
       if (stage === 1) {
         sub(0, 0.2, 0.9); noise({ ft: 'lowpass', f: 1400, d: 0.08, g: 0.55 });
         bell(hz(79), 0.01, 0.5, 0.1);
