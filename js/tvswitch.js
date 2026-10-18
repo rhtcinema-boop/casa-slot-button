@@ -6,6 +6,8 @@
    - 店舗の対応: 店舗名に 渋谷 → shibuya、上野 → ueno、札幌 → sapporo。違う名前の店は ?derbystore=<ID> を 1 回開いて覚えさせる。対応が無い店は移らない
    - 読めない（オフライン・失敗）ときは casa SLOT のまま。回転中・CREDIT が残っている・設定や画面調整の最中は終わってから。
      derby/ のファイルが無い（古い版）ときは移らない。行ったり来たりが続くときは 10 分止める
+   - このテレビだけの設定（2026-10-18）: 設定画面「このテレビのゲーム」で localStorage casa.tvGameLocal = 'slot' | 'derby'（無し＝店の設定どおり）。
+     店の設定より優先する。'derby' は設定が読めなくても移る（その場の操作なので）。casa DERBY 側（derby/v2/tvswitch.js）も同じキーを見る
    - テスト用: localhost のときだけ ?tvgameUrl=<URL> で読む先を差し替えられる（sessionStorage に覚える） */
 (function () {
   'use strict';
@@ -22,6 +24,8 @@
   let stub = null;
   if (LOCAL) { stub = qp('tvgameUrl'); if (stub) ss.set('casa.tvgameUrl', stub); else stub = ss.get('casa.tvgameUrl'); }
   const active = () => UA_TV || ls.get('casa.tvswitch') === '1';
+  const LKEY = 'casa.tvGameLocal';
+  const local = () => { const v = ls.get(LKEY); return v === 'slot' || v === 'derby' ? v : null; };
   const st = () => (typeof Store !== 'undefined' && Store.state) || null;
   function derbyId() {
     const s = st(), me = s && s.store;
@@ -32,7 +36,7 @@
     return hit ? hit[1] : null;
   }
   const idle = () => { const s = st(), ui = document.getElementById('ui'); return !!s && !s.play && !(s.credits > 0) && !(s.dud > 0) && !(ui && ui.children.length) && !document.getElementById('calib'); };
-  const state = { last: null, at: 0, err: '', target: null, leaving: false };
+  const state = { last: null, at: 0, err: '', target: null, leaving: false, local: null };
   async function readGame(id) {
     if (navigator.onLine === false) { state.err = 'offline'; return null; }
     const c = typeof AbortController === 'function' ? new AbortController() : null, t = c && setTimeout(() => c.abort(), 8000);
@@ -55,18 +59,20 @@
     const id = derbyId();
     state.target = id;
     if (!id) return later(POLL_MS);
-    const g = await readGame(id);
-    state.at = Date.now();
+    const g = await readGame(id), loc = local();
+    state.at = Date.now(); state.local = loc;
     if (g) state.last = g;
-    if (g !== 'derby') return later(POLL_MS);
+    if ((loc || g) !== 'derby') return later(POLL_MS);
     if (looping()) { state.err = 'loop'; return later(POLL_MS); }
     if (!idle()) return later(BUSY_MS);
     if (!(await derbyReady())) { state.err = 'no derby files'; return later(POLL_MS); }
     if (!idle()) return later(BUSY_MS);
     state.leaving = true; mark();
-    try { if (typeof Store !== 'undefined' && Store.log) Store.transact(() => Store.log('TV_GAME', { to: 'derby', store: id })); } catch (e) { /* 記録できなくても移る */ }
+    try { if (typeof Store !== 'undefined' && Store.log) Store.transact(() => Store.log('TV_GAME', { to: 'derby', store: id, local: !!loc })); } catch (e) { /* 記録できなくても移る */ }
     location.replace('derby/index.html?store=' + encodeURIComponent(id) + '&via=slot');
   }
-  window.SlotTvSwitch = { check, state, active, derbyId };
+  /* 設定画面から: v = 'slot' | 'derby' | null（店の設定どおり）。すぐ確かめ直す（設定画面を閉じて待機中になってから移る） */
+  function setLocal(v) { ls.set(LKEY, v === 'slot' || v === 'derby' ? v : null); state.local = local(); if (active() && !state.leaving) later(300); }
+  window.SlotTvSwitch = { check, state, active, derbyId, local, setLocal };
   if (active()) later(FIRST_MS);
 })();
