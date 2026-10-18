@@ -233,6 +233,7 @@ const Admin = (function () {
     AUTH_LOCKOUT: ['pin', 'PIN連続失敗'], ADMIN_LOGIN: ['pin', '設定画面ログイン'],
     AUTO_RESUME: ['ops', '自動で再開'], FX_GIVEUP: ['ops', '演出を省いて結果を表示'], FX_ERROR: ['ops', '演出のエラー'], CLOUD_ERR: ['ops', '通信エラー'], LOG_TRIM: ['ops', '古い記録の整理'], MAINT: ['ops', '毎日の軽量化'], REEL_RESTORE: ['ops', 'リールの描き直し'], FEED_SEED: ['ops', '配当履歴の初回送信'],
     INSERT: ['ops', 'スマホの紙幣で開始'], SUPER_START: ['ops', 'スーパーモード開始（全店舗）'], CHECKS_CLEAR: ['ops', '会計の一覧を消した'], PHONE_CMD: ['ops', 'スマホからの操作'], INSERT_BUSY: ['ops', 'スマホの紙幣（ゲーム中のため受け付けず）'], LONG_START: ['ops', '長押しで開始'],
+    TV_GAME: ['ops', 'テレビのゲームを casa DERBY に切り替え'], TV_GAME_LOCAL: ['cfg', 'このテレビのゲーム'],
   };
   const GROUPS = [['all', 'すべて'], ['play', 'プレイ'], ['ops', '営業'], ['cfg', '設定変更'], ['pin', 'PIN・認証']];
 
@@ -323,6 +324,25 @@ const Admin = (function () {
       '<div class="panel"><h4>集計</h4><div class="summary">' + stat('プレイ回数', fmtN(ses.playNo)) + stat('当選額の合計', fmtN(ses.awarded)) + '</div><div class="acts" style="justify-content:flex-start"><button class="btn sm ghost" data-act="stats-reset">集計をリセット</button></div></div>';
   }
 
+  /* このテレビのゲーム（2026-10-18）: テレビ（js/tvswitch.js が動く端末）だけ。店の設定（マスター画面・casa DERBY の管理画面）より、このテレビの設定が優先 */
+  const TVG = { slot: 'casa SLOT', derby: 'casa DERBY' };
+  const tvSw = () => (typeof window !== 'undefined' && window.SlotTvSwitch && SlotTvSwitch.active() && SlotTvSwitch.setLocal) ? SlotTvSwitch : null;
+  function tvLocalBadge() {
+    const t = tvSw(), loc = t && t.local();
+    return loc ? '<div class="tvlocal" style="margin:8px 0 4px;padding:6px 10px;border-radius:10px;background:#5a3a08;color:#ffd98a;font-size:14px;font-weight:700;line-height:1.35">このテレビは ' + TVG[loc] + ' に固定中</div>' : '';
+  }
+  function viewTvGame() {
+    const t = tvSw();
+    if (!t) return '';
+    const loc = t.local(), id = t.derbyId(), st = t.state, store = st.last ? TVG[st.last] : (st.err ? '読めません（今のゲームのまま）' : '確認中…');
+    const btn = (v, label) => { const on = (v === 'auto' ? !loc : loc === v); return '<button class="btn ' + (on ? '' : 'ghost') + ' preset-btn" data-act="tvgame-local" data-v="' + v + '">' + label + (on ? '<small>選択中</small>' : '') + '</button>'; };
+    return '<div class="panel" id="tvgamePanel"><h4>このテレビのゲーム' + (loc ? ' <span class="pill" style="height:28px;font-size:14px;background:#5a3a08;color:#ffd98a;margin-left:8px">固定中</span>' : '') + '</h4>' +
+      '<p class="hint">このテレビだけの設定です。「店の設定どおり」は、マスター画面（または casa DERBY の管理画面）で決めた店のゲームに従います。casa SLOT／casa DERBY を選ぶと、店の設定より優先して、このテレビはずっとそのゲームを映します。casa DERBY の画面から戻すときは、リモコンの「戻る」を長押し →「casa SLOT に戻す」。</p>' +
+      '<div class="summary">' + stat('店の設定', esc(store)) + stat('このテレビ', loc ? TVG[loc] + '（固定）' : '店の設定どおり') + '</div>' +
+      (id ? '' : '<ul class="errors"><li>この店舗に対応する casa DERBY の店舗がありません（店舗名に 渋谷・上野・札幌 のどれかが入っている店だけ切り替わります）。</li></ul>') +
+      '<div class="preset-list">' + btn('auto', '店の設定どおり') + btn('slot', 'casa SLOT') + btn('derby', 'casa DERBY') + '</div>' +
+      (loc === 'derby' ? '<p class="hint" style="margin-top:10px">設定画面を閉じると、待機中になってから casa DERBY に切り替わります。</p>' : '') + '</div>';
+  }
   function loadForm() {
     const d = Store.state.draft;
     form = { total: d ? d.total : 0, counts: Object.assign(Engine.emptyCounts(), d ? d.counts : {}) };
@@ -359,7 +379,7 @@ const Admin = (function () {
     const nav = tabsFor(role).map(([k, n]) => '<button class="tab ' + (k === tab ? 'on' : '') + '" data-act="tab" data-tab="' + k + '">' + n + '</button>').join('');
     const keepScroll = (!resetScroll && el.querySelector('.adm-body')) ? el.querySelector('.adm-body').scrollTop : 0; resetScroll = false; // b99: タブを変えたら先頭から
     el.innerHTML =
-      '<nav class="adm-nav"><h2>SETTINGS</h2><div class="role">' + (Game.storeMode && Game.storeMode() ? esc(Store.state.store.name) : ROLE_JP[role] + 'PINでログイン中') + '</div>' + nav +
+      '<nav class="adm-nav"><h2>SETTINGS</h2><div class="role">' + (Game.storeMode && Game.storeMode() ? esc(Store.state.store.name) : ROLE_JP[role] + 'PINでログイン中') + '</div>' + tvLocalBadge() + nav +
       '<div class="sp"></div><button class="btn ghost" data-act="close">閉じる</button></nav>' +
       '<section class="adm-main"><div class="adm-head"><h3>' + TITLES[tab] + '</h3>' +
       '<span class="pill on">プレイ ' + fmtN(s.session ? s.session.playNo : 0) + ' 回</span></div>' +
@@ -512,6 +532,8 @@ const Admin = (function () {
       case 'INSERT_BUSY': return 'ゲーム中のため受け付けず' + (d.phone ? ' ' + esc(String(d.phone).slice(0, 8)) : '');
       case 'LONG_START': return 'リモコン／ロゴの長押しで開始';
       case 'PHONE_CMD': return ({ preset: 'プリセット切替', statsReset: '集計のリセット', volume: '音量', update: '更新', logout: 'ログアウト' }[d.type] || esc(String(d.type || ''))) + (d.ok === false ? '（受け付けず' + (d.reason ? '：' + esc(({ playing: 'ゲーム中', preset: 'プリセットが使えない' })[d.reason] || d.reason) : '') + '）' : '');
+      case 'TV_GAME': return 'casa DERBY（' + esc(d.store || '') + '）へ移った' + (d.local ? '（このテレビの設定）' : '（店の設定）');
+      case 'TV_GAME_LOCAL': return 'このテレビのゲーム: ' + ({ slot: 'casa SLOT に固定', derby: 'casa DERBY に固定' }[d.v] || '店の設定どおり');
       case 'CHECKS_CLEAR': return '会計の一覧を消した（' + (d.n || 0) + ' 件）';
       default: return esc(JSON.stringify(d));
     }
@@ -604,7 +626,7 @@ const Admin = (function () {
   }
   function viewMisc() {
     const fs = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
-    return '<div class="panel"><h4>効果音の音量</h4><div class="row"><input class="vol" type="range" min="0" max="100" value="' + Math.round(Store.state.settings.volume * 100) + '" data-vol>' +
+    return viewTvGame() + '<div class="panel"><h4>効果音の音量</h4><div class="row"><input class="vol" type="range" min="0" max="100" value="' + Math.round(Store.state.settings.volume * 100) + '" data-vol>' +
       '<button class="btn sm ghost" data-act="test-sound">テスト再生</button></div></div>' +
       (function () { const s = Game.screenInfo(), p = (v) => (Math.round(v * 1000) / 10).toFixed(1) + '%';
         return '<div class="panel"><h4>画面サイズ調整</h4><dl class="kv"><dt>いまの表示範囲</dt><dd>' + (s ? '左上 ' + p(s.x0) + ', ' + p(s.y0) + ' ／ 右下 ' + p(s.x1) + ', ' + p(s.y1) : '全画面（調整なし）') + '</dd></dl>' +
@@ -778,6 +800,15 @@ const Admin = (function () {
         }
         case 'preset-use': {
           if (await Game.choosePreset(b.dataset.id)) { const p = Store.state.play; UI.toast(p && p.phase !== 'shown' ? 'プリセットを選びました。いまのゲームが終わってから切り替わります。' : 'プリセットを切り替えました。次のプレイから反映されます。', 'ok'); }
+          return render();
+        }
+        case 'tvgame-local': {
+          const t = tvSw(); if (!t) return;
+          const v = b.dataset.v === 'slot' || b.dataset.v === 'derby' ? b.dataset.v : null;
+          if (v === t.local()) return;
+          t.setLocal(v);
+          Store.transact(() => Store.log('TV_GAME_LOCAL', { v: v || 'auto' }, role));
+          UI.toast(v ? 'このテレビを ' + TVG[v] + ' に固定しました' : 'このテレビは店の設定どおりに戻しました', 'ok');
           return render();
         }
         case 'store-logout': {
