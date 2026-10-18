@@ -86,7 +86,7 @@
       '<div style="display:flex;gap:8px;align-items:center"><input type="password" id="dswPw" autocomplete="off" placeholder="casa DERBY のパスワード" style="flex:1"><button class="btn" data-dsw="login"' + (busy ? ' disabled' : '') + '>ログイン</button></div></div>';
   }
   function panelHtml(stores) {
-    return '<div class="panel" id="dswPanel"><h3>テレビのゲーム（casa SLOT / casa DERBY）</h3><p class="hint">店のテレビ（Fire TV）に映すゲームです。casa DERBY の管理画面の「テレビのゲーム」と同じ設定で、どちらで変えても同じになります。切り替えると 30 秒ほどでその店のテレビが変わります（ゲーム中・レース中は終わってから）。テレビの設定画面で「このテレビのゲーム」を固定しているテレビは、そちらが優先されます。</p>' +
+    return '<div class="panel" id="dswPanel"><h3>テレビのゲーム（casa SLOT / casa DERBY）</h3><p class="hint">店のテレビ（Fire TV）に映すゲームです。casa DERBY の管理画面の「テレビのゲーム」と同じ設定で、どちらで変えても同じになります。切り替えると数秒でその店のテレビが変わります（ゲーム中・レース中は終わってから）。スタッフのスマホ（紙幣のページ・casa DERBY のスタッフ画面）の「テレビ」からも、その店だけ切り替えられます。テレビの設定画面で「このテレビのゲーム」を固定しているテレビは、そちらが優先されます。</p>' +
       loginHtml() + (docErr ? '<div class="err">' + esc(docErr) + '</div>' : '') +
       '<div class="list">' + rowsFor(stores).map(rowHtml).join('') + '</div>' +
       (msg ? '<div class="' + (/^OK /.test(msg) ? 'okmsg' : 'err') + '" id="dswMsg">' + esc(msg.replace(/^OK /, '')) + '</div>' : '') + '</div>';
@@ -118,7 +118,7 @@
     if (act === 'logout') { sess = null; return paint(); }
     if (act === 'set') {
       const id = b.dataset.id, g = b.dataset.g === 'derby' ? 'derby' : 'slot';
-      if (!window.confirm(b.dataset.name + ' のテレビを ' + NAMES[g] + ' にします。30 秒ほどで切り替わります（ゲーム中・レース中は終わってから）。')) return;
+      if (!window.confirm(b.dataset.name + ' のテレビを ' + NAMES[g] + ' にします。数秒で切り替わります（ゲーム中・レース中は終わってから）。')) return;
       busy = true; paint();
       try { await setGame(id, g); msg = 'OK ' + b.dataset.name + ' のテレビを ' + NAMES[g] + ' にしました。'; } catch (e) { msg = e.message; }
       busy = false; await readDoc(); return paint();
