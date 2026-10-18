@@ -3,10 +3,15 @@
      抽選結果の確定と在庫の消費は同じ書き込みに含まれるため、途中でアプリが落ちても
      「在庫だけ減った／結果だけ出た／二重抽選された」という状態にはならない。
    - 履歴は先に同じ書き込みの中で pendingLog に積み（write-ahead）、その後 IndexedDB に
-     移して容量を確保する。IndexedDB への移動が完了するまで pendingLog からは消さない。 */
+     移して容量を確保する。IndexedDB への移動が完了するまで pendingLog からは消さない。
+   - 画面サイズ調整（settings.screen）の控え（2026-10-19）: 保存できるたびに、小さな別のキー SCREEN_KEY にも写す（全画面に戻したときは 'null'）。
+     読み込んだ状態に settings.screen が無い（状態が作り直された・消えた・読めずに初期値になった）ときは、控えから戻して保存し直す。
+     casa DERBY のテレビ（derby/v2/tv.js）は今までどおり KEY の settings.screen を読むだけ（控えは casa SLOT だけが使う）。 */
 const Store = (function () {
   'use strict';
   const KEY = 'casa-slot-button.state.v1';
+  const SCREEN_KEY = 'casa-slot-button.screen.v1';
+  const okRect = (s) => !!s && typeof s === 'object' && [s.x0, s.y0, s.x1, s.y1].every((v) => typeof v === 'number' && isFinite(v)) && s.x1 - s.x0 >= 0.3 && s.y1 - s.y0 >= 0.3;
   const DB_NAME = 'casa-slot-button', DB_STORE = 'log';
   let state = null;
   let db = null, flushing = false;
@@ -47,10 +52,30 @@ const Store = (function () {
     if (!state.hits) state.hits = [];
     if (!state.comboHist) state.comboHist = [];              // 直近20回に見せた3本の組み合わせ（同じ見せ方を避ける）                             // 直近24時間の当たり [{ ts, key }]
     if (!state.session) state.session = { id: 1, startedAt: Date.now(), total: 0, cap: 0, initial: Engine.emptyCounts(), remaining: Engine.emptyCounts(), consumed: Engine.emptyCounts(), playNo: 0, overflowCount: 0, awarded: 0 };
+    restoreScreen();
     return state;
   }
+  /* 画面サイズの控えから戻す（settings.screen が無いときだけ。全画面＝null は「無い」ではないので戻さない） */
+  function restoreScreen() {
+    if (!state.settings || typeof state.settings !== 'object') state.settings = { volume: 0.9 };
+    if (state.settings.screen !== undefined) { mirrorScreen(); return; } // 今の値を控えにも（この版を初めて開いたとき）
+    let b = null;
+    try { const raw = localStorage.getItem(SCREEN_KEY); b = raw ? JSON.parse(raw) : null; } catch (e) { b = null; }
+    if (!okRect(b)) return;
+    state.settings.screen = { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 };
+    try { save(); } catch (e) { /* 保存できなくても、この起動では控えの値で映す */ }
+  }
+  let screenSaved = null;
   function save() {
     localStorage.setItem(KEY, JSON.stringify(state));
+    mirrorScreen();
+  }
+  function mirrorScreen() {
+    const s = state.settings && state.settings.screen;
+    if (s === undefined) return; // 控えは消さない（戻すため）
+    const v = s === null ? 'null' : okRect(s) ? JSON.stringify({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1 }) : null;
+    if (v == null || v === screenSaved) return;
+    try { if (localStorage.getItem(SCREEN_KEY) !== v) localStorage.setItem(SCREEN_KEY, v); screenSaved = v; } catch (e) { /* 控えだけ。次の保存でまた試す */ }
   }
 
   /* すべての状態変更はここを通す。保存に失敗したら変更を巻き戻して例外を投げる。 */
