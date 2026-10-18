@@ -49,40 +49,78 @@
   }
   const presetName = (id) => { const p = presets.find((x) => x.id === id); return p ? p.name : '（未設定）'; };
 
+  /* 2026-10-19 見やすく: めったに使わない設定と長い説明は「畳み」（開け閉めできる見出し）に入れる。
+     畳みの中の入力欄も画面にはあるので、保存の読み取り（$('sbill') など）はこれまでどおり。
+     開け閉めの状態は、同じ画面を描き直しても（ON/OFF・金額の追加など）そのまま残す。別の画面に移ったら閉じた状態に戻す */
+  const folds = new Set(); let foldView = '';
+  function fold(key, head, body, opt) {
+    const o = opt || {}, open = folds.has(key) ? true : folds.has('!' + key) ? false : !!o.open;
+    return '<details class="fold' + (o.cls ? ' ' + o.cls : '') + '" data-fold="' + key + '"' + (open ? ' open' : '') + '><summary>' + head + '</summary><div class="fbody">' + body + '</div></details>';
+  }
+  const more = (key, html) => fold(key, 'くわしい説明', '<div class="hint">' + html + '</div>', { cls: 'more' }); // 長い説明は畳む（文は消さない）
+  main.addEventListener('toggle', (e) => { const d = e.target; if (!d || !d.dataset || !d.dataset.fold) return; const k = d.dataset.fold; folds.delete(k); folds.delete('!' + k); folds.add(d.open ? k : '!' + k); }, true);
+  const onOff = (on) => '<span class="badge ' + (on ? 'ok' : '') + '">' + (on ? 'ON' : 'OFF') + '</span>';
+
   function render() {
+    const view = tab + (editStore ? ':s' + (editStore.id || 'new') : '') + (editPreset ? ':p' + (editPreset.id || 'new') : '');
+    if (view !== foldView) { folds.clear(); foldView = view; }
     if (tab === 'stores') { main.innerHTML = editStore ? viewStoreEdit() : viewStores(); if (!editStore && !latestVer) loadLatest(); }
     else if (tab === 'presets') main.innerHTML = editPreset ? viewPresetEdit() : viewPresets();
     else main.innerHTML = viewStats();
     main.classList.toggle('wide', tab === 'presets' && !!editPreset);
-    if (window.DerbySwitchMaster) DerbySwitchMaster.mount(main, { tab, stores, edit: editStore }); // テレビのゲーム（casa SLOT / casa DERBY。js/derbyswitch-master.js）
+    if (window.DerbySwitchMaster) DerbySwitchMaster.mount(main, { tab, stores, edit: editStore }); // テレビのゲーム（casa SLOT / casa DERBY。js/derbyswitch-master.js）。一覧では最初の .panel（店舗の状態）のすぐ下、編集では「いま使うプリセット」のすぐ下に入る
+    if (tab === 'stores' && !editStore) refreshVers();
   }
 
   /* ---------- 店舗 ---------- */
   // 使用中のプリセットに誤りがあると、端末はそれを受け付けず前の設定のまま動く（b71）。店舗の一覧でそれが分かるようにする
   function storeWarn(s) {
     const p = presets.find((x) => x.id === s.activePresetId);
-    return p && !Engine.validateProbs(p.probs).ok ? '<br><b style="color:var(--ng)">⚠ 使用中のプリセットに誤りがあるため、端末は前の設定のまま動いています。プリセットを直してください</b>' : '';
+    return p && !Engine.validateProbs(p.probs).ok ? '<div class="swarn">⚠ 使用中のプリセットに誤りがあるため、端末は前の設定のまま動いています。プリセットを直してください</div>' : '';
   }
+  /* 店舗の状態（2026-10-19）: 端末は 10 分ごとに lastSeen・deviceVersion を書く（game.js の生存報告）。today.js・bill.js と同じく 25 分以内なら「動いています」 */
+  const ALIVE_MS = 25 * 60 * 1000;
+  const ago = (ts) => { const m = Math.floor((Date.now() - ts) / 60000); if (m < 1) return 'たった今'; if (m < 60) return m + '分前'; const h = Math.floor(m / 60); return h < 24 ? h + '時間前' : Math.floor(h / 24) + '日前'; };
+  const aliveBadge = (s) => (!s.lastSeen ? '<span class="badge">● まだ連絡なし</span>' : Date.now() - s.lastSeen < ALIVE_MS ? '<span class="badge ok">● 動いています</span>' : '<span class="badge warn">● 連絡が途切れています</span>');
+  const vnum = (v) => (/^b\d+$/.test(v || '') ? Number(v.slice(1)) : 0);
+  function verInfo(v) { // 端末の版のバッジ（最新の版を読み込めたら、最新／古い版を色で分ける）
+    if (!v) return { cls: '', txt: '版 —' };
+    if (vnum(latestVer) && vnum(v) >= vnum(latestVer)) return { cls: 'ok', txt: '✓ 最新の版 ' + v };
+    if (vnum(latestVer) && vnum(v) < vnum(latestVer)) return { cls: 'warn', txt: '古い版 ' + v };
+    return { cls: '', txt: '版 ' + v };
+  }
+  const verBadge = (v) => { const i = verInfo(v); return '<span class="badge ' + i.cls + '" data-ver="' + esc(v || '') + '">' + esc(i.txt) + '</span>'; };
+  function refreshVers() { // 最新の版を読み込んだあとに、描き直さずにバッジだけ直す（テレビの切り替えの入力欄を消さないため）
+    main.querySelectorAll('[data-ver]').forEach((el) => { const i = verInfo(el.dataset.ver); el.className = 'badge ' + i.cls; el.textContent = i.txt; });
+    const n = stores.filter((s) => s.deviceVersion && vnum(latestVer) && vnum(s.deviceVersion) < vnum(latestVer)).length, el = $('oldNote');
+    if (el) el.innerHTML = n ? '古い版の店舗: ' + n + ' 店（「全店舗をいますぐアップデート」で切り替わります）' : '';
+  }
+  const presetColor = (id) => { const p = presets.find((x) => x.id === id); return p ? (p.color || PRESET_COLORS[0][0]) : 'transparent'; };
   /* b101: ハズレメーター（全店舗共有）。全店舗のハズレが target 回溜まると、全店舗合計 superPlays 回のスーパーモード（superPresetId のプリセットで抽選＋派手な演出） */
   function viewMeter() {
     const m = meter || { enabled: false, target: 300, superPlays: 10, superPresetId: null, miss: 0, superLeft: 0 };
     const opts = '<option value="">（切り替えない。演出だけ）</option>' + presets.filter((p) => !p.test || p.id === m.superPresetId).map((p) => '<option value="' + esc(p.id) + '"' + (p.id === m.superPresetId ? ' selected' : '') + '>' + esc(p.name) + (p.test ? '（テスト用・使えません）' : '') + '</option>').join('');
-    return '<div class="panel"><h3>スーパーメーター（全店舗共有）</h3><p class="hint">全店舗のハズレが溜まって満タンになると、全店舗合計で決めた回数だけ「スーパーモード」になります。その間は選んだプリセットで抽選し、画面が派手になります。お客さんにはメーターの溜まり具合だけ見え、数字は出ません。</p>' +
+    const head = '<h3>スーパーメーター<small>全店舗共有</small></h3><span class="fsum">' + onOff(m.enabled) + ' ハズレ ' + (m.miss || 0) + ' / ' + (m.target || 300) + '・スーパーモード ' + (m.superLeft > 0 ? '残り ' + m.superLeft + ' 回' : 'なし') + '</span>';
+    return fold('meter', head,
+      '<p class="hint">ハズレが全店舗で溜まって満タンになると、決めた回数だけ「スーパーモード」になります。</p>' +
+      more('meter-help', '全店舗のハズレが溜まって満タンになると、全店舗合計で決めた回数だけ「スーパーモード」になります。その間は選んだプリセットで抽選し、画面が派手になります。お客さんにはメーターの溜まり具合だけ見え、数字は出ません。') +
       '<label class="check"><input type="checkbox" id="mon" ' + (m.enabled ? 'checked' : '') + '> スーパーメーターを使う</label>' +
       '<div class="cols"><label class="f"><span>満タンまでのハズレ回数（全店舗合計）</span><input type="number" id="mtarget" min="10" max="100000" value="' + (m.target || 300) + '"></label>' +
       '<label class="f"><span>スーパーモードの回数（全店舗合計）</span><input type="number" id="mplays" min="1" max="1000" value="' + (m.superPlays || 10) + '"></label>' +
       '<label class="f"><span>スーパーモード中のプリセット</span><select id="mpreset">' + opts + '</select></label></div>' +
       '<p class="hint">いまの状態: ハズレ <b style="color:var(--text)">' + (m.miss || 0) + ' / ' + (m.target || 300) + '</b>　スーパーモード: <b style="color:var(--text)">' + (m.superLeft > 0 ? '残り ' + m.superLeft + ' 回' : 'なし') + '</b></p>' +
-      '<div class="acts"><button class="btn ghost" data-act="meter-reset">ハズレを 0 に戻す</button><button class="btn ghost" data-act="meter-start">いますぐスーパーモードにする</button><button class="btn" data-act="meter-save">保存</button></div></div>';
+      '<div class="acts"><button class="btn ghost" data-act="meter-reset">ハズレを 0 に戻す</button><button class="btn ghost" data-act="meter-start">いますぐスーパーモードにする</button><button class="btn" data-act="meter-save">保存</button></div>', { cls: 'panel' });
   }
+  /* 店舗のタブ（2026-10-19 並べ替え）: ①店舗の状態（＋全店舗のアップデート）→ ②テレビのゲーム（js/derbyswitch-master.js が ① のすぐ下に入れる）→ ③スーパーメーター（畳み） */
   function viewStores() {
-    return '<div class="panel"><h3>店舗</h3><p class="hint">店舗ごとにパスワードと、使えるプリセットを決めます。店舗の端末は起動時に店舗を選んでパスワードを入れます。</p>' +
-      (stores.length ? '<div class="list">' + stores.map((s) => '<div class="item"><div class="name">' + esc(s.name) + '<small>使用中: ' + esc(presetName(s.activePresetId)) + '｜最終起動 ' + fmtDate(s.lastSeen) + (s.deviceVersion ? '（' + esc(s.deviceVersion) + '）' : '') + storeWarn(s) + '</small></div><button class="btn sm ghost" data-act="store-edit" data-id="' + esc(s.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだ店舗がありません</div>') +
-      '<div class="acts"><button class="btn" data-act="store-new">店舗を追加</button></div></div>' +
-      viewMeter() +
-      '<div class="panel"><h3>アップデート</h3><p class="hint">店舗の端末は、ふだんは 1 時間以内に自動で新しい版に切り替わります。すぐに切り替えたいときは下のボタンを押してください。ログイン中のすべての端末が、すぐに新しい版を確認して切り替わります（ゲーム中の端末は、そのゲームが終わり次第）。b61 より古い版の端末には届かないので、その端末は今までどおり 1 時間以内に切り替わります。</p>' +
-      '<p class="hint">いまの最新版: <b style="color:var(--text)" id="latestVer">' + esc(latestVer || '確認中…') + '</b>　各店舗の版は、上の一覧の「最終起動」の横に出ます。</p>' +
-      '<div class="acts"><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全店舗をいますぐアップデート</button><button class="btn ghost" data-act="stores-reload">一覧を読み直す</button></div></div>';
+    return '<div class="panel" id="storesPanel"><div class="phead"><h3>店舗の状態</h3><div class="upd"><span class="lv">最新版 <b id="latestVer">' + esc(latestVer || '確認中…') + '</b></span><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全店舗をいますぐアップデート</button></div></div>' +
+      '<div class="oldnote" id="oldNote"></div>' +
+      (stores.length ? '<div class="slist">' + stores.map((s) => '<div class="scard"><div class="sinfo"><div class="sname"><span>' + esc(s.name) + '</span>' + aliveBadge(s) + '</div>' +
+        '<div class="smeta"><span class="pchip"><i class="pdot" style="background:' + esc(presetColor(s.activePresetId)) + '"></i>' + esc(presetName(s.activePresetId)) + '</span>' + verBadge(s.deviceVersion) + '<span class="seen">最終連絡 ' + (s.lastSeen ? ago(s.lastSeen) + '（' + fmtDate(s.lastSeen) + '）' : '—') + '</span></div>' + storeWarn(s) + '</div>' +
+        '<button class="btn sm ghost" data-act="store-edit" data-id="' + esc(s.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだ店舗がありません</div>') +
+      '<div class="acts start"><button class="btn ghost" data-act="store-new">＋ 店舗を追加</button><button class="btn ghost" data-act="stores-reload">一覧を読み直す</button></div>' +
+      more('stores-help', '店舗ごとにパスワードと、使えるプリセットを決めます。店舗の端末は起動時に店舗を選んでパスワードを入れます。<br>「● 動いています」は、端末から 25 分以内に連絡がある店舗です（端末は 10 分ごとに連絡します）。<br><b>アップデート</b>: 店舗の端末は、ふだんは 1 時間以内に自動で新しい版に切り替わります。すぐに切り替えたいときは「全店舗をいますぐアップデート」を押してください。ログイン中のすべての端末が、すぐに新しい版を確認して切り替わります（ゲーム中の端末は、そのゲームが終わり次第）。b61 より古い版の端末には届かないので、その端末は今までどおり 1 時間以内に切り替わります。') + '</div>' +
+      viewMeter();
   }
   // いま公開されている最新版（version.json）
   let latestVer = '', stale = false;
@@ -91,6 +129,7 @@
   async function loadLatest() {
     try { const man = await (await fetch('version.json?t=' + Date.now(), { cache: 'no-store' })).json(); latestVer = (man && man.v) || ''; } catch (e) { latestVer = '（確認できません）'; }
     const el = $('latestVer'); if (el) el.textContent = latestVer;
+    refreshVers(); // 各店舗の版のバッジ（最新／古い版）
     stale = !!(MY_VER && /^b\d+$/.test(latestVer) && Number(latestVer.slice(1)) > Number(MY_VER.slice(1))); // 公開のほうが新しいときだけ（公開の途中で version.json が一瞬古いことがあるので、「違う」ではなく「新しい」で見る）
     let bar = document.getElementById('stalebar');
     if (stale && !bar) { bar = document.createElement('div'); bar.id = 'stalebar'; bar.style.cssText = 'position:sticky;top:0;z-index:50;background:#5a1f1f;color:#fff;padding:10px 16px;font-size:14px;display:flex;gap:12px;align-items:center;justify-content:center'; document.body.insertBefore(bar, document.body.firstChild); }
@@ -100,23 +139,31 @@
   setTimeout(loadLatest, 1500);
   const staleMsg = () => (stale ? 'このマスター画面は古い版です。画面を読み直してから保存してください。' : '');
   function viewStoreEdit() {
-    const s = editStore;
-    return '<div class="panel"><h3>' + (s.id ? '店舗を編集' : '店舗を追加') + '</h3>' +
+    const s = editStore, notesN = (s.notes || []).filter(Boolean).length, nPre = (s.presetIds || []).length;
+    const pinField = '<label class="f"><span>店舗パスワード（4〜8桁の数字）' + (s.id ? '（変えないときは空のまま）' : '') + '</span><input type="text" id="spin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="' + (s.id ? '変更する場合だけ入力' : '例: 2580') + '"></label>';
+    const chk = (id, on, label, help, key) => '<div class="opt"><label class="check"><input type="checkbox" id="' + id + '" ' + (on ? 'checked' : '') + '> ' + label + '</label>' + more(key, help) + '</div>';
+    /* 並び（2026-10-19）: 店舗名 → 使えるプリセット → いま使うプリセット（＋テレビのゲーム。js/derbyswitch-master.js が「いま使うプリセット」のすぐ下に入れる）→ 遊び方と飾り（畳み）→ 待機中の説明（畳み）→ めったに使わない操作（畳み）。保存・戻るは画面の下に固定 */
+    return '<div class="panel"><h3>' + (s.id ? esc(s.name || '') + ' の設定' : '店舗を追加') + '</h3>' +
       '<label class="f"><span>店舗名</span><input type="text" id="sname" value="' + esc(s.name || '') + '" maxlength="30"></label>' +
-      '<label class="f"><span>店舗パスワード（4〜8桁の数字）' + (s.id ? '（変えないときは空のまま）' : '') + '</span><input type="text" id="spin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="' + (s.id ? '変更する場合だけ入力' : '例: 2580') + '"></label>' +
-      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">使えるプリセット</h3>' + (presets.length ? presets.map((p) => '<label class="check"><input type="checkbox" data-pid="' + esc(p.id) + '" ' + ((s.presetIds || []).indexOf(p.id) >= 0 ? 'checked' : '') + '> ' + esc(p.name) + ' <span class="chip">期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '</span></label>').join('') : '<div class="empty">先にプリセットを作ってください</div>') + '</div>' +
-      '<label class="f"><span>いま使うプリセット（マスターから切り替え。店舗側でも選べます）</span><select id="sactive"><option value="">（未設定）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '" ' + (s.activePresetId === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></label>' +
-      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">待機中に左側に出す説明（3つまで）</h3><p class="hint">リールが回っていない待機中だけ、この店舗の画面の左（STAGE 1〜3 の場所）に出ます。<b style="color:var(--text)">入力した数だけ枠が分かれます</b>（1つなら大きく1枠、2つなら2分割、3つなら3分割）。ゲームが始まるとステージの表示に戻り、待機画面に戻るたびに、また説明が出ます。全部空にすると、今までどおりステージが出ます。文字は枠に収まる大きさに自動で調整されます（1枠 80 文字まで。改行もできます）。</p>' +
-      [0, 1, 2].map((i) => '<label class="f"><span>説明 ' + (i + 1) + '</span><textarea id="snote' + i + '" rows="2" maxlength="80">' + esc((s.notes || [])[i] || '') + '</textarea></label>').join('') + '</div>' +
-      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">スマホの紙幣で始める</h3><p class="hint">ON にすると、この店舗の端末から NEXT GAME ボタンが消え、スタッフのスマホの紙幣ページ（公開 URL の bill.html）で紙幣をスライドしたときだけゲームが始まります。スマホが使えないときは、テレビはリモコンの決定を 2 秒長押し、iPad は左上のロゴを 2 秒長押しで始められます。</p>' +
-      '<label class="check"><input type="checkbox" id="sbill" ' + (s.billMode ? 'checked' : '') + '> スマホの紙幣でゲームを始める（NEXT GAME ボタンを消す）</label></div>' +
-      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">3つの扉</h3><p class="hint">ON にすると、当たりの回の 5 回に 1 回くらい、最後にリールの代わりに扉が 3 つ出ます。スタッフのスマホ（またはリモコンの左右と決定）で扉を選ぶと、その回の当たり金額が出ます。見せ方が変わるだけで、当たりの確率と金額は変わりません。「スマホの紙幣で始める」が ON の店舗だけで動きます。</p>' +
-      '<label class="check"><input type="checkbox" id="sdoor" ' + (s.doors ? 'checked' : '') + '> 3つの扉を出す</label></div>' +
-      '<div class="panel" style="margin:10px 0"><h3 style="font-size:14px">季節の飾り</h3><p class="hint">ON にすると、この店舗の端末の光がオレンジと紫になり、四隅に薄いクモの巣、ロゴの横にかぼちゃが出ます。リールや文字は変わりません。</p>' +
-      '<label class="check"><input type="checkbox" id="shw" ' + (s.halloween ? 'checked' : '') + '> ハロウィンの飾り</label></div>' +
-      '<div class="err" id="serr"></div>' +
-      '<div class="acts">' + (s.id ? '<button class="btn ghost" data-act="store-logout">端末を強制ログアウト</button><button class="btn danger" data-act="store-del">削除</button>' : '') + '<button class="btn ghost" data-act="store-cancel">戻る</button><button class="btn" data-act="store-save">保存</button></div></div>';
+      (s.id ? '' : pinField) + // 新しい店舗はパスワードが必須なので上に出す
+      '<div class="sub"><h4>使えるプリセット<small>店舗の端末で選べるもの</small></h4>' + (presets.length ? presets.map((p) => '<label class="check"><input type="checkbox" data-pid="' + esc(p.id) + '" ' + ((s.presetIds || []).indexOf(p.id) >= 0 ? 'checked' : '') + '> <i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + ' <span class="chip">期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '</span></label>').join('') : '<div class="empty">先にプリセットを作ってください</div>') + '</div>' +
+      '<label class="f"><span>いま使うプリセット（店舗側でも選べます）</span><select id="sactive"><option value="">（未設定）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '" ' + (s.activePresetId === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></label>' +
+      fold('st-play', '<h4>遊び方と飾り</h4><span class="fsum" id="playSum">' + playSum(s.billMode, s.doors, s.halloween) + '</span>',
+        chk('sbill', s.billMode, 'スマホの紙幣でゲームを始める（NEXT GAME ボタンを消す）', 'ON にすると、この店舗の端末から NEXT GAME ボタンが消え、スタッフのスマホの紙幣ページ（公開 URL の bill.html）で紙幣をスライドしたときだけゲームが始まります。スマホが使えないときは、テレビはリモコンの決定を 2 秒長押し、iPad は左上のロゴを 2 秒長押しで始められます。', 'h-bill') +
+        chk('sdoor', s.doors, '3つの扉を出す', 'ON にすると、当たりの回の 5 回に 1 回くらい、最後にリールの代わりに扉が 3 つ出ます。スタッフのスマホ（またはリモコンの左右と決定）で扉を選ぶと、その回の当たり金額が出ます。見せ方が変わるだけで、当たりの確率と金額は変わりません。「スマホの紙幣で始める」が ON の店舗だけで動きます。', 'h-door') +
+        chk('shw', s.halloween, 'ハロウィンの飾り', 'ON にすると、この店舗の端末の光がオレンジと紫になり、四隅に薄いクモの巣、ロゴの横にかぼちゃが出ます。リールや文字は変わりません。', 'h-hw'), { cls: 'sub' }) +
+      fold('st-notes', '<h4>待機中に左側に出す説明</h4><span class="fsum">' + (notesN ? notesN + ' つ入力済み' : 'なし（ステージを表示）') + '</span>',
+        '<p class="hint">待機中だけ、画面の左（STAGE 1〜3 の場所）に出ます。3つまで。</p>' +
+        more('h-notes', 'リールが回っていない待機中だけ、この店舗の画面の左（STAGE 1〜3 の場所）に出ます。<b style="color:var(--text)">入力した数だけ枠が分かれます</b>（1つなら大きく1枠、2つなら2分割、3つなら3分割）。ゲームが始まるとステージの表示に戻り、待機画面に戻るたびに、また説明が出ます。全部空にすると、今までどおりステージが出ます。文字は枠に収まる大きさに自動で調整されます（1枠 80 文字まで。改行もできます）。') +
+        [0, 1, 2].map((i) => '<label class="f"><span>説明 ' + (i + 1) + '</span><textarea id="snote' + i + '" rows="2" maxlength="80">' + esc((s.notes || [])[i] || '') + '</textarea></label>').join(''), { cls: 'sub' }) +
+      (s.id ? fold('st-rare', '<h4>めったに使わない操作</h4><span class="fsum">パスワードの変更・強制ログアウト・削除</span>',
+        pinField +
+        '<div class="rare"><div><b>端末を強制ログアウト</b><small>端末は次回起動時に、店舗の選び直しとパスワード入力が必要になります</small></div><button class="btn ghost" data-act="store-logout">強制ログアウト</button></div>' +
+        '<div class="rare"><div><b>この店舗を削除</b><small>端末はログアウトされます。過去の集計の記録はクラウドに残ります</small></div><button class="btn danger" data-act="store-del">削除</button></div>', { cls: 'sub' }) : '') +
+      '</div>' +
+      '<div class="savebar"><div class="msg"><div class="err" id="serr"></div></div><button class="btn ghost" data-act="store-cancel">戻る</button><button class="btn" data-act="store-save">保存</button></div>';
   }
+  const playSum = (bill, door, hw) => '紙幣 ' + onOff(bill) + ' 扉 ' + onOff(door) + ' ハロウィン ' + onOff(hw);
   async function saveStore() {
     const s = editStore, name = $('sname').value.trim(), pin = $('spin').value.trim();
     const err = $('serr'); err.textContent = '';
@@ -166,10 +213,25 @@
   // 端末に出すプリセット名の色（先頭が初期値）
   const PRESET_COLORS = [['#e2ba5c', '金'], ['#f2f2f2', '白'], ['#ff5a4d', '赤'], ['#ff9f43', 'オレンジ'], ['#3ddc84', '緑'], ['#4fc3ff', '水色'], ['#b388ff', '紫'], ['#ff7ac8', 'ピンク']];
   const earlyOf = (L) => Object.assign({}, EARLY_DEFAULT, (L && L.early) || {});
+  /* 畳んだ見出しに出す今の値（ON/OFF → 大事な数字 → 補足 の順） */
+  function presetSums(p) {
+    const L = p.limits || {}, E = earlyOf(L), lg = logoOf(p);
+    return {
+      free: '×1 ' + freeN(p, 1) + '%・×2 ' + freeN(p, 2) + '%・×3 ' + freeN(p, 3) + '%',
+      logo: (lg > 0 ? lg.toFixed(1) + '%' : 'オフ（0%）') + '・FREE SPIN 中は出さない ' + onOff(noRetrig(p)),
+      lim: onOff(L.on) + (L.on ? ' ' + (L.total ? L.total + '本まで' : '本数は無制限') + (Object.keys(L.max || {}).length ? '・金額ごとの上限あり' : '') : '') + '・' + L.resetHour + ':00 リセット',
+      early: onOff(E.on) + (E.on ? ' 最初の ' + E.plays + ' 回は ' + fmtN(E.min) + ' 以上なし' : ''),
+    };
+  }
+  const updatePresetSums = () => { if (!editPreset) return; const S = presetSums(editPreset); main.querySelectorAll('[data-psum]').forEach((el) => { el.innerHTML = S[el.dataset.psum]; }); };
   function viewPresets() {
-    return '<div class="panel"><h3>プリセット</h3><p class="hint">確率のセットです。店舗には名前だけが見えます。</p>' +
-      (presets.length ? '<div class="list">' + presets.map((p) => '<div class="item"><div class="name"><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '<small>最終期待値 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '｜当選率 ' + pct(Engine.probStats(p.probs).win) + (p.limits && p.limits.on ? '｜1日 ' + (p.limits.total || '—') + '本まで' : '') + (earlyOf(p.limits).on ? '｜最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '') + '｜FREE SPIN ' + freeN(p, 1) + '/' + freeN(p, 2) + '/' + freeN(p, 3) + '%' + (logoOf(p) > 0 ? '｜ロゴ10回 ' + logoOf(p).toFixed(1) + '%' : '') + (p.test ? '｜<b style="color:var(--ng)">テスト用（記録しない）</b>' : '') + (Engine.validateProbs(p.probs).ok ? '' : '｜<b style="color:var(--ng)">⚠ 設定に誤り（端末では使えません。開いて直してください）</b>') + '</small></div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>').join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
-      '<div class="acts"><button class="btn" data-act="preset-new">プリセットを作る</button></div></div>';
+    const used = (id) => stores.filter((s) => s.activePresetId === id).map((s) => s.name); // いま使っている店舗（見るだけ）
+    return '<div class="panel"><h3>プリセット<small>確率のセット。店舗には名前だけが見えます</small></h3>' +
+      (presets.length ? '<div class="slist">' + presets.map((p) => { const st = Engine.probStats(p.probs), u = used(p.id); return '<div class="scard"><div class="sinfo"><div class="sname"><span><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '</span>' + (p.test ? '<span class="badge warn">テスト用（記録しない）</span>' : '') + (Engine.validateProbs(p.probs).ok ? '' : '<span class="badge ng">⚠ 設定に誤り</span>') + '</div>' +
+        '<div class="smeta"><span>期待値 <b>' + fmtN(Math.round(st.ev)) + '</b></span><span>当選率 <b>' + pct(st.win) + '</b></span>' + (u.length ? '<span>使用中: ' + esc(u.join('・')) + '</span>' : '') + '</div>' +
+        '<div class="smeta sm">' + [p.limits && p.limits.on ? '1日 ' + (p.limits.total || '—') + '本まで' : '', earlyOf(p.limits).on ? '最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : '', 'FREE SPIN ' + freeN(p, 1) + '/' + freeN(p, 2) + '/' + freeN(p, 3) + '%', logoOf(p) > 0 ? 'ロゴ10回 ' + logoOf(p).toFixed(1) + '%' : ''].filter(Boolean).map((x) => '<span>' + x + '</span>').join('') + '</div>' +
+        (Engine.validateProbs(p.probs).ok ? '' : '<div class="swarn">⚠ 設定に誤り（端末では使えません。開いて直してください）</div>') + '</div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">編集</button></div>'; }).join('') + '</div>' : '<div class="empty">まだプリセットがありません</div>') +
+      '<div class="acts start"><button class="btn ghost" data-act="preset-new">＋ プリセットを作る</button></div></div>';
   }
   function probSummary(p) {
     const v = Engine.validateProbs(p.probs), st = Engine.probStats(p.probs);
@@ -200,34 +262,45 @@
     const p = editPreset, L = p.limits;
     L.early = earlyOf(L);
     const stepRow = (label, val, attr, unit, hint) => '<div class="row"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="stepper"><button data-act="step" data-d="-1" ' + attr + ' aria-label="減らす">◀</button><span class="pv">' + val + '<i>' + unit + '</i></span><button data-act="step" data-d="1" ' + attr + ' aria-label="増やす">▶</button></div></div>';
+    const S = presetSums(p), tgl = (on, act) => '<button class="btn sm tgl ' + (on ? 'on' : 'off') + '" data-act="' + act + '">' + (on ? 'ON' : 'OFF') + '</button>'; // ON は緑・OFF は灰（色だけでなく文字も）
+    const fhead = (title, key) => '<h3>' + title + '</h3><span class="fsum" data-psum="' + key + '">' + S[key] + '</span>';
+    /* 並び（2026-10-19）: 名前と色 → 配当と確率（いつも開いている）→ FREE SPIN・ロゴ・1日の本数制限・開始直後の制限（今の値を見出しに出して畳む）→ めったに使わない（削除）。保存・戻るは画面の下に固定 */
     return '<div class="panel"><h3>' + (p.id ? 'プリセットを編集' : 'プリセットを作る') + '</h3>' +
       '<label class="f"><span>名前（店舗に表示されます）</span><input type="text" id="pname" value="' + esc(p.name || '') + '" maxlength="20"></label>' +
-      '<div class="row"><div class="lbl">端末に出す名前の色<small>店舗の端末の左上に、このプリセットの名前がこの色で出ます（いま何のプリセットで回っているかが分かります）</small></div><div class="swatches">' +
+      '<div class="row"><div class="lbl">端末に出す名前の色<small>店舗の端末の左上に、この色で名前が出ます</small></div><div class="swatches">' +
       PRESET_COLORS.map((c) => '<button class="sw' + ((p.color || PRESET_COLORS[0][0]) === c[0] ? ' on' : '') + '" data-act="pcolor" data-c="' + c[0] + '" style="--c:' + c[0] + '" aria-label="' + c[1] + '" title="' + c[1] + '"></button>').join('') + '</div></div>' +
-      '<div class="row"><div class="lbl">テスト用プリセット<small>ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます</small></div><button class="btn sm ' + (p.test ? '' : 'ghost') + '" data-act="test-on">' + (p.test ? 'ON' : 'OFF') + '</button></div></div>' +
-      '<div class="panel"><h3>各ステージの配当と確率</h3><p class="hint"><b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。<b style="color:var(--text)">数字を押すと、直接入力もできます</b>（小数も可。ほかの欄の数字も同じです）。各ステージの合計をちょうど 100% にしてください。下に、1回あたりの平均当選額（予算の目安）が出ます。</p><div class="cols pcols">' +
-      Engine.tableOf(p.probs).map((d) => probStage(p, d)).join('') + '</div>' +
-      '<p class="hint" style="margin-top:10px">金額を増やしたり消したりしたプリセットは、店舗の端末が b52 以上になってから反映されます（端末は 1 時間以内に自動でアップデートします。店舗一覧で端末の版を確認できます）。</p>' +
+      '<div class="row"><div class="lbl">テスト用プリセット<small>ON の間は、どの記録・集計にも数えません（画面に「TEST」）</small></div>' + tgl(p.test, 'test-on') + '</div>' +
+      more('h-ptest', '名前の色: 店舗の端末の左上に、このプリセットの名前がこの色で出ます（いま何のプリセットで回っているかが分かります）。<br>テスト用プリセット: ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます。') + '</div>' +
+      '<div class="panel"><h3>各ステージの配当と確率</h3><p class="hint">各ステージの合計をちょうど <b style="color:var(--text)">100%</b> にしてください。金額・確率の数字は押すと直接入力できます。</p>' +
+      more('h-probs', '<b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。<b style="color:var(--text)">数字を押すと、直接入力もできます</b>（小数も可。ほかの欄の数字も同じです）。各ステージの合計をちょうど 100% にしてください。下に、1回あたりの平均当選額（予算の目安）が出ます。<br>金額を増やしたり消したりしたプリセットは、店舗の端末が b52 以上になってから反映されます（端末は 1 時間以内に自動でアップデートします。店舗一覧で端末の版を確認できます）。') +
+      '<div class="cols pcols">' + Engine.tableOf(p.probs).map((d) => probStage(p, d)).join('') + '</div>' +
       '<div id="psum">' + probSummary(p) + '</div></div>' +
-      '<div class="panel"><h3>FREE SPIN</h3><p class="hint">リールに同じ FREE SPIN が3本そろう割合です（1回のスピンあたり）。そろうと端末の CREDIT が 1・2・3 増え、その回数だけ自動で回ります。<b style="color:var(--text)">この回は演出で、抽選しません。必ず 0 で止まります</b>（当たりは出ません。当選確率・期待値・集計の回転数は変わりません）。0% にした種類は、絵柄も出なくなります。</p>' +
-      stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'CREDIT +1・当たりなし（0〜50%）') +
-      stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'CREDIT +2・当たりなし（0〜25%）') +
-      stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'CREDIT +3・当たりなし（0〜25%）') + '</div>' +
-      '<div class="panel"><h3>casa ロゴ3つ ＝ 10 FREE SPIN</h3><p class="hint">リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN</b> を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます。上の ×1〜×3 と同じく、<b style="color:var(--text)">この 10 回は演出で、抽選しません。必ず 0 で止まります</b>（当たりは出ません。当選確率・期待値・集計の回転数は変わりません）。10 回まわりきるのに約 3 分かかります。0% ならロゴは出ず、画面上部の説明も出ません。</p>' +
-      stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
-      '<div class="ccost" style="margin-top:8px;font-size:14px">' + creditCost(p) + '</div>' +
-      '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>獲得した FREE SPIN（当たりなしの回）では、この設定に関係なく、FREE SPIN ×1〜×3 も casa ロゴも出ません。この設定が効くのは、スタッフが設定画面で入れたクレジットで回っているゲームだけです。ON: その間は出ません（絵柄も出ません）。OFF: その間にもそろうことがあります（予算は変わりません）</small></div><button class="btn sm ' + (noRetrig(p) ? '' : 'ghost') + '" data-act="retrig-on">' + (noRetrig(p) ? 'ON' : 'OFF') + '</button></div></div>' +
-      '<div class="panel"><h3>1日の当たり本数制限</h3><p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
-      '<div class="row"><div class="lbl">制限を使う</div><button class="btn sm ' + (L.on ? '' : 'ghost') + '" data-act="lim-on">' + (L.on ? 'ON' : 'OFF') + '</button></div>' +
-      stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
-      stepRow('1日の当たり本数の上限（合計）', L.total, 'data-l="total"', '本', '0 は無制限') +
-      '<p class="hint" style="margin:18px 0 8px"><b style="color:var(--text)">金額ごとの上限</b>（任意。0 は制限なし）</p><div class="cols">' +
-      Engine.tableOf(p.probs).map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + (d.values.filter((v) => v > 0).map((v) => stepRow(fmtN(v), L.max[d.stage + ':' + v] || 0, 'data-l="' + d.stage + ':' + v + '"', '回')).join('') || '<div class="empty" style="padding:8px 0">金額がありません</div>') + '</div>').join('') + '</div></div>' +
-      (function () { const E = L.early; return '<div class="panel"><h3>開始直後の高額制限</h3><p class="hint">毎日のリセット時刻（上の設定）から数えて、<b style="color:var(--text)">最初の X 回のプレイでは、Y 以上の金額が当たらない</b>ようにします（その分の確率は、そのステージの 0 に回ります）。X 回を過ぎると通常どおりです。回数は端末ごとに数えます。</p>' +
-        '<div class="row"><div class="lbl">この制限を使う</div><button class="btn sm ' + (E.on ? '' : 'ghost') + '" data-act="early-on">' + (E.on ? 'ON' : 'OFF') + '</button></div>' +
+      fold('p-free', fhead('FREE SPIN', 'free'),
+        '<p class="hint">リールに FREE SPIN が3本そろう割合（1回のスピンあたり）。この回は演出で、<b style="color:var(--text)">必ず 0 で止まります</b>。</p>' +
+        more('h-free', 'リールに同じ FREE SPIN が3本そろう割合です（1回のスピンあたり）。そろうと端末の CREDIT が 1・2・3 増え、その回数だけ自動で回ります。<b style="color:var(--text)">この回は演出で、抽選しません。必ず 0 で止まります</b>（当たりは出ません。当選確率・期待値・集計の回転数は変わりません）。0% にした種類は、絵柄も出なくなります。') +
+        stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'CREDIT +1・当たりなし（0〜50%）') +
+        stepRow('FREE SPIN ×2 が出る割合', freeN(p, 2), 'data-f="2"', '%', 'CREDIT +2・当たりなし（0〜25%）') +
+        stepRow('FREE SPIN ×3 が出る割合', freeN(p, 3), 'data-f="3"', '%', 'CREDIT +3・当たりなし（0〜25%）'), { cls: 'panel' }) +
+      fold('p-logo', fhead('casa ロゴ3つ ＝ 10 FREE SPIN', 'logo'),
+        '<p class="hint">ロゴが3本そろうと 10 回ぶんの FREE SPIN。この 10 回も<b style="color:var(--text)">必ず 0 で止まります</b>。</p>' +
+        more('h-logo', 'リールに casa のロゴが3本そろうと、<b style="color:var(--text)">10 回ぶんの FREE SPIN</b> を獲得します。端末の CREDIT が 10 増え、CREDIT がなくなるまで自動で回り続けます。上の ×1〜×3 と同じく、<b style="color:var(--text)">この 10 回は演出で、抽選しません。必ず 0 で止まります</b>（当たりは出ません。当選確率・期待値・集計の回転数は変わりません）。10 回まわりきるのに約 3 分かかります。0% ならロゴは出ず、画面上部の説明も出ません。') +
+        stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
+        '<div class="ccost" style="margin-top:8px;font-size:14px">' + creditCost(p) + '</div>' +
+        '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>スタッフが入れたクレジットで回っているゲームだけに効きます</small></div>' + tgl(noRetrig(p), 'retrig-on') + '</div>' +
+        more('h-retrig', '獲得した FREE SPIN（当たりなしの回）では、この設定に関係なく、FREE SPIN ×1〜×3 も casa ロゴも出ません。この設定が効くのは、スタッフが設定画面で入れたクレジットで回っているゲームだけです。ON: その間は出ません（絵柄も出ません）。OFF: その間にもそろうことがあります（予算は変わりません）'), { cls: 'panel' }) +
+      fold('p-lim', fhead('1日の当たり本数制限', 'lim'),
+        '<p class="hint">毎日決まった時刻にカウントが 0 に戻り、次のリセットまでに出る当たりを上限までに抑えます（上限に達した分の確率はそのステージの 0 に回ります）。</p>' +
+        '<div class="row"><div class="lbl">制限を使う</div>' + tgl(L.on, 'lim-on') + '</div>' +
+        stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
+        stepRow('1日の当たり本数の上限（合計）', L.total, 'data-l="total"', '本', '0 は無制限') +
+        '<p class="hint" style="margin:18px 0 8px"><b style="color:var(--text)">金額ごとの上限</b>（任意。0 は制限なし）</p><div class="cols">' +
+        Engine.tableOf(p.probs).map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + (d.values.filter((v) => v > 0).map((v) => stepRow(fmtN(v), L.max[d.stage + ':' + v] || 0, 'data-l="' + d.stage + ':' + v + '"', '回')).join('') || '<div class="empty" style="padding:8px 0">金額がありません</div>') + '</div>').join('') + '</div>', { cls: 'panel' }) +
+      (function () { const E = L.early; return fold('p-early', fhead('開始直後の高額制限', 'early'),
+        '<p class="hint">毎日のリセット時刻（上の設定）から数えて、<b style="color:var(--text)">最初の X 回のプレイでは、Y 以上の金額が当たらない</b>ようにします（その分の確率は、そのステージの 0 に回ります）。X 回を過ぎると通常どおりです。回数は端末ごとに数えます。</p>' +
+        '<div class="row"><div class="lbl">この制限を使う</div>' + tgl(E.on, 'early-on') + '</div>' +
         stepRow('最初の何回まで（X）', E.plays, 'data-e="plays"', '回', '1〜999 回') +
-        stepRow('いくら以上を出さないか（Y）', fmtN(E.min), 'data-e="min"', '以上', '例: 2,000 にすると、2,000・3,000・5,000・10,000… が出ません') + '</div>'; })() +
-      (p.id ? '<div class="panel"><h3>このプリセットを削除</h3><p class="hint">配布中の店舗からも消えます。</p><div class="acts" style="justify-content:flex-start"><button class="btn danger" data-act="preset-del">削除する</button></div></div>' : '') +
+        stepRow('いくら以上を出さないか（Y）', fmtN(E.min), 'data-e="min"', '以上', '例: 2,000 にすると、2,000・3,000・5,000・10,000… が出ません'), { cls: 'panel' }); })() +
+      (p.id ? fold('p-rare', '<h3>めったに使わない操作</h3><span class="fsum">このプリセットの削除</span>', '<div class="rare"><div><b>このプリセットを削除</b><small>配布中の店舗からも消えます</small></div><button class="btn danger" data-act="preset-del">削除する</button></div>', { cls: 'panel' }) : '') +
       '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save"' + (Engine.validateProbs(p.probs).ok ? '' : ' disabled') + '>保存</button></div>';
   }
   async function savePreset() {
@@ -276,7 +349,7 @@
     const fmtDay = (k) => { const d = new Date(+k.slice(0, 4), +k.slice(4, 6) - 1, +k.slice(6, 8)); return (d.getMonth() + 1) + '/' + d.getDate() + '(' + WD[d.getDay()] + ')'; };
     const isQ = (q) => { const x = quickRange(q, statsStore); return x.from === R.from && x.to === R.to; };
     const period = '<div class="range"><label class="f"><span>開始（営業日）</span><input type="date" id="stfrom" value="' + R.from + '" max="' + R.to + '"></label><label class="f"><span>終了（営業日）</span><input type="date" id="stto" value="' + R.to + '" min="' + R.from + '"></label></div>' +
-      '<div class="quick">' + QUICK.map((q) => '<button class="btn sm ' + (isQ(q[0]) ? '' : 'ghost') + '" data-act="st-quick" data-q="' + q[0] + '">' + q[1] + '</button>').join('') + '</div>' +
+      '<div class="quick">' + QUICK.map((q) => '<button class="btn sm ' + (isQ(q[0]) ? 'sel' : 'ghost') + '" data-act="st-quick" data-q="' + q[0] + '"' + (isQ(q[0]) ? ' aria-pressed="true"' : '') + '>' + q[1] + '</button>').join('') + '</div>' +
       (statsStore === ALL ? '<p class="hint" style="margin-top:8px">全店舗の合計です。営業日は店舗ごとの当たりのリセット時刻（' + stores.map((x) => x.name + ' ' + resetHourOf(x.id) + ':00').join('、') + '）で切り替わります。</p>' : '') +
       (statsStore === ALL ? '' : '<p class="hint" style="margin-top:8px">営業日は、当たりのリセット時刻（' + rh + ':00）で切り替わります。たとえば ' + fmtDay(R.from.replace(/-/g, '')) + ' の営業日は、その日の ' + rh + ':00 から翌日の ' + rh + ':00 の直前までです。</p>');
     if (!statsData) return '<div class="panel"><h3>集計</h3>' + sel + period + '<div class="empty">読み込み中…</div></div>';
@@ -287,8 +360,8 @@
       '<div class="summary"><div class="stat"><small>プレイ回数（この期間）</small><b>' + fmtN(tot.plays) + '</b></div><div class="stat"><small>当選額の合計</small><b>' + fmtN(tot.awarded) + '</b></div><div class="stat"><small>当たり本数</small><b>' + fmtN(tot.wins) + '</b></div><div class="stat"><small>1回あたりの平均</small><b>' + fmtN(tot.plays ? Math.round(tot.awarded / tot.plays) : 0) + '</b></div></div>' +
       (all ? '<h4 style="margin:14px 0 6px">店舗ごと</h4><table><tr><th>店舗</th><th class="n">回転</th><th class="n">当たり</th><th class="n">当選額</th></tr>' + d.byStore.map((x) => '<tr><td>' + esc(x.name) + '</td><td class="n">' + fmtN(x.plays) + '</td><td class="n">' + fmtN(x.wins) + '</td><td class="n">' + fmtN(x.awarded) + '</td></tr>').join('') + '</table><h4 style="margin:14px 0 6px">営業日ごと（全店舗の合計）</h4>' : '') +
       '<table><tr><th>営業日</th><th class="n">回転</th><th class="n">当たり</th><th class="n">当選額</th></tr>' + ((all ? d.dayTotals : d.days).length ? (all ? d.dayTotals : d.days).map((x) => '<tr><td>' + fmtDay(x.day) + '</td><td class="n">' + fmtN(x.plays || 0) + '</td><td class="n">' + fmtN(x.wins || 0) + '</td><td class="n">' + fmtN(x.awarded || 0) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のデータはありません</td></tr>') + '</table></div>' +
-      '<div class="panel"><h3>この期間のプレイ</h3>' + (tot.plays > d.plays.length && d.plays.length >= PLAY_MAX ? '<p class="hint">この期間のプレイは ' + fmtN(tot.plays) + ' 回あります。新しい ' + PLAY_MAX + ' 件を表示しています。</p>' : '') +
-      '<table><tr><th>日時</th>' + (all ? '<th>店舗</th>' : '') + '<th>ステージ</th><th class="n">結果</th><th>プリセット</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td>' + (all ? '<td>' + esc(nameOf(x.storeId)) + '</td>' : '') + '<td>STAGE ' + x.stage + '</td><td class="n">' + fmtN(x.value) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のプレイはありません</td></tr>') + '</table></div>';
+      fold('st-plays', '<h3>この期間のプレイ</h3><span class="fsum">' + (d.plays.length ? '新しい順に ' + fmtN(d.plays.length) + ' 件' : 'なし') + '</span>', (tot.plays > d.plays.length && d.plays.length >= PLAY_MAX ? '<p class="hint">この期間のプレイは ' + fmtN(tot.plays) + ' 回あります。新しい ' + PLAY_MAX + ' 件を表示しています。</p>' : '') +
+      '<div class="tscroll"><table><tr><th>日時</th>' + (all ? '<th>店舗</th>' : '') + '<th>ステージ</th><th class="n">結果</th><th>プリセット</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td>' + (all ? '<td>' + esc(nameOf(x.storeId)) + '</td>' : '') + '<td>STAGE ' + x.stage + '</td><td class="n">' + fmtN(x.value) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のプレイはありません</td></tr>') + '</table></div>', { cls: 'panel' });
   }
   async function loadStats(id, range) {
     if (id !== statsStore) statsRange = null; // 店舗を変えたら、期間は直近31日に戻す
@@ -347,6 +420,7 @@
   /* ---------- 操作 ---------- */
   main.addEventListener('change', (e) => {
     if (e.target.id === 'stsel') return loadStats(e.target.value);
+    if (/^(sbill|sdoor|shw)$/.test(e.target.id) && $('playSum')) { $('playSum').innerHTML = playSum($('sbill').checked, $('sdoor').checked, $('shw').checked); return; } // 畳んだ見出しの ON/OFF（保存はまだ）
     // 集計の期間（開始・終了）を変えた
     if ((e.target.id === 'stfrom' || e.target.id === 'stto') && statsStore) {
       const R = Object.assign({}, statsRange || quickRange('31', statsStore));
@@ -427,6 +501,7 @@
       if (done) return; done = true;
       const now = curVal(b), x = Number(inp.value);
       doStep(b, apply && inp.value !== '' && isFinite(x) ? (x - now.v) / now.unit : 0); // 0 でも、表示を数字に戻すために呼ぶ
+      updatePresetSums();
     };
     inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commit(true); } else if (ev.key === 'Escape') commit(false); });
     inp.addEventListener('blur', () => commit(true));
@@ -510,7 +585,7 @@
           const top = window.scrollY; render(); window.scrollTo(0, top);
           return;
         }
-        case 'step': return doStep(b, +b.dataset.d);
+        case 'step': doStep(b, +b.dataset.d); return updatePresetSums(); // 畳んだ見出しの今の値も直す
       }
     } catch (err) { toast('失敗しました: ' + err.message); }
   });
