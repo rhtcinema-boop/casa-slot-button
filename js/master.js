@@ -54,6 +54,7 @@
     else if (tab === 'presets') main.innerHTML = editPreset ? viewPresetEdit() : viewPresets();
     else main.innerHTML = viewStats();
     main.classList.toggle('wide', tab === 'presets' && !!editPreset);
+    if (window.DerbySwitchMaster) DerbySwitchMaster.mount(main, { tab, stores, edit: editStore }); // テレビのゲーム（casa SLOT / casa DERBY。js/derbyswitch-master.js）
   }
 
   /* ---------- 店舗 ---------- */
