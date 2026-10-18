@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b0b0d">
 <title>casa SLOT マスター</title>
 <style>
-  :root { --bg: #0b0b0d; --panel: #16161a; --line: #2a2a31; --gold: #e9c25e; --gold2: #a57c26; --text: #f3ead0; --sub: #a89f89; --ok: #4cd97b; --ng: #ff9d8c; }
+  :root { --bg: #0b0b0d; --panel: #16161a; --line: #2a2a31; --gold: #e9c25e; --gold2: #a57c26; --text: #f3ead0; --sub: #a89f89; --ok: #4cd97b; --ng: #ff9d8c; --warn: #ffb347; --sel: #d9dce3; --selText: #15161a; --onBg: #1f6e4a; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif; -webkit-text-size-adjust: 100%; }
   header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #0b0b0dee; border-bottom: 1px solid var(--line); backdrop-filter: blur(6px); }
@@ -15,7 +15,7 @@
   header small { color: var(--sub); font-size: 12px; }
   nav.tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
   nav.tabs button { flex: 1; height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--sub); font-size: 15px; font-weight: 600; }
-  nav.tabs button.on { background: var(--gold); color: #1a1204; border-color: var(--gold); }
+  nav.tabs button.on { background: var(--sel); color: var(--selText); border-color: var(--sel); } /* 今いるタブ＝銀（金は「押すと実行」専用） */
   main { padding: 12px 16px 60px; max-width: 760px; margin: 0 auto; }
   main.wide { max-width: 1120px; } /* プリセット編集は3ステージを横に並べるので広く使う */
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; margin: 12px 0; }
@@ -102,19 +102,102 @@
   #toast.show { opacity: 1; }
   #login { max-width: 420px; margin: 40px auto; }
   .empty { color: var(--sub); text-align: center; padding: 20px 0; }
+  /* ===== 2026-10-19 見やすく（deploy/MASTER_SIMPLE_NOTES.md の「デザインの決まり」） =====
+     金の塗り＝保存・実行（押すと何かが起きる大事なボタン）／灰の枠＝ふつうの操作（編集・戻る・開く）／
+     銀の塗り＝今選ばれているもの（タブ・期間・テレビのゲームの今の値）／緑＝ON・動いている・最新／
+     オレンジ＝気をつける（古い版・連絡が途切れている・テスト用）／赤＝削除など取り消せない操作・誤り */
+  header { flex-wrap: wrap; row-gap: 8px; }
+  header h1 { white-space: nowrap; }
+  .btn.sel, .btn[aria-pressed="true"] { background: var(--sel); color: var(--selText); border: 0; } /* 今選ばれている（テレビのゲームの枠の「今の値」も同じ見え方にそろえる） */
+  .btn.tgl { min-width: 64px; border: 0; }
+  .btn.tgl.on { background: var(--onBg); color: #fff; }
+  .btn.tgl.off { background: #3a3a42; color: #d6d2c4; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.6; background: #26262c; color: var(--sub); white-space: nowrap; vertical-align: middle; }
+  .badge.ok { background: rgba(76, 217, 123, .15); color: var(--ok); }
+  .badge.warn { background: rgba(255, 179, 71, .15); color: var(--warn); }
+  .badge.ng { background: rgba(255, 157, 140, .15); color: var(--ng); }
+  .panel h3 small, .sub h4 small { margin-left: 8px; color: var(--sub); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+  .acts.start { justify-content: flex-start; }
+  /* 畳み（開け閉めできる見出し） */
+  details.fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding-right: 30px; position: relative; min-height: 32px; -webkit-tap-highlight-color: transparent; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::after { content: ''; position: absolute; right: 6px; top: 50%; width: 9px; height: 9px; margin-top: -7px; border-right: 2px solid var(--sub); border-bottom: 2px solid var(--sub); transform: rotate(45deg); transition: transform .15s; }
+  details.fold[open] > summary::after { transform: rotate(225deg); margin-top: -2px; }
+  details.fold > summary h3, details.fold > summary h4 { margin: 0; }
+  details.fold > summary .fsum { color: var(--sub); font-size: 13px; }
+  details.fold[open] > .fbody { margin-top: 10px; }
+  details.panel.fold > summary { min-height: 36px; }
+  details.more { margin: 2px 0 8px; }
+  details.more > summary { min-height: 28px; padding-right: 22px; color: var(--sub); font-size: 13px; display: inline-flex; }
+  details.more > summary::after { width: 6px; height: 6px; right: 4px; margin-top: -5px; }
+  details.more[open] > summary::after { margin-top: -1px; }
+  details.more > .fbody { margin-top: 4px !important; }
+  details.more .hint { margin: 0; padding: 8px 10px; background: #101013; border-radius: 10px; }
+  .sub { border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; margin: 12px 0; background: #111115; }
+  .sub h4 { margin: 0 0 4px; font-size: 15px; color: var(--text); }
+  .opt { padding: 4px 0; border-top: 1px solid var(--line); }
+  .opt:first-child { border-top: 0; }
+  .opt details.more { margin: -4px 0 4px 32px; }
+  .rare { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .rare > div { flex: 1; min-width: 0; }
+  .rare small { display: block; color: var(--sub); font-size: 12px; }
+  /* 店舗の状態・プリセットの一覧（カード） */
+  .phead { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+  .phead h3 { margin: 0; }
+  .upd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .upd .lv { color: var(--sub); font-size: 13px; }
+  .upd .lv b { color: var(--text); font-size: 15px; }
+  .oldnote { color: var(--warn); font-size: 13px; }
+  .oldnote:empty { display: none; }
+  .slist .scard { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .slist .scard:first-child { border-top: 0; }
+  .sinfo { flex: 1; min-width: 0; }
+  .sname { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-weight: 700; font-size: 17px; }
+  .smeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 4px; color: var(--sub); font-size: 13px; }
+  .smeta b { color: var(--text); }
+  .smeta.sm { font-size: 12px; margin-top: 2px; }
+  .pchip { color: var(--text); font-weight: 600; }
+  .pchip .pdot, .sname .pdot { margin-right: 6px; }
+  .swarn { color: var(--ng); font-weight: 700; font-size: 13px; margin-top: 4px; }
+  .check input { flex: none; }
+  .stepper button { background: #2e2e36; border-color: #3a3a44; } /* ◀ ▶ を数字と見分けやすく */
+  .tscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .summary { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  @media (max-width: 600px) {
+    header { padding: 10px 12px; gap: 8px; }
+    header h1 { font-size: 15px; letter-spacing: .02em; }
+    header .btn.sm { height: 34px; padding: 0 10px; font-size: 13px; }
+    header { position: static; } /* スマホでは上に張り付けない（画面を広く使う） */
+    header .sp { display: none; }
+    header h1 { flex: 1; }
+    header #logout { order: 2; }
+    header a.btn { order: 3; margin-left: auto; } /* 1段に入らないときは 2段目の右へ */
+    .list .item { flex-wrap: wrap; } /* 一覧の行（テレビのゲームの枠も）: 名前の段を横いっぱいにして、ボタンはその下に */
+    .list .item .name { flex-basis: 100%; }
+    header #who, .wide-only { display: none; }
+    nav.tabs { padding: 8px 12px 0; }
+    main { padding: 10px 12px 60px; }
+    .savebar { margin: 12px -12px 0; padding-left: 12px; padding-right: 12px; }
+    .upd { width: 100%; }
+    .upd .btn { flex: 1; }
+    .rare { flex-wrap: wrap; }
+    .rare .btn { width: 100%; }
+    .summary { grid-template-columns: 1fr 1fr; }
+    .stat b { font-size: 18px; }
+  }
 </style>
 </head>
 <body>
-<header><h1>casa SLOT マスター</h1><span class="sp"></span><a class="btn sm ghost" href="derby/v2/admin.html" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none">casa DERBY の管理画面</a><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
+<header><h1>casa SLOT マスター</h1><span class="sp"></span><a class="btn sm ghost" href="derby/v2/admin.html" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none"><span class="wide-only">casa&nbsp;</span>DERBY<span class="wide-only">&nbsp;の</span>&nbsp;管理画面&nbsp;↗</a><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
 <nav class="tabs" id="tabs" style="display:none">
   <button data-tab="stores" class="on">店舗</button><button data-tab="presets">プリセット</button><button data-tab="stats">集計</button>
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
-<script src="cloud-config.js?v=b122"></script>
-<script src="js/engine.js?v=b122"></script>
-<script src="js/cloud.js?v=b122"></script>
-<script src="js/derbyswitch-master.js?v=b122"></script><!-- テレビのゲームの切り替え（casa DERBY の Firebase に書く。casa SLOT のクラウドとは別） -->
-<script src="js/master.js?v=b122"></script>
+<script src="cloud-config.js?v=b123"></script>
+<script src="js/engine.js?v=b123"></script>
+<script src="js/cloud.js?v=b123"></script>
+<script src="js/derbyswitch-master.js?v=b123"></script><!-- テレビのゲームの切り替え（casa DERBY の Firebase に書く。casa SLOT のクラウドとは別） -->
+<script src="js/master.js?v=b123"></script>
 </body>
 </html>
