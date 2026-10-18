@@ -398,6 +398,18 @@
       try { const seq = await db.runTransaction(async (tx) => { const s = data(await tx.get(ref)); const n = (s.nextSeq || 0) + 1; tx.update(ref, { nextSeq: n }); return n; }); return { nextSeq: seq }; }
       catch (e) { throw mapErr(e); }
     }
+    /* テレビのゲーム（2026-10-19）: その店のスタッフが自分の店の settings.tvGame と derbySwitch/tv.<店舗ID> だけを 1 回の書き込みで（ルール: staffOf・ほかの設定は書けない） */
+    async function tvGame(pin, game) {
+      await staffEnsure(pin);
+      const g = game === 'derby' ? 'derby' : 'slot';
+      const write = async () => { const b = db.batch(); b.update(doc(COL.stores, store), { 'settings.tvGame': g }); b.set(doc(COL.tvSwitch, 'tv'), { [store]: g }, { merge: true }); await b.commit(); return { store, tvGame: g }; };
+      try { return await write(); }
+      catch (e) {
+        if (!(e && e.code === 'permission-denied')) throw mapErr(e);
+        staffOk = null; await staffEnsure(pin); // 管理画面で PIN が変わった → ここで「PIN がちがう」（bad_pin）になる。登録し直せたら 1 回だけやり直す
+        try { return await write(); } catch (e2) { throw mapErr(e2); }
+      }
+    }
     async function logs(pin, o) {
       await staffEnsure(pin); o = o || {};
       const pub = await getPublic(), date = o.date || Core.bizDate(now(), pub.dayStartHour);
@@ -951,7 +963,7 @@
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
       state, race, createTicket, getTicket, cancelTicket, vote,
-      staffLogin, staffTicket, auth: authTicket, staffPayout, claim, next, logs,
+      staffLogin, staffTicket, auth: authTicket, staffPayout, claim, next, logs, tvGame,
       admin, subscribe,
       // 決める係（テストと確認用）
       decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, decideRace, revealRace, expirePayouts },
