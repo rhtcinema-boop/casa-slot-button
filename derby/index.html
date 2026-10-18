@@ -189,7 +189,7 @@ window.addEventListener('error', function (e) {
 <script>
 (function () {
   // _r＝管理画面の「テレビを読み込み直す」で付く印。v2 のファイルの版に足して、古いファイル（キャッシュ）を使わない
-  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't13' + (r ? '-' + r : '');
+  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't14' + (r ? '-' + r : '');
   if (/[?&]store=[^&]/.test(location.search)) document.write('<link rel="stylesheet" href="v2/tv.css?v=' + v + '"><script src="v2/client.js?v=' + v + '"><\/script><script src="v2/qr.js?v=' + v + '"><\/script><script src="v2/tv.js?v=' + v + '"><\/script><script src="v2/tvswitch.js?v=' + v + '"><\/script>');
   else document.write('<script src="js/game.js?v=k10"><\/script>');
 })();
