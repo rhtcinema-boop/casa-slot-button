@@ -171,7 +171,7 @@ window.addEventListener('error', function (e) {
 <script src="js/horse.js?v=k3"></script>
 <script src="js/race.js?v=k5"></script>
 <!-- 3D のレース映像（three.js r149）。読めないとき・WebGL が無いときは 2D の Race のまま -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script src="js/vendor/three.min.js"></script><!-- three r149（2026-10-19: CDN から同梱へ。ネットなしでも 3D が出る） -->
 <script src="js/r3d/course.js?v=k3d"></script>
 <script src="js/r3d/look3d.js?v=k3e"></script>
 <script src="js/r3d/horse3d.js?v=k3n"></script>
@@ -189,7 +189,7 @@ window.addEventListener('error', function (e) {
 <script>
 (function () {
   // _r＝管理画面の「テレビを読み込み直す」で付く印。v2 のファイルの版に足して、古いファイル（キャッシュ）を使わない
-  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't15' + (r ? '-' + r : '');
+  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't16' + (r ? '-' + r : '');
   if (/[?&]store=[^&]/.test(location.search)) document.write('<link rel="stylesheet" href="v2/tv.css?v=' + v + '"><script src="v2/client.js?v=' + v + '"><\/script><script src="v2/qr.js?v=' + v + '"><\/script><script src="v2/tv.js?v=' + v + '"><\/script><script src="v2/tvswitch.js?v=' + v + '"><\/script>');
   else document.write('<script src="js/game.js?v=k10"><\/script>');
 })();
