@@ -188,8 +188,8 @@
   },
   {
    "path": "index.html",
-   "size": 21496,
-   "sha256": "e19ddb276f77cfca1c6915c9fd5247fc905850024546921d0d2bc8e60efc1531"
+   "size": 21550,
+   "sha256": "35aaf49105312ea2817c7638610d9f62f82afc64e5629fbbea0e02bf8672c5ca"
   },
   {
    "path": "js/audio.js",
@@ -277,6 +277,16 @@
    "sha256": "dd891fc324fedb6026b5efe1b20e2a9111afee874b4fbb6ab80999667426dc63"
   },
   {
+   "path": "js/vendor/qrcode.min.js",
+   "size": 20387,
+   "sha256": "164fc2c1c9eaf0a03aa8dfdb855e82e41a5c6922fbad8bb3238116207e26bef7"
+  },
+  {
+   "path": "js/vendor/three.min.js",
+   "size": 608081,
+   "sha256": "8a5f7249903b54d30f79f708699d2fed2d6a1d0741a4cd41377d1f01bb5a2271"
+  },
+  {
    "path": "js/voice.js",
    "size": 3897,
    "sha256": "db42051c35992be2549bcd80020098a3700fa08cbc57ae9705bafe275d6fa898"
@@ -308,18 +318,18 @@
   },
   {
    "path": "v2/qr.js",
-   "size": 6360,
-   "sha256": "44559d2dd83db6d975130edfbf228c4da4f9091c2843dcd10b2880307aeeecad"
+   "size": 6816,
+   "sha256": "b966919d1b2eee74adaa83ef54d67a099e8f4cd12fe363d645f8d3a829dff186"
   },
   {
    "path": "v2/tv.css",
-   "size": 44744,
-   "sha256": "56beca806c4d8cab753ce264cebd4b6d45316e70730abb2b97bda3513ddb239b"
+   "size": 61855,
+   "sha256": "0a5e6db0d5369829bbc3dad6fede8e69a3d9dd1154e1e30318885658c738b50f"
   },
   {
    "path": "v2/tv.js",
-   "size": 81805,
-   "sha256": "6ebc6198da06f4f2badc32187fe5c589ce2509ce409fef797c65425d0d03c876"
+   "size": 86595,
+   "sha256": "e848c90f27faf96eb91cd6691e28c8d941197c0009f91ee94c8fc67c1ee409c1"
   },
   {
    "path": "v2/tvswitch.js",
