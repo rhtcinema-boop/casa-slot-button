@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 21496,
-   "sha256": "ebc929b544cb3089541c6869736c4ef3ea30bb44dc7a3aa1eb6af5357e06cc7f"
+   "sha256": "674c8b4ca2f065ec5589dda115a0905cc26ef7e88e8343620eec044fb7106687"
   },
   {
    "path": "js/audio.js",
@@ -238,13 +238,13 @@
   },
   {
    "path": "js/r3d/horse3d-real.js",
-   "size": 160067,
-   "sha256": "45aec4eb8003fe0659677d6e2d8c3514f007be021bb701345460233e5fdbefa3"
+   "size": 163439,
+   "sha256": "dab9c6f7e8b35f0958b017ca609d2fa0e28394788744623ca7082d845e4da9f5"
   },
   {
    "path": "js/r3d/horse3d.js",
-   "size": 152199,
-   "sha256": "470199d167285f57277b91ca18bf6de423002297c0105cbe501ac1b979f232fb"
+   "size": 155571,
+   "sha256": "3669ac0a65532421510b7adf0b1bc8157bb241d1f951f863cb49df76fac567e6"
   },
   {
    "path": "js/r3d/look3d.js",
@@ -323,8 +323,8 @@
   },
   {
    "path": "v2/tvswitch.js",
-   "size": 7778,
-   "sha256": "e53b80ceffd3c0c321187de1e22c4d3125ea4242a3e2b0053e3333df85770c81"
+   "size": 7966,
+   "sha256": "984f4e48cf5bed2ca04bf9e4244e6da076466290f9b6ce9b2f32064daf0cf6fb"
   }
  ]
 }
