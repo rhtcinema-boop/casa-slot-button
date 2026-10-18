@@ -462,3 +462,228 @@
 #stage.v2 .horse .odds { flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding-top: 0; }
 #stage.v2 .horse .odds small { font-size: 11px; line-height: 1; white-space: nowrap; letter-spacing: .02em; }
 #stage.v2 .horse .odds b { font-size: 30px; line-height: 1; letter-spacing: -.02em; white-space: nowrap; }
+
+/* ======================================================================================================
+   店内モニターの見やすさ（2026-10-19 オーナー「何が書いてあるか分かるように」「遠くから見ても分かる・シンプルに」。ChatGPT の採点と壁打ち: deploy/TV_DESIGN_NOTES.md）
+   決まり（設計座標 1600×900。1920 の画面では 1.2 倍）: 見出し 40px 以上・案内 32px 以上・補足 22px 以上。小さな補足の文は出さない。
+   左上の「状態の札」はどの場面も同じ位置・同じ形。色は 5 つ（緑＝参加受付・青＝投票・赤＝締切・紺＝レース／リプレイ／ハイライト・金＝結果）。残り時間は 1 つ。
+   ====================================================================================================== */
+/* ---------- 状態の札 ---------- */
+.v2st { flex: none; display: flex; align-items: center; gap: 14px; height: 60px; padding: 0 28px 0 22px; border-radius: 14px; color: #fff; font: 900 40px/1 var(--font-tv); letter-spacing: .04em; white-space: nowrap; box-shadow: 0 0 0 3px #fff, 0 6px 14px rgba(0, 0, 0, .3); background: #14243a; }
+.v2st[hidden] { display: none; }
+.v2st i { flex: none; width: 16px; height: 16px; border-radius: 50%; background: rgba(255, 255, 255, .9); }
+.v2st.on { background: #23964a; }
+.v2st.vote { background: #1f5fd0; }
+.v2st.hot { background: #d32f2f; }
+.v2st.hot i, .v2st.live i { animation: blink 1s step-end infinite; }
+.v2st.live i { background: #ff3b3b; box-shadow: 0 0 0 3px rgba(255, 59, 59, .35); }
+.v2st.res { background: linear-gradient(180deg, #ffe082, #f2b705); color: #3a2400; }
+.v2st.res i { background: #3a2400; }
+/* 上の帯: 札 → 発走時刻 → (右) 全店の参加人数・ロゴ・店名・音。上の残り時間・距離などの札・LIVE は出さない（札と左下の残り時間に一本化） */
+#stage.v2 .v2clock, #stage.v2 .raceinfo .chip, #stage.v2 .onair, #stage.v2.m-live .onair { display: none !important; }
+#stage.v2 .top { gap: 16px; }
+#stage.v2 .top .logo { order: 5; }
+#stage.v2 .top .v2store { order: 6; }
+#stage.v2 .top .soundbtn { order: 7; }
+#stage.v2 .raceinfo { height: 56px; padding: 0 22px; }
+#stage.v2 .raceinfo b { font-size: 34px; margin: 0; color: var(--ink); }
+#stage.v2 .v2ppl small { font-size: 22px; }
+#stage.v2 .v2ppl b { font-size: 44px; }
+#stage.v2 .v2store { font-size: 20px; }
+#stage.v2.m-live .top, #stage.v2.m-hl .top { top: 4px; } /* 映像の枠（y66）に札が重ならない */
+
+/* ---------- 待ち受け・受付・投票: 下の段（残り時間・参加のしかた・QR） ---------- */
+.v2info .cd small { font-size: 32px; color: #c9d6ee; letter-spacing: .02em; }
+.v2info .cd b { font-size: 120px; }
+.v2info .cd .cdl i { font-size: 26px; padding: 7px 16px; }
+.v2info .cd .cdl span { font-size: 26px; }
+.v2info .how { padding: 18px 30px; gap: 16px; }
+.v2info .how h4 { font-size: 36px; color: var(--ink); margin: 0; }
+.v2info .how h4 small, .v2info .how p { display: none; }
+.v2info .how ol, .v2info .how ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 18px; counter-reset: st; }
+.v2info .how li, .v2info .how.xshut li { display: flex; align-items: center; gap: 16px; font-size: 38px; font-weight: 900; line-height: 1.15; white-space: nowrap; counter-increment: st; color: var(--ink); }
+.v2info .how li::before { width: 50px; height: 50px; font-size: 32px; }
+.v2info .how ul li::before { content: ""; width: 16px; height: 16px; margin: 0 17px; background: #1f5fd0; }
+.v2info .how.xshut h4 { color: #1f5fd0; }
+.v2info .how.xshut li { font-size: 34px; }
+/* ---------- 出馬表: 番号・馬名・100あたりの額だけ（顔・星・脚質・調子・小さなラベルは出さない。スマホで見られる） ---------- */
+#stage.v2 .side .card h4 { height: 40px; font-size: 30px; color: var(--ink); }
+#stage.v2 .side .card h4::after { content: "100あたりの配当"; position: absolute; right: 10px; top: 8px; font-size: 22px; font-weight: 900; color: var(--ink-sub); letter-spacing: 0; }
+#stage.v2 .horse { grid-template-columns: minmax(0, 1fr) 150px; height: 52px; padding: 0 6px 0 16px; }
+#stage.v2 .horse .face, #stage.v2 .horse .mk, #stage.v2 .horse .l2, #stage.v2 .horse .cond, #stage.v2 .horse .odds small { display: none; }
+#stage.v2 .horse .l1 { gap: 14px; }
+#stage.v2 .horse .no { width: 42px; height: 42px; font-size: 32px; border-radius: 9px; }
+#stage.v2 .horse .l1 b { line-height: 1.1; color: var(--ink); letter-spacing: -.02em; }
+#stage.v2 .horse .odds { height: 44px; }
+#stage.v2 .horse .odds b { font-size: 38px; }
+
+/* ---------- レース中: 下の帯は「何時発走のレース」と「全店で ○人」だけ。右の配当の見出しを大きく ---------- */
+.v2strip .stores, .v2strip .sep { display: none !important; }
+.v2strip { gap: 48px; }
+.v2strip .ttl { font-size: 44px; }
+.v2strip .ttl small { font-size: 24px; color: #c9d6ee; margin-top: 4px; }
+.v2strip .ppl { font-size: 32px; }
+.v2strip .ppl b { font-size: 60px; }
+.v2odds h5 { font-size: 26px; padding: 10px 2px 8px; }
+.v2odds h5 small { font-size: 17px; color: #c9d6ee; margin-top: 2px; }
+.v2odds.cmp h5 { font-size: 22px; }
+/* 写真判定の札は大きく（リプレイと見分けられるように） */
+#stage.v2 .bc-tag.photo { width: auto; height: 78px; padding: 0 34px 0 30px; font-size: 46px; }
+#stage.v2 .bc-tag.photo small { display: none; }
+
+/* ---------- ハイライト ---------- */
+#stage.v2.m-hl .v2strip .ttl { font-size: 40px; color: #fff; }
+#stage.v2.m-hl .v2strip .ttl small { font-size: 24px; color: #c9d6ee; }
+#stage.v2.m-hl .v2strip .ppl b { font-size: 52px; }
+.v2strip .nx small { font-size: 24px; color: #c9d6ee; }
+.v2hlw h5 { font-size: 28px; }
+.v2hlw h5 small { font-size: 20px; color: #c9d6ee; }
+.v2hlw .win1 small { font-size: 24px; }
+.v2hlw .win1 em { font-size: 22px; }
+.v2hlw .v2wl .row .st { font-size: 19px; }
+.v2hlw .v2wl .row .nk { font-size: 26px; }
+.v2hlw .v2wl .row b { font-size: 30px; }
+
+/* ---------- 結果画面 ---------- */
+.v2res .rhd { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 22px; min-width: 0; }
+.v2res .rhd h2 { font-size: 40px; }
+.v2res .rhd h2 small { font-size: 26px; color: #c9d6ee; }
+.v2res .r .head h3 small { font-size: 22px; color: #c9d6ee; }
+.v2res .r .head span { font-size: 26px; color: #c9d6ee; }
+.v2res .r .head span b { font-size: 38px; }
+.v2res .ord { position: relative; padding-top: 34px; }
+.v2res .ord::before, .v2res .ord::after { position: absolute; top: 8px; font: 900 20px/1 var(--font-tv); color: #c9d6ee; }
+.v2res .ord::before { content: "100あたり"; right: 18px; }
+.v2res .ord::after { content: "着差"; right: 150px; }
+.v2res .ord .o .mg small, .v2res .ord .o .rk small { font-size: 20px; }
+.v2res .ord .o:first-child .mg small { font-size: 18px; color: #c9d6ee; }
+.v2res .pay .k small { font-size: 22px; }
+.v2res .pay .x small { font-size: 22px; }
+/* 当たった人がいるとき（結果の最初〜当たった人を 1 人ずつ）: 一覧の下に「当たった方は スマホの QR をスタッフへ」 */
+.v2res .ract { display: none; grid-column: 2; grid-row: 2; align-self: end; margin-bottom: 44px; height: 84px; align-items: center; justify-content: center; gap: 14px; padding: 0 22px; border-radius: 14px; background: rgba(242, 183, 5, .16); box-shadow: inset 0 0 0 3px #f2b705; font: 900 32px/1 var(--font-tv); color: #fff; white-space: nowrap; }
+.v2res .ract b { color: #ffe14d; }
+.v2res.has-w:not(.sub-on) .ract { display: flex; }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 142px; }
+/* 下の帯: 次のレースと発走まで（「この画面 あと」はお客さんに要らないので出さない） */
+.v2res .foot .rest { display: none; }
+.v2res .foot { font-size: 26px; }
+.v2res .foot .nx small, .v2res .foot .cdn small { font-size: 24px; color: #c9d6ee; }
+.v2res .foot .nx b { font-size: 42px; }
+.v2res .foot .cdn b { font-size: 44px; }
+.v2res .foot .nx em { font-size: 22px; }
+.v2res .rsub h4 small, .v2res .rsub .nr .cdn small { color: #c9d6ee; }
+
+/* ---------- 通信・設定のエラー ---------- */
+.v2net { font-size: 22px; }
+/* 15 秒以上切れた: 上に大きな帯（映像の真ん中は覆わない） */
+.v2down { position: absolute; z-index: 60; left: 50%; top: 96px; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 8px; padding: 18px 48px; border-radius: 18px; background: rgba(16, 20, 28, .92); box-shadow: 0 0 0 5px #ffb300, 0 14px 30px rgba(0, 0, 0, .45); color: #fff; font-family: var(--font-tv); white-space: nowrap; pointer-events: none; }
+.v2down.show { display: flex; }
+.v2down b { font-size: 48px; font-weight: 900; color: #ffd54f; }
+.v2down span { font-size: 28px; font-weight: 800; }
+/* 店舗が見つからない・合言葉がない: 画面全体を覆う（ふつうの画面や QR は見せない） */
+.v2net.full, .v2key.show { position: absolute; z-index: 80; inset: 0; right: 0; bottom: 0; max-width: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 60px; border-radius: 0; background: radial-gradient(ellipse at 50% 40%, #1f3260, #0a1322 75%); color: #fff; font-family: var(--font-tv); text-align: center; line-height: 1.4; }
+.v2net.full::before, .v2key.show::before { content: "!"; width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; background: #ffb300; color: #1a1200; font: 900 84px/1 var(--font-num); animation: none; }
+.v2net.full b, .v2key b { font-size: 72px; font-weight: 900; }
+.v2net.full span, .v2key span { font-size: 40px; font-weight: 900; color: #ffd54f; }
+.v2net.full small, .v2key small { max-width: 1100px; font-size: 28px; font-weight: 800; color: #dfe7f3; }
+/* 札と重なるもの（2026-10-19 1 回目の見直し）: 残り時間の箱の状態の札は上の札と同じなので出さない。結果の見出しは札の右に発走時刻だけ（右の列に食い込まない） */
+.v2info .cd .cdl i { display: none !important; }
+.v2info .cd .cdl { margin-top: 6px; }
+.v2res .rhd h2 { min-width: 0; overflow: hidden; }
+.v2res .rhd h2 small { display: none; }
+.v2key small { white-space: pre-line; }
+/* 小さな「通信中…」は右上（音のボタンの下）へ。QR の白い余白に重ねない。大きな帯が出ているあいだは出さない */
+#stage.v2 .v2net:not(.full):not(.v2key) { top: 84px; bottom: auto; right: 18px; }
+#stage.v2 .v2down.show ~ .v2net:not(.full) { display: none; }
+/* 2 回目の見直し: 投票の段の見出し・待ち時間の上の帯（参加人数は受付から）・配当の見出し */
+.v2info .how.xshut h4 { font-size: 40px; }
+.v2info .how.xshut li { font-size: 36px; color: var(--ink-sub); }
+.v2info .how.xshut ul li::before { background: #9aa6b8; }
+#stage.v2.m-wait .v2ppl { display: none; }
+#stage.v2.m-wait .top .logo { margin-left: auto; }
+.v2odds h5 { font-size: 30px; letter-spacing: .02em; }
+.v2odds h5 small { font-size: 18px; }
+/* 3 回目の見直し: 結果の「振り返り」は顔の絵をやめて文字を大きく。着順掲示板の小さなラベルを大きく */
+.v2res .rsub .lb { grid-template-columns: 1fr; padding: 10px 14px; row-gap: 6px; }
+.v2res .rsub .lb .fc { display: none; }
+.v2res .rsub .lb .rk { font-size: 36px; }
+.v2res .rsub .lb .rk small { font-size: 20px; }
+.v2res .rsub .lb i { width: 40px; height: 40px; font-size: 28px; }
+.v2res .rsub .lb b { font-size: 26px; text-overflow: clip; }
+.v2res .rsub .lb em { grid-column: 1; margin-top: 0; font-size: 22px; }
+.v2res .rsub .lf { font-size: 24px; }
+.v2res .rsub .lf .ph { font-size: 22px; }
+.v2res .rsub h4 small { font-size: 22px; }
+#stage.v2 .bd-time small { font-size: 20px; }
+#stage.v2 .bd-pay div small { font-size: 22px; }
+#stage.v2 .bd-head span { font-size: 24px; }
+/* リプレイ・勝ち馬のアップ（.bc-clean）でも状態の札は出す（「リプレイ」「写真判定」「レース結果」をLIVEと見分ける） */
+#stage.v2.bc-clean .top > .v2st { opacity: 1; }
+/* 出馬表の 6 頭目が枠（y484）からはみ出していた（tests/v2-qr-size.plan.js）→ 見出し 36px・行 50px */
+#stage.v2 .side .card h4 { height: 36px; margin-bottom: 4px; }
+#stage.v2 .side .card h4::after { top: 6px; }
+#stage.v2 .horse { height: 50px; }
+/* ======================================================================================================
+   2026-10-19 3 回目の見直し（ChatGPT 3 回目の採点 85.7・最低 ⑦79）
+   ====================================================================================================== */
+/* ⑦ 受け取りの案内を大きく（2 段）。当たった人の一覧の下 */
+.v2res .ract { height: 128px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; padding: 0 26px; white-space: nowrap; background: rgba(242, 183, 5, .2); box-shadow: inset 0 0 0 4px #f2b705, 0 0 26px rgba(242, 183, 5, .25); }
+.v2res .ract b { font-size: 40px; }
+.v2res .ract span { font-size: 32px; font-weight: 900; color: #fff; }
+.v2res .ract em { font-style: normal; color: #ffe14d; margin: 0 6px; }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 186px; }
+/* ⑦ 時間で主役を変える: 当たった人の時間・振り返り・次のレースのあいだは、着順の 2 着以下と配当の帯を控えめに */
+.v2res.ph-win .ord .o:not(:first-child), .v2res.sub-on .ord .o:not(:first-child) { opacity: .42; }
+.v2res.ph-win .pay, .v2res.sub-on .pay { opacity: .6; transition: opacity .6s; }
+.v2res.ph-next .rsub, .v2res.ph-cd .rsub { background: rgba(46, 157, 79, .18); }
+/* ⑥ 写真判定は左上の札で出す（映像の左上の札は重ねない＝REPLAY と二重にしない） */
+#stage.v2 .bc-tag.photo { display: none; }
+/* 下の帯: ハイライトは「前のレース」と上に小さく */
+.v2strip .ttl small.pre { font-size: 24px; color: #c9d6ee; margin: 0 0 4px; }
+#stage.v2.m-hl .v2strip .ttl small.pre { font-size: 24px; }
+/* QR の札（結果・ハイライトは「次のレースに スマホで参加」で長い） */
+#stage.v2.m-hl .v2qr .tx b, #stage.v2.m-result .v2qr .tx b { font-size: 21px; padding: 5px 16px; }
+/* ⑨ エラー: お客さん向けの 2 文を大きく、直し方は下に小さく */
+.v2net.full span, .v2key span { font-size: 48px; color: #ffd54f; }
+.v2net.full small, .v2key small { margin-top: 30px; font-size: 24px; color: #9fb3d9; }
+/* ③ 投票の段の残り時間の箱（小さな行がないぶん数字を下げる） */
+.v2info .how.xshut li { font-size: 34px; }
+.v2res .ract span { font-size: 30px; }
+/* 振り返りの枠（高さ 232px）に収める */
+.v2res .rsub .lb { padding: 6px 12px; row-gap: 2px; }
+.v2res .rsub .lb .rk { font-size: 30px; }
+.v2res .rsub .lb .rk small { font-size: 18px; }
+.v2res .rsub .lb i { width: 34px; height: 34px; font-size: 24px; }
+.v2res .rsub .lb b { font-size: 24px; }
+.v2res .rsub .lb em { font-size: 20px; }
+.v2res .rsub .lf { font-size: 22px; }
+.v2res .rsub .lf .ph { font-size: 20px; }
+/* ======================================================================================================
+   2026-10-19 4 回目の見直し（ChatGPT 4 回目 87.8・最低 ③84）
+   ====================================================================================================== */
+/* ③ 投票の段: 主な案内を 2 行で大きく（46px）、締切の 1 行は 30px */
+.v2info .how.xshut { gap: 14px; }
+.v2info .how.xshut h4 { font-size: 48px; line-height: 1.2; letter-spacing: .02em; }
+.v2info .how.xshut li { font-size: 30px; }
+/* ⑦ 受け取りの案内: 2 段とも大きく */
+.v2res .ract { height: 140px; gap: 12px; }
+.v2res .ract b { font-size: 42px; }
+.v2res .ract span { font-size: 38px; }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 198px; }
+/* ⑧ 下の帯: 次のレースの数字を主役に、前のレースは控えめに */
+#stage.v2.m-hl .v2strip .ttl { font-size: 32px; color: #c9d6ee; }
+#stage.v2.m-hl .v2strip .nx small { font-size: 26px; color: #fff; }
+#stage.v2.m-hl .v2strip .nx b { font-size: 70px; }
+/* ①② 手順は文字を主役に（番号の丸を小さく） */
+.v2info .how li { font-size: 40px; }
+.v2info .how li::before { width: 44px; height: 44px; font-size: 28px; }
+/* 当たった人が少ないとき（行の高さが上限）: 名前と当選額を大きく */
+.v2res .r .v2wl.big .row .nk { font-size: 38px; }
+.v2res .r .v2wl.big .row b { font-size: 48px; }
+.v2res .r .v2wl.big .row .st { font-size: 24px; }
+.v2hlw .v2wl.big .row .nk { font-size: 30px; }
+.v2hlw .v2wl.big .row b { font-size: 34px; }
+.v2hlw .v2wl.big .row .st { font-size: 20px; }
+/* 結果画面の 5 分のあいだ、着順と配当はいつも読める（tests/v2-result-timeline.plan.js の決まり: 不透明度 0.8 以上・配当は 1）→ 控えめにするのは 0.8 まで */
+.v2res.ph-win .ord .o:not(:first-child), .v2res.sub-on .ord .o:not(:first-child) { opacity: .8; }
+.v2res.ph-win .pay, .v2res.sub-on .pay { opacity: 1; }
