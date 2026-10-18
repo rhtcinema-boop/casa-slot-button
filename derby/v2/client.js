@@ -87,7 +87,7 @@
       get offset() { return impl ? impl.offset : 0; }, get synced() { return impl ? impl.synced : false; },
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
       createTicket: call('createTicket'), getTicket: call('getTicket'), cancelTicket: call('cancelTicket'), vote: call('vote'),
-      staffLogin: call('staffLogin'), staffTicket: call('staffTicket'), auth: call('auth'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'),
+      staffLogin: call('staffLogin'), staffTicket: call('staffTicket'), auth: call('auth'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'),
       admin(password) { const m = {}; ADMIN.forEach((k) => { m[k] = async (...a) => { const i = await getImpl(); const ad = adm[password] || (adm[password] = i.admin(password)); return ad[k](...a); }; }); return m; },
       subscribe(handlers, o) { let un = null, closed = false; getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); }); return () => { closed = true; if (un) un(); }; },
       get decider() { return impl ? impl.decider : null; },
@@ -150,6 +150,7 @@
       staffPayout: (pin, code) => post('/api/staff/payout', { store, pin, code }),
       claim: (pin, code) => post('/api/payout/claim', { store, pin, code }),
       next: (pin) => post('/api/next', { store, pin }),
+      tvGame: (pin, game) => post('/api/staff/tvgame', { store, pin, game }), // テレビのゲーム（2026-10-19。その店のスタッフ）
       logs: (pin, o) => post('/api/staff/logs', Object.assign({ store, pin }, o || {})),
       // 管理
       admin(password) {
