@@ -19,6 +19,89 @@
   const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000, SHORT_TTL = 2 * 86400000;
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
+  /* ---------- 入れ子の配列の変換（2026-10-18 本番で発覚） ----------
+     本物の Firestore は「配列の中に配列」を保存できない（例: derbyRaces・derbyLive の tenkai）。
+     書くときに、配列の中の配列を { derbyNestedArray_v1: [...] } という地図に包み、読むときに元へ戻す。
+     この層は db の一番外側（create の中）で全部の読み書きにかかるので、core.js・tv.js などには元の形のまま渡る。
+     地図・数・文字・Timestamp・FieldValue はそのまま。印の名前は他のデータでは使わない。 */
+  const NA = 'derbyNestedArray_v1';
+  const isPlain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
+  function encodeFS(v, inArray) {
+    if (Array.isArray(v)) { const a = v.map((x) => encodeFS(x, true)); if (!inArray) return a; const o = {}; o[NA] = a; return o; }
+    if (isPlain(v)) { const o = {}; Object.keys(v).forEach((k) => (o[k] = encodeFS(v[k], false))); return o; }
+    return v;
+  }
+  function decodeFS(v) {
+    if (Array.isArray(v)) return v.map(decodeFS);
+    if (isPlain(v)) {
+      const ks = Object.keys(v);
+      if (ks.length === 1 && ks[0] === NA && Array.isArray(v[NA])) return v[NA].map(decodeFS);
+      const o = {}; ks.forEach((k) => (o[k] = decodeFS(v[k]))); return o;
+    }
+    return v;
+  }
+  const encodePatch = (p) => { const o = {}; Object.keys(p || {}).forEach((k) => (o[k] = encodeFS(p[k], false))); return o; };
+  const rawOf = (r) => (r && r._derbyRaw) || r;
+  function wrapDocSnap(sn) {
+    if (!sn) return sn;
+    return { id: sn.id, exists: sn.exists, get ref() { return wrapRef(sn.ref); }, data: () => decodeFS(sn.data()), get: (f) => decodeFS(sn.get(f)), _derbyRaw: sn };
+  }
+  function wrapQuerySnap(q) { const docs = q.docs.map(wrapDocSnap); return { docs, size: q.size, empty: q.empty, forEach: (fn) => docs.forEach(fn), _derbyRaw: q }; }
+  function wrapRef(r) {
+    if (!r || r._derbyRaw) return r;
+    return {
+      id: r.id, path: r.path, _derbyRaw: r,
+      collection: (c) => wrapColl(r.collection(c)),
+      get: (o) => r.get(o).then(wrapDocSnap),
+      set: (d, o) => (o === undefined ? r.set(encodeFS(d, false)) : r.set(encodeFS(d, false), o)),
+      update: (p) => r.update(encodePatch(p)),
+      delete: () => r.delete(),
+      onSnapshot: (cb, ecb) => r.onSnapshot((sn) => cb(wrapDocSnap(sn)), ecb),
+    };
+  }
+  function wrapQuery(q) {
+    return {
+      _derbyRaw: q,
+      where: (a, b, c) => wrapQuery(q.where(a, b, c)),
+      orderBy: (a, b) => wrapQuery(b === undefined ? q.orderBy(a) : q.orderBy(a, b)),
+      limit: (n) => wrapQuery(q.limit(n)),
+      get: (o) => q.get(o).then(wrapQuerySnap),
+      onSnapshot: (cb, ecb) => q.onSnapshot((s) => cb(wrapQuerySnap(s)), ecb),
+    };
+  }
+  function wrapColl(c) {
+    return Object.assign(wrapQuery(c), { id: c.id, path: c.path, doc: (id) => wrapRef(id === undefined ? c.doc() : c.doc(id)), add: (d) => c.add(encodeFS(d, false)).then(wrapRef) });
+  }
+  function wrapDb(db) {
+    if (!db || db._derbyRaw) return db;
+    const out = {
+      _derbyRaw: db,
+      collection: (c) => wrapColl(db.collection(c)),
+      doc: (p) => wrapRef(db.doc(p)),
+      runTransaction: (fn) => db.runTransaction((tx) => {
+        const w = {
+          get: (ref) => tx.get(rawOf(ref)).then(wrapDocSnap),
+          set: (ref, d, o) => { if (o === undefined) tx.set(rawOf(ref), encodeFS(d, false)); else tx.set(rawOf(ref), encodeFS(d, false), o); return w; },
+          update: (ref, p) => { tx.update(rawOf(ref), encodePatch(p)); return w; },
+          delete: (ref) => { tx.delete(rawOf(ref)); return w; },
+        };
+        return fn(w);
+      }),
+      batch: () => {
+        const b = db.batch();
+        const w = {
+          set: (ref, d, o) => { if (o === undefined) b.set(rawOf(ref), encodeFS(d, false)); else b.set(rawOf(ref), encodeFS(d, false), o); return w; },
+          update: (ref, p) => { b.update(rawOf(ref), encodePatch(p)); return w; },
+          delete: (ref) => { b.delete(rawOf(ref)); return w; },
+          commit: () => b.commit(),
+        };
+        return w;
+      },
+    };
+    if (db.enablePersistence) out.enablePersistence = (...a) => db.enablePersistence(...a);
+    return out;
+  }
+
   /* ---------- ブラウザ: SDK を読み込んでつなぐ（casa SLOT の js/cloud.js と同じやり方） ---------- */
   let connectP = null;
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); }); }
@@ -39,7 +122,8 @@
     opts = opts || {};
     const role = opts.role || 'tv', store = opts.store || null;
     const { fb, Engine, Outcome, Core } = env, cfg = env.config || {};
-    const { db, auth, FieldValue, Timestamp } = fb;
+    const { auth, FieldValue, Timestamp } = fb;
+    const db = wrapDb(fb.db); /* 入れ子の配列を自動で包む・戻す（上の encodeFS / decodeFS） */
     const E = Core.err;
     let offset = 0, synced = false;
     const local = env.now || (() => Date.now());
@@ -875,5 +959,5 @@
     };
   }
 
-  return { create, connect, COL, SDK };
+  return { create, connect, COL, SDK, encodeFS, decodeFS, wrapDb, NESTED_ARRAY_MARK: NA };
 });
