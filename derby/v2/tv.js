@@ -71,11 +71,13 @@
   // ---------- 画面の部品（v2 だけのもの）を足す ----------
   function el(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
   const top = stageEl.querySelector('.top'), sndBtn = top.querySelector('.soundbtn');
+  // 状態の札（2026-10-19 店内モニターの見やすさ）: どの場面も左上の同じ位置・同じ形で「いま何の時間か」を出す。色は 5 つ（緑＝受付・青＝投票・赤＝締切・紺＝レース・金＝結果）
+  top.insertBefore(el('<div class="v2st" id="v2st"><i></i><b id="v2stT"></b></div>'), top.firstChild);
   top.insertBefore(el('<div class="v2clock" id="v2clock"><small id="v2clockLbl">発走まで</small><b id="v2clockNum">--:--</b></div>'), sndBtn);
   top.insertBefore(el('<div class="v2ppl" id="v2ppl"><small>全店で</small><b id="v2pplNum">0</b><small>人が参加</small></div>'), sndBtn);
   top.insertBefore(el('<span class="v2store" id="v2store"></span>'), sndBtn);
   stageEl.appendChild(el('<div class="v2info" id="v2info"><div class="cd" id="v2cd"><small id="v2cdLbl">発走まで</small><b id="v2cdNum">--:--</b><div class="cdl"><i id="v2cdSt"></i><span id="v2cdSub"></span></div></div>' +
-    '<div class="how" id="v2how"><h4>スマホで投票しよう！<small>アプリは不要です</small></h4><ol><li>右の QR をスマホのカメラで読む</li><li>番号・名前・チップを入れてスタッフへ</li><li>勝つと思う馬に投票（単勝）</li></ol><p>当たったらスマホの QR をスタッフへ。全店同時レース！</p></div></div>'));
+    '<div class="how" id="v2how"><h4>参加のしかた</h4><ol><li>QR をスマホで読む</li><li>スタッフに QR を見せる</li><li>スマホで馬を選んで投票</li></ol></div></div>'));
   // QR の下の URL は出さない（テレビでは途中で折り返して読めない。2026-10-14 見た目の講評）。#v2qrUrl は中身だけ持つ（確認用）
   stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b>スマホで参加</b><span>スマホのカメラで<br>読み取ってください</span><em>アプリは不要です</em><small id="v2qrUrl" hidden></small></div></div>'));
   stageEl.appendChild(el('<div class="v2odds" id="v2odds"><h5>確定配当<small>100あたり</small></h5><ol id="v2oddsList"></ol></div>'));
@@ -83,10 +85,12 @@
   stageEl.appendChild(el('<div class="v2hl-tag" id="v2hlTag">前のレースのハイライト<small id="v2hlTagSub"></small></div>'));
   stageEl.appendChild(el('<div class="v2hlw" id="v2hlw"><h5>前のレースの当たり<small id="v2hlwSub">全店</small><span class="pg"></span></h5><div class="win1" id="v2hlwWin"></div><div class="v2wl" id="v2hlwList"><div class="inner"></div></div></div>'));
   stageEl.appendChild(el('<div class="v2closed" id="v2closed">締切ました</div>'));
-  stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><h2 id="v2resTtl">レース結果</h2><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div></div></div>' +
-    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="rsub" id="v2resSub"></div></div></div>'));
+  stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div></div></div>' +
+    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><b>当たった方は</b><span>スマホの<em>受け取り QR</em>をスタッフへ</span></div><div class="rsub" id="v2resSub"></div></div></div>'));
+  // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
+  stageEl.appendChild(el('<div class="v2down" id="v2down"><b>通信が切れています</b><span>自動でつなぎ直します</span></div>'));
   stageEl.appendChild(el('<div class="v2net" id="v2net">通信中…</div>'));
-  stageEl.appendChild(el('<div class="v2net v2key" id="v2key">テレビの合言葉がありません。管理画面の「店舗」にあるテレビの URL で開き直してください（レースは発表のときに結果だけ出ます）</div>'));
+  stageEl.appendChild(el('<div class="v2net v2key" id="v2key"><b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）テレビの合言葉がありません。管理画面のテレビの URL で開き直してください</small></div>'));
   stageEl.appendChild(el('<div class="v2snd" id="v2snd">決定ボタン（OK）を押すと音が出ます</div>'));
 
   // ---------- クラウド ----------
@@ -152,7 +156,7 @@
   async function refresh() {
     if (!C) return;
     try { applyState(await C.state()); badStore = false; }
-    catch (e) { sseErr = true; badStore = !!(e && e.code === 'no_store'); if (badStore) $('v2net').classList.add('show'), $('v2net').textContent = '店舗「' + STORE + '」が見つかりません。管理画面の「店舗」にあるテレビの URL で開き直してください'; }
+    catch (e) { sseErr = true; badStore = !!(e && e.code === 'no_store'); if (badStore) { const n = $('v2net'); n.classList.add('show', 'full'); n.innerHTML = '<b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）店舗「' + esc(STORE) + '」が見つかりません。管理画面のテレビの URL で開き直してください</small>'; } } // 画面全体を覆う（ふつうの画面や QR を出さない）
   }
   // 古いレースは捨てる（何日もつけっぱなしのテレビでメモリが増え続けないように）
   function pruneCache() {
@@ -181,7 +185,8 @@
     } catch (e) { console.error(e); }
   }
   // 通信の印: 15 秒以上なにも届かない、または接続が切れている
-  setInterval(() => { const bad = !C || sseErr || badStore || performance.now() - lastOk > 15000; $('v2net').classList.toggle('show', bad); if (!badStore && $('v2net').textContent !== '通信中…') $('v2net').textContent = '通信中…'; $('v2key').classList.toggle('show', tvAuth === false); }, 1000);
+  // 2026-10-19: 段階的に。切れてすぐ〜15 秒は右下の小さな「通信中…」、15 秒以上なにも届かなければ上に大きな帯（#v2down）
+  setInterval(() => { const quiet = performance.now() - lastOk, bad = !C || sseErr || badStore || quiet > 15000; $('v2net').classList.toggle('show', bad); if (!badStore && $('v2net').textContent !== '通信中…') { $('v2net').textContent = '通信中…'; $('v2net').classList.remove('full'); } $('v2down').classList.toggle('show', !badStore && (!C || quiet > 15000)); stageEl.classList.toggle('v2bad', badStore || tvAuth === false); $('v2key').classList.toggle('show', tvAuth === false && !badStore); }, 1000);
 
   // ---------- レース映像 ----------
   const raceView = new Race($('race'));
@@ -229,7 +234,7 @@
     if (!e) return; e.style.fontSize = max + 'px'; if (!e.clientWidth) return;
     let f = max; while (f > min && e.scrollWidth > e.clientWidth + 1) { f -= 1; e.style.fontSize = f + 'px'; }
   }
-  function fitNames() { document.querySelectorAll('#horses .horse .l1 b').forEach((b) => fitText(b, 28, 18)); }
+  function fitNames() { document.querySelectorAll('#horses .horse .l1 b').forEach((b) => fitText(b, 36, 22)); } // 2026-10-19: 店内モニター向けに大きく（36px まで）
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitNames()).catch(() => {});
   function horsePic(i, kind) { try { return raceView.portrait ? raceView.portrait(i, kind) : null; } catch (e) { return null; } }
   function renderHorses() {
@@ -380,7 +385,7 @@
     $('v2hlwSub').textContent = raceTitle(P) + '　全店';
     $('v2hlwWin').innerHTML = '<small>1着</small><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span>' + esc(h.name) + '</span><em>100あたり ' + per(P.result.finalOdds[w]) + '</em>';
     fitText($('v2hlwWin').querySelector('span'), 26, 16);
-    fillWinners($('v2hlwList'), P.winners || [], { max: 54, normal: 48, dense: 40 });
+    fillWinners($('v2hlwList'), P.winners || [], { max: 64, normal: 48, dense: 40 });
   }
   /* 当たった人の一覧。行の高さを人数に合わせて決める（2026-10-14 見た目の講評: 流していると 10 人目が見えない時間が長かった）
      o = { max: いちばん高い行, normal: ふつうの行, dense: 詰めた行 }。normal で入る → そのまま、dense までに詰めれば入る（12 人くらい）→ 詰めて全員、
@@ -388,13 +393,13 @@
   const pagers = new Map(), pagerCtl = new Map(); // pagerCtl: 一覧ごとの { per: 1 ページの人数, goto(ページ), hold: 自動でめくらない }（結果画面で 1 人ずつ見せるとき、その人のページへ）
   function fillWinners(box, list, o) {
     const inner = box.querySelector('.inner'), pg = box.parentNode.querySelector('.pg');
-    clearInterval(pagers.get(box)); pagers.delete(box); pagerCtl.delete(box); box.classList.remove('scroll', 'dense', 'paged'); inner.style.transform = ''; if (pg) pg.textContent = '';
+    clearInterval(pagers.get(box)); pagers.delete(box); pagerCtl.delete(box); box.classList.remove('scroll', 'dense', 'paged', 'big'); inner.style.transform = ''; if (pg) pg.textContent = '';
     if (!list.length) { inner.innerHTML = '<div class="none">当たった人は<br>いませんでした</div>'; return; }
     const row = (w) => '<div class="row"><span class="st' + (w.storeId === STORE ? ' me' : '') + '">' + esc(w.storeName || storeName(w.storeId)) + '</span><span class="nk">' + esc(w.nick) + '</span><b>' + amt(w.amount) + '</b></div>'; // 当選額（単位なし）
     inner.innerHTML = list.map(row).join('');
     const n = list.length, avail = box.clientHeight || 500;
     let rh = Math.min(o.max, Math.floor(avail / n));
-    if (rh >= o.dense) { box.style.setProperty('--rh', rh + 'px'); box.classList.toggle('dense', rh < o.normal); pagerCtl.set(box, { per: n, pages: 1, hold: false, goto() {} }); return; }
+    if (rh >= o.dense) { box.style.setProperty('--rh', rh + 'px'); box.classList.toggle('dense', rh < o.normal); box.classList.toggle('big', rh >= o.max - 4); /* 2026-10-19: 当たった人が少ないときは行も文字も大きく（遠くから読める） */ pagerCtl.set(box, { per: n, pages: 1, hold: false, goto() {} }); return; }
     const per = Math.max(1, Math.floor(avail / o.normal)), pages = Math.ceil(n / per); rh = Math.floor(avail / per);
     box.style.setProperty('--rh', rh + 'px'); box.classList.add('paged');
     const ctl = { per, pages, p: 0, hold: false, goto(q) { q = ((q % pages) + pages) % pages; if (q !== ctl.p) { ctl.p = q; show(); } } };
@@ -499,7 +504,8 @@
   function markWinnerOdds(w) { $('v2oddsList').querySelectorAll('li').forEach((li) => li.classList.toggle('win', +li.dataset.i === w)); oddsState('won'); }
   function oddsState(s) { const o = $('v2odds'); ['cmp', 'fade', 'won'].forEach((c) => o.classList.toggle(c, c === s)); }
   function renderStrip(R, head) {
-    $('v2stripTtl').innerHTML = (head ? esc(head) + '<small>' + esc(raceTitle(R)) + '　' : esc(raceTitle(R)) + '<small>casa競馬場　') + '' + (R.surface === 'dirt' ? 'ダート' : '芝') + R.dist + 'm　全店同時レース</small>';
+    // 2026-10-19: 短く（距離・馬場は映像の左下に出ている）
+    $('v2stripTtl').innerHTML = head ? '<small class="pre">前のレース</small>' + esc(raceTitle(R)) : esc(raceTitle(R)); // 2026-10-19: 補足を減らす。ハイライトは「前のレース」と分かるように上に小さく
     $('v2stripPpl').textContent = ppl(R);
     const by = (R.participants && R.participants.byStore) || {};
     $('v2stripStores').innerHTML = ((S && S.stores) || []).map((s) => '<span class="' + (s.id === STORE ? 'me' : '') + '">' + esc(s.name) + '<b>' + (by[s.id] || 0) + '</b></span>').join('');
@@ -600,7 +606,7 @@
     const key = R.id + '|' + (R.winners ? R.winners.length : 'x') + '|' + ((S && S.stores) || []).length + '|' + !!R.refunded;
     if (key !== resKey) {
       resKey = key;
-      $('v2resTtl').innerHTML = esc(raceTitle(R)) + ' 結果<small>' + (R.surface === 'dirt' ? 'ダート' : '芝') + R.dist + 'm　全店同時</small>';
+      $('v2resTtl').innerHTML = esc(raceTitle(R)) + '<small>' + (R.surface === 'dirt' ? 'ダート' : '芝') + R.dist + 'm</small>'; // 「結果」は左の札（結果画面は画面全体を覆うので、上の札と同じものをここにも置く）
       const f = res.finishTimes || [], ord = res.order;
       // 着差は単位つき（「2 馬身」「1 3/4 馬身」。ハナ・アタマ・クビ・大差はそのまま）。1 着はタイム
       const mgU = (s) => (/^[0-9]/.test(s) ? esc(s) + '<small>馬身</small>' : esc(s));
@@ -608,10 +614,11 @@
       $('v2resOrd').querySelectorAll('.nm').forEach((e, k) => fitText(e, k ? 30 : 42, 20));
       const w = res.winner, h = R.horses[w], o = res.finalOdds[w];
       // 払戻: 100あたりの額と「例 10枚 → 4,000」（当選額。出てから 0.6 秒だけ 1.08 倍に弾む）
-      $('v2resPay').innerHTML = '<span class="k">払戻<small>単勝</small></span><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span class="hn">' + esc(h.name) + '</span><span class="x"><small>例</small>1,000 → <b>' + amt(10 * Math.round(o * 10) * 10) + '</b></span><b class="o"><small>100あたり</small>' + per(o) + '</b>';
+      $('v2resPay').innerHTML = '<span class="k">配当<small>単勝</small></span><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span class="hn">' + esc(h.name) + '</span><span class="x"><small>例</small>1,000 → <b>' + amt(10 * Math.round(o * 10) * 10) + '</b></span><b class="o"><small>100あたり</small>' + per(o) + '</b>';
       fitText($('v2resPay').querySelector('.hn'), 32, 18);
       const list = R.winners || [];
       $('v2resCnt').innerHTML = R.refunded ? '' : R.winners ? '全店で<b>' + list.length + '</b>人' : '集計中…';
+      $('v2res').classList.toggle('has-w', !R.refunded && list.length > 0); // 当たった人がいるときだけ「当たった方は スマホの QR をスタッフへ」（一覧の高さが変わるので先に）
       fillResWinners(R);
     }
     // 下の帯: 次のレース（発走時刻と発走までの時間）と、この結果の画面があと何分出ているか（どちらの時間か分かるように名前をつける。2026-10-14 見た目の講評）
@@ -626,7 +633,7 @@
   function fillResWinners(R) {
     const L = $('v2resList');
     if (R.refunded) { L.classList.remove('scroll', 'paged', 'dense'); pagerCtl.delete(L); clearInterval(pagers.get(L)); L.querySelector('.inner').style.transform = ''; L.querySelector('.inner').innerHTML = '<div class="none">このレースは不成立のため<br>返還します<br><small>リングバウンティをお返しします。スマホの QR をスタッフへ</small></div>'; } // 管理画面の「返還」: 払い戻しの当たりは取り消し
-    else if (R.winners) fillWinners(L, R.winners, { max: 62, normal: 54, dense: 44 }); else L.querySelector('.inner').innerHTML = '<div class="none">集計中…</div>';
+    else if (R.winners) fillWinners(L, R.winners, { max: 84, normal: 54, dense: 44 }); else L.querySelector('.inner').innerHTML = '<div class="none">集計中…</div>';
     RT.hi = -2; // 行を作り直した → 1 人ずつの印を付け直す
   }
 
@@ -673,7 +680,7 @@
     const sub = $('v2resSub'), sk = subOn ? ph + '|' + (N ? N.id + '|' + !!S.open : '-') + '|' + R.id : '';
     if (sk !== RT.sub) {
       RT.sub = sk;
-      if (subOn) { sub.innerHTML = ph === 'look' ? lookHtml(R) : ph === 'next' ? nextHtml(N) : cdHtml(N, until); if (ph === 'look') drawLookFaces(R); sub.classList.remove('swap'); void sub.offsetWidth; sub.classList.add('swap'); }
+      if (subOn) { sub.innerHTML = ph === 'look' ? lookHtml(R) : ph === 'next' ? nextHtml(N) : cdHtml(N, until); if (ph === 'look') { drawLookFaces(R); sub.querySelectorAll('.lb b').forEach((b) => fitText(b, 24, 15)); } sub.classList.remove('swap'); void sub.offsetWidth; sub.classList.add('swap'); }
     }
     if (subOn && ph !== 'look') {
       const n = $('v2subN'); if (n) n.textContent = ph === 'cd' ? fmtLeft(tl.left) : N ? fmtLeft(N.at - t) : '';
@@ -721,9 +728,10 @@
     if (xShown === closed) return; xShown = closed;
     const how = $('v2how'), qt = $('v2qrTx'); if (!how || !qt) return;
     if (howOrig == null) howOrig = how.innerHTML;
-    const T3 = closed ? ['投票はスマホで', '参加受付は<br>締め切りました', '次のレースをお待ちください'] : ['スマホで参加', 'スマホのカメラで<br>読み取ってください', 'アプリは不要です'];
+    const T3 = closed ? ['次のレースの案内', '参加受付は<br>締め切りました', '次のレースをお待ちください'] /* 2026-10-19: QR は次のレースの案内（新しく読んだ人のスマホには次のレースの時刻が出る） */ : ['スマホで参加', 'スマホのカメラで<br>読み取ってください', 'アプリは不要です'];
     ['b', 'span', 'em'].forEach((k, i) => { const e = qt.querySelector(k); if (e) e.innerHTML = T3[i]; }); // #v2qrUrl（確認用の URL）はそのまま
-    how.innerHTML = closed ? '<h4>参加受付は締め切りました<small>次のレースをお待ちください</small></h4><ol><li>認証済みの方は、スマホで馬を選んで投票</li><li>次のレースの受付は、この締切のあとに始まります</li><li>当たったらスマホの QR をスタッフへ</li></ol><p>投票しなかった分は、締切のあとスマホに返却の QR が出ます</p>' : howOrig;
+    // 2026-10-19: 見出しは「投票受付中」（上の札と同じ）。短い 3 行だけ（小さな補足は出さない）
+    how.innerHTML = closed ? '<h4>参加済みの方は<br>スマホで投票</h4><ul><li>参加受付は締め切りました</li></ul>' : howOrig;
     $('v2qr').classList.toggle('xshut', closed); how.classList.toggle('xshut', closed);
   }
 
@@ -740,13 +748,14 @@
         lbl = '参加受付 あと'; target = xAt(R); sub = '投票締切 ' + hhmm(R.closeAt) + (hhmm(R.closeAt) === hhmm(R.at) ? '' : '・' + hhmm(R.at) + ' 発走');
         const xl = xAt(R) - t; stx = xl < 15000 ? 'まもなく参加受付の締切' : '参加受付中'; stc = xl < 15000 ? 'hot' : 'on';
       } else if (R) { // 投票: 参加受付は締切。大きく「投票 あと」
-        lbl = '投票 あと'; target = R.closeAt; sub = hhmm(R.at) + ' 発走'; stx = '参加受付は締切'; stc = 'shut';
+        lbl = '投票 あと'; target = R.closeAt; sub = ''; stx = '参加受付は締切'; stc = 'shut'; // 発走時刻は上の帯（同じ時刻を 2 回出さない）
       }
     }
-    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレース 発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { stx = R.openAt > t ? hhmm(R.openAt) + ' 受付開始' : '受付中'; stc = R.openAt > t ? '' : 'on'; } }
+    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレースの発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { const can = S.open && R.id === S.open.id && t < xAt(R); if (can && m === 'wait') { lbl = '参加受付 あと'; target = xAt(R); } /* 2026-10-19: 次のレースが受付中なら、受付の画面と同じく「参加受付 あと」（上の札「次のレース 受付中」とそろえる。発走時刻は小さな行） */ stx = can || R.openAt <= t ? '参加受付中' : hhmm(R.openAt) + ' 受付開始'; stc = can || R.openAt <= t ? 'on' : ''; } } // 次のレースが受付中（スマホで参加できる）なら、そう出す（上の札とそろえる）
     else if (m === 'result') { R = S.open || nextRaceOf(); lbl = '次のレースまで'; target = R && R.at; }
     const left = target ? target - t : 0, hot = !!target && left < (lbl === '参加受付 あと' ? 15000 : 30000) && m === 'open';
     stageTexts(m === 'open' && xShut(S.open, t));
+    { const qb = $('v2qrTx').querySelector('b'), want = m === 'open' && xShut(S.open, t) ? '次のレースの案内' : m === 'result' || m === 'hl' ? '次のレースに スマホで参加' : 'スマホで参加'; if (qb && qb.textContent !== want) qb.textContent = want; }
     const ca = m === 'open' && S.open ? S.open.at : target; // 上の時計はいつも発走まで
     $('v2clockLbl').textContent = m === 'open' ? '発走まで' : '次の発走まで';
     $('v2clockNum').textContent = ca ? fmtLeft(ca - t) : '--:--';
@@ -762,6 +771,24 @@
     const P = m === 'live' || m === 'result' ? (view || R) : (R || view);
     $('v2pplNum').textContent = ppl(m === 'open' ? S.open : P);
     if (m === 'live' && view) { const r = cache[view.id] || view; $('v2stripPpl').textContent = ppl(r); }
+    setStatus(m, t);
+  }
+  /* 状態の札（左上・どの場面も同じ位置と形）。色は 5 つだけ: on＝緑（参加受付）・vote＝青（投票）・hot＝赤（締切）・race／live＝紺（レース・リプレイ・ハイライト）・res＝金（結果） */
+  let stKey = '';
+  function setStatus(m, t) {
+    let tx = '', c = 'race';
+    if (m === 'open' && S.open) { const R = S.open; if (xShut(R, t)) { const hot = R.closeAt - t < 30000; tx = hot ? 'まもなく投票締切' : '投票受付中'; c = hot ? 'hot' : 'vote'; } else { const hot = xAt(R) - t < 15000; tx = hot ? 'まもなく受付締切' : '参加受付中'; c = hot ? 'hot' : 'on'; } }
+    else if (m === 'wait') { const N = nextRaceOf(); if (!N) tx = '本日のレースは終了'; else if (S.open && N.id === S.open.id && t < xAt(N)) { tx = '次のレース 受付中'; c = 'on'; } else tx = '次のレース'; }
+    else if (m === 'hl') tx = '前のレースのハイライト';
+    else if (m === 'live') {
+      const ph = raceView.phase, pre = view && view.runAt && t < view.runAt;
+      if (!$('board').hidden || ph === 'winner') { tx = 'レース結果'; c = 'res'; }
+      else if (ph === 'replay') tx = $('tagPhoto').classList.contains('show') ? '写真判定' : 'リプレイ';
+      else if (pre || ph === 'idle') { tx = '投票締切・まもなく発走'; c = 'race'; } // 赤のままだと警告に見える（締切の瞬間は「締切ました」が出る）
+      else { tx = 'LIVE　レース中'; c = 'live'; }
+    } else if (m === 'result') { tx = '結果発表'; c = 'res'; } // 結果画面の札はずっと「結果発表」（札の右が前のレースの発走時刻なので、次のレースの案内は右下の枠で出す）
+    const k = tx + '|' + c; if (k === stKey) return; stKey = k;
+    ['v2st', 'v2st2'].forEach((id) => { const e = $(id); e.className = 'v2st ' + c; e.hidden = !tx; $(id + 'T').textContent = tx; });
   }
 
   // ---------- 起動画面: 全店同時なので自動で閉じる（音は決定ボタン・タップで出る） ----------
