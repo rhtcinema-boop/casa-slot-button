@@ -1289,11 +1289,13 @@ const Game = (function () {
     const noSp = skipSpecial; skipSpecial = false;
     // 獲得した FREE SPIN（CREDIT）で回しているゲームでは、さらに FREE SPIN を出さない設定（プリセットで ON/OFF。未設定は ON）
     const lockFree = (!!play.free && (!!play.dud || Store.state.noRetrigger !== false)) || (storeMode() && !netOk) || doorPlay; // 当たりなしの FREE SPIN（dud）の回と、オフラインの間は、FREE SPIN もロゴも出さない（b75）
-    const logoHit = !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
-    const freeN = !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
+    const lastSpin = sym !== 'NEXT'; // b121（オーナー指摘「フリースピンが当たった回数以上に回る」）: FREE SPIN・ロゴはそのゲームの最後の 1 回にだけ出す。
+    // NEXT STAGE の途中で出ると、そろったゲームの続きが上のステージへ進む分だけ回る回数が増えて見えていた
+    const logoHit = lastSpin && !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
+    const freeN = lastSpin && !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
     const rev = !doorPlay && !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
-    const pat = doorPlay || oneMore || freeN || logoHit ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    const pat = doorPlay || oneMore || freeN || logoHit || noSp ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
     if (!doorPlay && !oneMore && !freeN && !logoHit && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
     const warpTo = doorPlay || oneMore || freeN || logoHit || noSp ? 0 : pickWarp(play, st);
     showCredits();
