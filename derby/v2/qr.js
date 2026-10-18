@@ -20,6 +20,9 @@
   'use strict';
   const LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
   const LIB2 = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js'; // 予備（同じ版）
+  // 2026-10-19: 同じ版をアプリの中（js/vendor/qrcode.min.js）にも置いた。まずそれを読み、無いときだけネットから（ネットなしでも QR が出る）
+  const ME = (typeof document !== 'undefined' && document.currentScript && document.currentScript.src) || '';
+  const LOCAL = ME ? new URL('../js/vendor/qrcode.min.js', ME).href : null;
   let loading = null;
 
   function loadScript(src) {
@@ -33,7 +36,7 @@
   function ready() {
     if (typeof root.qrcode === 'function') return Promise.resolve();
     if (!loading) {
-      loading = loadScript(LIB).catch(() => loadScript(LIB2)).then(() => {
+      loading = (LOCAL ? loadScript(LOCAL) : Promise.reject(new Error('no local'))).catch(() => loadScript(LIB)).catch(() => loadScript(LIB2)).then(() => {
         if (typeof root.qrcode !== 'function') throw new Error('qrcode-generator missing');
       });
       loading.catch(() => { loading = null; }); // 失敗したら次の呼び出しでやり直す
