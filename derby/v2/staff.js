@@ -433,7 +433,7 @@
   }, 1000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopCam(); else if (saved && (mode === 'auth' || mode === 'pay')) startCam(); });
 
-  window.STAFF = { inject: (t) => handleCode(t, 'test'), get mode() { return mode; }, setMode, get C() { return C; }, get saved() { return saved; }, closeSheet, xState };
+  window.STAFF = { inject: (t) => handleCode(t, 'test'), get mode() { return mode; }, setMode, get C() { return C; }, get saved() { return saved; }, get sheetOpen() { return sheetOpen; }, closeSheet, xState }; // sheetOpen: v2/staffswitch.js が見る（確認の画面の途中では画面を入れ替えない。2026-10-19）
 
   (async function boot() {
     if (!window.DerbyCloud) { $('login').classList.remove('hidden'); $('login').innerHTML = LOGO_H1 + '<p>読み込みに失敗しました。ページを開き直してください。</p>'; return; }
