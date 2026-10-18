@@ -890,7 +890,7 @@ R3D.HorseReal = (function () {
 
   // ---------------- 足元の枠色の輪（STYLE 5: 前後に馬番、進む向きに三角。真上から見分ける目印） ----------------
   let ringGeo = null;
-  function drawRing(cv, h, strong) {
+  function drawRing(cv, h, strong, gold) {   // gold: 確定演出 eye の間、外側のふちを金色に（ringGlow と合わせて光って見える）
     const S = cv.width, c = cv.getContext('2d'), m = S / 2, r = S * 0.4;
     c.clearRect(0, 0, S, S);
     // 接地の影（講評 v2-1 の 2）: 胴の真下にぼかした楕円。輪が出ている間はぼかした丸（blob）を描かないので、その代わり（描く回数は増えない。影の無い ?q=tv でも馬が浮かない）
@@ -903,7 +903,7 @@ R3D.HorseReal = (function () {
     const col = h.color || '#f4f4f4', n = parseInt(col.slice(1), 16), lum = ((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11;
     const lw = S * (strong ? 0.075 : 0.05);
     // 外側の白いふち（光って見える）→ 枠色の輪
-    c.beginPath(); c.arc(m, m, r, 0, TAU); c.strokeStyle = strong ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.7)'; c.lineWidth = lw + S * 0.018; c.stroke();
+    c.beginPath(); c.arc(m, m, r, 0, TAU); c.strokeStyle = gold ? '#ffd457' : strong ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.7)'; c.lineWidth = lw + S * (gold ? 0.045 : 0.018); c.stroke();
     c.beginPath(); c.arc(m, m, r, 0, TAU); c.strokeStyle = lum > 230 ? '#e9e9e9' : col; c.lineWidth = lw; c.stroke();
     if (lum > 230) { c.beginPath(); c.arc(m, m, r, 0, TAU); c.strokeStyle = 'rgba(0,0,0,.25)'; c.lineWidth = 2; c.stroke(); }
     // 進む向き（キャンバスの右＝馬の前）に三角
@@ -920,17 +920,25 @@ R3D.HorseReal = (function () {
   const BADGE_D = 0.86, BADGE_TILT = 40 * DEG; // 札の直径（m）、地面から起こす角度
   function makeBadges(S, h, rad) {
     if (!badgeGeo) { badgeGeo = new THREE.PlaneGeometry(1, 1); badgeGeo.rotateX(-PI / 2); }
-    const N = 128, cv = document.createElement('canvas'); cv.width = cv.height = N; const c = cv.getContext('2d'), m = N / 2;
+    const N = 128, cv = document.createElement('canvas'); cv.width = cv.height = N;
+    drawBadge(cv, h, false);
+    const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
+    return badgeMeshes(S, h, rad, cv, tex);
+  }
+  // 馬番の札の絵。gold: 確定演出 eye の間、白いふちを金色に（いちばん外の線も金色）
+  function drawBadge(cv, h, gold) {
+    const N = cv.width, c = cv.getContext('2d'), m = N / 2; c.clearRect(0, 0, N, N);
     const col = h.color || '#f4f4f4', ink = h.ink || '#000000', num = String(h.no || 1);
-    c.beginPath(); c.arc(m, m, N * 0.48, 0, TAU); c.fillStyle = 'rgba(20,20,20,.75)'; c.fill();           // 細い黒の線（いちばん外）
-    c.beginPath(); c.arc(m, m, N * 0.455, 0, TAU); c.fillStyle = '#ffffff'; c.fill();                       // 白いふち
+    c.beginPath(); c.arc(m, m, N * 0.48, 0, TAU); c.fillStyle = gold ? '#e0a400' : 'rgba(20,20,20,.75)'; c.fill();           // 細い黒の線（いちばん外）
+    c.beginPath(); c.arc(m, m, N * 0.455, 0, TAU); c.fillStyle = gold ? '#ffd457' : '#ffffff'; c.fill();                       // 白いふち
     c.beginPath(); c.arc(m, m, N * 0.39, 0, TAU); c.fillStyle = col; c.fill();                              // 枠色の地
     c.lineWidth = N * 0.012; c.strokeStyle = 'rgba(0,0,0,.35)'; c.stroke();
     c.font = '900 ' + Math.round(N * (num.length > 1 ? 0.5 : 0.74)) + 'px "Arial Black", "Helvetica Neue", Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     const dark = parseInt(ink.slice(1), 16) < 0x808080;
     c.lineJoin = 'round'; c.lineWidth = N * 0.05; c.strokeStyle = dark ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.55)'; c.strokeText(num, m, m + N * 0.03);
     c.fillStyle = ink; c.fillText(num, m, m + N * 0.03);
-    const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
+  }
+  function badgeMeshes(S, h, rad, cv, tex) {
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     const g = new THREE.Group(); g.name = 'ringBadges';
     const lift = 0.5 * BADGE_D * Math.sin(BADGE_TILT) + 0.02; // 起こしても下の縁が地面に着く高さ
@@ -938,7 +946,7 @@ R3D.HorseReal = (function () {
       const b = new THREE.Mesh(badgeGeo, sg > 0 ? mat : mat.clone()); b.scale.set(BADGE_D, 1, BADGE_D); b.position.set(S.midX + sg * rad, lift, 0);
       b.rotation.order = 'YXZ'; b.rotation.set(BADGE_TILT, -PI / 2, 0); b.renderOrder = 3; b.userData.sg = sg; g.add(b); // 先に起こし（x）、それから向き（y）
     });
-    g.userData = { tex, mat, mats: g.children.map((b) => b.material), midX: S.midX, rad, d: BADGE_D, tilt: BADGE_TILT };
+    g.userData = { cv, tex, mat, mats: g.children.map((b) => b.material), midX: S.midX, rad, d: BADGE_D, tilt: BADGE_TILT };
     return g;
   }
   function makeRing(S, h) {
@@ -1201,6 +1209,14 @@ R3D.HorseReal = (function () {
     const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; texCache.glint = t; return t;
   }
   // 確定演出（eye）の 2 段目: 頭のまわりのやわらかな光の輪（レンズの光のにじみ風。真ん中は明るく、外へ向かってすっと薄く）
+  // 確定演出（eye）: 足元の輪のまわりの金色の光（輪の板と同じ大きさの板。輪の半径 0.4 の所が明るく、内外へすっと薄く）
+  function ringGlowTexture() {
+    if (texCache.ringGlow) return texCache.ringGlow;
+    const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S; const c = cv.getContext('2d'), m = S / 2;
+    const g = c.createRadialGradient(m, m, S * 0.28, m, m, S * 0.5); g.addColorStop(0, 'rgba(255,210,90,0)'); g.addColorStop(0.42, 'rgba(255,220,110,1)'); g.addColorStop(0.62, 'rgba(255,200,80,0.45)'); g.addColorStop(1, 'rgba(255,190,70,0)');
+    c.fillStyle = g; c.fillRect(0, 0, S, S);
+    const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; texCache.ringGlow = t; return t;
+  }
   function haloTexture() {
     if (texCache.halo) return texCache.halo;
     const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S; const c = cv.getContext('2d'), m = S / 2;
@@ -1253,7 +1269,7 @@ R3D.HorseReal = (function () {
     /* 確定演出（eye）: flashEye(秒) で両目の表面に星のきらめきを 1 回だけ。2 段＝前の約 0.3 秒は星がぱっと大きく（2026-10-16 「もっとわかりやすく」で 1.6 倍）、
        残り約 1 秒は星が少し小さくほんのり光り続け、頭のまわりにやわらかな光の輪（halo）が出て、最後にすっと消える。見ている間だけ描く＝ふだんは描く数が増えない。
        星は目の骨（eyeL / eyeR。z が目の外向き）の子に置いた板（Sprite。いつもカメラを向く）、光の輪は両目の真ん中に置く板（奥行きを見ない＝頭の前にかぶる）。使う馬だけ初めて呼ばれたときに作る */
-    let glint = null, glintT = -1, glintDur = 0.45;
+    let glint = null, glintT = -1, glintDur = 0.45, ringStrong = false, ringGold = false;   // ringStrong: setRingHighlight の状態（金色を戻すときに使う）
     const GLINT_R = 0.03, GLINT_SZ = 0.35, HALO_SZ = 2.2;   // 目の半径（目の表面の少し外に置く）、きらめきの最大の大きさ（m。前は 0.22）、光の輪の大きさ（m）
     function makeGlint() {
       const mat = new THREE.SpriteMaterial({ map: glintTexture(), color: 0xfff6d8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
@@ -1267,12 +1283,15 @@ R3D.HorseReal = (function () {
         vertexShader: 'uniform float uSz; attribute float aK; varying float vK; void main(){ vK = aK; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = clamp(uSz * 480.0 * 0.5 * projectionMatrix[1][1] / max(0.1, -mv.z), 1.0, 48.0); gl_Position = projectionMatrix * mv; }',
         fragmentShader: 'uniform float uOp; varying float vK; void main(){ vec2 d = gl_PointCoord - 0.5; float r = dot(d, d); if (r > 0.25) discard; float a = 1.0 - r * 4.0; a = a * a * uOp * vK; gl_FragColor = vec4(vec3(1.0, 0.92, 0.6) * a, a); }' });
       const pts = new THREE.Points(pg, pm); pts.frustumCulled = false; pts.visible = false; pts.renderOrder = 6; object3d.add(pts);
-      return { mat, sp, hmat, halo, pts, pp, pk, pm, v: new THREE.Vector3(), v2: new THREE.Vector3() };
+      // 足元の輪の金色の光（輪の子＝輪が混んで縮んでも一緒に縮む。光っている間だけ描く＝+1 回）
+      let rglow = null;
+      if (ring) { rglow = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ map: ringGlowTexture(), color: 0xffd25a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); rglow.name = 'ringGlow'; rglow.position.y = 0.004; rglow.scale.set(1.18, 1, 1.18); rglow.renderOrder = 2; rglow.visible = false; ring.add(rglow); }
+      return { mat, sp, hmat, halo, pts, pp, pk, pm, rglow, v: new THREE.Vector3(), v2: new THREE.Vector3() };
     }
     function updateGlint(dt) {
       if (glintT < 0 || !glint) return;
       glintT += dt; const u = glintT / glintDur;
-      if (u >= 1) { glintT = -1; glint.sp.forEach((s) => { s.visible = false; }); glint.halo.visible = false; glint.pts.visible = false; return; }
+      if (u >= 1) { glintT = -1; glint.sp.forEach((s) => { s.visible = false; }); glint.halo.visible = false; glint.pts.visible = false; ringGlowSet(0); return; }
       // 3 段（2.0 秒なら 0.3 → 1.4 → 0.3 秒）: きらっ（星が最大）→ 金色の光の輪がゆっくり脈打ちながら光り続け、星は 7 割・小さな光が舞い上がる → すっと消える
       const a = Math.min(0.3, glintDur * 0.25), f = Math.min(0.3, glintDur * 0.25), tG = glintT - a, Gd = Math.max(0.1, glintDur - a - f), spark = glintT < a;
       const out = tG > Gd ? 1 - clamp((tG - Gd) / f, 0, 1) : 1, pulse = spark ? 1 : 0.85 + 0.15 * Math.sin(TAU * tG / 0.7 - PI / 2);
@@ -1283,6 +1302,7 @@ R3D.HorseReal = (function () {
       const hk = spark ? 0.9 * Math.pow(glintT / a, 2) : 0.9 * pulse * out, hs = HALO_SZ * (spark ? 0.6 + 0.4 * glintT / a : 1 + 0.1 * Math.sin(TAU * tG / 0.7));
       B('eyeL').getWorldPosition(glint.v); B('eyeR').getWorldPosition(glint.v2); glint.v.add(glint.v2).multiplyScalar(0.5); object3d.worldToLocal(glint.v);
       glint.halo.position.copy(glint.v); glint.halo.visible = true; glint.halo.scale.set(hs, hs, 1); glint.hmat.opacity = hk;
+      ringGlowSet(Math.min(1, hk / 0.9));   // 足元の輪と馬番の札も光の輪と同じ脈で光る
       // 舞い上がる光: 2 段目のあいだ、頭の上 0.1〜1.3m を 1.1 秒かけて上がって消える（位置は時刻だけで決まる）
       if (!spark) {
         const pp = glint.pp, pk = glint.pk, hv = glint.v;
@@ -1290,6 +1310,19 @@ R3D.HorseReal = (function () {
         glint.pts.geometry.attributes.position.needsUpdate = true; glint.pts.geometry.attributes.aK.needsUpdate = true;
         glint.pts.visible = true; glint.pm.uniforms.uOp.value = out;
       } else glint.pts.visible = false;
+    }
+    // 確定演出（eye）: 足元の輪と馬番の札を光らせる（k 0〜1。0 で元に戻す）。ふちを金色に描き直すのは光り始めと終わりの 2 回だけ、脈は材質の色と光の板の濃さで
+    function ringGlowSet(k) {
+      if (!ring) return;
+      const bg = ring.userData.badges, on = k > 0.001;
+      if (on !== ringGold) {
+        ringGold = on; drawRing(ring.userData.cv, h, ringStrong, on); ring.userData.tex.needsUpdate = true;
+        if (bg && bg.userData.cv) { drawBadge(bg.userData.cv, h, on); bg.userData.tex.needsUpdate = true; }
+      }
+      const b = 1 + 0.45 * k;   // 札と輪を少し明るく（暖かい色寄り）
+      ring.userData.mat.color.setRGB(1 + 0.3 * k, 1 + 0.22 * k, 1);
+      if (bg) bg.userData.mats.forEach((m) => m.color.setRGB(b, 1 + 0.35 * k, 1 + 0.05 * k));
+      if (glint && glint.rglow) { glint.rglow.visible = on; glint.rglow.material.opacity = 0.95 * k; }
     }
     // 土煙: 蹄が着いた瞬間に後ろへ小さなもこもこを出す（全馬で 1 つの InstancedMesh）
     let dustSys = null, dustSlot = -1, dustNext = 0, surface = opts.surface === 'dirt' ? 'dirt' : 'turf', onStep = null, dustK = 1;   // dustK: 統合側が直線の先頭 2 頭を強める（dustBoost）
@@ -1689,7 +1722,8 @@ R3D.HorseReal = (function () {
       flashEye(dur, elapsed) { if (!glint) glint = makeGlint(); glintDur = Math.max(0.1, +dur || 0.45); glintT = Math.max(0, +elapsed || 0); updateGlint(0); },
       get eyeFlash() { return glintT >= 0 ? glintT / glintDur : null; },   // 確認用: 光っている途中なら 0〜1
       // 足元の輪を太く明るく（自分の賭けた馬など）
-      setRingHighlight(on) { if (!ring) return; drawRing(ring.userData.cv, h, !!on); ring.userData.tex.needsUpdate = true; },
+      setRingHighlight(on) { if (!ring) return; ringStrong = !!on; drawRing(ring.userData.cv, h, ringStrong, ringGold); ring.userData.tex.needsUpdate = true; },
+      get ringGlow() { return ringGold; },   // 確認用: 確定演出 eye で足元の輪・札が光っている間 true
       setRingVisible(on) { if (ring) ring.visible = ring.userData.badges.visible = !!on; },
       // 馬場（土煙の色）: "turf" | "dirt"。state.surface でも渡せる
       setSurface(s) { surface = s === "dirt" ? "dirt" : "turf"; },
@@ -1698,6 +1732,7 @@ R3D.HorseReal = (function () {
       set dustBoost(k) { dustK = Math.max(0.5, Math.min(2.5, +k || 1)); }, get dustBoost() { return dustK; },   // 土煙の強さ（1 = ふつう。統合側が直線の先頭 2 頭を 1.7 に）
       dispose() {
         clothTex.dispose(); tMat.dispose(); auraMat.dispose(); ghostMat.dispose(); skeleton.dispose(); if (glint) glint.mat.dispose();
+        if (glint && glint.rglow) glint.rglow.material.dispose();
         if (ring) { ring.userData.tex.dispose(); ring.userData.mat.dispose(); ring.userData.badges.userData.tex.dispose(); ring.userData.badges.userData.mats.forEach((m) => m.dispose()); }
         if (dustSys) { dustSys.free(dustSlot); dustSys = null; dustSlot = -1; }
         LIVE.delete(rec);
