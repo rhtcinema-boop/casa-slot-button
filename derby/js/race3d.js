@@ -278,7 +278,8 @@ window.Race3D = (function () {
   /* 画質の段: 'high'（ふつう）→ 'low'（軽い。?lite=1・?q=low）→ 'tv'（Fire TV 向けのさらに軽い。?q=tv、Fire TV・Android TV のときは最初から）。
      'tv' のとき部品には 'low' を渡し、R3D.tv = true で会場・土煙がさらに減らす（観客を板の人に・木と支柱を間引く・ラチを粗く）。統合側は影を切り（馬の足元のぼかした丸は残す）、解像度を 0.8 倍に */
   const TVK_Q = (QS.match(/[?&]tvk=([\d.]+)/) || [])[1];               // ?tvk=0.8 などで Fire TV の解像度を固定（重さの測定用）
-  const TV_K_FIX = TVK_Q ? Math.max(0.5, Math.min(1.2, Number(TVK_Q))) : (QMODE === 'sharp' ? 1.2 : 0); // くっきり（sharp）: 自動で下げない
+  // 2026-10-19 オーナー決定: Fire TV の標準は「真ん中」＝軽い描き方のまま細かさ 1.2 倍で固定（自動で下げない）。店舗の設定 tvQuality='auto' のときだけ自動で下げる、'max' は最高
+  const TV_K_FIX = TVK_Q ? Math.max(0.5, Math.min(1.2, Number(TVK_Q))) : (QMODE === 'auto' ? 0 : 1.2);
   // 2026-10-19: Fire TV の解像度は「画面の画素と同じ」（最大 1.2 倍＝1920 の幅）から始め、重いときだけ 0.1 ずつ下げる（最低 0.7）。軽ければ 1 分たってから戻す
   // （以前は 0.8 倍で固定＝3D だけ引き伸ばして映っていて、走る場面だけ荒く見えた。オーナー指摘）
   const TV_K_MIN = 0.7, TV_K_MAX = 1.2;
