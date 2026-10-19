@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 21597,
-   "sha256": "d61d55ce3d60c1c0a0e3c36910f35f0cb9ca118ae2200de2a04a5a2377f3a3d6"
+   "sha256": "52560384dddde041a5320e7f3b7f10363d745171925616a2a107500efa14c684"
   },
   {
    "path": "js/audio.js",
@@ -293,13 +293,13 @@
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 102271,
-   "sha256": "e7e0d81027ff5ac4fe1a3c884ccfa1e2becdfb13e33bb3c07d0494e8bed1a64b"
+   "size": 103410,
+   "sha256": "ee774db149c5932d608bc2288e336e5b18a860d964e2fa41320d95f2da01e234"
   },
   {
    "path": "v2/client.js",
-   "size": 19676,
-   "sha256": "c7a956cd94556a61b19fbab02a2a1faf4a1a4abb264bf9afa5cf5fde2be6dffa"
+   "size": 19934,
+   "sha256": "4b26d660439537cd93d7983c88b0f451574f9ec12d369dd04544ce50c0e9e63b"
   },
   {
    "path": "v2/config.js",
@@ -308,8 +308,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 53771,
-   "sha256": "aa17af87b429d6ffd7a890a0a380f4515e81a4917fb1703ba923684ea56bdd85"
+   "size": 54613,
+   "sha256": "620e5c1745036b9676b2a4124c0579f8c84a6c6d4588d2eaca9b0b5383b31bfd"
   },
   {
    "path": "v2/form.js",
@@ -338,8 +338,8 @@
   },
   {
    "path": "v2/tvswitch.js",
-   "size": 18132,
-   "sha256": "9a848a8d90afdeda079cf3dec57e04cb6adcdbb7984452d5cb065d813e908dc5"
+   "size": 20282,
+   "sha256": "f34f101cd0d34a08f5a5564f51718d60ad99e4852af857df9781d4d370a293f6"
   }
  ]
 }
