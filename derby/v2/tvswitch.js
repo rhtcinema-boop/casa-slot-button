@@ -116,7 +116,7 @@
     const app = fb.app('derby'); if (!app.auth().currentUser) return undefined;
     const d = await app.firestore().doc('derbyStores/' + STORE).get({ source: 'server' });
     const st = d.exists ? (d.data().settings || {}) : {};
-    return st.tvQuality === 'max' ? 'max' : '';
+    return st.tvQuality === 'max' || st.tvQuality === 'sharp' ? st.tvQuality : ''; // 'sharp'＝軽い描き方のまま細かさ 1.2 倍で固定（2026-10-19）
   }
   async function checkQuality() {
     if (navigator.onLine === false) return;
@@ -125,7 +125,7 @@
       const have = ls.get(QKEY) || '';
       if (want === have) return;
       if (busy()) { setTimeout(checkQuality, BUSY_MS * 5); return; }
-      try { if (want) localStorage.setItem(QKEY, 'max'); else localStorage.removeItem(QKEY); } catch (e) { return; }
+      try { if (want) localStorage.setItem(QKEY, want); else localStorage.removeItem(QKEY); } catch (e) { return; }
       location.reload();
     } catch (e) { /* 読めないときは今のまま */ }
   }
