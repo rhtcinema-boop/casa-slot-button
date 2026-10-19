@@ -70,10 +70,15 @@
   }
   const horse = (r, i) => horsesOf(r)[Number(i)] || null;
   /* 払い戻しは「額」で見せる（2026-10-16 オーナー決定。1 枚 = 100・単位なし・3 桁ごとのカンマ）。投票は枚のまま。
-     オッズは「1枚あたり」の額（オッズ × 100。例 6.1 → 610）。当選額 = 枚数 × オッズ × 100（outcome.js の stakePayout と同じ整数の計算） */
+     オッズは倍率（2026-10-19 オーナー「オッズ表記は倍率にしよう」。いつも小数 1 桁、例 2.4 倍。以前は 100あたりの額 240）。
+     当選額 = 枚数 × オッズ × 100（outcome.js の stakePayout と同じ整数の計算）は今までどおり額で出す */
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
   const CHIP = 100, chips = (n) => amt((Number(n) || 0) * CHIP); // 中の枚数 → 見せるチップ（1 枚 = 100 チップ）
-  const oddsTxt = (o) => (!o ? '—' : amt(Math.round(Number(o) * 10) * 10)); // 1枚あたりの額（以前はオッズを小数 1 桁で出していた）
+  const oddsTxt = (o) => (!o ? '—' : (Math.round(Number(o) * 10) / 10).toFixed(1)); // 倍率の数字（小数 1 桁。「倍」は横に小さく）
+  /* 出馬表と同じ「脚質」と「近 3 走」（2026-10-19。v2/form.js。テレビと同じ値＝馬名＋営業日の種）。スマホでは馬名の下に小さく */
+  const FORM = window.DerbyForm || null;
+  const formLine = (r, h) => { const raw = r && r.horses && r.horses[h.i]; if (!raw) return ''; const fm = FORM ? FORM.formOf(raw, r.at, st && st.settings && st.settings.dayStartHour, r.horses.length) : null;
+    return '<div class="hsub">' + (h.typeLabel ? '<i style="background:' + h.typeColor + '">' + esc(h.typeLabel) + '</i>' : '') + (fm ? '<span>近走 ' + fm.recent.join('-') + '</span>' : '') + '</div>'; };
   // 当たったときの当選額の目安。サーバー（outcome.js の stakePayout）と同じく整数で計算する
   // （Math.floor(45 * 1.4) は 62.999… → 62 枚になり、実際の 63 枚より 1 枚少なく出ていた。コードレビュー 2026-10-14）
   /* 交換の割合（2026-10-17「リングバウンティ20枚につき投票権1枚」）: 投票券 1 枚 = リングバウンティ ○枚（店舗の設定 state.settings.bountyPerTicket。なければ 20）。
@@ -81,6 +86,8 @@
   const rate = () => { const r = st && st.settings && Number(st.settings.bountyPerTicket); return Number.isInteger(r) && r >= 1 ? r : 20; };
   const bountyOf = (n) => { const t = tk && tk.ticket; return t && t.bounty != null && t.count === n ? t.bounty : (n | 0) * rate(); };
   const rbTxt = (n) => 'リングバウンティ ' + amt(n);
+  // 交換の割合（2026-10-19 オーナー「Bounty X 枚で 100 と交換できる感じ。説明のどこかに明記」）: 参加画面（チップ）の見出しの下に「リングバウンティ 20枚 → 100」
+  const rateTxt = () => 'リングバウンティ <b>' + amt(rate()) + '枚</b> → <b>100</b>';
   const has = (res) => !!res && ((res.amount | 0) > 0 || (res.bounty | 0) > 0); // 渡す・返すものがある（当選額か、返却・返還のリングバウンティ）
   const isRb = (x) => !!x && (x.novote || x.refund || (x.payout && x.payout.kind === 'refund') || ((x.bounty | 0) > 0 && !((x.amount | 0) > 0)));
   const rbOf = (x) => (x.bounty != null ? x.bounty | 0 : Math.round((x.amount | 0) / 100)); // 以前のスマホに覚えた返却・返還（額 = 枚数 × 100）は 1 対 1
@@ -123,7 +130,7 @@
 
   /* ---------- 上の帯 ---------- */
   function drawTop() {
-    { const c = $('crb'), a = $('arb'); if (c) { const v = rbTxt((S.count | 0) * rate()); if (c.textContent !== v) c.textContent = v; } if (a) { const v = rbTxt(bountyOf(S.count)); if (a.textContent !== v) a.textContent = v; } } // 交換の割合が変わったら直す
+    { const c = $('crb'), a = $('arb'); if (c) { const v = rbTxt((S.count | 0) * rate()); if (c.textContent !== v) c.textContent = v; } if (a) { const v = rbTxt(bountyOf(S.count)); if (a.textContent !== v) a.textContent = v; } const x = $('xrate'); if (x) { const v = rateTxt(); if (x.innerHTML !== v) x.innerHTML = v; } } // 交換の割合が変わったら直す
     const name = (st && st.store && st.store.name) || '';
     $('store').className = 'store' + (online ? '' : ' off');
     const test = !!(st && st.settings && st.settings.test); // テストモードの店（管理画面の説明どおり、スマホにも「TEST」と出す）
@@ -189,7 +196,7 @@
   R.count = () => {
     const c = S.count || 0;
     return '<div class="scr min">' + unpaidNote() + '<div id="late">' + lateNote() + '</div>' +
-      '<h1>チップ</h1>' +
+      '<h1>チップ</h1><p class="xrate" id="xrate">' + rateTxt() + '</p>' +
       '<div class="counter" aria-live="polite"><span class="num" id="cnum">' + chips(c) + '</span><div class="eq rb" id="crb">' + rbTxt(c * rate()) + '</div></div>' +
       '<div class="plus"><button data-add="1" aria-label="100 ふやす">＋100</button><button data-add="10" aria-label="1,000 ふやす">＋1,000</button><button data-add="100" aria-label="10,000 ふやす">＋10,000</button></div>' +
       '<div class="minor"><button data-act="cnt0" aria-label="0 にもどす">0</button></div>' +
@@ -240,8 +247,8 @@
   function cardHtml(h) {
     const n = (S.alloc && S.alloc[h.i]) | 0;
     return '<div class="card' + (sel === h.i ? ' sel' : '') + (n ? ' has' : '') + '" data-h="' + h.i + '" role="button" aria-pressed="' + (sel === h.i) + '">' + waku(h) +
-      '<div class="cm"><div class="hname">' + esc(h.name) + '</div></div>' +
-      '<div class="per"><small>100あたり</small><b>' + oddsTxt(oddsOf(h)) + '</b></div>' +
+      '<div class="cm"><div class="hname">' + esc(h.name) + '</div>' + formLine(voteRace(), h) + '</div>' +
+      '<div class="per"><b>' + oddsTxt(oddsOf(h)) + '</b><small>倍</small></div>' +
       (n ? '<div class="if"><b>' + chips(n) + '</b> → 当たったら <em>' + amt(payEst(n, oddsOf(h))) + '</em>' + meyasu(h) + '</div>' : '') + '</div>';
   }
   function whoText(r) {
@@ -258,7 +265,7 @@
     const go1 = rows.length === 1 ? rows[0][0].no + '番に ' + chips(rows[0][1]) + ' 投票する' : rows.length + '頭に ' + chips(S.count) + ' 投票する'; // 確定ボタンは具体的に（REVIEW_TODO 7）
     /* 確認: 1 頭ごとに 枚数 と 当たったら額。合計の枚数と「当たったら 最大」。取り消せないことはボタンの読み上げに入れる */
     return '<div class="scr confirm"><h1>投票の確認</h1><div class="list picks">' +
-      rows.map(([h, n]) => '<div class="pick">' + waku(h) + '<div class="nm"><span class="no">' + h.no + '番</span>' + esc(h.name) + '<small>100あたり ' + oddsTxt(oddsOf(h)) + '</small></div><div class="n">' + chips(n) + '</div>' +
+      rows.map(([h, n]) => '<div class="pick">' + waku(h) + '<div class="nm"><span class="no">' + h.no + '番</span>' + esc(h.name) + '<small>オッズ ' + oddsTxt(oddsOf(h)) + '倍</small></div><div class="n">' + chips(n) + '</div>' +
         '<div class="pif"><span>当たったら</span><b>' + amt(payEst(n, oddsOf(h))) + '</b>' + meyasu(h) + '</div></div>').join('') +
       '</div><div class="total"><span>合計 <b>' + chips(S.count) + '</b></span>' + (rows.length > 1 ? '<span class="ifsum">' + ifSumHtml(rows, oddsMove()) + '</span>' : '') + '</div>' +
       // 確定ボタンは画面の下に固定（投票画面の「確認へ」と同じ場所。2 度押しの 2 回目は 0.6 秒の守りで止める＝tests/v2-mobile.plan.js）
