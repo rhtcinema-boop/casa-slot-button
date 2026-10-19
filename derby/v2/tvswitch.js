@@ -107,6 +107,29 @@
   }
   function mark() { let log = []; try { log = JSON.parse(ss.get('casa.tvswitchLog') || '[]'); } catch (e) { log = []; } log.push(Date.now()); ss.set('casa.tvswitchLog', JSON.stringify(log.slice(-LOOP_N * 2))); }
   const busy = () => { const st = document.getElementById('stage'); return !!(st && st.classList.contains('m-live')) || !!document.getElementById('tvkeyBox'); };
+  /* 2026-10-19: 画質の「最高」（管理者が店舗の設定 settings.tvQuality = 'max' にしたときだけ）。テレビの中に 'casa.derby.q' = 'max' を覚えて読み直す。
+     js/race3d.js がそれを見て、ふつうの画質（影・ふちのなめらか）で、細かさ 1.2 倍のまま（自動で下げない）描く。設定を消すと元の Fire TV 向けに戻る。
+     店舗の設定はテレビのログイン（client.js の 'derby' のアプリ）で 1 分ごとに読む。レース中・この画面を開いている間は読み直さない */
+  const QKEY = 'casa.derby.q';
+  async function readQuality() { // テレビはもう casa-derby に（匿名か進行役で）ログインしている。その接続で店舗の設定を読む（店舗の設定はログインした人なら読める）
+    const fb = window.firebase; if (!fb || !fb.apps || !fb.apps.some((a) => a.name === 'derby')) return undefined;
+    const app = fb.app('derby'); if (!app.auth().currentUser) return undefined;
+    const d = await app.firestore().doc('derbyStores/' + STORE).get({ source: 'server' });
+    const st = d.exists ? (d.data().settings || {}) : {};
+    return st.tvQuality === 'max' ? 'max' : '';
+  }
+  async function checkQuality() {
+    if (navigator.onLine === false) return;
+    try {
+      const want = await readQuality(); if (want === undefined) return;
+      const have = ls.get(QKEY) || '';
+      if (want === have) return;
+      if (busy()) { setTimeout(checkQuality, BUSY_MS * 5); return; }
+      try { if (want) localStorage.setItem(QKEY, 'max'); else localStorage.removeItem(QKEY); } catch (e) { return; }
+      location.reload();
+    } catch (e) { /* 読めないときは今のまま */ }
+  }
+  if (STORE && !LOCAL) setTimeout(function loopQ() { checkQuality(); setTimeout(loopQ, 60000); }, 8000);
   let timer = 0, lastRest = 0;
   const later = (ms) => { clearTimeout(timer); timer = setTimeout(check, ms); };
   async function check() {
