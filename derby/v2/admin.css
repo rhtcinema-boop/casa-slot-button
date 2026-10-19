@@ -358,3 +358,21 @@ details.fold > summary small { flex-basis: 100%; padding-left: 22px; margin-top:
 /* 2026-10-19: リングバウンティの交換（設定タブのいちばん上） */
 #bountyPanel .bpnow { margin: 0 0 10px; font-size: 18px; }
 #bountyPanel .bpnow b { font-size: 22px; color: var(--gold); }
+
+/* テレビの画質（2026-10-19）: 「テレビを切り替える」の各店の行の 2 段目（画質 なめらか優先 | 標準 | きれい優先）と、店舗の編集の 3 択 */
+.tvrow { grid-template-areas: "nm seg rl" "q q q"; }
+.tvrow .tvq { grid-area: q; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tvrow .tvq > span { flex: none; color: var(--sub); font-size: 13px; }
+.tvrow .tvq .seg button { height: 36px; min-width: 104px; font-size: 13px; }
+.tvqhint { margin: 8px 0 0; }
+h3 .qsub { font-size: 13px; font-weight: 400; color: var(--sub); margin-left: 6px; }
+.seg.q3 button { min-width: 140px; }
+.qnotes { list-style: none; margin: 10px 0 4px; padding: 0; }
+.qnotes li { font-size: 13px; color: var(--sub); line-height: 1.7; }
+.qnotes li b { color: var(--text); margin-right: 8px; }
+@media (max-width: 640px) {
+  .tvrow .tvq .seg { flex: 1 1 auto; display: flex; min-width: 0; }
+  .tvrow .tvq .seg button { flex: 1 1 0; min-width: 0; padding: 0 4px; font-size: 12px; }
+  .seg.q3 { display: flex; width: 100%; }
+  .seg.q3 button { min-width: 0; font-size: 14px; }
+}
