@@ -14,7 +14,10 @@
   /* 払い戻しは「額」（2026-10-16 オーナー決定。1 枚 = 100・単位なし）。投票は枚のまま。払い戻しの合計・上限は額で入れる（保存のとき 100 単位に丸める＝core.js の roundAmount） */
   const PAY_MAX = 99999900, YEN = 100;
   /* casa DERBY CHIPS（2026-10-17 オーナー「リングバウンティ20枚で casa DERBY 100チップ入る感じ」）: 中の投票券の枚数（bet・betTotal・auth・exchanged）は 1 枚 = 100 チップとして見せる */
-  const chipN = (v) => fmtN((Number(v) || 0) * 100);
+  /* 金額の単位「pt」（2026-10-20 オーナー決定。以前は単位なし）: チップ・当選額・目標などは数字のすぐ後ろに「pt」。ptN / chipN＝画面（小さな pt）、ptT / chipT＝確認の窓・お知らせ・文字だけの所。
+     リングバウンティは「枚」のまま。当選額は 10 の位で切り上げた額（決めるときに切り上げ済み。集計・明細・CSV も同じ額） */
+  const ptN = (v) => fmtN(v) + '<small class="pt">pt</small>', ptT = (v) => fmtN(v) + 'pt';
+  const chipN = (v) => ptN((Number(v) || 0) * 100), chipT = (v) => ptT((Number(v) || 0) * 100);
   // 記録 1 行のリングバウンティ（core.js の logBounty と同じ。以前の記録: 認証は枚数＝1 対 1、返却・返還は額 ÷ 100）
   const isBLog = (l) => l.type === 'auth' || l.type === 'return' || l.type === 'refund' || ((l.type === 'paid' || l.type === 'expired') && l.kind === 'refund');
   const logB = (l) => (!isBLog(l) ? 0 : l.bounty != null ? Number(l.bounty) || 0 : l.type === 'auth' ? Number(l.count) || 0 : Math.round((Number(l.count) || 0) / 100));
@@ -110,7 +113,7 @@
     showLogin('');
   }
   function showLogin(msg) {
-    main.innerHTML = viewLogin(msg);
+    main.innerHTML = viewLogin(msg); main.classList.add('loginv'); // 2026-10-20 オーナー「画面の真ん中に大きく表示」: ログインの間だけ画面の真ん中に大きく（ログインできたら外す）
     $('pw').focus();
     $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('dologin').click(); });
     $('dologin').addEventListener('click', async () => {
@@ -122,6 +125,7 @@
   async function login(p) {
     A = C.admin(p);
     cfg = normCfg(await A.config());
+    main.classList.remove('loginv');
     sessionStorage.setItem(PW_KEY, p);
     $('who').textContent = '管理者';
     $('logout').style.display = '';
@@ -543,7 +547,7 @@
   function tplSummary(t) {
     const kind = tplName(Object.assign({}, t, { name: '' })), ts = t.rows.map((r) => r.t).filter((x) => !isNaN(toMin(x))).sort(), ps = t.rows.map((r) => Number(r.p)).filter((p) => p > 0);
     const lo = ps.length ? Math.min.apply(null, ps) : 0, hi = ps.length ? Math.max.apply(null, ps) : 0;
-    return [t.name ? kind : '', t.storeId ? storeName(t.storeId) + 'だけ' : '', t.rows.length + ' レース', ts.length ? ts[0] + '〜' + ts[ts.length - 1] : '', ps.length ? '目標 ' + (lo === hi ? fmtN(lo) : fmtN(lo) + '〜' + fmtN(hi)) : ''].filter(Boolean).join('・');
+    return [t.name ? kind : '', t.storeId ? storeName(t.storeId) + 'だけ' : '', t.rows.length + ' レース', ts.length ? ts[0] + '〜' + ts[ts.length - 1] : '', ps.length ? '目標 ' + (lo === hi ? ptT(lo) : fmtN(lo) + '〜' + ptT(hi)) : ''].filter(Boolean).join('・');
   }
   function templatesToRules(tpls) {
     const rules = [];
@@ -599,7 +603,7 @@
         if (isNaN(m)) addR(rowErr, r, '時刻を入れてください');
         else { if (seen.has(m)) { addR(rowErr, r, '同じ時刻が 2 つあります'); addR(rowErr, seen.get(m), '同じ時刻が 2 つあります'); } else seen.set(m, r); }
         const p = String(r.p).trim();
-        if (!/^\d+$/.test(p) || +p < 1 || +p > PAY_MAX) addR(rowErr, r, '当選額の目標は 1〜' + fmtN(PAY_MAX) + ' の整数（100 単位に丸めて保存）');
+        if (!/^\d+$/.test(p) || +p < 1 || +p > PAY_MAX) addR(rowErr, r, '当選額の目標は 1〜' + ptT(PAY_MAX) + ' の整数（100 単位に丸めて保存）');
         if (t.kind === 'date' && t.date === today && !isNaN(m) && m <= nowM && !ttOrig.has(t.id + '|' + r.t)) addR(rowErr, r, 'もう過ぎた時刻です');
       });
     });
@@ -652,10 +656,10 @@
         '<label class="f"><span>開始</span><input type="time" data-bf="from" value="19:00"></label><span class="t">〜</span>' +
         '<label class="f"><span>終了</span><input type="time" data-bf="to" value="23:00"></label>' +
         '<label class="f"><span>何分おき</span><input type="number" data-bf="every" value="5" min="1" max="180"></label>' +
-        '<label class="f"><span>当選額の目標</span><input type="number" data-bf="pay" value="30000" min="1" max="' + PAY_MAX + '" step="100"></label>' +
+        '<label class="f"><span>当選額の目標（pt）</span><input type="number" data-bf="pay" value="30000" min="1" max="' + PAY_MAX + '" step="100"></label>' +
         '<button type="button" class="btn sm ghost" data-act="bulk">まとめて作る</button></div>' +
         (t.rows.length > ROWS_SHOWN ? '<div class="acts l rowsbar"><label class="find"><span>時刻で探す</span><input type="time" data-find aria-label="この時刻のレースへ移る"></label><small class="hint" style="margin:0">' + t.rows.length + ' レースのうち、入れた時刻の行へ移ります</small></div>' : '') +
-        '<div class="tbl"><table class="tt-rows"><tr><th>#</th><th>発走</th><th>当選額の目標</th><th></th><th></th></tr>' +
+        '<div class="tbl"><table class="tt-rows"><tr><th>#</th><th>発走</th><th>当選額の目標（pt）</th><th></th><th></th></tr>' +
         (t.rows.length ? t.rows.map((r, j) => '<tr data-rk="' + r.k + '"' + (j >= ROWS_SHOWN && !tplAll.has(t.id) ? ' class="more"' : '') + '><td class="no">' + (j + 1) + '</td><td><input type="time" data-rf="t" value="' + esc(r.t) + '" aria-label="出走時刻"></td>' +
           '<td><input type="number" class="pay" data-rf="p" value="' + esc(r.p) + '" min="1" max="' + PAY_MAX + '" step="1" inputmode="numeric" aria-label="当選額の目標"></td><td class="msg"></td>' +
           '<td class="ops"><button type="button" class="icon" data-act="row-dup" aria-label="この行をコピー" title="この行をコピー（次の時刻に）">⧉</button><button type="button" class="icon del" data-act="row-del" aria-label="この行を消す" title="この行を消す">×</button></td></tr>').join('')
@@ -730,8 +734,8 @@
     }
     const isToday = d === todayStr(), nm = toMin(hm(now()));
     const total = items.reduce((a, x) => a + (Number(x.p) || 0), 0);
-    box.innerHTML = '<div class="summary" style="grid-template-columns:1fr 1fr"><div class="stat"><small>レース数</small><b>' + items.length + '</b></div><div class="stat"><small>当選額の目標の合計</small><b>' + fmtN(total) + '</b></div></div>' +
-      (items.length ? '<div class="pv-list"><table><tr><th>時刻</th><th>店舗</th><th class="n">目標</th><th>予定</th></tr>' + items.map((x) => '<tr class="' + (isToday && toMin(x.t) < nm ? 'past' : '') + '"><td>' + esc(x.t) + '</td><td>' + esc(storeName(x.store)) + (!x.store && x.scope === 'store' ? '<small class="hint"> 店ごと</small>' : '') + '</td><td class="n">' + fmtN(x.p) + '</td><td><small class="hint">' + esc(x.name || '') + '</small></td></tr>').join('') + '</table></div>'
+    box.innerHTML = '<div class="summary" style="grid-template-columns:1fr 1fr"><div class="stat"><small>レース数</small><b>' + items.length + '</b></div><div class="stat"><small>当選額の目標の合計</small><b>' + ptN(total) + '</b></div></div>' +
+      (items.length ? '<div class="pv-list"><table><tr><th>時刻</th><th>店舗</th><th class="n">目標</th><th>予定</th></tr>' + items.map((x) => '<tr class="' + (isToday && toMin(x.t) < nm ? 'past' : '') + '"><td>' + esc(x.t) + '</td><td>' + esc(storeName(x.store)) + (!x.store && x.scope === 'store' ? '<small class="hint"> 店ごと</small>' : '') + '</td><td class="n">' + ptN(x.p) + '</td><td><small class="hint">' + esc(x.name || '') + '</small></td></tr>').join('') + '</table></div>'
         : '<div class="empty">この日はレースがありません</div>');
   }
   async function loadServerPreview() {
@@ -755,7 +759,7 @@
     const bad = [];
     if (isNaN(f) || isNaN(to)) bad.push('開始と終了の時刻を入れてください'); else if (to < f) bad.push('終了は開始より後にしてください（日をまたぐときは 2 つに分けてください）');
     if (!(ev >= 1 && ev <= 180 && Math.floor(ev) === ev)) bad.push('何分おきは 1〜180 の整数');
-    if (!/^\d+$/.test(p) || +p < 1 || +p > PAY_MAX) bad.push('当選額の目標は 1〜' + fmtN(PAY_MAX) + ' の整数');
+    if (!/^\d+$/.test(p) || +p < 1 || +p > PAY_MAX) bad.push('当選額の目標は 1〜' + ptT(PAY_MAX) + ' の整数');
     if (bad.length) { toast(bad[0]); return; }
     const have = new Set(t.rows.map((r) => toMin(r.t)));
     let add = 0, skip = 0;
@@ -830,13 +834,13 @@
       const stK = statusOf(r), st = STATUS[stK] || [r.status, 'st-upcoming'];
       const res = r.result, w = res ? res.winner : null;
       const canRefund = ['closed', 'decided', 'done'].indexOf(r.status) >= 0 && !r.refunded;
-      const paid = r.status === 'decided' || r.status === 'done' ? fmtN(r.paidTotal) : '—';
+      const paid = r.status === 'decided' || r.status === 'done' ? ptN(r.paidTotal) : '—';
       const open = refundOpen === r.id && canRefund;
       return '<tr class="' + (stK === 'open' || stK === 'vote' ? 'now' : r.status === 'upcoming' ? '' : 'past') + (r.refunded ? ' voided' : '') + (open ? ' rfopen' : '') + '">' +
         td('', '<b class="mono" style="font-size:15px">' + hm(r.at) + '</b>' + (r.storeId || r.scope === 'store' ? '<small class="hint"> ' + (r.storeId ? esc(storeName(r.storeId)) + 'だけ' : '店ごと') + '</small>' : ''), 'head') +
         td('', '<span class="status ' + st[1] + '">' + (r.refunded ? '取り消し済み' : st[0]) + '</span>' + (r.refunded ? ' <small class="hint">リングバウンティ ' + fmtN(r.refundBounty != null ? r.refundBounty : r.refundTotal) + '枚を返す</small>' : '')) +
-        (r.status === 'upcoming' && !(r.participants && r.participants.total) ? td('', '', 'n') + td('', '', 'n') + td('目標', fmtN(r.payoutTarget), 'n') /* これからのレースは 0 を並べない */
-          : td('参加', fmtN(r.participants && r.participants.total) + '人', 'n') + td('チップ', chipN(r.betTotal), 'n') + td('当選額 / 目標', paid + ' / ' + fmtN(r.payoutTarget), 'n')) +
+        (r.status === 'upcoming' && !(r.participants && r.participants.total) ? td('', '', 'n') + td('', '', 'n') + td('目標', ptN(r.payoutTarget), 'n') /* これからのレースは 0 を並べない */
+          : td('参加', fmtN(r.participants && r.participants.total) + '人', 'n') + td('チップ', chipN(r.betTotal), 'n') + td('当選額 / 目標', paid + ' / ' + ptN(r.payoutTarget), 'n')) +
         td(res ? '1着' : '', res ? esc(horseTxt(r, w)) + ' <span class="hint">' + (res.finalOdds && res.finalOdds[w] != null ? per1(res.finalOdds[w]) : '') + '</span>' + (memoOn ? reasonTxt(r.decision) + cueTxt(r) : '') : '', 'full') +
         td('', canRefund && !open ? '<button class="btn xs ghost" data-act="race-refund" data-id="' + esc(r.id) + '" aria-expanded="false">レース取消</button>' : '', 'right') + '</tr>' +
         (open ? '<tr class="rfrow"><td colspan="7">' + refundBox(r) + '</td></tr>' : '');
@@ -844,10 +848,10 @@
     return viewTvPanel() +
       '<div class="panel" id="racePanel"><h3>' + (isToday ? '今日のレース' : esc(fmtDay(raceDate)) + 'のレース') + '<span class="sp"></span>' + (isToday ? '<small class="auto">自動で更新</small>' : '') + '</h3>' +
       nowCard(list, isToday) +
-      '<div class="summary"><div class="stat"><small>終わったレース</small><b>' + sum.done + ' / ' + list.length + '</b></div><div class="stat"><small>参加（のべ）</small><b>' + fmtN(sum.players) + '人</b></div><div class="stat"><small>賭けたチップ</small><b>' + chipN(sum.bet) + '</b></div><div class="stat"><small>当選額 / 目標</small><b>' + fmtN(sum.paid) + '<span class="of"> / ' + fmtN(sum.target) + '</span></b></div></div>' +
+      '<div class="summary"><div class="stat"><small>終わったレース</small><b>' + sum.done + ' / ' + list.length + '</b></div><div class="stat"><small>参加（のべ）</small><b>' + fmtN(sum.players) + '人</b></div><div class="stat"><small>賭けたチップ</small><b>' + chipN(sum.bet) + '</b></div><div class="stat"><small>当選額 / 目標</small><b>' + ptN(sum.paid) + '<span class="of"> / ' + ptN(sum.target) + '</span></b></div></div>' +
       (racesErr ? '<div class="err">' + esc(racesErr) + '</div>' : '') +
       (racesData == null ? '<div class="empty">読み込み中…</div>' : !list.length ? '<div class="empty">この日のレースはありません</div>' :
-        '<div class="tbl"><table class="cards rl"><tr class="hd"><th>発走</th><th>状態</th><th class="n">参加</th><th class="n">賭けたチップ</th><th class="n">当選額 / 目標</th><th>1着（100チップの当選額）</th><th></th></tr>' +
+        '<div class="tbl"><table class="cards rl"><tr class="hd"><th>発走</th><th>状態</th><th class="n">参加</th><th class="n">賭けたチップ</th><th class="n">当選額 / 目標</th><th>1着（オッズ）</th><th></th></tr>' +
         rows.map(row).join('') + '</table></div>' +
         (hidden || raceAll ? '<div class="acts l"><button class="btn sm ghost" data-act="race-all">' + (raceAll ? '少なく表示' : 'ほか ' + hidden + ' 件のレースを表示') + '</button></div>' : '')) +
       '<div class="datebar"><span class="hint" style="margin:0">ほかの日:</span><button class="btn sm ghost" data-act="rq" data-n="-1" aria-label="前の日">◀ 前の日</button><input type="date" id="rdate" value="' + esc(raceDate) + '" aria-label="日付"><button class="btn sm ghost" data-act="rq" data-n="1" aria-label="次の日">次の日 ▶</button>' + (isToday ? '' : '<button class="btn sm ghost" data-act="rq" data-n="0">今日へ</button>') + '</div>' +
@@ -856,7 +860,7 @@
   /* その場のレース取消（返還）。中身は前の「設定」の返還と同じ（発走・参加・返すリングバウンティ・取り消す当選額）。押すと確認の文 → api('refund') */
   function refundBox(r) {
     return '<div class="rfbox" id="refundPanel"><b>' + esc(fmtDay(ymd(r.at))) + ' ' + hm(r.at) + ' のレースを取り消しますか？</b><small>参加 ' + fmtN(r.participants && r.participants.total) + ' 人・チップ ' + chipN(r.betTotal) + '</small>' +
-      '<div class="rfnums"><div><small>返すリングバウンティ</small><b>' + fmtN(r.betBounty != null ? r.betBounty : r.betTotal) + '枚</b></div><div><small>取り消す当選額</small><b>' + fmtN(r.paidTotal) + '</b></div></div>' +
+      '<div class="rfnums"><div><small>返すリングバウンティ</small><b>' + fmtN(r.betBounty != null ? r.betBounty : r.betTotal) + '枚</b></div><div><small>取り消す当選額</small><b>' + ptN(r.paidTotal) + '</b></div></div>' +
       '<div class="rfwarn">元に戻せません</div>' +
       '<div class="rfacts"><button class="btn ghost" data-act="race-refund" data-id="' + esc(r.id) + '">やめる</button><button class="btn danger" data-act="refund" data-id="' + esc(r.id) + '">取り消して返す</button></div></div>';
   }
@@ -879,8 +883,8 @@
       stepRow('当たりの幅（目標より少ない側）', '払い戻しの合計が目標より何%少なくてもよいか', 'bandBelow', Math.round(T.bandBelow * 100), '%', 0, 50, 1) +
       stepRow('当たりの幅（目標より多い側）', '払い戻しの合計が目標より何%多くてもよいか', 'bandAbove', Math.round(T.bandAbove * 100), '%', 0, 50, 1) +
       '<p class="hint" id="bandEx">' + bandExample(T.bandBelow, T.bandAbove) + '</p>' +
-      stepRow('払い出しの上限（1 レース）', '0 = なし。当選額の合計（額）。必ず当たりのほうを優先', 'payoutCap', T.payoutCap || 0, '', 0, 99999900, 1000) +
-      stepRow('払い出しの上限（1 日）', '0 = なし。全店の当選額の合計（額）' + (cfg.capDayOk ? '' : '（<b style="color:var(--warn)">サーバー側の対応待ち。まだ保存されません</b>）'), 'payoutCapDay', T.payoutCapDay || 0, '', 0, 999999900, 10000) +
+      stepRow('払い出しの上限（1 レース）', '0 = なし。当選額の合計（額）。必ず当たりのほうを優先', 'payoutCap', T.payoutCap || 0, 'pt', 0, 99999900, 1000) +
+      stepRow('払い出しの上限（1 日）', '0 = なし。全店の当選額の合計（額）' + (cfg.capDayOk ? '' : '（<b style="color:var(--warn)">サーバー側の対応待ち。まだ保存されません</b>）'), 'payoutCapDay', T.payoutCapDay || 0, 'pt', 0, 999999900, 10000) +
       '</div>' +
       viewCues(T) +
       '<div class="panel"><h3>時間</h3><p class="hint">上の 3 つは<b>店舗を追加したときの初期値</b>。ゲートインとゴール後は全店共通です。</p>' +
@@ -919,15 +923,15 @@
   function viewBounty(T) {
     const x = Number(T.bountyPerTicket) || 20;
     return '<div class="panel" id="bountyPanel"><h3>リングバウンティの交換</h3>' +
-      '<p class="bpnow">いま <b>リングバウンティ <span id="bpNow">' + fmtN(x) + '</span>枚 → 100</b></p>' +
-      stepRow('リングバウンティ ○枚 → 100', '1〜1000 の整数。全店共通', 'bountyPerTicket', x, '枚', 1, 1000, 1) +
+      '<p class="bpnow">いま <b>リングバウンティ <span id="bpNow">' + fmtN(x) + '</span>枚 → 100pt</b></p>' +
+      stepRow('リングバウンティ ○枚 → 100pt', '1〜1000 の整数。全店共通', 'bountyPerTicket', x, '枚', 1, 1000, 1) +
       '<p class="hint">テレビ（参加受付中）・お客さんのスマホ（参加画面）・スタッフ画面にこの割合が出ます。<b>これから認証する分</b>から新しい割合です（認証済みの券・返却・返還は認証したときの割合のまま）。当たりの額（チップ × オッズ）は変わりません。</p>' +
       '<div class="savebar"><div class="msg" id="bpmsg"></div><button type="button" class="btn" data-act="bp-save" id="bpsave" disabled>保存</button></div></div>';
   }
   function validateBp() {
     if (!$('bpsave')) return 1;
     const ok = numOk('bountyPerTicket'), v = numOf('bountyPerTicket'), dirty = ok && v !== (Number(cfg.tuning.bountyPerTicket) || 20);
-    $('bpmsg').innerHTML = !ok ? '<div class="err">1〜1000 の整数にしてください</div>' : dirty ? '<div class="warnmsg">保存すると「リングバウンティ ' + fmtN(v) + '枚 → 100」になります</div>' : '<div class="okmsg">保存済みです</div>';
+    $('bpmsg').innerHTML = !ok ? '<div class="err">1〜1000 の整数にしてください</div>' : dirty ? '<div class="warnmsg">保存すると「リングバウンティ ' + fmtN(v) + '枚 → 100pt」になります</div>' : '<div class="okmsg">保存済みです</div>';
     $('bpsave').disabled = !ok || !dirty;
     return ok ? 0 : 1;
   }
@@ -935,7 +939,7 @@
     if (validateBp()) return;
     const v = Math.round(numOf('bountyPerTicket')); if (v === (Number(cfg.tuning.bountyPerTicket) || 20)) return;
     $('bpsave').disabled = true;
-    try { await api('saveTuning', { bountyPerTicket: v }); await reloadCfg(); toast('交換の割合を「リングバウンティ ' + fmtN(v) + '枚 → 100」にしました。これから認証する分から使います'); }
+    try { await api('saveTuning', { bountyPerTicket: v }); await reloadCfg(); toast('交換の割合を「リングバウンティ ' + fmtN(v) + '枚 → 100pt」にしました。これから認証する分から使います'); }
     catch (e) { toast(errText(e)); }
     keepScroll(render);
   }
@@ -961,7 +965,7 @@
   function bandExample(below, above) {
     if (!(below > 0) && !(above > 0)) return '幅が両方 0% なので、目標にいちばん近い馬が勝ちます';
     const tg = 30000, lo = Math.ceil(tg * (1 - below) - 1e-9), hi = Math.floor(tg * (1 + above) + 1e-9);
-    return '目標 ' + fmtN(tg) + ' なら <b>' + fmtN(lo) + '〜' + fmtN(hi) + '</b> に入る馬から、勝ちやすさで抽選。いない時はいちばん近い馬';
+    return '目標 ' + ptT(tg) + ' なら <b>' + fmtN(lo) + '〜' + ptT(hi) + '</b> に入る馬から、勝ちやすさで抽選。いない時はいちばん近い馬';
   }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
   const TUN_KEYS = ['payoutRate', 'volatility', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'exchangeSec', 'voteSec', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS); /* 交換の割合（bountyPerTicket）は 2026-10-19 から「設定」の上の枠（viewBounty。保存も別） */
@@ -1026,7 +1030,7 @@
     const qOn = (q) => { const r = quickRange(q); return r[0] === stFrom && r[1] === stTo; }; // 今選んでいる期間ボタンは銀
     /* 日ごと・店舗別の 1 行（PC は表、スマホはカード）。スマホは主な数字（参加・当選額・まだ渡していない）を先に、残りは「くわしく」で開く（2026-10-19 改善 2） */
     const cell = (l, v, more) => '<td class="n' + (more ? ' more' : '') + '" data-l="' + l + '">' + v + '</td>';
-    const unc = (v) => (v ? '<b style="color:var(--ng)">' + fmtN(v) + '</b>' : '0');
+    const unc = (v) => (v ? '<b style="color:var(--ng)">' + ptN(v) + '</b>' : '0' + '<small class="pt">pt</small>');
     const moreBtn = '<button type="button" class="btn xs ghost daymore" data-act="day-more" aria-expanded="false">くわしく</button>';
     return '<div class="panel"><h3>集計を見る</h3>' +
       '<div class="quick">' + quick.map((q) => '<button class="btn sm ghost" data-act="stq" data-q="' + q[0] + '" aria-pressed="' + qOn(q[0]) + '">' + q[1] + '</button>').join('') + '</div>' +
@@ -1035,20 +1039,20 @@
       (statsErr ? '<div class="err">' + esc(statsErr) + '</div>' : '') +
       /* 見出しを分ける（2026-10-17）: リングバウンティ（受け取った・返却した）と投票券の枚数、当選額と渡した額（額。1 枚 = 100）を混ぜない */
       '<h4 class="sumh">リングバウンティとチップ</h4><div class="summary" id="statBounty"><div class="stat"><small>受け取ったリングバウンティ</small><b>' + fmtN(tot.bountyIn) + '</b></div>' +
-      '<div class="stat"><small>賭けたチップ</small><b>' + chipN(tot.bet) + '</b><small>交換した ' + chipN(tot.exchanged) + '</small></div>' +
+      '<div class="stat"><small>賭けたチップ</small><b>' + chipN(tot.bet) + '</b><small>交換した ' + chipT(tot.exchanged) + '</small></div>' +
       '<div class="stat" id="statRet"><small>返却したリングバウンティ</small><b>' + fmtN(tot.bountyReturnedPaid + tot.bountyRefundPaid) + '</b><small>投票なし ' + fmtN(tot.bountyReturned) + (tot.bountyRefund ? '・レース取消 ' + fmtN(tot.bountyRefund) : '') + '</small></div>' +
       '<div class="stat"><small>参加人数</small><b>' + nOrDash(tot.players) + '</b></div><div class="stat"><small>レース数</small><b>' + fmtN(tot.races) + '</b></div></div>' +
-      '<h4 class="sumh">当選額と渡した額</h4><div class="summary" id="statMoney"><div class="stat"><small>当選額</small><b>' + fmtN(tot.paid) + '</b></div><div class="stat"><small>渡した当選額</small><b>' + fmtN(tot.claimed) + '</b></div>' +
-      '<div class="stat ' + (tot.unclaimed ? 'ng' : '') + '"><small>まだ渡していない当選額</small><b>' + fmtN(tot.unclaimed) + '</b></div>' + '<div class="stat"><small>当選額の割合</small><b>' + (tot.bet ? Math.round(tot.paid / (tot.bet * YEN) * 1000) / 10 + '%' : '—') + '</b><small>当選額 ÷ 賭けたチップ</small></div></div>' +
+      '<h4 class="sumh">当選額と渡した額</h4><div class="summary" id="statMoney"><div class="stat"><small>当選額</small><b>' + ptN(tot.paid) + '</b></div><div class="stat"><small>渡した当選額</small><b>' + ptN(tot.claimed) + '</b></div>' +
+      '<div class="stat ' + (tot.unclaimed ? 'ng' : '') + '"><small>まだ渡していない当選額</small><b>' + ptN(tot.unclaimed) + '</b></div>' + '<div class="stat"><small>当選額の割合</small><b>' + (tot.bet ? Math.round(tot.paid / (tot.bet * YEN) * 1000) / 10 + '%' : '—') + '</b><small>当選額 ÷ 賭けたチップ</small></div></div>' +
       (statsData == null && !statsErr ? '<div class="empty">読み込み中…</div>' :
         '<h4 class="sumh">日ごと</h4><div class="tbl"><table class="cards days"><tr class="hd"><th>日付</th><th class="n">参加人数</th><th class="n">当選額</th><th class="n">まだ渡していない</th><th class="n">レース</th><th class="n">受け取ったリングバウンティ</th><th class="n">賭けたチップ</th><th class="n">渡した当選額</th><th class="n">返却したリングバウンティ</th><th class="n">当選額の割合</th></tr>' +
-        (days.length ? days.map((x) => '<tr><td class="head"><b>' + fmtDay(x.date) + '</b>' + moreBtn + '</td>' + cell('参加', nOrDash(x.players)) + cell('当選額', fmtN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
-          cell('レース', fmtN(x.races), 1) + cell('受け取ったリングバウンティ', fmtN(x.bountyIn), 1) + cell('賭けたチップ', chipN(x.bet), 1) + cell('渡した当選額', fmtN(x.claimed), 1) + cell('返却したリングバウンティ', fmtN(x.bountyReturnedPaid + x.bountyRefundPaid), 1) + cell('当選額の割合', x.bet ? Math.round(x.rate * 1000) / 10 + '%' : '—', 1) + '</tr>').join('') : '<tr><td colspan="10" class="empty">この期間のデータはありません</td></tr>') + '</table></div>') +
+        (days.length ? days.map((x) => '<tr><td class="head"><b>' + fmtDay(x.date) + '</b>' + moreBtn + '</td>' + cell('参加', nOrDash(x.players)) + cell('当選額', ptN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
+          cell('レース', fmtN(x.races), 1) + cell('受け取ったリングバウンティ', fmtN(x.bountyIn), 1) + cell('賭けたチップ', chipN(x.bet), 1) + cell('渡した当選額', ptN(x.claimed), 1) + cell('返却したリングバウンティ', fmtN(x.bountyReturnedPaid + x.bountyRefundPaid), 1) + cell('当選額の割合', x.bet ? Math.round(x.rate * 1000) / 10 + '%' : '—', 1) + '</tr>').join('') : '<tr><td colspan="10" class="empty">この期間のデータはありません</td></tr>') + '</table></div>') +
       (bs ? '<h4 class="sumh">店舗別</h4><div class="tbl"><table class="cards days"><tr class="hd"><th>店舗</th><th class="n">参加人数</th><th class="n">当選額</th><th class="n">まだ渡していない</th><th class="n">受け取ったリングバウンティ</th><th class="n">賭けたチップ</th><th class="n">渡した当選額</th><th class="n">返却したリングバウンティ</th></tr>' +
-        bs.map((x) => '<tr><td class="head"><b>' + esc(storeName(x.storeId)) + '</b>' + moreBtn + '</td>' + cell('参加', nOrDash(x.players)) + cell('当選額', fmtN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
-          cell('受け取ったリングバウンティ', fmtN(x.bountyIn), 1) + cell('賭けたチップ', chipN(x.bet), 1) + cell('渡した当選額', fmtN(x.claimed), 1) + cell('返却したリングバウンティ', fmtN(x.bountyReturnedPaid + x.bountyRefundPaid), 1) + '</tr>').join('') + '</table></div>' : '') +
+        bs.map((x) => '<tr><td class="head"><b>' + esc(storeName(x.storeId)) + '</b>' + moreBtn + '</td>' + cell('参加', nOrDash(x.players)) + cell('当選額', ptN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
+          cell('受け取ったリングバウンティ', fmtN(x.bountyIn), 1) + cell('賭けたチップ', chipN(x.bet), 1) + cell('渡した当選額', ptN(x.claimed), 1) + cell('返却したリングバウンティ', fmtN(x.bountyReturnedPaid + x.bountyRefundPaid), 1) + '</tr>').join('') + '</table></div>' : '') +
       '<div class="acts l"><button class="btn sm ghost" data-act="st-csv"' + (days.length ? '' : ' disabled') + '>CSV（Excel）に書き出す</button></div>' +
-      '<details class="fold"><summary>言葉の意味</summary><div class="in"><p class="hint">受け取ったリングバウンティ＝スタッフが受け取ったリングバウンティ（例 交換の割合 20 なら 100チップ ＝ 20枚）。賭けたチップ＝馬に賭けたチップ（「交換した」は投票しなかった分も入ります）。当選額＝当たりの合計（チップ × オッズ）。渡した当選額＝スタッフが渡した額。まだ渡していない当選額＝当たったのに受け取りに来ていない額。返却したリングバウンティ＝投票しなかった分とレース取消（返還）で、お客さんに返したリングバウンティ。当選額の割合＝当選額 ÷ 賭けたチップ（100% で同じ額）。テストモードの店舗の分は入りません。</p></div></details></div>' +
+      '<details class="fold"><summary>言葉の意味</summary><div class="in"><p class="hint">受け取ったリングバウンティ＝スタッフが受け取ったリングバウンティ（例 交換の割合 20 なら 100pt ＝ 20枚）。賭けたチップ＝馬に賭けたチップ（「交換した」は投票しなかった分も入ります）。当選額＝当たりの合計（チップ × オッズを 1 件ごとに 10 の位で切り上げた、実際に渡す額）。金額の単位は pt。渡した当選額＝スタッフが渡した額。まだ渡していない当選額＝当たったのに受け取りに来ていない額。返却したリングバウンティ＝投票しなかった分とレース取消（返還）で、お客さんに返したリングバウンティ。当選額の割合＝当選額 ÷ 賭けたチップ（100% で同じ額）。テストモードの店舗の分は入りません。</p></div></details></div>' +
       '<div class="panel"><h3>会計番号で探す</h3><p class="hint">期間と店舗は上と同じ。空のまま探すと全部出ます。</p>' +
       '<div class="range"><label class="f"><span>会計番号</span><input type="text" id="lbill" value="' + esc(logBill) + '" maxlength="12" placeholder="例: 1234" autocapitalize="off"></label><div class="quick" style="align-items:end;padding-bottom:10px"><button class="btn sm" data-act="log-search">探す</button><button class="btn sm ghost" data-act="log-csv"' + (L && L.logs.length ? '' : ' disabled') + '>CSV に書き出す</button></div></div>' +
       (logsErr ? '<div class="err">' + esc(logsErr) + '</div>' : '') +
@@ -1076,11 +1080,11 @@
     return out;
   }
   // 明細の数字: 認証は「30枚・リングバウンティ 600」、返却・返還は「リングバウンティ 600」、当たり・受け取りは額
-  const logVal = (x) => (x.type === 'auth' ? 'チップ ' + chipN(x.count) + '・リングバウンティ ' + fmtN(logB(x)) : isBLog(x) ? 'リングバウンティ ' + fmtN(logB(x)) : fmtN(x.count != null ? x.count : x.amount));
+  const logVal = (x) => (x.type === 'auth' ? 'チップ ' + chipT(x.count) + '・リングバウンティ ' + fmtN(logB(x)) + '枚' : isBLog(x) ? 'リングバウンティ ' + fmtN(logB(x)) + '枚' : ptT(x.count != null ? x.count : x.amount)); // 2026-10-20: 額は「pt」、リングバウンティは「枚」
   function viewLogs(L) {
     const bills = Object.keys(L.byBill || {});
     return (bills.length ? '<div class="tbl"><table class="cards"><tr class="hd"><th>会計番号</th><th class="n">チップ</th><th class="n">受け取ったリングバウンティ</th><th class="n">当選額</th><th class="n">渡した当選額</th><th class="n">まだ渡していない</th><th class="n">返却したリングバウンティ</th></tr>' +
-      bills.slice(0, 200).map((b) => { const x = L.byBill[b]; const un = x.unclaimed != null ? x.unclaimed : Math.max(0, (x.win || 0) - (x.paid || 0)); return '<tr><td class="mono head"><b>' + esc(b) + '</b></td><td class="n" data-l="チップ">' + chipN(x.auth) + '</td><td class="n" data-l="受け取ったリングバウンティ">' + fmtN(x.bounty) + '</td><td class="n" data-l="当選額">' + fmtN(x.win) + '</td><td class="n" data-l="渡した当選額">' + fmtN(x.paid) + '</td><td class="n" data-l="まだ渡していない">' + (un ? '<b style="color:var(--ng)">' + fmtN(un) + '</b>' : '0') + '</td><td class="n" data-l="返却したリングバウンティ">' + fmtN((x.retPaid || 0) + (x.refundPaid || 0)) + ((x.ret || x.refund) ? '<small class="hint">（返却 ' + fmtN(x.ret) + (x.refund ? '・返還 ' + fmtN(x.refund) : '') + (x.unreturned ? '・まだ ' + fmtN(x.unreturned) : '') + '）</small>' : '') + '</td></tr>'; }).join('') + '</table></div>' : '') +
+      bills.slice(0, 200).map((b) => { const x = L.byBill[b]; const un = x.unclaimed != null ? x.unclaimed : Math.max(0, (x.win || 0) - (x.paid || 0)); return '<tr><td class="mono head"><b>' + esc(b) + '</b></td><td class="n" data-l="チップ">' + chipN(x.auth) + '</td><td class="n" data-l="受け取ったリングバウンティ">' + fmtN(x.bounty) + '</td><td class="n" data-l="当選額">' + ptN(x.win) + '</td><td class="n" data-l="渡した当選額">' + ptN(x.paid) + '</td><td class="n" data-l="まだ渡していない">' + (un ? '<b style="color:var(--ng)">' + ptN(un) + '</b>' : '0<small class="pt">pt</small>') + '</td><td class="n" data-l="返却したリングバウンティ">' + fmtN((x.retPaid || 0) + (x.refundPaid || 0)) + ((x.ret || x.refund) ? '<small class="hint">（返却 ' + fmtN(x.ret) + (x.refund ? '・返還 ' + fmtN(x.refund) : '') + (x.unreturned ? '・まだ ' + fmtN(x.unreturned) : '') + '）</small>' : '') + '</td></tr>'; }).join('') + '</table></div>' : '') +
       '<h3 style="margin-top:14px;font-size:14px">明細（' + fmtN(L.logs.length) + ' 件' + (L.logs.length > 500 ? '。新しい 500 件を表示' : '') + '）</h3>' +
       (L.logs.length ? '<div class="tbl"><table class="cards"><tr class="hd"><th>日時</th><th>店舗</th><th>会計番号</th><th>ニックネーム</th><th>種類</th><th class="n">チップ・リングバウンティ・額</th><th>レース</th></tr>' +
         L.logs.slice(0, 500).map((x) => { const k = logKind(x); return '<tr><td class="mono">' + esc(x.date ? x.date.slice(5) : ymd(x.at).slice(5)) + ' ' + hms(x.at).slice(0, 5) + '</td><td>' + esc(storeName(x.storeId)) + '</td><td class="mono">' + esc(x.bill) + '</td><td>' + esc(x.nick || '') + '</td><td><span class="chip ' + k[1] + '">' + k[0] + '</span></td><td class="n">' + esc(logVal(x)) + '</td><td class="mono"><small>' + esc(x.raceId || '') + '</small></td></tr>'; }).join('') + '</table></div>'
@@ -1127,7 +1131,7 @@
       '<button type="button" class="panel rowlink" data-act="go-tuning"><span><b>オーナー用の詳細設定</b><small>店舗には見せない設定</small></span><i aria-hidden="true">›</i></button>' +
       '<details class="panel"><summary>テスト用（本番では使わない）</summary>' +
       '<p class="hint">時刻表とは別に、今すぐレースを作ります（テストモードの店舗で確かめる用）。</p>' +
-      '<div class="range"><label class="f"><span>何秒後に発走</span><input type="number" id="trin" value="90" min="5" max="3600"></label><label class="f"><span>当選額の目標</span><input type="number" id="trpay" value="30000" min="1" max="' + PAY_MAX + '"></label>' +
+      '<div class="range"><label class="f"><span>何秒後に発走</span><input type="number" id="trin" value="90" min="5" max="3600"></label><label class="f"><span>当選額の目標（pt）</span><input type="number" id="trpay" value="30000" min="1" max="' + PAY_MAX + '"></label>' +
       '<label class="f"><span>店舗</span><select id="trstore"><option value="">全店（同時）</option>' + cfg.stores.map((s) => '<option value="' + esc(s.id) + '">' + esc(s.name) + 'だけ</option>').join('') + '</select></label></div>' +
       '<div class="acts"><button class="btn ghost" data-act="test-race">テストのレースを作る</button></div></details>';
   }
@@ -1234,7 +1238,7 @@
         case 'row-del': { const t = tplOf(b), r = rowOf(t, b); t.rows.splice(t.rows.indexOf(r), 1); ttDirty = true; return ttRerender(); }
         case 'row-sort': { const t = tplOf(b); sortRows(t); return ttRerender(); }
         case 'row-clear': { const t = tplOf(b); if (!confirm('「' + tplName(t) + '」の ' + t.rows.length + ' レースを全部消します（保存するまでは元に戻せます）。')) return; t.rows = []; ttDirty = true; return ttRerender(); }
-        case 'row-payall': { const t = tplOf(b); const v = prompt('この予定の当選額の目標を全部この額にします（1〜' + fmtN(PAY_MAX) + '）', t.rows[0] ? t.rows[0].p : '30000'); if (v == null) return; if (!/^\d+$/.test(v.trim()) || +v < 1 || +v > PAY_MAX) { toast('1〜' + fmtN(PAY_MAX) + ' の整数を入れてください'); return; } t.rows.forEach((r) => { r.p = v.trim(); }); ttDirty = true; return ttRerender(); }
+        case 'row-payall': { const t = tplOf(b); const v = prompt('この予定の当選額の目標を全部この額にします（1〜' + ptT(PAY_MAX) + '）', t.rows[0] ? t.rows[0].p : '30000'); if (v == null) return; if (!/^\d+$/.test(v.trim()) || +v < 1 || +v > PAY_MAX) { toast('1〜' + fmtN(PAY_MAX) + ' の整数を入れてください'); return; } t.rows.forEach((r) => { r.p = v.trim(); }); ttDirty = true; return ttRerender(); }
         case 'bulk': { const t = tplOf(b); return bulkCreate(t, b.closest('[data-tk]')); }
         case 'tt-revert': if (ttDirty && !confirm('保存していない変更を捨てて、保存済みの時刻表に戻します。')) return; loadTT(); return ttRerender();
         case 'tt-save': b.disabled = true; try { return await saveTT(); } finally { if (document.contains(b)) paintTT(); }
@@ -1255,13 +1259,13 @@
         case 'stq': { const r = quickRange(b.dataset.q); stFrom = r[0]; stTo = r[1]; logsData = null; return loadStats(); }
         case 'st-csv': {
           const days = statDays();
-          const rows = [['日付', 'レース数', '参加人数', '受け取ったリングバウンティ', '引き換えたチップ', '賭けたチップ', '当選額', '受取額', '未受け取り', '払い戻し率', '返却するリングバウンティ（投票なし）', '返還するリングバウンティ（不成立）', '返却したリングバウンティ']].concat(days.map((x) => [x.date, x.races, x.players == null ? '' : x.players, x.bountyIn, x.exchanged * 100, x.bet * 100, x.paid, x.claimed, x.unclaimed, x.bet ? (Math.round(x.rate * 1000) / 10) + '%' : '', x.bountyReturned, x.bountyRefund, x.bountyReturnedPaid + x.bountyRefundPaid]));
-          const bs = byStoreRows(statsData); if (bs) { rows.push([]); rows.push(['店舗', '', '参加人数', '受け取ったリングバウンティ', '引き換えたチップ', '賭けたチップ', '当選額', '受取額', '未受け取り', '', '', '', '返却したリングバウンティ']); bs.forEach((x) => rows.push([storeName(x.storeId), '', x.players == null ? '' : x.players, x.bountyIn, x.exchanged * 100, x.bet * 100, x.paid, x.claimed, x.unclaimed, '', '', '', x.bountyReturnedPaid + x.bountyRefundPaid])); }
+          const rows = [['日付', 'レース数', '参加人数', '受け取ったリングバウンティ', '引き換えたチップ(pt)', '賭けたチップ(pt)', '当選額(pt)', '受取額(pt)', '未受け取り(pt)', '払い戻し率', '返却するリングバウンティ（投票なし）', '返還するリングバウンティ（不成立）', '返却したリングバウンティ']].concat(days.map((x) => [x.date, x.races, x.players == null ? '' : x.players, x.bountyIn, x.exchanged * 100, x.bet * 100, x.paid, x.claimed, x.unclaimed, x.bet ? (Math.round(x.rate * 1000) / 10) + '%' : '', x.bountyReturned, x.bountyRefund, x.bountyReturnedPaid + x.bountyRefundPaid]));
+          const bs = byStoreRows(statsData); if (bs) { rows.push([]); rows.push(['店舗', '', '参加人数', '受け取ったリングバウンティ', '引き換えたチップ(pt)', '賭けたチップ(pt)', '当選額(pt)', '受取額(pt)', '未受け取り(pt)', '', '', '', '返却したリングバウンティ']); bs.forEach((x) => rows.push([storeName(x.storeId), '', x.players == null ? '' : x.players, x.bountyIn, x.exchanged * 100, x.bet * 100, x.paid, x.claimed, x.unclaimed, '', '', '', x.bountyReturnedPaid + x.bountyRefundPaid])); }
           return download('casaDERBY_集計_' + (stStore ? storeName(stStore) + '_' : '') + stFrom + '_' + stTo + '.csv', rows);
         }
         case 'log-search': return await searchLogs();
         case 'log-csv': {
-          const rows = [['日時', '店舗', '会計番号', 'ニックネーム', '種類', 'チップ', 'リングバウンティ', '額（当選額・受取額）', 'レース']].concat(logsData.logs.map((x) => [ymd(x.at) + ' ' + hms(x.at), storeName(x.storeId), x.bill, x.nick || '', logKind(x)[0], x.type === 'auth' || (isBLog(x) && x.bounty != null) ? (x.count || 0) * 100 : '', isBLog(x) ? logB(x) : '', isBLog(x) ? '' : (x.count != null ? x.count : x.amount), x.raceId || '']));
+          const rows = [['日時', '店舗', '会計番号', 'ニックネーム', '種類', 'チップ(pt)', 'リングバウンティ', '額（当選額・受取額）(pt)', 'レース']].concat(logsData.logs.map((x) => [ymd(x.at) + ' ' + hms(x.at), storeName(x.storeId), x.bill, x.nick || '', logKind(x)[0], x.type === 'auth' || (isBLog(x) && x.bounty != null) ? (x.count || 0) * 100 : '', isBLog(x) ? logB(x) : '', isBLog(x) ? '' : (x.count != null ? x.count : x.amount), x.raceId || '']));
           return download('casaDERBY_会計番号_' + (logBill || '全部') + '_' + stFrom + '_' + stTo + '.csv', rows);
         }
         /* 運用 */
@@ -1273,7 +1277,7 @@
         }
         case 'refund': {
           const r = (racesData || []).find((x) => x.id === b.dataset.id); if (!r) return;
-          if (!confirm('レース取消（返還）\n\n日時: ' + ymd(r.at).replace(/-/g, '/') + '(' + WD[wdOf(ymd(r.at))] + ') ' + hm(r.at) + ' 発走\n店舗: ' + storeName(r.storeId) + '\n返すリングバウンティ: ' + fmtN(r.betBounty != null ? r.betBounty : r.betTotal) + '枚（チップ ' + chipN(r.betTotal) + '・認証したときの割合）\n取り消す当選額: ' + fmtN(r.paidTotal) + '\n\nお客さんのスマホに返還用の QR が出て、スタッフが読み取ってリングバウンティを返します。すでに渡した当選額はそのまま（取り戻さない・差し引かない）、まだ渡していない当選額は取り消します。記録には「返還」として残ります。\n元に戻せません。取り消して返しますか？')) return;
+          if (!confirm('レース取消（返還）\n\n日時: ' + ymd(r.at).replace(/-/g, '/') + '(' + WD[wdOf(ymd(r.at))] + ') ' + hm(r.at) + ' 発走\n店舗: ' + storeName(r.storeId) + '\n返すリングバウンティ: ' + fmtN(r.betBounty != null ? r.betBounty : r.betTotal) + '枚（チップ ' + chipT(r.betTotal) + '・認証したときの割合）\n取り消す当選額: ' + ptT(r.paidTotal) + '\n\nお客さんのスマホに返還用の QR が出て、スタッフが読み取ってリングバウンティを返します。すでに渡した当選額はそのまま（取り戻さない・差し引かない）、まだ渡していない当選額は取り消します。記録には「返還」として残ります。\n元に戻せません。取り消して返しますか？')) return;
           b.disabled = true;
           const rf = await api('refund', r.id);
           toast('取り消しました（リングバウンティ ' + fmtN(rf && (rf.bounty != null ? rf.bounty : rf.refundTotal)) + '枚を返します）'); refundOpen = null; return loadRaces();
