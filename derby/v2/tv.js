@@ -81,18 +81,18 @@
   top.insertBefore(el('<div class="v2ppl" id="v2ppl"><small>全店で</small><b id="v2pplNum">0</b><small>人が参加</small></div>'), sndBtn);
   top.insertBefore(el('<span class="v2store" id="v2store"></span>'), sndBtn);
   stageEl.appendChild(el('<div class="v2info" id="v2info"><div class="cd" id="v2cd"><small id="v2cdLbl">発走まで</small><b id="v2cdNum">--:--</b><div class="cdl"><i id="v2cdSt"></i><span id="v2cdSub"></span></div></div>' +
-    '<div class="how" id="v2how"><h4>参加のしかた</h4><ol><li>QR を読む</li><li>スタッフへ見せる</li><li>スマホで投票</li></ol>' +
+    '<div class="how" id="v2how"><h4>参加方法</h4><ol><li>画面右下のQRを読む</li><li>投票枚数を決めて、スタッフ認証を待つ</li><li>スマホで投票</li></ol>' +
     // 交換の割合（2026-10-19 オーナー「Bounty X 枚で 100 と交換。参加受付中の画面にはっきりと。X はマスターからいじれるように」）: 数字は tickLabels が設定（settings.bountyPerTicket）から入れる
-    '<div class="v2rate" id="v2rate"><i>交換</i><span>リングバウンティ</span><b id="v2rateX">20</b><span class="u">枚</span><em>→</em><b>100</b></div></div></div>'));
+    '<div class="v2rate" id="v2rate"><i>交換</i><span>リングバウンティ</span><b id="v2rateX">20</b><span class="u">枚</span><em>→</em><b>100<small class="pt">pt</small></b></div></div></div>')); /* 2026-10-20: 100 → 100pt */
   // QR の下の URL は出さない（テレビでは途中で折り返して読めない。2026-10-14 見た目の講評）。#v2qrUrl は中身だけ持つ（確認用）
-  stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b>スマホで参加</b><span>スマホのカメラで<br>読み取ってください</span><em>アプリは不要です</em><small id="v2qrUrl" hidden></small></div></div>'));
+  stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b>アプリ不要 スマホで参加</b><span>スマホのカメラで<br>読み取ってください</span><em>アプリは不要です</em><small id="v2qrUrl" hidden></small></div></div>'));
   stageEl.appendChild(el('<div class="v2odds" id="v2odds"><h5><small>確定</small>オッズ</h5><ol id="v2oddsList"></ol></div>')); // 2026-10-19: 「100あたりの額」→ 倍率
   stageEl.appendChild(el('<div class="v2strip" id="v2strip"><div class="ttl" id="v2stripTtl"></div><div class="sep"></div><div class="ppl">全店で<b id="v2stripPpl">0</b>人が参加</div><div class="stores" id="v2stripStores"></div><div class="nx" id="v2stripNx"><small id="v2stripNxL"></small><b id="v2stripNxN"></b></div><div class="soon">結果はまもなく</div></div>'));
   stageEl.appendChild(el('<div class="v2hl-tag" id="v2hlTag">前のレースのハイライト<small id="v2hlTagSub"></small></div>'));
   stageEl.appendChild(el('<div class="v2hlw" id="v2hlw"><h5>全店の当たった人<small id="v2hlwSub"></small><span class="pg"></span></h5><div class="win1" id="v2hlwWin"></div><div class="v2wl" id="v2hlwList"><div class="inner"></div></div></div>'));
   stageEl.appendChild(el('<div class="v2closed" id="v2closed">締切ました</div>'));
   stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div></div></div>' +
-    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b>当たった方は</b><span>スマホの<em>受け取り QR</em>を</span><span>スタッフへ見せる</span></div></div><div class="rsub" id="v2resSub"></div></div></div>'));
+    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b>当たった方は</b><span>スマホの<em>受け取り QR</em>を</span><span>スタッフへ見せてください</span></div></div><div class="rnote" id="v2resNote">当選額は10の位を切り上げ リングチップでお渡し</div><div class="rsub" id="v2resSub"></div></div></div>'));
   // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
   stageEl.appendChild(el('<div class="v2down" id="v2down"><b>通信が切れています</b><span>自動でつなぎ直します</span></div>'));
   stageEl.appendChild(el('<div class="v2net" id="v2net">通信中…</div>'));
@@ -222,6 +222,7 @@
   // ---------- レース映像 ----------
   const raceView = new Race($('race'));
   raceView.timeScale = 1;
+  raceView.no800 = true; // 2026-10-20 オーナー「消して」: 残り 800m の縦の札（js/race3d.js）は店内モニターでは出さない
   const T = Engine.TYPES;
   let view = null;                 // いま映像に入っているレース（Race オブジェクト）
   let viewOdds = null;             // 出馬表・字幕のオッズ（受付中は表示用、締切後は確定）
@@ -274,7 +275,7 @@
      見出しも同じ列に「脚質」「近3走」「単勝オッズ」。顔・★・調子は出さない（遠くから読む文字を増やしすぎない） */
   function cardHead() {
     const h4 = stageEl.querySelector('.side .card h4'); if (!h4 || h4.dataset.v3) return;
-    h4.dataset.v3 = '1'; h4.innerHTML = '<span class="t">出馬表</span><span class="c">脚質</span><span class="c">近3走</span><span class="c o">単勝オッズ</span>';
+    h4.dataset.v3 = '1'; h4.innerHTML = '<span class="t">出馬表</span><span class="c">脚質</span><span class="c">調子</span><span class="c">近3走</span><span class="c o">単勝オッズ</span>'; // 2026-10-20 オーナー「馬の調子を出馬表にも」
   }
   function renderHorses() {
     const box = $('horses'); if (!view) return; box.innerHTML = ''; cardHead();
@@ -284,6 +285,8 @@
       d.innerHTML =
         '<div class="main"><div class="l1"><span class="no" style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</span><b>' + esc(h.name) + '</b></div></div>' +
         '<i class="v3ty" style="background:' + t.color + '">' + t.label + '</i>' +
+        /* 調子（2026-10-20）: パドックの字幕と同じ h.cond（js/engine.js の CONDS）。大きな印＋下に小さく言葉。色は 良い＝赤・普通＝茶・悪い＝青 */
+        (h.cond ? '<span class="v3cd c' + (h.cond.mul > 1 ? 'u' : h.cond.mul < 1 ? 'w' : 'n') + '" aria-label="調子 ' + esc(h.cond.mark + h.cond.label) + '"><b>' + esc(h.cond.mark) + '</b><small>' + esc(h.cond.label) + '</small></span>' : '<span class="v3cd"></span>') +
         '<span class="v3fm" aria-label="近3走 ' + fm.recent.join('・') + '着">' + fm.recent.map((p) => '<i class="p' + p + '">' + p + '</i>').join('') + '</span>' +
         '<span class="odds"><b class="' + (o ? Engine.oddsColor(o) : 'white') + '">' + oxH(o) + '</b></span>';
       box.appendChild(d);
@@ -291,8 +294,11 @@
     fitNames();
   }
   /* casa DERBY CHIPS（2026-10-17）: お客さんに見せる単位はチップ（1 枚 = 100 チップ）。例は「1,000 → ○○」。
-     払い戻しは「額」で見せる（2026-10-16 オーナー決定。1 枚 = 100・単位なし・3 桁ごとのカンマ）。オッズは 2026-10-19 から倍率（下の ox） */
+     払い戻しは「額」で見せる（2026-10-16 オーナー決定。1 枚 = 100・3 桁ごとのカンマ。2026-10-20 から単位「pt」）。オッズは 2026-10-19 から倍率（下の ox） */
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
+  /* 金額の単位「pt」（2026-10-20 オーナー決定。以前は単位なし）: 数字のすぐ後ろに小さく。当選額は 10 の位で切り上げた額（v2/outcome.js の roundPay と同じ） */
+  const ptH = (n) => amt(n) + '<small class="pt">pt</small>';
+  const roundPay = (v) => { const x = Math.round((Number(v) || 0) * 1000) / 1000; return x > 0 ? Math.ceil(x / 10) * 10 : 0; };
   /* オッズは倍率（2026-10-19 オーナー「オッズ表記は倍率にしよう」）: いつも小数 1 桁（1.1〜999.9）。ox＝数字だけ、oxH＝数字＋小さな「倍」。
      当選額（チップ × 倍率。結果の「例 1,000 → 2,400」・当たった人）は今までどおり額 */
   const FORM = window.DerbyForm || { odds: (o) => (Number(o) > 0 ? (Math.round(Number(o) * 10) / 10).toFixed(1) : '—'), formOf: (h) => ({ past: h.past || [], recent: (h.past || []).slice(0, 3) }) };
@@ -338,6 +344,7 @@
     TV.mode = m; TV.log.push([Math.round(now()), m]); if (TV.log.length > 50) TV.log.shift();
     if (Sfx.scene) Sfx.scene(m === 'live'); // 音はレースの場面だけ（上の説明）
     ['m-wait', 'm-hl', 'm-open', 'm-live', 'm-result'].forEach((c) => stageEl.classList.toggle(c, c === 'm-' + m));
+    if (m === 'wait' || m === 'open') setTimeout(() => { try { fitHow(); } catch (e) { } }, 700); // 参加方法の文字の大きさ（QR が動き終わってから測る）
   }
   // 時刻からいまの場面を決める（4 回/秒）。レースの再生（playRace）・ハイライトは自分で続きを進める
   function decide() {
@@ -439,7 +446,7 @@
     const inner = box.querySelector('.inner'), pg = box.parentNode.querySelector('.pg');
     clearInterval(pagers.get(box)); pagers.delete(box); pagerCtl.delete(box); box.classList.remove('scroll', 'dense', 'paged', 'big'); inner.style.transform = ''; if (pg) pg.textContent = '';
     if (!list.length) { inner.innerHTML = '<div class="none">当たった人は<br>いませんでした</div>'; return; }
-    const row = (w) => '<div class="row"><span class="st' + (w.storeId === STORE ? ' me' : '') + '">' + esc(w.storeName || storeName(w.storeId)) + '</span><span class="nk">' + esc(w.nick) + '</span><b>' + amt(w.amount) + '</b></div>'; // 当選額（単位なし）
+    const row = (w) => '<div class="row"><span class="st' + (w.storeId === STORE ? ' me' : '') + '">' + esc(w.storeName || storeName(w.storeId)) + '</span><span class="nk">' + esc(w.nick) + '</span><b>' + ptH(w.amount) + '</b></div>'; // 当選額（2026-10-20 から「pt」つき）
     inner.innerHTML = list.map(row).join('');
     const n = list.length, avail = box.clientHeight || 500;
     let rh = Math.min(o.max, Math.floor(avail / n));
@@ -659,7 +666,7 @@
       $('v2resOrd').querySelectorAll('.nm').forEach((e, k) => fitText(e, k ? 30 : 42, 20));
       const w = res.winner, h = R.horses[w], o = res.finalOdds[w];
       // 払戻: 単勝の倍率（2026-10-19。以前は 100あたりの額）と「例 1,000 → 4,000」（当選額。出てから 0.6 秒だけ 1.08 倍に弾む）
-      $('v2resPay').innerHTML = '<span class="k">配当<small>単勝</small></span><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span class="hn">' + esc(h.name) + '</span><span class="x"><small>例</small>1,000 → <b>' + amt(10 * Math.round(o * 10) * 10) + '</b></span><b class="o"><small>単勝</small>' + ox(o) + '<small class="bai">倍</small></b>';
+      $('v2resPay').innerHTML = '<span class="k">配当<small>単勝</small></span><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span class="hn">' + esc(h.name) + '</span><span class="x"><small>例</small><span class="n">1,000<small class="pt">pt</small></span> → <b>' + ptH(roundPay(10 * Math.round(o * 10) * 10)) + '</b></span><b class="o"><small>単勝</small>' + ox(o) + '<small class="bai">倍</small></b>';
       fitText($('v2resPay').querySelector('.hn'), 32, 18);
       const list = R.winners || [];
       $('v2resCnt').innerHTML = R.refunded ? '' : R.winners ? '全店で<b>' + list.length + '</b>人' : '集計中…';
@@ -771,15 +778,32 @@
   const rateNow = () => { const r = Number(ST().bountyPerTicket); return Number.isInteger(r) && r >= 1 && r <= 1000 ? r : 20; };
   const xShut = (r, t) => !!r && t >= xAt(r) && t < r.closeAt; // 参加受付は締め切った・投票はまだ
   let howOrig = null, xShown = null;
+  /* 参加方法の 3 行（2026-10-20）: いちばん長い行が枠に入る大きさに 3 行そろえる（48px から 30px まで。折り返さない・QR の下にもぐらない） */
+  function fitHow() {
+    const L = Array.from(document.querySelectorAll('#v2how ol li')); if (!L.length || !L[0].clientWidth) return;
+    // 枠の右側は QR の札が重なっている（QR が出ている間）→ 使える幅は QR の左端まで。画面は拡縮されているので、測った幅を 1600 の座標に直す
+    const k = (stageEl.getBoundingClientRect().width / 1600) || 1, q = $('v2qr'), qr = q && getComputedStyle(q).opacity !== '0' ? q.getBoundingClientRect() : null;
+    const room = (li) => { const r = li.getBoundingClientRect(); return Math.min(li.clientWidth, qr && qr.left > r.left ? (qr.left - r.left) / k - 20 : 1e9); };
+    const over = (li) => { const r = document.createRange(); r.selectNodeContents(li); const w = (r.getBoundingClientRect().right - li.getBoundingClientRect().left) / k; return w > room(li) + 1; };
+    let f = 48; L.forEach((li) => { li.style.fontSize = ''; });
+    L.forEach((li) => { li.style.fontSize = f + 'px'; while (f > 30 && (li.scrollWidth > li.clientWidth + 1 || over(li))) { f -= 1; li.style.fontSize = f + 'px'; } });
+    L.forEach((li) => { li.style.fontSize = f + 'px'; });
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHow).catch(() => {});
+  setTimeout(fitHow, 1500);
   function stageTexts(closed) { // 参加受付の締切のあと: QR の説明と遊び方を「投票はスマホで」に（QR は大きいまま）
     if (xShown === closed) return; xShown = closed;
     const how = $('v2how'), qt = $('v2qrTx'); if (!how || !qt) return;
     if (howOrig == null) howOrig = how.innerHTML;
-    const T3 = closed ? ['次のレースの案内', '参加受付は<br>締め切りました', '次のレースをお待ちください'] /* 2026-10-19: QR は次のレースの案内（新しく読んだ人のスマホには次のレースの時刻が出る） */ : ['スマホで参加', 'スマホのカメラで<br>読み取ってください', 'アプリは不要です'];
+    const T3 = closed ? ['次のレースの案内', '参加受付は<br>締め切りました', '次のレースをお待ちください'] /* 2026-10-19: QR は次のレースの案内（新しく読んだ人のスマホには次のレースの時刻が出る） */ : ['アプリ不要 スマホで参加', 'スマホのカメラで<br>読み取ってください', 'アプリは不要です'];
     ['b', 'span', 'em'].forEach((k, i) => { const e = qt.querySelector(k); if (e) e.innerHTML = T3[i]; }); // #v2qrUrl（確認用の URL）はそのまま
     // 2026-10-19: 見出しは「投票受付中」（上の札と同じ）。短い 3 行だけ（小さな補足は出さない）
     how.innerHTML = closed ? '<h4>参加済みの方は<br>スマホで投票</h4><ul><li>参加受付は締め切りました</li></ul>' : howOrig;
     $('v2qr').classList.toggle('xshut', closed); how.classList.toggle('xshut', closed);
+    /* 2026-10-20 オーナー「（投票の時間の）次のレースの案内はいらない」「ここを大きく表示して」: 投票の段だけ QR を出さず、残り時間と案内を横いっぱいに大きく（#stage.v2-xshut）。
+       参加受付の間・待ち受け・結果・ハイライトの QR はそのまま（この段は参加受付が締め切ったあとで、新しく読んでも次のレースの時刻が出るだけ） */
+    stageEl.classList.toggle('v2-xshut', closed);
+    if (!closed) fitHow();
   }
 
   // ---------- 時刻の表示（4 回/秒） ----------
@@ -792,26 +816,28 @@
     if (m === 'open') {
       R = S.open;
       if (R && !xShut(R, t) && t < xAt(R)) { // 参加受付: 大きく「参加受付 あと」、小さく「投票締切」
-        lbl = '参加受付 あと'; target = xAt(R); sub = '投票締切 ' + hhmm(R.closeAt) + (hhmm(R.closeAt) === hhmm(R.at) ? '' : '・' + hhmm(R.at) + ' 発走');
+        lbl = '参加受付締め切りまで あと'; target = xAt(R); sub = '投票締切 ' + hhmm(R.closeAt) + (hhmm(R.closeAt) === hhmm(R.at) ? '' : '・' + hhmm(R.at) + ' 発走');
         const xl = xAt(R) - t; stx = xl < 15000 ? 'まもなく参加受付の締切' : '参加受付中'; stc = xl < 15000 ? 'hot' : 'on';
       } else if (R) { // 投票: 参加受付は締切。大きく「投票 あと」
         lbl = '投票 あと'; target = R.closeAt; sub = ''; stx = '参加受付は締切'; stc = 'shut'; // 発走時刻は上の帯（同じ時刻を 2 回出さない）
       }
     }
-    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレースの発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { const can = S.open && R.id === S.open.id && t < xAt(R); if (can && m === 'wait') { lbl = '参加受付 あと'; target = xAt(R); sub = ''; } /* 2026-10-19: 次のレースが受付中なら、受付の画面と同じく「参加受付 あと」（上の札「次のレース 受付中」とそろえる。発走時刻は小さな行） */ stx = can || R.openAt <= t ? '参加受付中' : hhmm(R.openAt) + ' 受付開始'; stc = can || R.openAt <= t ? 'on' : ''; } } // 次のレースが受付中（スマホで参加できる）なら、そう出す（上の札とそろえる）
+    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレースの発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { const can = S.open && R.id === S.open.id && t < xAt(R); if (can && m === 'wait') { lbl = '参加受付締め切りまで あと'; target = xAt(R); sub = ''; } /* 2026-10-19: 次のレースが受付中なら、受付の画面と同じく「参加受付 あと」（上の札「次のレース 受付中」とそろえる。発走時刻は小さな行） */ stx = can || R.openAt <= t ? '参加受付中' : hhmm(R.openAt) + ' 受付開始'; stc = can || R.openAt <= t ? 'on' : ''; } } // 次のレースが受付中（スマホで参加できる）なら、そう出す（上の札とそろえる）
     else if (m === 'result') { R = S.open || nextRaceOf(); lbl = '次のレースまで'; target = R && R.at; }
-    const left = target ? target - t : 0, hot = !!target && left < (lbl === '参加受付 あと' ? 15000 : 30000) && m === 'open';
+    const left = target ? target - t : 0, hot = !!target && left < (lbl === '参加受付締め切りまで あと' ? 15000 : 30000) && m === 'open';
     stageTexts(m === 'open' && xShut(S.open, t));
     // 交換の割合「リングバウンティ X枚 → 100」（管理画面の設定。全店共通）。参加のしかたの枠の下（投票の段＝参加受付の締切のあとは枠ごと入れ替わるので出ない）
     { const xe = $('v2rateX'), x = rateNow(); if (xe && xe.textContent !== String(x)) xe.textContent = String(x); }
-    { const qb = $('v2qrTx').querySelector('b'), want = m === 'open' && xShut(S.open, t) ? '次のレースの案内' : m === 'result' || m === 'hl' ? '次のレースに スマホで参加' : 'スマホで参加'; if (qb && qb.textContent !== want) qb.textContent = want; }
+    { const qb = $('v2qrTx').querySelector('b'), want = m === 'open' && xShut(S.open, t) ? '次のレースの案内' : m === 'result' || m === 'hl' ? '次のレースに スマホで参加' : 'アプリ不要 スマホで参加'; if (qb && qb.textContent !== want) qb.textContent = want; }
     const ca = m === 'open' && S.open ? S.open.at : target; // 上の時計はいつも発走まで
     $('v2clockLbl').textContent = m === 'open' ? '発走まで' : '次の発走まで';
     $('v2clockNum').textContent = ca ? fmtLeft(ca - t) : '--:--';
     $('v2clock').classList.toggle('hot', m === 'open' && !!S.open && S.open.closeAt - t < 30000);
     const mh = runMode() === 'staff' && !TV.armed ? 'スタッフの「次へ」でレースを流します' : runMode() === 'bet' ? 'この店で投票があるとレースを流します' : '';
     if (mh && (m === 'wait' || m === 'open')) sub = sub ? sub + '\n' + mh : mh;
-    $('v2cdLbl').textContent = lbl; $('v2cdNum').textContent = target ? fmtLeft(left) : '—';
+    /* 2026-10-20 オーナー「参加受付 あと を、もっと大きく」: 「参加受付締め切り／まで あと」の 2 行にして文字を大きく（.cd.xlbl。読み上げの中身は同じ文） */
+    { const xl = lbl === '参加受付締め切りまで あと', lh = xl ? '参加受付締め切り<br>まで あと' : esc(lbl), le = $('v2cdLbl'); if (le.innerHTML !== lh) le.innerHTML = lh; $('v2cd').classList.toggle('xlbl', xl); }
+    $('v2cdNum').textContent = target ? fmtLeft(left) : '—';
     if ($('v2cdSub').textContent !== sub) { $('v2cdSub').textContent = sub; fitText($('v2cdSub'), 24, 15); }
     const se = $('v2cdSt'); if (se.textContent !== stx) se.textContent = stx; se.className = stc; se.hidden = !stx;
     // ハイライト中は上の時計が消えるので、下の帯に次のレースの発走までを出す
@@ -851,8 +877,8 @@
   }
   (function splash() {
     const sp = $('splash'); if (!sp) return;
-    const sub = sp.querySelector('.sub'); if (sub) sub.textContent = '全店同時レース　スマホで投票';
-    const go = sp.querySelector('.splash-go'); if (go) go.innerHTML = '<p class="tap">まもなく始まります</p><p class="keys">決定ボタン（OK）を押すと音が出ます</p>';
+    const sub = sp.querySelector('.sub'); if (sub) sub.textContent = '参加費無料 スマホでカンタン投票';
+    const go = sp.querySelector('.splash-go'); if (go) go.innerHTML = '<p class="tap">スタート</p><p class="keys">決定ボタン（OK）を押すと音が出ます</p>';
     let splashRun = null;
     try { if (window.Splash3D && window.Race && window.Race.Race3D && !/[?&]r2d=1/.test(QS)) { splashRun = Splash3D.start($('splashRun'), Engine.makeRace().horses, { quality: (window.R3D && R3D.quality) || 'high' }); if (splashRun) $('splashRun').classList.add('is3d'); } } catch (e) { splashRun = null; }
     const bye = () => { if (!sp.parentNode) return; sp.id = ''; sp.classList.add('bye'); setTimeout(() => { sp.remove(); if (splashRun) { try { splashRun.stop(); } catch (e) { } } }, 520); if (!audioOn && !MUTE && !Sfx.isMuted()) $('v2snd').classList.add('show'); };
