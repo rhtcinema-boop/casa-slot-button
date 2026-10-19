@@ -10,13 +10,20 @@
    - 変更の通知は v2/tvswitch.js の DerbyTvSwitch.watch（数秒）。通知が使えないときは 30 秒ごとに読む。Web デモでは何もしない。
    - テレビの画質（2026-10-19）: 同じシートに「なめらか優先・標準・きれい優先」（店舗の設定 settings.tvQuality = 'auto' | '' | 'max'）。
      今の値は staff.js のいつもの状態（STAFF.st.settings.tvQuality）で見る（読み取りなし）。書くのは DerbyCloud の tvQuality(pin, q)（ルールは自分の店の tvQuality だけ）。
-     テレビは 1 分ほどで読み込み直して反映（レース中は終わってから。v2/tvswitch.js） */
+     テレビは 1 分ほどで読み込み直して反映（レース中は終わってから。v2/tvswitch.js）
+   - 2026-10-19 その 2（オーナー「スタッフ画面でスロットと競馬を切り替えれるようにしたい」）:
+     左上に「スロット ｜ 競馬」のタブ（casa SLOT の js/phoneswitch.js と同じ見た目。今いる方＝競馬が銀）。「スロット」で casa SLOT の紙幣のページへ（自動で戻るときと同じ行き先）。
+     casa SLOT の下に置いた公開版だけ（DERBY_SLOT_BILL があるとき）。認証・受け取りの確認の画面や、番号を手で入れている途中なら、画面の中の確認の窓を出してから。
+     手で移ったら localStorage 'casa.phoneSwitchManual' = { store, game: 移ったときの店のゲーム, to, at }。店のゲームがそれと同じあいだは自動で入れ替えない
+     （紙幣のページと同じ決まり）。店のゲームが変わったら記録を消して今までどおり。手で移った分は行ったり来たりの回数に数えない。
+   - 2026-10-19 その 2（オーナー「すぐテストレースを走らせるみたいなボタン」）: シートに「テストレースを今すぐ走らせる」。
+     「次へ」の「この店だけテストレース」と同じもの（staff.js の window.STAFF.test。1 分後＝参加受付 30 秒 → 投票 30 秒。押せないときは同じ理由） */
 (function () {
   'use strict';
   const T = window.DerbyTvSwitch, S = () => window.STAFF;
   if (!T || !window.STAFF || (window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo)) return;
   const MAP = [[/渋谷/, 'shibuya'], [/上野/, 'ueno'], [/札幌/, 'sapporo']]; // js/tvswitch.js（casa SLOT）と同じ
-  const BILL_KEY = 'casa-slot-bill.v1', AUTO_KEY = 'casa.phoneSwitch', LOG_KEY = 'casa.phoneSwitchLog';
+  const BILL_KEY = 'casa-slot-bill.v1', AUTO_KEY = 'casa.phoneSwitch', LOG_KEY = 'casa.phoneSwitchLog', MAN_KEY = 'casa.phoneSwitchManual';
   const QUIET_MS = 6000, RETRY_MS = 2000, POLL_MS = 30000, LOOP_N = 6, LOOP_MS = 10 * 60000;
   const NAMES = { slot: 'casa SLOT', derby: 'casa DERBY' };
   const QS3 = [['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ。細かさはそのまま'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
@@ -60,11 +67,75 @@
   document.head.appendChild(css);
   const btn = document.createElement('button');
   btn.id = 'tvgBtn'; btn.type = 'button'; btn.hidden = true;
-  btn.addEventListener('click', () => { state.open = true; state.msg = ''; state.qmsg = ''; paint(); });
+  btn.addEventListener('click', () => { state.open = true; state.msg = ''; state.qmsg = ''; paint(); if (S().test) S().test.watch(true); });
   (document.querySelector('header.top') || document.body).appendChild(btn); // 上の帯の、店舗の行の下（ロゴと重ならない）
+
+  /* ---------- 手で移った記録（2026-10-19 その 2。casa SLOT の js/phoneswitch.js と同じ決まり・同じ場所） ---------- */
+  function manualGet() { try { const j = JSON.parse(lsGet(MAN_KEY)); return j && j.store ? j : null; } catch (e) { return null; } }
+  function manualHold(id, game) { // true ＝手で移ったあと、店のゲームがまだ同じ（自動で入れ替えない）
+    const m = manualGet(); if (!m) return false;
+    if (m.store !== id) { lsSet(MAN_KEY, null); return false; } // ほかの店の記録は消す
+    if (!game) return true;
+    if (m.game == null) { m.game = game; lsSet(MAN_KEY, JSON.stringify(m)); return true; } // 移ったときに店のゲームがまだ分からなかった → 最初に分かった値を「そのときのゲーム」に
+    if (m.game === game) return true;
+    lsSet(MAN_KEY, null); return false; // 店のゲームが変わった → 今までどおり自動で
+  }
+
+  /* ---------- 「スロット ｜ 競馬」のタブ（2026-10-19 その 2。見た目は js/phoneswitch.js と同じ） ---------- */
+  const gcss = document.createElement('style');
+  gcss.textContent = '#gameTabs{position:fixed;top:calc(var(--sat,0px) + 5px);left:10px;z-index:45;display:flex;gap:2px;padding:2px;border-radius:12px;border:1px solid #3a3a42;background:#101012;font:700 13px/1 -apple-system,"Hiragino Sans",sans-serif}' +
+    '#gameTabs[hidden]{display:none}#gameTabs button{height:34px;min-width:46px;padding:0 8px;border:0;border-radius:9px;background:transparent;color:#cfd6cc;font:inherit;letter-spacing:.02em;white-space:nowrap}' +
+    '#gameTabs button.cur{background:#d9dce3;color:#1a1d24}@media (max-width:389px){#gameTabs{font-size:12px}#gameTabs button{padding:0 7px;min-width:42px}}' +
+    '#gtAsk{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:24px}' +
+    '#gtAsk .card{width:100%;max-width:360px;box-sizing:border-box;background:#15120a;border:1px solid #c9a03e;border-radius:16px;padding:18px;color:#e8e3d2;font-family:-apple-system,"Hiragino Sans",sans-serif}' +
+    '#gtAsk h3{margin:0 0 8px;font-size:17px;color:#ffd773}#gtAsk p{margin:0 0 16px;font-size:15px;line-height:1.6;color:#cfd6cc}#gtAsk .row{display:flex;gap:10px}' +
+    '#gtAsk button{flex:1;min-height:50px;border-radius:12px;font:inherit;font-size:16px}#gtAsk [data-gt="no"]{border:1px solid #3a3a42;background:#1a1a1a;color:#cfd6cc}' +
+    '#gtAsk [data-gt="yes"]{border:1px solid #a57c26;background:linear-gradient(#f3d27a,#c99a3a);color:#1a1205;font-weight:800}' +
+    '#tvgSheet .tr{margin-top:12px;padding-top:12px;border-top:1px solid #1d2a1f}#tvgSheet .tr h4{margin:0;font-size:15px;color:#9fe07a}#tvgSheet .tr h4 small{font-weight:400;font-size:12px;color:#9aa89c;margin-left:6px}' +
+    '#tvgSheet .tr .warn{color:#ffb347;font-size:13px}#tvgSheet .go{display:block;width:100%;margin-top:10px;padding:13px 14px;border-radius:12px;border:1px solid #a57c26;background:linear-gradient(#f3d27a,#c99a3a);color:#1a1205;font:inherit;font-weight:800;font-size:15px}#tvgSheet .go:disabled{opacity:.45}';
+  document.head.appendChild(gcss);
+  const tabs = document.createElement('div');
+  tabs.id = 'gameTabs'; tabs.hidden = true; tabs.setAttribute('role', 'tablist');
+  tabs.innerHTML = '<button type="button" role="tab" data-gt="slot" aria-selected="false">スロット</button><button type="button" role="tab" data-gt="derby" class="cur" aria-selected="true">競馬</button>';
+  ($('app') || document.body).appendChild(tabs);
+  function ask(title, text) { // 画面の中の確認の窓（ブラウザの確認は写真に写らない・見た目をそろえる）
+    return new Promise((res) => {
+      const old = $('gtAsk'); if (old) old.remove();
+      const w = document.createElement('div'); w.id = 'gtAsk';
+      w.innerHTML = '<div class="card" role="dialog" aria-modal="true"><h3>' + esc(title) + '</h3><p>' + text + '</p><div class="row"><button type="button" data-gt="no">やめる</button><button type="button" data-gt="yes">移る</button></div></div>';
+      w.addEventListener('click', (e) => { const b = e.target.closest('[data-gt]'); if (!b && e.target !== w) return; w.remove(); res(!!b && b.dataset.gt === 'yes'); });
+      document.body.appendChild(w);
+    });
+  }
+  function midFlow() { // 認証・受け取りの確認の画面か、番号を手で入れている途中
+    if (S().sheetOpen) return true;
+    const m = $('mcode'), lg = $('login');
+    return !!(m && m.value.trim() && lg && !lg.classList.contains('hidden'));
+  }
+  tabs.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-gt]'); if (!b || b.dataset.gt !== 'slot') return; // 今いる方（競馬）は何もしない
+    const id = storeId(); if (!home() || !id || state.leaving) return;
+    if (midFlow() && !(await ask('手続きの途中です', '認証・受け取りの手続きはここで止まります。<br>スロット（casa SLOT の紙幣のページ）へ移りますか？'))) return;
+    if (state.leaving) return;
+    lsSet(MAN_KEY, JSON.stringify({ store: id, game: state.game || null, to: 'slot', at: Date.now() })); // 手で移った（行ったり来たりの回数には数えない）
+    state.leaving = true; state.open = false; paint();
+    location.href = home();
+  });
+  function placeTabs() { // ロゴ（上の帯）がタブと重ならないように、重なる分だけ右へ
+    const on = !!home() && !!storeId();
+    tabs.hidden = !on;
+    const cr = document.querySelector('header.top .crest'); if (!cr) return;
+    cr.style.position = 'relative'; cr.style.left = '0px';
+    if (!on) return;
+    const t = tabs.getBoundingClientRect(), c = (cr.querySelector('img') || cr).getBoundingClientRect();
+    const need = Math.ceil(t.right + 10 - c.left);
+    if (need > 0 && c.top < t.bottom) cr.style.left = need + 'px';
+  }
+  window.addEventListener('resize', placeTabs);
 
   const loggedIn = () => { const s = S().saved; return !!(s && s.store && s.pin && S().C); };
   function paintBtn() {
+    placeTabs();
     const on = loggedIn() && $('login').classList.contains('hidden');
     btn.hidden = !on;
     if (!on) return;
@@ -80,10 +151,21 @@
       '<p>押すと、この店のテレビ（Fire TV）が数秒で切り替わります（ゲーム中・レース中は終わってから）。管理画面・casa SLOT のマスター画面と同じ設定です。</p>' +
       '<div class="two">' + b('slot') + b('derby') + '</div>' +
       (state.msg ? '<div class="' + (/^OK /.test(state.msg) ? 'okm' : 'err') + '" id="tvgMsg">' + esc(state.msg.replace(/^OK /, '')) + '</div>' : '') +
+      trHtml() + // テストレース（2026-10-19 その 2）
       qHtml() +
       (home() ? '<div class="auto"><span>このスマホの画面も自動で入れ替える<br><small style="color:#9aa89c">casa SLOT のときは casa SLOT の紙幣のページに（紙幣のページにもログインしてあるスマホだけ）</small></span><button type="button" data-tvg="auto">' + (auto() ? 'する' : 'しない') + '</button></div>' : '') +
       '<button type="button" class="close" data-tvg="close">閉じる</button></div>';
   }
+  function trHtml() { // この店だけテストレース（staff.js の STAFF.test。「次へ」の同じボタンと同じ状態）
+    const X = S().test; if (!X) return '';
+    const [t, off] = X.why();
+    return '<div class="tr" id="trBox"><h4>テストレース<small>この店のテレビだけ・集計に入りません</small></h4>' +
+      '<p class="now" id="trNow">' + esc(t || '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）') + '</p>' +
+      (state.game === 'slot' ? '<p class="warn">いまテレビは casa SLOT です。テレビで見るには、先に上で casa DERBY にしてください。</p>' : '') +
+      '<button type="button" class="go" data-tvg="test"' + (off || X.busy || state.busy ? ' disabled' : '') + '>テストレースを今すぐ走らせる</button></div>';
+  }
+  function paintTest() { const b = $('trBox'); if (b && state.open) { const h = trHtml(); if (b.outerHTML !== h) b.outerHTML = h; } }
+  if (S().test) S().test.onChange(paintTest);
   function qHtml() { // テレビの画質（2026-10-19）
     const q = qNow(); state.qPainted = q;
     return '<div class="tq" id="tvqBox"><h4>テレビの画質<small>casa DERBY を映しているとき</small></h4>' +
@@ -94,7 +176,7 @@
   function paint() {
     paintBtn();
     let sh = $('tvgSheet');
-    if (!state.open || !loggedIn()) { if (sh) sh.remove(); state.open = false; return; }
+    if (!state.open || !loggedIn()) { if (sh) sh.remove(); if (state.open || sh) { if (S().test) S().test.watch(false); } state.open = false; return; }
     if (!sh) { sh = document.createElement('div'); sh.id = 'tvgSheet'; sh.addEventListener('click', onClick); document.body.appendChild(sh); }
     sh.innerHTML = sheetHtml();
   }
@@ -116,6 +198,7 @@
     const a = t.dataset.tvg;
     if (a === 'close') { if (!state.busy) { state.open = false; paint(); } return; }
     if (a === 'auto') { lsSet(AUTO_KEY, auto() ? 'off' : null); paint(); kick(); return; }
+    if (a === 'test') { if (!state.busy && S().test) S().test.press(); return; }
     if (state.busy || (a !== 'slot' && a !== 'derby') || !loggedIn()) return;
     const s = S().saved;
     if (!window.confirm(s.name + ' のテレビを ' + NAMES[a] + ' にします。数秒で切り替わります（ゲーム中・レース中は終わってから）。')) return;
@@ -150,11 +233,12 @@
     state.id = id; state.waiting = false;
     if (!home() || !id || state.leaving || state.game !== 'slot') { state.why = !home() ? 'not under slot' : state.game !== 'slot' ? 'derby' : ''; return; }
     if (!billFits(id)) { state.why = 'no bill login'; return; }
+    if (manualHold(id, state.game)) { state.why = 'manual'; return; } // 手で移ったあと、店のゲームが変わるまで（2026-10-19 その 2）
     if (!auto()) { state.why = 'auto off'; return; }
     if (looping()) { state.why = 'loop'; return kick(60000); }
     if (busyNow() || Date.now() - lastTouch < QUIET_MS) { state.waiting = true; state.why = 'busy'; return kick(RETRY_MS); }
     if (!(await slotReady())) { state.why = 'no slot bill'; return kick(POLL_MS); }
-    if (state.game !== 'slot' || busyNow()) return kick(RETRY_MS);
+    if (state.game !== 'slot' || busyNow() || manualHold(id, state.game)) return kick(RETRY_MS);
     state.leaving = true; state.why = 'go'; mark();
     location.href = home();
   }
@@ -163,11 +247,14 @@
     lastDoc = doc;
     const id = storeId(); state.id = id; if (!id) return paintBtn();
     state.game = T.gameOf(doc, id); state.at = Date.now();
+    manualHold(id, state.game); // 店のゲームが手で移ったときと変わっていたら、ここで記録を消す（どちらのゲームに変わっても）
     paint(); kick();
   }
   T.watch(onDoc);
   setInterval(async () => { if (T.live.on || !storeId()) return; const d = await T.readDoc(); if (d) onDoc(d); }, POLL_MS);
   setTimeout(async () => { if (!T.live.on && storeId()) { const d = await T.readDoc(); if (d) onDoc(d); } }, 3000);
   setInterval(() => { if (lastDoc && storeId() !== state.id) onDoc(lastDoc); else paintBtn(); if (state.open && !state.busy && qNow() !== state.qPainted) paint(); }, 2000); // 画質がほかの画面で変わったらシートも塗り直す
-  window.StaffSwitch = { state, open() { state.open = true; paint(); }, maybeGo, qNow };
+  setInterval(() => { if (state.open) paintTest(); }, 1000); // 発走までの残り
+  placeTabs();
+  window.StaffSwitch = { state, manualHold, placeTabs, open() { state.open = true; paint(); }, maybeGo, qNow };
 })();
