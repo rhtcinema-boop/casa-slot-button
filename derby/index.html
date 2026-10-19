@@ -173,13 +173,13 @@ window.addEventListener('error', function (e) {
 <!-- 3D のレース映像（three.js r149）。読めないとき・WebGL が無いときは 2D の Race のまま -->
 <script src="js/vendor/three.min.js"></script><!-- three r149（2026-10-19: CDN から同梱へ。ネットなしでも 3D が出る） -->
 <script src="js/r3d/course.js?v=k3d"></script>
-<script src="js/r3d/look3d.js?v=k3e"></script>
+<script src="js/r3d/look3d.js?v=k3f"></script>
 <script src="js/r3d/horse3d.js?v=k3n"></script>
 <!-- 本物寄りの馬（R3D.HorseReal）: 管理画面で「本物寄り」にしたときだけ js/race3d.js があとから読む（Fire TV のメモリの節約）。?horse=real なら最初から読む（確認用） -->
 <script>window.R3D_LAZY = { HorseReal: 'js/r3d/horse3d-real.js?v=r8' }; if (/[?&]horse=real\b/.test(location.search)) document.write('<script src="' + window.R3D_LAZY.HorseReal + '"><\/script>');</script>
 <script src="js/r3d/venue3d.js?v=k3g"></script>
 <script src="js/r3d/director3d.js?v=k3n"></script>
-<script src="js/race3d.js?v=k3s"></script>
+<script src="js/race3d.js?v=k3t"></script>
 <script src="js/bonus.js?v=k3"></script>
 <script src="js/voice.js?v=k4"></script>
 <script src="js/commentary.js?v=k6"></script>
