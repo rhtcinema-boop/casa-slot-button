@@ -80,7 +80,7 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount'];
+    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider'];
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
@@ -88,6 +88,10 @@
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
       createTicket: call('createTicket'), getTicket: call('getTicket'), cancelTicket: call('cancelTicket'), vote: call('vote'),
       staffLogin: call('staffLogin'), staffTicket: call('staffTicket'), auth: call('auth'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'),
+      testRace: call('testRace'), testRaceStatus: call('testRaceStatus'), // この店だけテストレース（2026-10-19）
+      // 進行役のテレビ（2026-10-19）: cb({ on, code, asking, decider, account })。返り値で止める
+      onPair(cb) { let un = null, closed = false; getImpl().then((i) => { if (!closed && i.pair) un = i.pair.on(cb); }).catch(() => {}); return () => { closed = true; if (un) un(); }; },
+      get pairState() { return impl && impl.pair ? impl.pair.state : null; },
       admin(password) { const m = {}; ADMIN.forEach((k) => { m[k] = async (...a) => { const i = await getImpl(); const ad = adm[password] || (adm[password] = i.admin(password)); return ad[k](...a); }; }); return m; },
       subscribe(handlers, o) { let un = null, closed = false; getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); }); return () => { closed = true; if (un) un(); }; },
       get decider() { return impl ? impl.decider : null; },
@@ -104,6 +108,24 @@
     const base = (opt.base || '').replace(/\/$/, '');
     const store = opt.store || null, role = opt.role || 'tv';
     const tv = role === 'tv' && opt.tvKey ? String(opt.tvKey) : null; // テレビの合言葉（発表前の結果・seed を受け取るため。無いとスマホと同じ中身）
+    /* 進行役のテレビ（2026-10-19。Firestore 版の derbyTvs と同じ動き）: テレビはこの端末の id（tvid。localStorage に覚える）で名乗る（起動時と 5 分ごと）。
+       管理画面の「進行役にする」で選ばれると、合言葉と同じく発表前の結果が届く。「数字を出して」「選ばれた」は見張り（SSE）の 'pair' で届く */
+    const pairOn = role === 'tv' && !!store && HAS_DOC && opt.pair !== false;
+    const pairSt = { on: pairOn, code: null, asking: false, decider: false, account: false }, pairCbs = [];
+    let tvid = null, askT = 0;
+    if (pairOn) {
+      const rnd = (n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return s; };
+      try { tvid = localStorage.getItem('casa.derby.tvid'); if (!/^[A-Za-z0-9_-]{16,40}$/.test(tvid || '')) { tvid = rnd(20); localStorage.setItem('casa.derby.tvid', tvid); } } catch (e) { tvid = tvid || rnd(20); }
+      pairSt.code = String(Math.floor(Math.random() * 10000)).padStart(4, '0'); // 起動のたびに作り直す
+    }
+    const pairEmit = () => pairCbs.slice().forEach((cb) => { try { cb(Object.assign({}, pairSt)); } catch (e) { /* noop */ } });
+    function pairSet(p) {
+      if (!p || typeof p !== 'object') return;
+      const asking = !!p.asking && !p.decider, dec = !!p.decider;
+      clearTimeout(askT); if (asking && p.askLeft > 0) askT = setTimeout(() => { pairSt.asking = false; pairEmit(); }, p.askLeft + 200);
+      if (asking === pairSt.asking && dec === pairSt.decider) return;
+      pairSt.asking = asking; pairSt.decider = dec; pairEmit();
+    }
 
     async function request(method, p, body, headers) {
       const init = { method, headers: Object.assign({}, headers || {}), cache: 'no-store' };
@@ -134,8 +156,8 @@
       store, role, serverNow, syncClock,
       get offset() { return offset; }, get synced() { return synced; },
       stores: () => get('/api/stores'),
-      state: (s) => get('/api/state?' + qs({ store: s || store, role, tv })),
-      race: (id) => get('/api/race?' + qs({ id, role, store, tv })),
+      state: (s) => get('/api/state?' + qs({ store: s || store, role, tv, tvid })),
+      race: (id) => get('/api/race?' + qs({ id, role, store, tv, tvid })),
       // スマホ
       createTicket: (o) => post('/api/ticket', Object.assign({ store }, o)),
       getTicket: (tid, key) => get('/api/ticket?' + qs({ tid, key })),
@@ -151,6 +173,10 @@
       claim: (pin, code) => post('/api/payout/claim', { store, pin, code }),
       next: (pin) => post('/api/next', { store, pin }),
       tvGame: (pin, game) => post('/api/staff/tvgame', { store, pin, game }), // テレビのゲーム（2026-10-19。その店のスタッフ）
+      testRace: (pin, startIn) => post('/api/staff/testrace', { store, pin, startIn }), // この店だけテストレース（2026-10-19）
+      testRaceStatus: (pin) => post('/api/staff/testrace/status', { store, pin }),
+      onPair(cb) { if (typeof cb !== 'function') return () => {}; pairCbs.push(cb); try { cb(Object.assign({}, pairSt)); } catch (e) { /* noop */ } return () => { const i = pairCbs.indexOf(cb); if (i >= 0) pairCbs.splice(i, 1); }; },
+      get pairState() { return Object.assign({}, pairSt); },
       logs: (pin, o) => post('/api/staff/logs', Object.assign({ store, pin }, o || {})),
       // 管理
       admin(password) {
@@ -173,6 +199,9 @@
           setPassword: (pw) => post('/api/admin/password', { password: pw }, h),
           tvKey: (o) => post('/api/admin/tvkey', o || {}, h), // テレビの合言葉を作り直す（{ storeId?, key?, clear? }）
           createTvAccount: async () => { const e = new Error('模擬クラウドではテレビ用アカウントは使いません'); e.status = 400; e.code = 'mock'; throw e; }, /* Firestore 版だけ（管理画面もボタンを出さない） */
+          tvs: () => request('GET', '/api/admin/tvs', undefined, h), // 進行役のテレビ（2026-10-19）
+          tvAsk: (id, on) => post('/api/admin/tvask', { id, on: !!on }, h),
+          setDecider: (id) => post('/api/admin/decider', { id: id || null }, h),
         };
       },
       /* リアルタイム: handlers = { state, race, ticket, payout, next, reload, hello, open, error }。o = { tid, key }（スマホの自分の券）
@@ -180,13 +209,14 @@
       subscribe(handlers, o) {
         handlers = handlers || {}; o = o || {};
         if (typeof EventSource === 'undefined') throw new Error('EventSource がありません');
-        const url = base + '/api/stream?' + qs({ store, role, tv, tid: o.tid, key: o.key });
+        const url = base + '/api/stream?' + qs({ store, role, tv, tvid, tid: o.tid, key: o.key });
         let es = null, closed = false, retry = null;
         const on = (name) => (ev) => { let d = null; try { d = JSON.parse(ev.data); } catch (e) { return; } if (handlers[name]) handlers[name](d); };
         function connect() {
           if (closed) return;
           es = new EventSource(url);
           ['hello', 'state', 'race', 'ticket', 'payout', 'next', 'reload'].forEach((n) => es.addEventListener(n, on(n)));
+          es.addEventListener('pair', (ev) => { let d = null; try { d = JSON.parse(ev.data); } catch (e) { return; } pairSet(d); if (handlers.pair) handlers.pair(d); }); // 進行役のテレビ（2026-10-19）
           es.onopen = () => { syncClock(3).catch(() => {}); if (handlers.open) handlers.open(); };
           es.onerror = (e) => {
             if (handlers.error) handlers.error(e);
@@ -197,6 +227,10 @@
         return function () { closed = true; clearTimeout(retry); if (es) es.close(); };
       },
     };
+    if (pairOn) { // 名乗る（起動時と 5 分ごと）
+      const hello = () => post('/api/tv/hello', { tvid, store, code: pairSt.code, kind: /casaTV/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '') ? 'casatv' : 'browser' }).then(pairSet, () => {});
+      hello(); setInterval(hello, 5 * 60000);
+    }
     return api;
   }
 
