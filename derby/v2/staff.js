@@ -22,6 +22,8 @@
   /* 交換の割合（2026-10-17）: リングバウンティ ○枚 ＝ 投票券 1 枚（state.settings.bountyPerTicket。なければ 20）。認証した券・返却・返還は券に残した割合のリングバウンティ */
   const rateNow = () => { const r = st && st.settings && Number(st.settings.bountyPerTicket); return Number.isInteger(r) && r >= 1 ? r : 20; };
   const rb = (n) => 'リングバウンティ ' + amt(n) + '枚';
+  // 交換の割合の 1 行（2026-10-19 オーナー「Bounty X 枚で 100 と交換。説明のどこかに明記」。テレビの参加受付・お客さんの参加画面と同じ言葉）
+  const rateLine = () => '交換 ' + esc(rb(rateNow())) + ' → 100';
   /* casa DERBY CHIPS（2026-10-17 オーナー「リングバウンティ20枚で casa DERBY 100チップ入る感じ」）: お客さんの投票券は「チップ」で見せる（中の 1 枚 = 100 チップ・数字だけ）。リングバウンティは本物の札なので「枚」 */
   const chips = (n) => amt((Number(n) || 0) * 100);
   // 記録 1 行のリングバウンティ（core.js の logBounty と同じ。以前の記録: 認証は枚数＝1 対 1、返却・返還は額 ÷ 100）
@@ -52,10 +54,10 @@
   function xBannerHtml() {
     const x = xState(), nx = st && st.next;
     if (!x.open) return '<div class="xstage none"><b>受付中のレースがありません</b><small>' + (nx ? '次のレース ' + hhmm(nx.at) + ' 発走' : '次のレースを待っています') + '</small></div>';
-    if (!x.closed) return '<div class="xstage ' + (x.left < 15000 ? 'hot' : 'on') + '"><span>参加受付 あと</span><b>' + mmss(x.left) + '</b><small>' + hhmm(x.open.at) + ' 発走のレース・投票締切 ' + hhmm(x.open.closeAt) + '</small></div>';
+    if (!x.closed) return '<div class="xstage ' + (x.left < 15000 ? 'hot' : 'on') + '"><span>参加受付 あと</span><b>' + mmss(x.left) + '</b><small>' + hhmm(x.open.at) + ' 発走のレース・投票締切 ' + hhmm(x.open.closeAt) + '</small><small class="xr">' + rateLine() + '</small></div>';
     return '<div class="xstage shut"><b>参加受付は締め切りました</b><small>リングバウンティは受け取らないでください。次のレース' + (nx ? '（' + hhmm(nx.at) + ' 発走）' : '') + 'の受付は ' + mmss(x.voteLeft) + ' 後から</small></div>';
   }
-  function drawXBanner() { const e = $('xstage'); if (!e) return; const h = xBannerHtml(); if (e.innerHTML !== h) e.innerHTML = h; e.hidden = !(mode === 'auth' || mode === 'next'); }
+  function drawXBanner() { { const g = $('guide'), sm = g && mode === 'auth' && g.querySelector('small'); if (sm && sm.textContent !== rateLine()) sm.textContent = rateLine(); } /* 割合が変わったら認証の案内も直す */ const e = $('xstage'); if (!e) return; const h = xBannerHtml(); if (e.innerHTML !== h) e.innerHTML = h; e.hidden = !(mode === 'auth' || mode === 'next'); }
 
   /* ================= ログイン（店舗と PIN を 1 回だけ） ================= */
   const LOGO_H1 = '<h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="120" height="39" alt="casa DERBY" draggable="false"><span>スタッフ</span></h1>'; /* 新しいロゴ（art/logo-3d/B/。2026-10-14） */
@@ -111,7 +113,7 @@
     hideViews();
     if (m === 'auth' || m === 'pay') {
       $('scanView').classList.remove('hidden');
-      $('guide').innerHTML = m === 'auth' ? 'お客さんの<b>認証 QR</b> を枠に入れてください<small>' + esc(rb(rateNow())) + ' ＝ 100チップ</small>' : 'お客さんの<b>当たり・返却の QR</b> を枠に入れてください<small>渡す当選額（返すリングバウンティ）が出ます</small>';
+      $('guide').innerHTML = m === 'auth' ? 'お客さんの<b>認証 QR</b> を枠に入れてください<small>' + rateLine() + '</small>' : 'お客さんの<b>当たり・返却の QR</b> を枠に入れてください<small>渡す当選額（返すリングバウンティ）が出ます</small>';
       startCam();
     } else { stopCam(); }
     if (m === 'next') { $('nextView').classList.remove('hidden'); drawNext(true); }
