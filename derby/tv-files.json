@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 21551,
-   "sha256": "7665908d3b782f2812337aac2e5ffcae9a36d33001d4b9b6ab8972d187079c46"
+   "sha256": "ffd77fb39f7db7f915b85d5113a30ba5c7fcbc6b448cb15f5f118ead5d4e9d41"
   },
   {
    "path": "js/audio.js",
@@ -263,8 +263,8 @@
   },
   {
    "path": "js/race3d.js",
-   "size": 178030,
-   "sha256": "fabb3db944dc5b6ec38299208be081f7f88a65f6685b843a48460ca50fa815e1"
+   "size": 178422,
+   "sha256": "a10ab90f121795b962add7336010d5c6f880064e2ce60a336493c981e94e5ce6"
   },
   {
    "path": "js/splash3d.js",
@@ -333,8 +333,8 @@
   },
   {
    "path": "v2/tvswitch.js",
-   "size": 16093,
-   "sha256": "b570d26975462400cb63fee153891368e357bf2002fbd4633cfacaa498963aa8"
+   "size": 17945,
+   "sha256": "2f295813fcf24595627283c4b4ac197bdebf42fb652b6e17ff50ca20f41cc7ce"
   }
  ]
 }
