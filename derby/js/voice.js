@@ -40,6 +40,7 @@ window.Voice = (function () {
   function say(text, opt) {
     if (!enabled || !text) return;
     if (window.Sfx && Sfx.isMuted && Sfx.isMuted()) return;
+    if (window.Sfx && Sfx.sceneOn && !Sfx.sceneOn()) return; // 2026-10-19「レース中以外は音を出さない」（テレビがレースの場面のときだけ）
     opt = opt || {};
     const hot = /！|!/.test(text) || !!opt.urgent;
     const busy = speaking || speechSynthesis.speaking || speechSynthesis.pending;
