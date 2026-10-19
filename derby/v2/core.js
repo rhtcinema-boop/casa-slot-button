@@ -276,7 +276,7 @@
       scenes: Object.assign({}, T.scenes, s.scenes || {}), sceneSec: Object.assign({ gate: T.gateSec, replay: T.postSec }, s.sceneSec || {}),
       modes: Array.isArray(s.modes) ? s.modes : [], modeDefault: s.modeDefault || 'auto', mode: modeNow(s, t), test: !!s.test, dayStartHour: T.dayStartHour,
       horseLook: T.horseLook || 'cute', horseLookPrev: T.horseLookPrev || 'cute', horseLookAt: Number(T.horseLookAt) || 0, horseLookFrom: (Number(T.horseLookAt) || 0) ? Number(T.horseLookAt) + HORSE_LOOK_GRACE_MS : 0,
-      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, bountyPerTicket: bountyRate(T) }; /* スマホの「オッズは締切で確定します」の表示用（当たりの幅・設定額は出さない） */
+      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, bountyPerTicket: bountyRate(T), tvQuality: tvQualityOf(s) }; /* tvQuality: テレビの画質（2026-10-19。下の tvQualityOf）。スマホの「オッズは締切で確定します」の表示用（当たりの幅・設定額は出さない） */
   }
 
   /* ---------- レースを作る ---------- */
@@ -499,6 +499,11 @@
   const TV_GAMES = ['slot', 'derby'];
   const tvGameOf = (settings) => (settings && settings.tvGame === 'derby' ? 'derby' : 'slot');
   function tvSwitchDoc(stores) { const o = {}; (stores || []).forEach((s) => { if (s && s.id) o[s.id] = tvGameOf(s.settings); }); return o; }
+  /* テレビの画質（2026-10-19）: 店の設定 settings.tvQuality。'' ＝標準（空・'sharp' も標準）・'auto' ＝なめらか優先（重いと自動で細かさを下げる）・'max' ＝きれい優先。
+     いつもの状態（stateFor の settings.tvQuality）に入れて配る: テレビ（v2/tvswitch.js）とスタッフのスマホ（v2/staffswitch.js）は、これで今の値を知る（読み取りは増えない）。
+     スタッフが書ける値もこの 3 つだけ（v2/firestore.rules の tvQualityOnly） */
+  const TV_QUALITIES = ['auto', '', 'max'];
+  function tvQualityOf(settings) { const q = settings && settings.tvQuality; return q === 'auto' || q === 'max' ? q : ''; }
   /* テレビ用アカウントのパスワード（管理画面がブラウザの中だけで作る）: 英数字（見まちがえやすい 0 O o 1 l I は使わない）。
      rand(n) は 0〜255 の数を n 個返す関数（ブラウザは crypto.getRandomValues）。かたよりが出ないよう、256 を割り切れない分は捨てて引き直す */
   const PW_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
@@ -517,5 +522,5 @@
     cleanTicket, cleanPicks, picksFromMap, parseCode, ticketView, payoutView, effectiveCap, decideRace, winnersFrom, refundPlan, novotePlan, pidFor, shortFor,
     STAGE_DEFAULT, stageSecs, stagesFor, exchangeOpen, manualStages,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
-    TV_GAMES, tvGameOf, tvSwitchDoc, PW_CHARS, genTvPassword };
+    TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, PW_CHARS, genTvPassword };
 });
