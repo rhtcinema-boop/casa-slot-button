@@ -809,3 +809,70 @@
 .v2hlw h5 { font-size: 28px; white-space: nowrap; padding: 10px 12px; letter-spacing: 0; }
 .v2hlw h5 small { white-space: nowrap; }
 .v2hlw h5 { font-size: 30px; }
+/* ======================================================================================================
+   2026-10-19 オーナーの要望 5 つ（V3）: 出馬表に脚質と近 3 走・オッズは倍率・参加受付中に「リングバウンティ X枚 → 100」
+   ====================================================================================================== */
+/* 出馬表: 番号・馬名（主役）｜脚質の札｜近 3 走（左が前走。1〜3 着は金・銀・銅）｜単勝の倍率。見出しも同じ列 */
+#stage.v2 .side .card h4::after { content: none; }
+#stage.v2 .side .card h4[data-v3] { display: grid; grid-template-columns: minmax(0, 1fr) 62px 92px 122px; column-gap: 8px; align-items: end; padding: 0 6px 0 16px; }
+#stage.v2 .side .card h4[data-v3] .t { font-size: 30px; line-height: 1; }
+#stage.v2 .side .card h4[data-v3] .c { justify-self: center; font: 900 20px/1 var(--font-tv); color: var(--ink-sub); white-space: nowrap; letter-spacing: 0; padding-bottom: 2px; }
+#stage.v2 .horse.v3 { grid-template-columns: minmax(0, 1fr) 62px 92px 122px; gap: 8px; }
+#stage.v2 .horse .v3ty { justify-self: center; width: 62px; padding: 5px 0; border-radius: 8px; text-align: center; font: 900 23px/1.1 var(--font-tv); font-style: normal; color: #2a1c12; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .12); }
+#stage.v2 .horse .v3fm { display: flex; gap: 3px; justify-content: center; }
+#stage.v2 .horse .v3fm i { width: 28px; height: 36px; border-radius: 6px; display: grid; place-items: center; font: 900 26px/1 var(--font-num); font-style: normal; background: #ebe3d3; color: #5a4636; }
+#stage.v2 .horse .v3fm i.p1 { background: #e8a200; color: #fff; }
+#stage.v2 .horse .v3fm i.p2 { background: #8b9eab; color: #fff; }
+#stage.v2 .horse .v3fm i.p3 { background: #b9773f; color: #fff; }
+#stage.v2 .horse .odds { padding: 0 6px; }
+#stage.v2 .horse .odds b { font-size: 38px; letter-spacing: -.01em; }
+#stage.v2 .horse .odds b small.bai, #stage.v2 .horse .odds small.bai { display: inline; font: 900 20px/1 var(--font-tv); margin-left: 2px; color: inherit; }
+/* レース中の右の確定オッズ・結果・ハイライト・掲示板の「倍」 */
+.v2odds li b small.bai { font: 900 17px/1 var(--font-tv); margin-left: 1px; color: #c9d6ee; }
+.v2odds.cmp li b small.bai { font-size: 14px; }
+.v2odds h5 small { font-size: 20px; }
+.v2res .ord .o .od small.bai { font: 900 18px/1 var(--font-tv); margin-left: 2px; color: #9fb3d9; }
+.v2res .ord::before { content: "オッズ"; }
+.v2res .pay b.o small.bai { font: 900 30px/1 var(--font-tv); margin: 0 0 0 4px; }
+.v2hlw .win1 em small.bai { font-size: inherit; }
+/* 交換の割合（参加受付中・待ち受けの「参加のしかた」の下）: 紺の帯に「交換 リングバウンティ 20枚 → 100」 */
+.v2info .how { gap: 12px; }
+.v2info .how ol { gap: 12px; }
+.v2info .how li { font-size: 48px; }
+.v2rate { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; padding: 8px 18px; border-radius: 14px; background: linear-gradient(180deg, var(--navy-2), var(--navy)); color: #fff; font: 900 34px/1.1 var(--font-tv); white-space: nowrap; box-shadow: 0 0 0 3px #f2b705; }
+.v2rate i { align-self: center; font-style: normal; padding: 5px 12px; border-radius: 8px; background: #f2b705; color: #2a1c12; font-size: 26px; line-height: 1; }
+.v2rate b { font: 900 48px/1 var(--font-num); color: #ffe14d; font-variant-numeric: tabular-nums; }
+.v2rate em { font-style: normal; color: #ffe14d; margin: 0 2px; }
+.v2info .how.xshut .v2rate { display: none; }
+.v2rate .u { margin-left: -6px; }
+/* 右の確定オッズの列（幅 140px）: 「確定オッズ」と「11.8倍」が勝ち馬の印のときもはみ出さない大きさ */
+.v2odds h5 { font-size: 26px; letter-spacing: 0; }
+.v2odds li b { font-size: 31px; letter-spacing: -.03em; }
+.v2odds.cmp li b { font-size: 27px; }
+/* ======================================================================================================
+   2026-10-19 V3 の 1 回目の採点（93.4・最低 90 ①②）→ 出馬表を整理: 近3走は 1〜3 着だけ色の四角（縁なし）・4 着以下は灰色の数字だけ、
+   数字と見出しを大きく、列の幅を馬名とオッズ優先に、「倍」を大きく、交換の帯は飾りを減らして数字を主役に
+   ====================================================================================================== */
+#stage.v2 .side .card h4[data-v3], #stage.v2 .horse.v3 { grid-template-columns: minmax(0, 1fr) 58px 96px 134px; }
+#stage.v2 .side .card h4[data-v3] .c { font-size: 24px; color: #4a3a2c; }
+#stage.v2 .horse .v3ty { width: 58px; padding: 4px 0; font-size: 26px; border-radius: 7px; box-shadow: none; }
+#stage.v2 .horse .v3fm { gap: 3px; }
+#stage.v2 .horse .v3fm i { width: 30px; height: 40px; border-radius: 5px; font-size: 31px; background: transparent; color: #7d6d5d; }
+#stage.v2 .horse .odds b small.bai, #stage.v2 .horse .odds small.bai { font-size: 24px; }
+.v2odds li b small.bai { font-size: 21px; }
+.v2odds.cmp li b small.bai { font-size: 18px; }
+.v2res .ord .o .od small.bai { font-size: 22px; }
+.v2res .pay b.o small.bai { font-size: 36px; }
+.v2rate { box-shadow: none; padding: 8px 18px; }
+.v2rate i { background: transparent; color: #f2b705; padding: 0; font-size: 30px; }
+.v2rate span { color: #dfe7f3; }
+/* V3 の 2 回目の採点（94.8・最低 93 ①②）→ 近3走の数字をさらに大きく（36px）・4 着以下の灰色を濃く、脚質の文字を大きく、右の列の見出しを「確定／オッズ」の 2 段で大きく */
+#stage.v2 .side .card h4[data-v3], #stage.v2 .horse.v3 { grid-template-columns: minmax(0, 1fr) 60px 108px 134px; }
+#stage.v2 .side .card h4[data-v3] .c { font-size: 26px; }
+#stage.v2 .horse .v3ty { width: 60px; font-size: 28px; padding: 3px 0; }
+#stage.v2 .horse .v3fm { gap: 2px; }
+#stage.v2 .horse .v3fm i { width: 34px; height: 44px; font-size: 37px; color: #5e4f42; }
+.v2odds h5 { font-size: 34px; line-height: 1.05; padding: 8px 2px 6px; }
+.v2odds h5 small { display: block; font-size: 22px; color: #dfe7f3; letter-spacing: .1em; }
+/* V3 の 3 回目の採点（95.3・最低 94 ①②）: 交換の数字が左の黄色い残り時間と視線を取り合う → 数字は白（「交換」の文字だけ黄色） */
+.v2rate b, .v2rate em { color: #fff; }
