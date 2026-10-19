@@ -454,3 +454,10 @@ h1.show { margin: 0; letter-spacing: .06em; color: #1a1408; font-size: 22px; }
 .plus.five button { font-size: 16px; white-space: nowrap; letter-spacing: -.03em; }
 .plus.five [data-act] { font-size: 16px; }
 @media (max-width: 350px) { .plus.five button, .plus.five [data-act] { font-size: 14px; } .plus button { font-size: 19px; } }
+/* 2026-10-19（V3）: オッズは倍率（数字の右に小さく「倍」）。馬名の下に小さく脚質と近 3 走（テレビの出馬表と同じ）。参加画面に交換の割合 */
+.card .per { display: flex; align-items: baseline; justify-content: flex-end; gap: 2px; }
+.card .per small { display: inline; margin: 0; font-size: 13px; font-weight: 800; color: var(--dim); }
+.card .hsub { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; font-weight: 700; color: var(--dim); white-space: nowrap; line-height: 1.2; }
+.card .hsub i { font-style: normal; padding: 0 5px; border-radius: 4px; color: #2a1c12; font-weight: 900; font-size: 11px; line-height: 1.45; }
+.xrate { margin: 2px 0 0; text-align: center; font-size: 15px; font-weight: 700; color: var(--cream); }
+.xrate b { color: var(--gold); font-weight: 900; font-variant-numeric: tabular-nums; }
