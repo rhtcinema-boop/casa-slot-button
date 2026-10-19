@@ -474,13 +474,18 @@
      作れないとき（busy）: その店に見えるレースの「受付の始まり〜結果画面の終わり」が、テストのレースの「今〜終わり」と重なる（時刻表のまだ作っていない分も） */
   /* 2026-10-19 その 2（オーナー「すぐテストレースを走らせるボタン」）: スタッフの画面から押すのは quickSec（60 秒）＝ルールの下限（firestore.rules の startIn 60〜600）。
      受付の 2 段は testStages: 押した時刻から受付を始める（参加受付 30 秒 → 投票 30 秒 → 発走）。startIn が 120 秒なら今までと同じ（参加受付 90・投票 30） */
-  const TEST_RACE = { startIn: 120, quickSec: 60, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600 };
+  /* 2026-10-19 その 3（オーナー「テストレースを押したら、店のテレビが SLOT でも DERBY に切り替えて、すぐ始まるように」。終わったあとに SLOT へ戻すことはしない）:
+     switchSec: 店のテレビを切り替えたとき、ほかの店の進行役のテレビがすぐ作るときの発走まで（テレビの切り替え 1〜3 秒＋Fire TV の読み込み 10〜20 秒を見込んで、
+     切り替わってから 60 秒以上空ける。受付は 30 秒あとから＝testStages の waitSec）。
+     進行役のテレビ自身の店が SLOT のとき: そのテレビが DERBY に戻って決める係になってから作る＝作った時刻から quickSec（60 秒）。戻るのを待つのは deciderWaitSec まで */
+  const TEST_RACE = { startIn: 120, quickSec: 60, switchSec: 90, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 90 };
   const testRaceId = (store, reqAtMs) => 'x-' + Math.round(reqAtMs).toString(36) + 'test-' + store; // お願いの時刻から決まる（何度やっても同じレース＝二重に作らない）
   const testStartIn = (v) => Math.max(TEST_RACE.minSec, Math.min(TEST_RACE.maxSec, Math.round(Number(v) || TEST_RACE.startIn)));
   /* テストのレースの 2 段: 投票は全体の秒数（30）か発走までの半分の短いほう。参加受付は「押した時刻〜投票の始まり」（全体の秒数より長くしない）。
      受付の始まり（openAt）が押した時刻より前にならない＝テレビは押した直後から受付の画面（待ち時間なし・途中から始まらない） */
-  function testStages(startIn, tuning) {
-    const T = tuningOf(tuning), sec = testStartIn(startIn), lead = Math.max(0, Number(T.closeLeadSec) || 0);
+  /* waitSec（その 3）: 受付の前に空ける秒数（店のテレビを DERBY に切り替えたとき、テレビが切り替わって読み込むまで受付を始めない） */
+  function testStages(startIn, tuning, waitSec) {
+    const T = tuningOf(tuning), sec = testStartIn(startIn), lead = Math.max(0, Number(T.closeLeadSec) || 0) + Math.max(0, Number(waitSec) || 0);
     const vo = Math.min(T.voteSec, Math.floor(sec / 2)), ex = Math.max(10, Math.min(T.exchangeSec, sec - lead - vo));
     return { exchangeSec: ex, voteSec: vo };
   }
