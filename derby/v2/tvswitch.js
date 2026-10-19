@@ -6,6 +6,7 @@
    - 読めない（オフライン・通信の失敗）ときは今のゲームのまま。レース中（m-live）は終わってから移る。行ったり来たりが続くときは 10 分止める。
    - Fire TV のアプリでは、リモコンのキーは window.TV に届く（アプリの決まり）。ここで最小の TV を用意する:
      決定 → 音を出す（キーを押したのと同じ）／戻るの長押し・メニュー 3 回 → テレビ用のパスワードの入力（結果を決める係になるため。端末に覚える）
+     2026-10-19: 進行役（結果を決めて進めるテレビ）は管理画面の「進行役にする」で選べる（パスワード不要）と案内する。パスワードの欄は残す（両方使える）
    - このテレビだけの設定（2026-10-18。casa SLOT の設定画面「このテレビのゲーム」）: localStorage casa.tvGameLocal = 'slot' | 'derby'（無し＝店の設定どおり）。
      店の設定より優先: 'derby' なら店の設定が SLOT でも戻らない、'slot' なら（レースが終わってから）戻る。
      戻るの長押しの画面に「casa SLOT に戻す」（このテレビを casa SLOT に固定して戻る。店の設定どおりに戻すのは casa SLOT の設定画面で）
@@ -141,8 +142,9 @@
     const has = !!ls.get(KEY), w = document.createElement('div');
     w.id = 'tvkeyBox';
     w.style.cssText = 'position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);font:22px/1.5 sans-serif;color:#f3ead0';
-    w.innerHTML = '<div style="background:#16161a;border:1px solid #a57c26;border-radius:16px;padding:24px 28px;width:min(760px,90vw)"><div style="color:#e9c25e;font-weight:700;margin-bottom:8px">テレビ用のパスワード</div>' +
-      '<div style="font-size:16px;color:#a89f89;margin-bottom:12px">' + (has ? 'このテレビには登録済みです。入れ直すときだけ入力してください。' : '結果を決める係になるテレビだけ入れます（管理画面の「テレビ用アカウントを作る」で出たもの）。') + '空のまま決定で閉じます。</div>' +
+    w.innerHTML = '<div style="background:#16161a;border:1px solid #a57c26;border-radius:16px;padding:24px 28px;width:min(760px,90vw)"><div style="color:#e9c25e;font-weight:700;margin-bottom:8px">進行役（結果を決めて進めるテレビ）</div>' +
+      '<div style="font-size:19px;color:#f3ead0;margin-bottom:10px">管理画面の「進行役にする」で選べます。パスワードは要りません。</div>' +
+      '<div style="font-size:16px;color:#a89f89;margin-bottom:12px">テレビ用のパスワードで決めるときだけ、下に入れてください。' + (has ? '（このテレビには登録済みです。入れ直すときだけ）' : '') + '空のまま決定で閉じます。</div>' +
       '<input id="tvkeyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;font-size:24px;padding:10px;border-radius:10px;border:1px solid #2a2a31;background:#0b0b0d;color:#fff">' +
       (home() && STORE ? '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #2a2a31"><button id="tvkeySlot" type="button" style="font:700 22px/1 sans-serif;padding:14px 22px;border-radius:12px;border:2px solid #a57c26;background:#232329;color:#f3ead0">casa SLOT に戻す</button>' +
         '<div style="font-size:15px;color:#a89f89;margin-top:8px">' + (local() === 'derby' ? 'このテレビは casa DERBY に固定されています。' : '') + 'このテレビだけ casa SLOT に固定して戻ります（下・上で選んで決定）。店の設定どおりに戻すのは casa SLOT の設定画面「このテレビのゲーム」で。</div></div>' : '') + '</div>';
