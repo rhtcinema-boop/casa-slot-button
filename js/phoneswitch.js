@@ -89,6 +89,7 @@
     '#tvgSheet .two button.cur{background:linear-gradient(180deg,#ffe9a8,#c9a03e);color:#1a1408}#tvgSheet .two button.cur small{display:block;font-size:11px;font-weight:400}#tvgSheet .two button:disabled:not(.cur){opacity:.45}' +
     '#tvgSheet input{width:100%;box-sizing:border-box;padding:12px;font-size:22px;letter-spacing:.4em;text-align:center;border-radius:12px;border:1px solid #c9a03e;background:#0d0c08;color:#fff}' +
     '#tvgSheet .err{color:#ff8c7a;font-size:14px;min-height:18px;margin:6px 0}#tvgSheet .okm{color:#35e07a;font-size:14px;margin:6px 0}' +
+    '#tvgSheet .go{display:block;width:100%;margin-top:12px;padding:13px 14px;border-radius:12px;border:1px solid #a57c26;background:linear-gradient(#f3d27a,#c99a3a);color:#1a1205;font:inherit;font-weight:800;font-size:15px}' +
     '#tvgSheet .auto{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #2a2416;font-size:13px;color:#cfd6cc}' +
     '#tvgSheet .auto button{flex:none;white-space:nowrap}#tvgSheet .auto button,#tvgSheet .close{padding:9px 14px;border-radius:999px;border:1px solid #3a3a3a;background:#1a1a1a;color:#cfd6cc;font:inherit;font-size:13px}#tvgSheet .close{width:100%;margin-top:12px;padding:13px}';
   document.head.appendChild(css);
@@ -114,6 +115,7 @@
       '<div class="two">' + b('slot') + b('derby') + '</div>' +
       (needPin ? '<p>切り替えには casa DERBY のスタッフ PIN（' + esc(s ? s.name : id) + '）が要ります。1 回入れると、このスマホの casa DERBY のスタッフ画面と同じく覚えます。</p><input id="tvgPin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="8" placeholder="PIN">' : '') +
       (state.msg ? '<div class="' + (/^OK /.test(state.msg) ? 'okm' : 'err') + '" id="tvgMsg">' + esc(state.msg.replace(/^OK /, '')) + '</div>' : '') +
+      (g === 'derby' ? '<button type="button" class="go" data-tvg="go">今すぐ casa DERBY のスタッフ画面へ</button>' : '') + // 2026-10-19: 紙幣の手続きの途中でも、スタッフの判断ですぐ移れる
       '<div class="auto"><span>このスマホの画面も自動で入れ替える<br><small style="color:#9aa89c">casa DERBY のときは casa DERBY のスタッフ画面に</small></span><button type="button" data-tvg="auto">' + (auto() ? 'する' : 'しない') + '</button></div>' +
       '<button type="button" class="close" data-tvg="close">閉じる</button></div>';
   }
@@ -132,6 +134,13 @@
     const a = t.dataset.tvg;
     if (a === 'close') { if (!state.busy) { state.open = false; paint(); } return; }
     if (a === 'auto') { lsSet(AUTO_KEY, auto() ? 'off' : null); paint(); kick(); return; }
+    if (a === 'go') { // 今すぐ移る（自動の入れ替えの「流れの途中は待つ」を、スタッフが自分で飛ばす）
+      const id = derbyId(); if (!id || state.leaving) return;
+      if (window.BillPage && !window.BillPage.idle() && !window.confirm('紙幣の手続きの途中です。移ると、この手続きはここで止まります。casa DERBY のスタッフ画面へ移りますか？')) return;
+      state.leaving = true; state.open = false; paint(); mark();
+      location.href = 'derby/v2/staff.html?store=' + encodeURIComponent(id) + '&via=slot';
+      return;
+    }
     if (state.busy || (a !== 'slot' && a !== 'derby')) return;
     const id = derbyId(), s = bill(), sv = staffSaved(), inp = $('tvgPin');
     const pin = sv && sv.store === id ? sv.pin : (inp ? inp.value.trim() : '');
