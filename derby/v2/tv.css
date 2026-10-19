@@ -876,3 +876,53 @@
 .v2odds h5 small { display: block; font-size: 22px; color: #dfe7f3; letter-spacing: .1em; }
 /* V3 の 3 回目の採点（95.3・最低 94 ①②）: 交換の数字が左の黄色い残り時間と視線を取り合う → 数字は白（「交換」の文字だけ黄色） */
 .v2rate b, .v2rate em { color: #fff; }
+/* ======================================================================================================
+   2026-10-20 オーナーの「画面の文字帳」の直し（店内モニター）
+   ====================================================================================================== */
+/* 待ち受け・参加受付: 「参加受付締め切り／まで あと」を 2 行で大きく（v2/tv.js が .cd.xlbl を付ける）。箱を少し広げる */
+.v2info .cd { width: 420px; }
+.v2info .cd.xlbl small { font-size: 44px; line-height: 1.12; color: #fff; letter-spacing: 0; }
+/* 参加方法の 2 行目（「投票枚数を決めて、スタッフ認証を待つ」）が QR の下にもぐらないよう、v2/tv.js の fitHow が枠に入る大きさにする */
+.v2info .how ol li { min-width: 0; }
+/* 投票の段（参加受付の締切のあと）: QR を出さない。残り時間と案内を横いっぱいに大きく */
+#stage.v2.m-open.v2-xshut .v2qr { opacity: 0; transform: translateY(40px); pointer-events: none; }
+#stage.v2.m-open.v2-xshut .v2info { width: 1525px; gap: 26px; }
+#stage.v2.m-open.v2-xshut .v2info .cd { width: 560px; padding: 22px 34px; align-items: flex-start; }
+#stage.v2.m-open.v2-xshut .v2info .cd small { font-size: 56px; color: #fff; }
+#stage.v2.m-open.v2-xshut .v2info .cd b { font-size: 190px; }
+#stage.v2.m-open.v2-xshut .v2info .how { padding: 22px 48px; gap: 22px; }
+#stage.v2.m-open.v2-xshut .v2info .how.xshut h4 { font-size: 80px; line-height: 1.12; }
+#stage.v2.m-open.v2-xshut .v2info .how.xshut li { font-size: 48px; }
+#stage.v2.m-open.v2-xshut .v2info .how.xshut ul li::before { width: 20px; height: 20px; }
+/* 発走前・レース中の下の帯: 右に余白が残らないよう、中身を真ん中に */
+#stage.v2.m-live .v2strip { justify-content: center; gap: 64px; }
+/* レース中の実況の字幕（映像の下の「4番が引っ張る展開…」）は出さない（声・音はそのまま） */
+#stage.v2 .announce { display: none !important; }
+/* ハイライト: 下の帯の「次のレース h:mm 発走まで m:ss」を大きく */
+#stage.v2.m-hl .v2strip .nx { padding: 12px 30px; gap: 20px; }
+#stage.v2.m-hl .v2strip .nx small { font-size: 46px; }
+#stage.v2.m-hl .v2strip .nx b { font-size: 112px; }
+/* 出馬表に「調子」の列（2026-10-20 オーナー）: 番号・馬名｜脚質｜調子｜近3走｜単勝オッズ。印を大きく、言葉は下に小さく */
+#stage.v2 .side .card h4[data-v3], #stage.v2 .horse.v3 { grid-template-columns: minmax(0, 1fr) 60px 64px 108px 134px; column-gap: 6px; }
+#stage.v2 .horse .v3cd { justify-self: center; display: flex; flex-direction: column; align-items: center; line-height: 1; white-space: nowrap; }
+#stage.v2 .horse .v3cd b { font: 900 34px/1 var(--font-tv); }
+#stage.v2 .horse .v3cd small { margin-top: 2px; font: 900 17px/1 var(--font-tv); color: #5e4f42; letter-spacing: -.02em; }
+#stage.v2 .horse .v3cd.cu b { color: #d84300; }
+#stage.v2 .horse .v3cd.cn b { color: #5e4f42; }
+#stage.v2 .horse .v3cd.cw b { color: #1f5fd0; }
+/* 調子の列: 行の高さ（約 54px）に収める・印を太く */
+#stage.v2 .horse .v3cd { align-self: center; }
+#stage.v2 .horse .v3cd b { font-size: 29px; -webkit-text-stroke: 1.6px currentColor; }
+#stage.v2 .horse .v3cd small { margin-top: 1px; font-size: 15px; }
+/* ======================================================================================================
+   2026-10-20 オーナー決定: 金額の単位「pt」（数字のすぐ後ろ・少し小さく）と、当選額の切り上げの説明（受け取りの案内のすぐ下。遠くから読むので短く）
+   ====================================================================================================== */
+.pt { font-size: .55em; font-weight: 900; margin-left: .05em; letter-spacing: 0; }
+.v2wl .row b small.pt { font: 900 .55em/1 var(--font-num); color: inherit; margin-left: .04em; }
+.v2res .pay .x small.pt { font-size: .7em; margin-left: .04em; }
+.v2res .pay .x b small.pt { font-size: .58em; color: inherit; }
+.v2rate b small.pt { font: 900 .6em/1 var(--font-num); margin-left: .04em; }
+/* 位置: 受け取りの案内（.ract 高さ 176・下の余白 44）のすぐ上。右下の QR の札（次のレースに スマホで参加）に重ならないように、案内の下ではなく上に置く。一覧はその分だけ短く */
+.v2res .rnote { display: none; grid-column: 2; grid-row: 2; align-self: end; margin: 0 0 228px 6px; height: 36px; font: 900 30px/36px var(--font-tv); color: #ffe14d; white-space: nowrap; text-shadow: 0 2px 0 rgba(0, 0, 0, .55); }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 276px; }
+.v2res.has-w:not(.sub-on) .rnote { display: block; }
