@@ -414,6 +414,20 @@
         try { return await write(); } catch (e2) { throw mapErr(e2); }
       }
     }
+    /* テレビの画質（2026-10-19）: その店のスタッフが自分の店の settings.tvQuality だけを書く（'' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先。ルール: staffOf・tvQualityOnly）。
+       テレビはいつもの状態（settings.tvQuality）で気づいて読み込み直す（v2/tvswitch.js） */
+    async function tvQuality(pin, quality) {
+      await staffEnsure(pin);
+      const q = Core.tvQualityOf({ tvQuality: quality });
+      if (quality !== q) throw E(400, 'bad_quality', 'なめらか優先・標準・きれい優先から選んでください');
+      const write = async () => { await doc(COL.stores, store).update({ 'settings.tvQuality': q }); storesCache = null; return { store, tvQuality: q }; };
+      try { return await write(); }
+      catch (e) {
+        if (!(e && e.code === 'permission-denied')) throw mapErr(e);
+        staffOk = null; await staffEnsure(pin); // 管理画面で PIN が変わった → bad_pin。登録し直せたら 1 回だけやり直す
+        try { return await write(); } catch (e2) { throw mapErr(e2); }
+      }
+    }
     async function logs(pin, o) {
       await staffEnsure(pin); o = o || {};
       const pub = await getPublic(), date = o.date || Core.bizDate(now(), pub.dayStartHour);
@@ -1076,7 +1090,7 @@
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
       state, race, createTicket, getTicket, cancelTicket, vote,
-      staffLogin, staffTicket, auth: authTicket, staffPayout, claim, next, logs, tvGame, testRace, testRaceStatus,
+      staffLogin, staffTicket, auth: authTicket, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
       admin, subscribe,
       // 進行役のテレビ（2026-10-19）: state = { on, code, asking, decider, account }・on(cb) で変わるたびに
       pair: { get state() { return pairState(); }, on: onPair, hello: pairHello, get uid() { return uid(); } },
