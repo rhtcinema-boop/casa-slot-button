@@ -687,3 +687,118 @@
 /* 結果画面の 5 分のあいだ、着順と配当はいつも読める（tests/v2-result-timeline.plan.js の決まり: 不透明度 0.8 以上・配当は 1）→ 控えめにするのは 0.8 まで */
 .v2res.ph-win .ord .o:not(:first-child), .v2res.sub-on .ord .o:not(:first-child) { opacity: .8; }
 .v2res.ph-win .pay, .v2res.sub-on .pay { opacity: 1; }
+/* 5 回目の準備: ③ 投票の段の主な案内をさらに大きく（56px） */
+.v2info .how.xshut h4 { font-size: 56px; line-height: 1.15; }
+/* ======================================================================================================
+   2026-10-19 6 回目の見直し（ChatGPT 5 回目 89.3・最低 88。壁打ちで「96 点の条件」を確認）
+   ====================================================================================================== */
+/* ①② 手順は 3 つの短い言葉を大きく（52px＝1920 の画面で約 62px） */
+.v2info .how { gap: 14px; }
+.v2info .how ol { gap: 16px; }
+.v2info .how li { font-size: 52px; gap: 18px; letter-spacing: .01em; }
+.v2info .how li::before { width: 50px; height: 50px; font-size: 32px; }
+/* ③ 締切の 1 行は濃い色で大きく */
+.v2info .how.xshut li { font-size: 38px; color: var(--ink); }
+.v2info .how.xshut ul li::before { background: #d32f2f; }
+/* ⑥ リプレイ・写真判定のあいだ: 下の帯は「結果はまもなく」だけ */
+.v2strip .soon { display: none; }
+#stage.v2.st-soon .v2strip > :not(.soon) { display: none !important; }
+#stage.v2.st-soon .v2strip .soon { display: flex; align-items: center; gap: 18px; font: 900 52px/1 var(--font-tv); color: #ffe14d; letter-spacing: .06em; }
+#stage.v2.st-soon .v2strip .soon::before { content: ""; width: 22px; height: 22px; border-radius: 50%; background: #ffe14d; animation: blink 1s step-end infinite; }
+/* ⑦ 受け取りの案内: 左にお客さんのスマホの形（白い輪郭＋小さな QR）、右に 2 行 */
+.v2res .ract { flex-direction: row; align-items: center; justify-content: flex-start; gap: 24px; padding: 0 28px; }
+.v2res .ract > div { display: flex; flex-direction: column; gap: 10px; }
+.v2res .ract b { font-size: 42px; }
+.v2res .ract span { font-size: 42px; }
+.v2res .ract .phone { flex: none; position: relative; width: 62px; height: 104px; border: 5px solid #fff; border-radius: 14px; box-sizing: border-box; }
+.v2res .ract .phone s { position: absolute; left: 9px; top: 22px; width: 34px; height: 34px; background: conic-gradient(#fff 25%, transparent 0 50%, #fff 0 75%, transparent 0) 0 0 / 11px 11px; box-shadow: 0 0 0 3px #fff; }
+.v2res .ract .phone::after { content: ""; position: absolute; left: 50%; bottom: 7px; width: 16px; height: 4px; margin-left: -8px; border-radius: 2px; background: #fff; }
+/* ⑦ 結果の最初の 1 分半（1 着と配当・当たった人）は、次のレースの下の帯を控えめに（QR の札は残す） */
+.v2res.ph-top .foot, .v2res.ph-win .foot { opacity: .45; transition: opacity .6s; }
+/* ⑧ 下の帯の「次のレース ○:○○ 発走まで」を大きく */
+#stage.v2.m-hl .v2strip .nx small { font-size: 32px; }
+/* ======================================================================================================
+   2026-10-19 7 回目の見直し（ChatGPT 6 回目 92.7・最低 ⑦89）
+   ====================================================================================================== */
+/* ⑦ 受け取りの案内: スマホの絵を大きく（お客さんのスマホの QR だと分かる）、文は「スマホの受け取り QR をスタッフへ」 */
+.v2res .ract { gap: 22px; padding: 0 22px; }
+.v2res .ract .phone { width: 70px; height: 118px; border-width: 6px; border-radius: 15px; }
+.v2res .ract .phone s { left: 10px; top: 26px; width: 38px; height: 38px; background-size: 12.5px 12.5px; }
+.v2res .ract b { font-size: 44px; }
+.v2res .ract span { font-size: 36px; }
+/* ⑦ 最初の 90 秒（1 着と配当・当たった人）は、次のレースの下の帯を出さない（右下の QR と札は残す） */
+.v2res.ph-top .foot, .v2res.ph-win .foot { opacity: 0; visibility: hidden; }
+/* ⑧ ハイライトの下の帯: 「次のレースまで」と数字を 1 つのまとまりに。参加人数は出さない */
+#stage.v2.m-hl .v2strip .ppl { display: none; }
+#stage.v2.m-hl .v2strip .nx { flex-direction: row; align-items: baseline; gap: 18px; padding: 10px 22px; border-radius: 14px; background: rgba(242, 183, 5, .14); box-shadow: inset 0 0 0 3px rgba(242, 183, 5, .6); }
+#stage.v2.m-hl .v2strip .nx small { font-size: 32px; color: #fff; font-weight: 900; }
+#stage.v2.m-hl .v2strip .nx b { font-size: 76px; }
+/* ⑧ 当たった人の一覧: 見出しを詰めて名前と当選額を大きく */
+.v2hlw h5 { padding: 10px 14px; }
+.v2hlw .v2wl .row .nk { font-size: 28px; }
+.v2hlw .v2wl .row b { font-size: 32px; }
+.v2hlw .v2wl.big .row .nk { font-size: 32px; }
+.v2hlw .v2wl.big .row b { font-size: 38px; }
+/* ③ 投票の段: QR の札（次のレースの案内）は控えめな灰色に。主役は真ん中の「参加済みの方は スマホで投票」 */
+#stage.v2 .v2qr.xshut .tx b { background: #5d6b7c; }
+.v2qr.xshut { box-shadow: 0 0 0 5px #8a96a6, 0 0 0 9px #fff, 0 14px 30px rgba(0, 0, 0, .35); }
+/* ④⑤⑥ 右の配当: 見出しを詰めて数字を大きく */
+.v2odds h5 { padding: 8px 2px 6px; }
+.v2odds li b { font-size: 34px; }
+.v2odds.cmp li b { font-size: 30px; }
+/* ⑨ 通信切れの帯の 2 行目を大きく */
+.v2down span { font-size: 36px; }
+.v2res .ract span { font-size: 34px; }
+/* ハイライトの一覧は列が細い（288px）: 名前が切れないよう、すき間と当選額を少し小さく */
+.v2hlw .v2wl .row { gap: 6px; padding: 0 10px; }
+.v2hlw .v2wl .row .st { font-size: 17px; padding: 3px 6px; }
+.v2hlw .v2wl .row .nk, .v2hlw .v2wl.big .row .nk { font-size: 28px; }
+.v2hlw .v2wl .row b, .v2hlw .v2wl.big .row b { font-size: 32px; }
+/* ======================================================================================================
+   2026-10-19 8 回目の見直し（ChatGPT 7 回目 94.6・最低 ⑦93）
+   ====================================================================================================== */
+/* ⑦ 受け取りの案内を 3 行で大きく（スマホの絵も行の高さに合わせる） */
+.v2res .ract { height: 186px; }
+.v2res .ract > div { gap: 6px; }
+.v2res .ract b { font-size: 46px; }
+.v2res .ract span { font-size: 40px; line-height: 1.1; }
+.v2res .ract .phone { width: 86px; height: 146px; border-width: 7px; border-radius: 18px; }
+.v2res .ract .phone s { left: 12px; top: 34px; width: 48px; height: 48px; background-size: 16px 16px; }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 244px; }
+/* ⑦ 当たった人を紹介しているあいだは、2〜6 着の着差（補助の情報）を控えめに。着順・馬・配当はそのまま読める */
+.v2res.ph-win .ord .o:not(:first-child) .mg { opacity: .55; }
+/* ⑧ 「次のレース ○:○○ 発走まで」を大きく */
+#stage.v2.m-hl .v2strip .nx small { font-size: 36px; }
+#stage.v2.m-hl .v2strip .nx { padding: 8px 20px; gap: 16px; }
+/* ③ 締切の 1 行をもう少し大きく（黒のまま） */
+.v2info .how.xshut li { font-size: 42px; }
+/* ①② 出馬表の「100あたりの配当」を大きく */
+#stage.v2 .side .card h4::after { font-size: 26px; top: 4px; }
+/* ④⑤⑥ 配当の見出しの「100あたり」を大きく */
+.v2odds h5 small { font-size: 22px; color: #dfe7f3; }
+/* ④ レース中の参加人数は控えめに（主役は映像と札） */
+#stage.v2.m-live .v2strip .ppl { font-size: 28px; }
+#stage.v2.m-live .v2strip .ppl b { font-size: 48px; }
+/* ⑨ 通信切れの 2 行目をはっきりした白で */
+.v2down span { color: #fff; font-weight: 900; text-shadow: 0 2px 0 rgba(0, 0, 0, .6); }
+/* ======================================================================================================
+   2026-10-19 9 回目の見直し（ChatGPT 8 回目 95.7・最低 95＝③⑦⑧⑨）: 文字の太さと視線のまとまり
+   案内の文は丸ゴシック（太さが 1 つだけ＝太字が細く見える）から、太いゴシック（--font-tv）に変える
+   ====================================================================================================== */
+.v2info .how h4, .v2info .how li, .v2info .cd small, .v2info .cd .cdl span { font-family: var(--font-tv); font-weight: 900; }
+/* ③ 締切の行は濃い黒で */
+.v2info .how.xshut li { color: #1b1410; }
+/* ⑦ 3 行目「スタッフへ見せる」まで白をはっきり。枠の下の余白を詰める */
+.v2res .ract { height: 176px; }
+.v2res .ract span { color: #fff; text-shadow: 0 0 1px #fff, 0 2px 0 rgba(0, 0, 0, .55); }
+.v2res .ract span:last-child { font-size: 42px; }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 234px; }
+/* ⑧ 「次のレース ○:○○ 発走まで」と残り時間を近づける。一覧の見出しを少し大きく */
+#stage.v2.m-hl .v2strip .nx { gap: 8px; }
+.v2hlw h5 { font-size: 30px; }
+/* ⑨ 「自動でつなぎ直します」を太く大きく */
+.v2down span { font-size: 40px; }
+/* ⑧ 一覧の見出し「前のレースの当たり」が 2 行に折れていた（9 回目の採点で指摘）→ 1 行で収まる大きさに */
+.v2hlw h5 { font-size: 28px; white-space: nowrap; padding: 10px 12px; letter-spacing: 0; }
+.v2hlw h5 small { white-space: nowrap; }
+.v2hlw h5 { font-size: 30px; }
