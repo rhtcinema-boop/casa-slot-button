@@ -20,12 +20,14 @@ window.Hooves = (function () {
   }
   const S = [], log = [], stats = { hits: 0 };
   function muted() { return /[?&]mute=1/.test(location.search) || (window.Sfx && Sfx.isMuted && Sfx.isMuted()); }
+  // 2026-10-19「レース中以外は音を出さない」: テレビがレースの場面でないとき（js/audio.js の scene が閉まっている）は打たない（?hoofdebug=1 の記録にも残さない）
+  function offScene() { return !!(window.Sfx && Sfx.sceneOn && !Sfx.sceneOn()); }
   function setup() {
     if (bus) return true;
     ctx = window.Sfx && Sfx.ctx && Sfx.ctx(); if (!ctx) return false;
     bus = ctx.createGain(); bus.gain.value = 0.9;
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
-    bus.connect(comp); comp.connect(ctx.destination);
+    bus.connect(comp); comp.connect((Sfx.softIn && Sfx.softIn()) || ctx.destination); // 2026-10-19: こもった柔らかい音の通り道（js/audio.js）を通す
     bufs = makeBufs(ctx); loadReal(ctx);
     return true;
   }
@@ -100,7 +102,7 @@ window.Hooves = (function () {
     raf = requestAnimationFrame(frame);
     const rv = window.DERBY && DERBY.raceView;
     if (OFF || !rv || !rv.horses3d || !rv.horses3d.length) return;
-    if (!DEBUG && muted()) { S.length = 0; return; }
+    if (offScene() || (!DEBUG && muted())) { S.length = 0; return; }
     if (!DEBUG && !setup()) return;
     if (DEBUG && !ctx) ctx = { currentTime: 0, fake: true }; // テストでは音の時計（消音中は止まっている）ではなく画面の時計で数える
     const now = ctx.fake ? performance.now() / 1000 : ctx.currentTime, wall = performance.now() / 1000;
