@@ -303,6 +303,7 @@
       dist: base.dist, weather: base.weather, surface: base.surface, horses: base.horses, tune: base.tune,
       odds: odds.tansho, tenkai: odds.tenkai, participants: { total: 0, byStore: {}, medals: 0 }, refunded: false, day: bizDate(entry.at, T.dayStartHour),
     };
+    if (entry.test) race.test = true; // スタッフの「この店だけテストレース」（2026-10-19）: このレースの券・当たり・返却は全部テスト扱い（集計・1 日の上限に入れない）
     race.revealAt = race.runAt + 60000 + race.postSec * 1000;
     race.endAt = race.revealAt + race.resultSec * 1000;
     const secret = { payoutTarget: entry.payout || 0, scope: entry.scope === 'store' ? 'store' : 'all', ruleId: entry.ruleId || null, winProb: odds.winProb };
@@ -329,6 +330,7 @@
       dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, tenkai: r.tenkai,
       participants: r.participants || { total: 0, byStore: {}, medals: 0 }, result: null, winners: null, refunded: !!r.refunded, refundedAt: r.refundedAt || null,
     };
+    if (r.test) out.test = true; // テストのレース（2026-10-19。スタッフの「この店だけテストレース」）
     const result = r.result || o.result || null, priv = o.role === 'tv' || o.role === 'admin'; /* 'tv' は合言葉のあるテレビだけ（server.js の viewRole／Firestore のルール） */
     if (result && (revealed || priv)) { out.result = withoutCues(result); out.photo = !!r.photo; }
     // 確定演出（勝ち馬のヒント）: 合言葉のあるテレビと管理にだけ、結果と一緒に（ゲートインの前に届く）。スマホ・スタッフ・合言葉のないテレビには発表後も出さない
@@ -411,7 +413,8 @@
     const stakes = [];
     // テストモードの店の票は、本物の票があるときは結果の決定に入れない（テストの大きな賭けで本物のお客さんの結果がゆがまないように。QA 2026-10-14）。
     // テストの票しかないときは入れる（テストだけでも設定額に合わせる動きを確かめられる）
-    const real = voted.filter((tk) => !tk.test), basis = real.length ? real : voted;
+    const isT = (tk) => !!tk.test || !!race.test; // テストのレース（race.test）の券は全部テスト扱い（2026-10-19）
+    const real = voted.filter((tk) => !isT(tk)), basis = real.length ? real : voted;
     basis.forEach((tk) => (tk.picks || picksFromMap(tk.pickMap)).forEach((p) => stakes.push({ horse: p.horse, count: p.count, group: tk.storeId })));
     const t0 = Date.now(), cap = effectiveCap(T, usedToday);
     const er = engineRace(race);
@@ -433,7 +436,7 @@
     let paid = 0;
     voted.forEach((tk) => {
       const amount = (tk.picks || picksFromMap(tk.pickMap)).filter((p) => p.horse === w).reduce((a, p) => a + Outcome.stakePayout(p.count, fo), 0);
-      if (amount > 0) { payouts.push({ kind: 'win', tid: tk.tid, owner: tk.owner || null, raceId: race.id, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: w, amount, status: 'unpaid', test: !!tk.test }); paid += amount; }
+      if (amount > 0) { payouts.push({ kind: 'win', tid: tk.tid, owner: tk.owner || null, raceId: race.id, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: w, amount, status: 'unpaid', test: isT(tk) }); paid += amount; }
     });
     decision.paid = paid;
     decision.bounty = voted.reduce((a, tk) => a + ticketBounty(tk), 0); // 賭けたリングバウンティ（返還するときの目安。認証したときの割合）
@@ -449,20 +452,46 @@
       .map((p) => Object.assign({ storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, nick: p.nick, amount: p.amount, horse: p.horse }, p.test ? { test: true } : {}));
   }
   // 返還: 取り消す当たり・作る返還（id は呼ぶ側）
-  function refundPlan(tickets, payouts) {
+  function refundPlan(tickets, payouts, race) {
     const paidBy = {}, voids = [];
     payouts.forEach((p) => { if (p.kind === 'refund') return; if (p.status === 'unpaid') voids.push(p); else if (p.status === 'paid') paidBy[p.tid] = (paidBy[p.tid] || 0) + p.amount; });
     const refunds = [];
     /* 返還はリングバウンティで: 投票した券ごとに、認証したときのリングバウンティ（枚数 × そのときの割合）をそのまま全部返す。
        受け取り済みの当選額は差し引かない・取り戻さない（2026-10-17 オーナー決定「当選額はそのまま」）。paidBy は記録用（decision.paid） */
-    tickets.filter((tk) => tk.status === 'voted').forEach((tk) => { const rate = rateOf(tk), back = ticketBounty(tk); if (back > 0) refunds.push({ kind: 'refund', tid: tk.tid, owner: tk.owner || null, raceId: tk.raceId, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: null, amount: 0, bounty: back, count: tk.count, rate, status: 'unpaid', test: !!tk.test }); });
+    tickets.filter((tk) => tk.status === 'voted').forEach((tk) => { const rate = rateOf(tk), back = ticketBounty(tk); if (back > 0) refunds.push({ kind: 'refund', tid: tk.tid, owner: tk.owner || null, raceId: tk.raceId, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: null, amount: 0, bounty: back, count: tk.count, rate, status: 'unpaid', test: !!tk.test || !!(race && race.test) }); });
     return { voids, refunds, paidBy, bounty: refunds.reduce((a, r) => a + r.bounty, 0) };
   }
   /* 返却（2026-10-16 オーナー決定）: このレースに認証されたのに投票締切までに投票しなかった券は無効にして、認証した枚数をそのまま返す。
      返還（kind 'refund'）と同じ受け取り（novote: true）。結果の決定（賭けの枚数）には入れない・参加人数にも数えない（参加は投票した人） */
   function novotePlan(race, tickets) {
     return (tickets || []).filter((tk) => tk.status === 'authorized' && tk.authRaceId === race.id).sort((a, b) => (a.tid < b.tid ? -1 : 1))
-      .map((tk) => ({ kind: 'refund', novote: true, tid: tk.tid, owner: tk.owner || null, raceId: race.id, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: null, amount: 0, bounty: ticketBounty(tk), count: tk.count, rate: rateOf(tk), status: 'unpaid', test: !!tk.test })); /* 返却 = 認証したときのリングバウンティ（枚数 × そのときの割合） */
+      .map((tk) => ({ kind: 'refund', novote: true, tid: tk.tid, owner: tk.owner || null, raceId: race.id, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: null, amount: 0, bounty: ticketBounty(tk), count: tk.count, rate: rateOf(tk), status: 'unpaid', test: !!tk.test || !!race.test })); /* 返却 = 認証したときのリングバウンティ（枚数 × そのときの割合） */
+  }
+
+  /* ---------- スタッフの「この店だけテストレース」（2026-10-19） ----------
+     スタッフは derbyTestReq/<店舗>（Firestore）か POST /api/staff/testrace（模擬クラウド）で「お願い」を書くだけ。レースを作るのは決める係（進行役のテレビ・サーバー）。
+     レース: その店だけ（storeId）・test: true（券・当たり・返却は全部テスト扱い）・startIn 秒後に発走・払い戻しの合計は管理画面の「テストのレースを作る」と同じ既定値。
+     作れないとき（busy）: その店に見えるレースの「受付の始まり〜結果画面の終わり」が、テストのレースの「今〜終わり」と重なる（時刻表のまだ作っていない分も） */
+  const TEST_RACE = { startIn: 120, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600 };
+  const testRaceId = (store, reqAtMs) => 'x-' + Math.round(reqAtMs).toString(36) + 'test-' + store; // お願いの時刻から決まる（何度やっても同じレース＝二重に作らない）
+  const testStartIn = (v) => Math.max(TEST_RACE.minSec, Math.min(TEST_RACE.maxSec, Math.round(Number(v) || TEST_RACE.startIn)));
+  function raceSpan(r, T) {
+    const start = r.openAt != null ? r.openAt : r.at - (T.exchangeSec + T.voteSec) * 1000;
+    const end = r.endAt || (r.revealAt ? r.revealAt + T.resultSec * 1000 : (r.runAt || r.at) + 60000 + (T.postSec + T.resultSec) * 1000);
+    return [start, end];
+  }
+  function testRaceBusy(races, store, t, startIn, tuning, rules) {
+    const T = tuningOf(tuning), sec = testStartIn(startIn);
+    const gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec, end = t + (sec + gate + 60 + T.postSec + T.resultSec) * 1000;
+    const hit = (s, e) => s < end && e > t;
+    for (const r of races || []) { if (!visibleTo(r, store) || r.status === 'void') continue; const [s, e] = raceSpan(r, T); if (hit(s, e)) return { reason: 'busy', raceId: r.id, at: r.at }; }
+    const sg = stageSecs(T), have = new Set((races || []).map((r) => r.id));
+    for (const e of scheduleAround(t, rules || [])) {
+      if (have.has(e.id) || (e.storeId && e.storeId !== store)) continue;
+      const s = e.at - (sg.exchangeSec + sg.voteSec) * 1000, en = e.at + (gate + 60 + T.postSec + T.resultSec) * 1000;
+      if (hit(s, en)) return { reason: 'busy', at: e.at };
+    }
+    return null;
   }
 
   /* テレビのゲームの切り替え（2026-10-17）: 店の設定 settings.tvGame（'slot' | 'derby'、既定 'slot'）。
@@ -482,7 +511,7 @@
   function pidFor(Outcome, salt, raceId, tid, kind) { return 'p' + Outcome.hash(salt, raceId, tid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', tid, raceId, salt).toString(36); }
   function shortFor(Outcome, salt, id, k) { return String(100000 + (Outcome.hash(salt, id, 'short', k || 0) % 900000)); }
 
-  return { MONEY_PER_TICKET, roundAmount, BOUNTY_DEFAULT, BOUNTY_MAX, rateOf, bountyRate, ticketBounty, payoutBounty, isBountyLog, logBounty, sumBill, statBounty, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
+  return { TEST_RACE, testRaceId, testStartIn, testRaceBusy, MONEY_PER_TICKET, roundAmount, BOUNTY_DEFAULT, BOUNTY_MAX, rateOf, bountyRate, ticketBounty, payoutBounty, isBountyLog, logBounty, sumBill, statBounty, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, openRaceFor, publicRace, stateFor,
     cleanTicket, cleanPicks, picksFromMap, parseCode, ticketView, payoutView, effectiveCap, decideRace, winnersFrom, refundPlan, novotePlan, pidFor, shortFor,
