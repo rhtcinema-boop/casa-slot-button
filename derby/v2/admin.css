@@ -249,6 +249,26 @@ header h1.logo-h1 img { display: block; width: 98px; height: 32px; pointer-event
 .tvrow .nm .chip { margin: 0; }
 .tvrow .nm:hover { text-decoration: underline; text-underline-offset: 3px; }
 .tvall { margin-top: 4px; }
+/* 進行役のテレビ（2026-10-19）: 「テレビを切り替える」の中の 1 ブロック。今の進行役は銀の札（選ばれているもの）、押す操作は灰 */
+.pair { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel2); }
+.pair .phd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pair .phd b { font-size: 16px; color: var(--text); }
+.pair .phd small { color: var(--sub); font-size: 13px; }
+.pair .phd .sp { flex: 1; }
+.pair .pnow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; font-size: 15px; }
+.pair .pnow b { font-size: 16px; }
+.pair .pnow small { color: var(--sub); font-size: 13px; }
+.pair .pnow small.warn, .pair .prow small.old { color: var(--warn, #ffb347); }
+.pair .pnow .btn { margin-left: auto; }
+.pair .plist { margin-top: 4px; }
+.pair .prow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.pair .prow .nm { min-width: 0; font-weight: 700; font-size: 15px; }
+.pair .prow .nm small { display: block; font-weight: 400; color: var(--sub); font-size: 12px; }
+.pair .prow .chip.on { background: var(--sel, #d9dce3); color: var(--selText, #14161b); border-color: var(--sel, #d9dce3); }
+.pairCard { text-align: center; width: min(440px, 100%); }
+.pairCard p { margin: 6px 0; }
+.pairCard .pcode { margin: 8px auto; font: 900 56px/1.1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .16em; color: var(--gold); }
+.pairCard .acts { justify-content: center; }
 .nowcard { background: #1d1b14; border: 1px solid rgba(233, 194, 94, .35); border-radius: 14px; padding: 10px 14px; margin: 0 0 10px; }
 .nowcard .big { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .nowcard .big .mono { font-size: 24px; }
