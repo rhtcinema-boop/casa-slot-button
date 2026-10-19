@@ -77,16 +77,16 @@
   top.insertBefore(el('<div class="v2ppl" id="v2ppl"><small>全店で</small><b id="v2pplNum">0</b><small>人が参加</small></div>'), sndBtn);
   top.insertBefore(el('<span class="v2store" id="v2store"></span>'), sndBtn);
   stageEl.appendChild(el('<div class="v2info" id="v2info"><div class="cd" id="v2cd"><small id="v2cdLbl">発走まで</small><b id="v2cdNum">--:--</b><div class="cdl"><i id="v2cdSt"></i><span id="v2cdSub"></span></div></div>' +
-    '<div class="how" id="v2how"><h4>参加のしかた</h4><ol><li>QR をスマホで読む</li><li>スタッフに QR を見せる</li><li>スマホで馬を選んで投票</li></ol></div></div>'));
+    '<div class="how" id="v2how"><h4>参加のしかた</h4><ol><li>QR を読む</li><li>スタッフへ見せる</li><li>スマホで投票</li></ol></div></div>'));
   // QR の下の URL は出さない（テレビでは途中で折り返して読めない。2026-10-14 見た目の講評）。#v2qrUrl は中身だけ持つ（確認用）
   stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b>スマホで参加</b><span>スマホのカメラで<br>読み取ってください</span><em>アプリは不要です</em><small id="v2qrUrl" hidden></small></div></div>'));
   stageEl.appendChild(el('<div class="v2odds" id="v2odds"><h5>確定配当<small>100あたり</small></h5><ol id="v2oddsList"></ol></div>'));
-  stageEl.appendChild(el('<div class="v2strip" id="v2strip"><div class="ttl" id="v2stripTtl"></div><div class="sep"></div><div class="ppl">全店で<b id="v2stripPpl">0</b>人が参加</div><div class="stores" id="v2stripStores"></div><div class="nx" id="v2stripNx"><small id="v2stripNxL"></small><b id="v2stripNxN"></b></div></div>'));
+  stageEl.appendChild(el('<div class="v2strip" id="v2strip"><div class="ttl" id="v2stripTtl"></div><div class="sep"></div><div class="ppl">全店で<b id="v2stripPpl">0</b>人が参加</div><div class="stores" id="v2stripStores"></div><div class="nx" id="v2stripNx"><small id="v2stripNxL"></small><b id="v2stripNxN"></b></div><div class="soon">結果はまもなく</div></div>'));
   stageEl.appendChild(el('<div class="v2hl-tag" id="v2hlTag">前のレースのハイライト<small id="v2hlTagSub"></small></div>'));
-  stageEl.appendChild(el('<div class="v2hlw" id="v2hlw"><h5>前のレースの当たり<small id="v2hlwSub">全店</small><span class="pg"></span></h5><div class="win1" id="v2hlwWin"></div><div class="v2wl" id="v2hlwList"><div class="inner"></div></div></div>'));
+  stageEl.appendChild(el('<div class="v2hlw" id="v2hlw"><h5>全店の当たった人<small id="v2hlwSub"></small><span class="pg"></span></h5><div class="win1" id="v2hlwWin"></div><div class="v2wl" id="v2hlwList"><div class="inner"></div></div></div>'));
   stageEl.appendChild(el('<div class="v2closed" id="v2closed">締切ました</div>'));
   stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div></div></div>' +
-    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><b>当たった方は</b><span>スマホの<em>受け取り QR</em>をスタッフへ</span></div><div class="rsub" id="v2resSub"></div></div></div>'));
+    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b>当たった方は</b><span>スマホの<em>受け取り QR</em>を</span><span>スタッフへ見せる</span></div></div><div class="rsub" id="v2resSub"></div></div></div>'));
   // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
   stageEl.appendChild(el('<div class="v2down" id="v2down"><b>通信が切れています</b><span>自動でつなぎ直します</span></div>'));
   stageEl.appendChild(el('<div class="v2net" id="v2net">通信中…</div>'));
@@ -382,7 +382,7 @@
   function renderHlWinners(P) {
     const w = P.result.winner, h = P.horses[w];
     $('v2hlTagSub').textContent = raceTitle(P);
-    $('v2hlwSub').textContent = raceTitle(P) + '　全店';
+    $('v2hlwSub').textContent = raceTitle(P) + 'のレース'; // 2026-10-19: 見出しは「全店の当たった人」（結果画面と同じ言葉・1 行に収まる）
     $('v2hlwWin').innerHTML = '<small>1着</small><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span>' + esc(h.name) + '</span><em>100あたり ' + per(P.result.finalOdds[w]) + '</em>';
     fitText($('v2hlwWin').querySelector('span'), 26, 16);
     fillWinners($('v2hlwList'), P.winners || [], { max: 64, normal: 48, dense: 40 });
@@ -751,7 +751,7 @@
         lbl = '投票 あと'; target = R.closeAt; sub = ''; stx = '参加受付は締切'; stc = 'shut'; // 発走時刻は上の帯（同じ時刻を 2 回出さない）
       }
     }
-    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレースの発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { const can = S.open && R.id === S.open.id && t < xAt(R); if (can && m === 'wait') { lbl = '参加受付 あと'; target = xAt(R); } /* 2026-10-19: 次のレースが受付中なら、受付の画面と同じく「参加受付 あと」（上の札「次のレース 受付中」とそろえる。発走時刻は小さな行） */ stx = can || R.openAt <= t ? '参加受付中' : hhmm(R.openAt) + ' 受付開始'; stc = can || R.openAt <= t ? 'on' : ''; } } // 次のレースが受付中（スマホで参加できる）なら、そう出す（上の札とそろえる）
+    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレースの発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { const can = S.open && R.id === S.open.id && t < xAt(R); if (can && m === 'wait') { lbl = '参加受付 あと'; target = xAt(R); sub = ''; } /* 2026-10-19: 次のレースが受付中なら、受付の画面と同じく「参加受付 あと」（上の札「次のレース 受付中」とそろえる。発走時刻は小さな行） */ stx = can || R.openAt <= t ? '参加受付中' : hhmm(R.openAt) + ' 受付開始'; stc = can || R.openAt <= t ? 'on' : ''; } } // 次のレースが受付中（スマホで参加できる）なら、そう出す（上の札とそろえる）
     else if (m === 'result') { R = S.open || nextRaceOf(); lbl = '次のレースまで'; target = R && R.at; }
     const left = target ? target - t : 0, hot = !!target && left < (lbl === '参加受付 あと' ? 15000 : 30000) && m === 'open';
     stageTexts(m === 'open' && xShut(S.open, t));
@@ -783,10 +783,12 @@
     else if (m === 'live') {
       const ph = raceView.phase, pre = view && view.runAt && t < view.runAt;
       if (!$('board').hidden || ph === 'winner') { tx = 'レース結果'; c = 'res'; }
-      else if (ph === 'replay') tx = $('tagPhoto').classList.contains('show') ? '写真判定' : 'リプレイ';
+      else if (ph === 'replay') tx = $('tagPhoto').classList.contains('show') ? '写真判定中' : 'リプレイ';
       else if (pre || ph === 'idle') { tx = '投票締切・まもなく発走'; c = 'race'; } // 赤のままだと警告に見える（締切の瞬間は「締切ました」が出る）
-      else { tx = 'LIVE　レース中'; c = 'live'; }
+      else { tx = stageEl.classList.contains('bc-final') ? 'LIVE　ゴール前' : 'LIVE　レース中'; c = 'live'; }
+      stageEl.classList.toggle('st-soon', ph === 'replay' && $('board').hidden); // リプレイ・写真判定のあいだは下の帯を「結果はまもなく」に（途中から見た人にも分かる）
     } else if (m === 'result') { tx = '結果発表'; c = 'res'; } // 結果画面の札はずっと「結果発表」（札の右が前のレースの発走時刻なので、次のレースの案内は右下の枠で出す）
+    if (m !== 'live') stageEl.classList.remove('st-soon');
     const k = tx + '|' + c; if (k === stKey) return; stKey = k;
     ['v2st', 'v2st2'].forEach((id) => { const e = $(id); e.className = 'v2st ' + c; e.hidden = !tx; $(id + 'T').textContent = tx; });
   }
