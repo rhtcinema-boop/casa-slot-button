@@ -107,29 +107,45 @@
   }
   function mark() { let log = []; try { log = JSON.parse(ss.get('casa.tvswitchLog') || '[]'); } catch (e) { log = []; } log.push(Date.now()); ss.set('casa.tvswitchLog', JSON.stringify(log.slice(-LOOP_N * 2))); }
   const busy = () => { const st = document.getElementById('stage'); return !!(st && st.classList.contains('m-live')) || !!document.getElementById('tvkeyBox'); };
-  /* 2026-10-19: 画質の「最高」（管理者が店舗の設定 settings.tvQuality = 'max' にしたときだけ）。テレビの中に 'casa.derby.q' = 'max' を覚えて読み直す。
-     js/race3d.js がそれを見て、ふつうの画質（影・ふちのなめらか）で、細かさ 1.2 倍のまま（自動で下げない）描く。設定を消すと元の Fire TV 向けに戻る。
-     店舗の設定はテレビのログイン（client.js の 'derby' のアプリ）で 1 分ごとに読む。レース中・この画面を開いている間は読み直さない */
-  const QKEY = 'casa.derby.q';
+  /* 2026-10-19: テレビの画質（店舗の設定 settings.tvQuality。'' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先。管理画面・スタッフのスマホで選ぶ）。
+     テレビの中に 'casa.derby.q'（'auto' | 'max'、標準は消す）を覚えて読み直す。js/race3d.js がそれを見て描き方を決める（QMODE・TV_K_FIX・MAXQ・ADAPT）。
+     今の値は、いつもの状態（DERBY.state.settings.tvQuality。v2/core.js の settingsFor）で 5 秒ごとに見る＝店舗の設定の変更の通知に乗るので、読み取りは増えない。
+     状態に画質が無い（古い core.js のまま等）ときだけ、今までどおりテレビのログイン（client.js の 'derby' のアプリ）で 1 分ごとに読む。
+     レース中・長押しの画面を開いている間は待つ。同じ値が 2 回続けて見えてから（10 秒以内）・10 分に 3 回まで（読み直しが続かないように）。
+     localhost では ?qwatch=1 のときだけ（テスト用。ふだんの確認で 'casa.derby.q' を手で入れても消さない） */
+  const QKEY = 'casa.derby.q', QLOG = 'casa.derby.qLog', Q_EVERY = 5000, Q_READ_MS = 60000, Q_LOOP_N = 3;
+  const QWATCH = !LOCAL || /[?&]qwatch=1\b/.test(QS);
+  const qState = { want: undefined, via: '', at: 0, wait: false, seen: undefined, err: '', reads: 0 };
+  const qNorm = (v) => (v === 'max' || v === 'auto' ? v : ''); // 標準（空・'sharp'）＝軽い描き方のまま細かさ 1.2 倍で固定
+  function qFromState() { const d = window.DERBY, s = d && d.state, st = s && s.settings; return st && typeof st.tvQuality === 'string' ? qNorm(st.tvQuality) : undefined; }
   async function readQuality() { // テレビはもう casa-derby に（匿名か進行役で）ログインしている。その接続で店舗の設定を読む（店舗の設定はログインした人なら読める）
     const fb = window.firebase; if (!fb || !fb.apps || !fb.apps.some((a) => a.name === 'derby')) return undefined;
     const app = fb.app('derby'); if (!app.auth().currentUser) return undefined;
     const d = await app.firestore().doc('derbyStores/' + STORE).get({ source: 'server' });
-    const st = d.exists ? (d.data().settings || {}) : {};
-    return st.tvQuality === 'max' || st.tvQuality === 'auto' ? st.tvQuality : ''; // 標準（空・'sharp'）＝軽い描き方のまま細かさ 1.2 倍で固定。'auto'＝重いと自動で下げる、'max'＝最高（2026-10-19）
+    qState.reads++;
+    return qNorm((d.exists ? (d.data().settings || {}) : {}).tvQuality);
   }
+  function qLooping() { let l = []; try { l = JSON.parse(ss.get(QLOG) || '[]'); } catch (e) { l = []; } const t = Date.now(); return l.filter((x) => t - x < LOOP_MS).length >= Q_LOOP_N; }
+  function qMark() { let l = []; try { l = JSON.parse(ss.get(QLOG) || '[]'); } catch (e) { l = []; } l.push(Date.now()); ss.set(QLOG, JSON.stringify(l.slice(-Q_LOOP_N * 2))); }
+  let qLastRead = 0;
   async function checkQuality() {
-    if (navigator.onLine === false) return;
+    if (navigator.onLine === false || state.leaving) return;
     try {
-      const want = await readQuality(); if (want === undefined) return;
-      const have = ls.get(QKEY) || '';
-      if (want === have) return;
-      if (busy()) { setTimeout(checkQuality, BUSY_MS * 5); return; }
+      let want = qFromState();
+      if (want !== undefined) qState.via = 'state';
+      else if (Date.now() - qLastRead >= Q_READ_MS) { qLastRead = Date.now(); want = await readQuality(); qState.via = 'read'; }
+      if (want === undefined) return;
+      const have = ls.get(QKEY) || '', prev = qState.seen;
+      qState.want = want; qState.seen = want; qState.at = Date.now();
+      if (want === have) { qState.wait = false; qState.err = ''; return; }
+      if (qState.via === 'state' && prev !== want) { qState.wait = true; return; } // 状態で見えた値は、次の見直しでも同じなら（一瞬の古い写しで読み直さない）
+      if (busy()) { qState.wait = true; return; } // レース中・長押しの画面 → 終わってから（5 秒ごとに見直す。読み取りなし）
+      if (qLooping()) { qState.wait = true; qState.err = 'loop'; return; }
       try { if (want) localStorage.setItem(QKEY, want); else localStorage.removeItem(QKEY); } catch (e) { return; }
-      location.reload();
-    } catch (e) { /* 読めないときは今のまま */ }
+      qMark(); location.reload();
+    } catch (e) { qState.err = 'read'; /* 読めないときは今のまま */ }
   }
-  if (STORE && !LOCAL) setTimeout(function loopQ() { checkQuality(); setTimeout(loopQ, 60000); }, 8000);
+  if (STORE && QWATCH) setTimeout(function loopQ() { checkQuality().finally(() => setTimeout(loopQ, Q_EVERY)); }, 8000);
   let timer = 0, lastRest = 0;
   const later = (ms) => { clearTimeout(timer); timer = setTimeout(check, ms); };
   async function check() {
@@ -152,7 +168,7 @@
   }
   /* 「casa SLOT に戻す」: このテレビを casa SLOT に固定して戻る（すぐ。レース中なら終わってから＝店の設定で戻るときと同じ） */
   function backToSlot() { if (!home() || state.leaving) return; ls.set(LKEY, 'slot'); state.local = 'slot'; clearTimeout(timer); if (busy()) later(BUSY_MS); else leave(); }
-  window.DerbyTvSwitch = { check, state, active, docUrl, local, backToSlot, watch, live, readDoc, gameOf };
+  window.DerbyTvSwitch = { check, state, active, docUrl, local, backToSlot, watch, live, readDoc, gameOf, quality: qState, checkQuality };
   if (active()) { watch(() => { if (active() && !state.leaving) later(200); }); later(FIRST_MS); }
 
   /* ---------- Fire TV のアプリのリモコン（window.TV が無いときだけ） ---------- */
@@ -174,7 +190,7 @@
     // 2026-10-19: 画質の確認用に 1 行（3D の細かさ・1 秒のコマ数・画面の大きさ・版）。お客さんには見えない（この画面はスタッフ・オーナーだけ）
     const dg = document.createElement('div'); dg.id = 'tvDiag'; dg.style.cssText = 'margin-top:14px;font-size:15px;color:#8f8a7c';
     const r3 = window.R3D && window.R3D.inst, pf = r3 && r3.perf, tvv = ((document.querySelector('script[src*="v2/tv.js?v="]') || {}).src || '').split('v=')[1] || '';
-    dg.textContent = '画質: ' + (r3 ? (r3.k || 0) + ' 倍・' + Math.round((pf && pf.fps) || 0) + ' コマ/秒' + (r3.tvCap ? '（重いので ' + r3.tvCap + ' 倍まで）' : '') : '3D なし') + '・画面 ' + innerWidth + '×' + innerHeight + '・密度 ' + (window.devicePixelRatio || 1) + '・' + tvv;
+    dg.textContent = '画質: ' + (r3 ? (r3.k || 0) + ' 倍・' + Math.round((pf && pf.fps) || 0) + ' コマ/秒' + (r3.tvCap ? '（重いので ' + r3.tvCap + ' 倍まで）' : '') : '3D なし') + '・' + ({ auto: 'なめらか優先', max: 'きれい優先' }[ls.get(QKEY) || ''] || '標準') + '・画面 ' + innerWidth + '×' + innerHeight + '・密度 ' + (window.devicePixelRatio || 1) + '・' + tvv;
     w.firstChild.appendChild(dg);
     fetch('../version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((j) => { if (j && j.v) dg.textContent += '・' + j.v; }).catch(() => {});
     document.body.appendChild(w);
