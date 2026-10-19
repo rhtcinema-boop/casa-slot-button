@@ -295,6 +295,7 @@ window.Race3D = (function () {
     this.label = ''; this.cut = 0; this.slowSaid = false; this.winnerIdx = -1;
     this.lite = /[?&]lite=1/.test(QS);
     this.quality = R3D.quality = R3D.quality || guessQuality();
+    R3D.inst = this; // 2026-10-19: テレビの「戻る」長押しの画面に、いまの 3D の細かさ・なめらかさを出すため（v2/tvswitch.js）
     if (this.quality === 'tv' || R3D.tv) { this.tv = R3D.tv = true; this.quality = R3D.quality = 'low'; }
     if (this.quality === 'low') this.lite = true;
     this.cam = { p: { x: 0, y: 30, z: 120 }, t: { x: 0, y: 0, z: 0 }, fov: 60, mode: '' }; // fov は 2D 版と同じ横の画角（度）
@@ -1486,9 +1487,9 @@ window.Race3D = (function () {
       if (pf.gap > 21 && this.k > 1) { this.kCap = Math.max(1, this.k - 0.25); pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: 解像度を ' + this.k + ' 倍に下げました'); }
       else if (pf.gap > 36 && this.k <= 1) this.goLite();
     } else if (ADAPT && this.lite && !this.tv && document.visibilityState === 'visible' && pf.frames > 120 && pf.gap > 36) this.goTv(); // 軽い描き方でも 28fps を下回る → Fire TV 向けへ
-    else if (ADAPT && this.tv && !TV_K_FIX && document.visibilityState === 'visible' && pf.frames > 90) { // Fire TV: 45fps を下回ったら 0.1 下げる。55fps を超えて 1 分たったら 0.1 戻す
-      if (pf.gap > 22 && this.k > TV_K_MIN) { this.tvCap = Math.max(TV_K_MIN, Math.round((this.k - 0.1) * 10) / 10); this.tvDownAt = now; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に下げました'); }
-      else if (this.tvCap && pf.gap < 18.2 && pf.frames > 600 && now - (this.tvDownAt || 0) > 60000) { this.tvCap = Math.round((this.tvCap + 0.1) * 10) / 10; if (this.tvCap >= TV_K_MAX) this.tvCap = 0; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に戻しました'); }
+    else if (ADAPT && this.tv && !TV_K_FIX && document.visibilityState === 'visible' && pf.frames > 90) { // Fire TV: 40fps を下回ったら 0.1 下げる。52fps を超えて 1 分たったら 0.1 戻す（2026-10-19: 45→40。細かさを優先）
+      if (pf.gap > 25 && this.k > TV_K_MIN) { this.tvCap = Math.max(TV_K_MIN, Math.round((this.k - 0.1) * 10) / 10); this.tvDownAt = now; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に下げました'); }
+      else if (this.tvCap && pf.gap < 19.2 && pf.frames > 600 && now - (this.tvDownAt || 0) > 60000) { this.tvCap = Math.round((this.tvCap + 0.1) * 10) / 10; if (this.tvCap >= TV_K_MAX) this.tvCap = 0; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に戻しました'); }
     }
     if (PERF_UI) this.perfUi(now);
   };
