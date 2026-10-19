@@ -355,3 +355,6 @@ details.fold > summary small { flex-basis: 100%; padding-left: 22px; margin-top:
   .rfwarn { font-size: 14px; }
 }
 .opsnote { margin: 12px 2px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); color: var(--text); font-size: 15px; font-weight: 600; }
+/* 2026-10-19: リングバウンティの交換（設定タブのいちばん上） */
+#bountyPanel .bpnow { margin: 0 0 10px; font-size: 18px; }
+#bountyPanel .bpnow b { font-size: 22px; color: var(--gold); }
