@@ -5,7 +5,8 @@
    - 受け取り: 当たりの QR（derby:pay:<pid>）を読む → 「当選額 18,300 を渡す」→「当選額 18,300 を渡した（確定）」（額は 1 枚 = 100。2026-10-16）。受け取り済みは赤で拒否（二重防止はサーバー）
    - 参加受付（2026-10-16 受付の 2 段）: 認証できるのは参加受付の締切（exchangeCloseAt）まで。認証・次への画面に「参加受付 あと m:ss」、締切のあとは赤で「参加受付は締め切りました」
    - 返却: 投票しなかった券の QR（返却）を読む → 「返却 リングバウンティ 600枚」→「リングバウンティ 600枚を返した（確定）」（認証したときの割合。返還も同じ。当選額とは別）
-   - 次へ: その店のテレビの結果画面を進める。その下に「この店だけテストレース」（2026-10-19。押すと、この店のテレビだけで 2 分後にテストのレース。集計には入らない）
+   - 次へ: その店のテレビの結果画面を進める。その下に「この店だけテストレース」（2026-10-19。押すと、この店のテレビだけで 1 分後にテストのレース＝参加受付 30 秒・投票 30 秒。集計には入らない。
+     2026-10-19 その 2: 上の「テレビ」のシート（v2/staffswitch.js）からも押せる。window.STAFF.test を使う）
    - 記録: 今日の会計番号ごとの認証・当たり・受け取り
    カメラ: BarcodeDetector があれば使い、なければ jsQR（jsdelivr、版を固定）。カメラが使えないときは番号を手で入れる。
    テスト用: window.STAFF.inject('derby:auth:...') で読み取ったことにできる。 */
@@ -349,7 +350,7 @@
       (st && st.next ? '<div class="stat"><span>次のレース</span><b>' + hhmm(st.next.at) + '</b></div>' : '') + '</div>' +
       '<div class="panel"><h4>結果画面を次へ</h4><p class="note">この店のテレビだけ、結果画面を閉じて待ち時間の画面にします。次のレースは時刻表どおりに始まります（全店同時）。</p>' +
       '<button class="btn ok big" id="doNext">テレビを次へ進める</button></div>' +
-      '<div class="panel trace"><h4>テスト用</h4><p class="note">この店のテレビだけで、2 分後にテストのレースが走ります（集計には入りません）。</p><p class="note trs" id="trState"></p>' +
+      '<div class="panel trace"><h4>テスト用</h4><p class="note">この店のテレビだけで、1 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走。集計には入りません）。上の「テレビ」からも押せます。</p><p class="note trs" id="trState"></p>' +
       '<button class="btn ghost" id="doTest">この店だけテストレース</button></div>';
     $('doTest').onclick = testPress;
     drawTest();
@@ -364,15 +365,15 @@
 
   /* ================= この店だけテストレース（2026-10-19） =================
      押せないとき: 進行役のテレビがいない／この店でレースの受付中・レース中・結果画面のあいだ／押したあと（準備中・そのレースが終わるまで） */
-  let trS = null, trAt = 0, trBusy = false, trT = 0, trMsg = '';
-  const TEST_SEC = 120;
+  let trS = null, trAt = 0, trBusy = false, trT = 0, trMsg = '', trExt = false; const trCbs = [];
+  const TEST_SEC = 60; // 2026-10-19 その 2: 2 分 → 1 分（ルールの下限。参加受付 30 秒・投票 30 秒＝core.js の testStages）
   async function testPoll(now0) {
     clearTimeout(trT);
-    if (mode !== 'next' || !C || !C.testRaceStatus) return;
+    if ((mode !== 'next' && !trExt) || !C || !C.testRaceStatus) return; // trExt: 「テレビ」のシートを開いている間（v2/staffswitch.js）
     try { trS = await C.testRaceStatus(saved.pin); trAt = Date.now(); } catch (e) { if (pinGone(e)) return; trS = trS || null; }
     drawTest();
     const r = trS && trS.req, pending = r && !r.raceId && !r.err && (C.serverNow() - r.at) < 60000;
-    trT = setTimeout(testPoll, pending ? 3000 : 30000); // 準備中は 3 秒ごと、ふだんは 30 秒ごと（この画面を開いているときだけ）
+    trT = setTimeout(testPoll, pending ? 3000 : 30000); // 準備中は 3 秒ごと、ふだんは 30 秒ごと（この画面か「テレビ」のシートを開いているときだけ）
   }
   function testWhy() {
     const n = C ? C.serverNow() : Date.now(), r = trS && trS.req;
@@ -385,15 +386,16 @@
     return [trMsg, false];
   }
   function drawTest() {
+    trCbs.forEach((cb) => { try { cb(); } catch (e) { /* noop */ } }); // 「テレビ」のシートの同じ表示も塗り直す
     const el = $('trState'), b = $('doTest'); if (!el || !b) return;
     const [t, off] = testWhy(); el.textContent = t; b.disabled = off || trBusy;
   }
   async function testPress() {
     const [, off] = testWhy(); if (off || trBusy) return;
-    if (!confirm(saved.name + 'のテレビだけで、' + Math.round(TEST_SEC / 60) + ' 分後にテストのレースが走ります。')) return;
+    if (!confirm(saved.name + 'のテレビだけで、' + Math.round(TEST_SEC / 60) + ' 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走）。')) return;
     trBusy = true; drawTest();
     try { const d = await C.testRace(saved.pin, TEST_SEC); toast(d && d.raceId ? 'テストのレースを作りました' : 'テストのレースをお願いしました'); trMsg = ''; }
-    catch (e) { if (!pinGone(e)) { toast(errText(e), true); trMsg = ''; } }
+    catch (e) { if (!pinGone(e)) { toast(errText(e), true); trMsg = errText(e); } } // 理由はボタンの上にも残す（「テレビ」のシートでは知らせが隠れるため）
     trBusy = false; testPoll(true);
   }
 
@@ -475,7 +477,9 @@
   }, 1000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopCam(); else if (saved && (mode === 'auth' || mode === 'pay')) startCam(); });
 
-  window.STAFF = { inject: (t) => handleCode(t, 'test'), get mode() { return mode; }, setMode, get C() { return C; }, get saved() { return saved; }, get sheetOpen() { return sheetOpen; }, closeSheet, xState, get st() { return st; } }; // sheetOpen: v2/staffswitch.js が見る（確認の画面の途中では画面を入れ替えない。2026-10-19）。st: いつもの状態（テレビの画質 settings.tvQuality を staffswitch.js が見る。2026-10-19）
+  window.STAFF = { inject: (t) => handleCode(t, 'test'), get mode() { return mode; }, setMode, get C() { return C; }, get saved() { return saved; }, get sheetOpen() { return sheetOpen; }, closeSheet, xState, get st() { return st; },
+    /* この店だけテストレース（2026-10-19 その 2）: 「テレビ」のシートが使う。watch(true) の間は状態を読み続ける・onChange で塗り直しを知らせる */
+    test: { why: testWhy, press: testPress, get busy() { return trBusy; }, sec: TEST_SEC, watch(on) { trExt = !!on; if (on) { if (Date.now() - trAt > 3000) testPoll(true); } else if (mode !== 'next') clearTimeout(trT); }, onChange(cb) { trCbs.push(cb); } } }; // sheetOpen: v2/staffswitch.js が見る（確認の画面の途中では画面を入れ替えない。2026-10-19）。st: いつもの状態（テレビの画質 settings.tvQuality を staffswitch.js が見る。2026-10-19）
 
   (async function boot() {
     if (!window.DerbyCloud) { $('login').classList.remove('hidden'); $('login').innerHTML = LOGO_H1 + '<p>読み込みに失敗しました。ページを開き直してください。</p>'; return; }
