@@ -9,6 +9,9 @@
      紙幣の流れの途中では移らない（GAME START か空の会計番号入力の画面で、送信中・扉・確認の画面でなく、6 秒さわっていないときだけ。bill.js の BillPage.idle）。
      行ったり来たり: 10 分に 6 回を超えたら 10 分止める（テレビと同じ）。「このスマホは自動で入れ替えない」も選べる（localStorage 'casa.phoneSwitch' = 'off'）。
    - 店舗の対応は js/tvswitch.js と同じ（渋谷 → shibuya、上野 → ueno、札幌 → sapporo。?derbystore= で覚えさせた値が先）。対応の無い店ではボタンを出さない
+   - テレビの画質（2026-10-19）: 同じシートに「なめらか優先・標準・きれい優先」（casa-derby の derbyStores/<店舗ID>.settings.tvQuality = 'auto' | '' | 'max'）。
+     今の値はシートを開いたときに 1 回だけ読む（匿名のログインで読める）。書くのは上と同じ casa DERBY のスタッフ PIN で、tvQuality だけ（ルールの tvQualityOnly）。
+     casa DERBY のテレビが 1 分ほどで読み込み直して反映する（レース中は終わってから。derby/v2/tvswitch.js）
    - テスト用: localhost のときだけ ?derbyApi=<URL> で Google の入口（ログインと Firestore）を差し替える（js/derbyswitch-master.js と同じ） */
 (function () {
   'use strict';
@@ -26,11 +29,14 @@
   const SIGNUP = (stub || 'https://identitytoolkit.googleapis.com') + '/v1/accounts:signUp?key=' + KEY;
   const FS = (stub || 'https://firestore.googleapis.com') + '/v1/' + DB;
   const NAMES = { slot: 'casa SLOT', derby: 'casa DERBY' };
+  const QS3 = [['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ。細かさはそのまま'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
+  const QN = { auto: 'なめらか優先', '': '標準', max: 'きれい優先' };
+  const qNorm = (v) => (v === 'auto' || v === 'max' ? v : '');
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* noop */ } };
-  const state = { id: null, game: null, at: 0, busy: false, msg: '', open: false, waiting: false, leaving: false, why: '' };
+  const state = { id: null, game: null, at: 0, busy: false, msg: '', open: false, waiting: false, leaving: false, why: '', q: undefined, qId: null, qmsg: '', qLoading: false };
 
   const bill = () => window.BillPage.saved;
   function derbyId() {
@@ -78,16 +84,47 @@
     throw new Error('保存できませんでした（' + r.status + '）。');
   }
 
+  /* テレビの画質（2026-10-19）: 今の値を 1 回読む（匿名のログインで。店舗の設定はログインした人なら読める）／スタッフとして tvQuality だけ書く */
+  async function readQuality(id) {
+    const s = await signIn();
+    const r = await fetch(FS + '/derbyStores/' + encodeURIComponent(id), { headers: { Authorization: 'Bearer ' + s.idToken }, credentials: 'omit', cache: 'no-store' });
+    if (r.status === 401) { sess = null; throw new Error('expired'); }
+    if (!r.ok) throw new Error('read ' + r.status);
+    const j = await r.json().catch(() => ({})), f = j && j.fields && j.fields.settings && j.fields.settings.mapValue && j.fields.settings.mapValue.fields;
+    return qNorm(f && f.tvQuality && f.tvQuality.stringValue);
+  }
+  async function setQuality(id, pin, q) {
+    const s = await asStaff(id, pin);
+    const { r } = await post(FS + ':commit', { writes: [
+      { update: { name: DB + '/derbyStores/' + id, fields: { settings: { mapValue: { fields: { tvQuality: { stringValue: qNorm(q) } } } } } }, updateMask: { fieldPaths: ['settings.tvQuality'] }, currentDocument: { exists: true } },
+    ] }, s.idToken);
+    if (r.ok) return;
+    if (r.status === 404) throw new Error('casa DERBY に店舗「' + id + '」がありません。');
+    if (r.status === 401) { sess = null; throw new Error('ログインの期限が切れました。もう一度押してください。'); }
+    if (r.status === 403) { if (sess) sess.staff = ''; const e = new Error('書き込みが許可されませんでした。もう一度押しても同じときは、casa DERBY の管理画面から変えてください。'); e.code = 'denied'; throw e; }
+    throw new Error('保存できませんでした（' + r.status + '）。');
+  }
+  async function loadQuality() { // シートを開いたとき 1 回
+    const id = derbyId(); if (!id || state.qLoading) return;
+    state.qLoading = true; if (state.qId !== id) { state.q = undefined; state.qId = id; }
+    try { state.q = await readQuality(id); } catch (e) { state.q = state.q === undefined ? null : state.q; } // null ＝読めなかった（押せば書ける）
+    state.qLoading = false; if (state.open) paint();
+  }
+
   /* ---------- 画面（右上のボタンと、開いたときのシート） ---------- */
   const css = document.createElement('style');
   css.textContent = '#tvgBtn{position:absolute;top:calc(var(--sat,0px) + 8px);right:10px;z-index:15;padding:6px 10px;border-radius:12px;border:1px solid #3a3320;background:#15120a;color:#cfd6cc;font:11px/1.25 -apple-system,"Hiragino Sans",sans-serif;text-align:center}' +
     '#tvgBtn b{display:block;font-size:12px;color:#ffe9a8}#tvgBtn.derby b{color:#9fe07a}#tvgBtn[hidden]{display:none}' +
     '#tvgSheet{position:fixed;inset:0;z-index:41;background:rgba(0,0,0,.78);display:flex;align-items:flex-end;justify-content:center}' +
-    '#tvgSheet .card{width:100%;max-width:480px;background:#15120a;border:1px solid #c9a03e;border-bottom:0;border-radius:18px 18px 0 0;padding:18px 18px calc(var(--sab,0px) + 18px);color:#e8e3d2;font-family:-apple-system,"Hiragino Sans",sans-serif}' +
+    '#tvgSheet .card{width:100%;max-width:480px;max-height:92vh;overflow-y:auto;box-sizing:border-box;background:#15120a;border:1px solid #c9a03e;border-bottom:0;border-radius:18px 18px 0 0;padding:18px 18px calc(var(--sab,0px) + 18px);color:#e8e3d2;font-family:-apple-system,"Hiragino Sans",sans-serif}' +
     '#tvgSheet h3{margin:0 0 4px;font-size:16px;color:#ffd773}#tvgSheet p{margin:6px 0;font-size:13px;color:#9aa89c;line-height:1.6}#tvgSheet .now{font-size:15px;color:#e8e3d2}#tvgSheet .now b{color:#ffe9a8}' +
     '#tvgSheet .two{display:flex;gap:10px;margin:12px 0}#tvgSheet .two button{flex:1;padding:16px 6px;border-radius:14px;border:1px solid #c9a03e;background:#0d0c08;color:#ffe9a8;font:700 17px/1.2 inherit}' +
     '#tvgSheet .two button.cur{background:linear-gradient(180deg,#ffe9a8,#c9a03e);color:#1a1408}#tvgSheet .two button.cur small{display:block;font-size:11px;font-weight:400}#tvgSheet .two button:disabled:not(.cur){opacity:.45}' +
     '#tvgSheet input{width:100%;box-sizing:border-box;padding:12px;font-size:22px;letter-spacing:.4em;text-align:center;border-radius:12px;border:1px solid #c9a03e;background:#0d0c08;color:#fff}' +
+    '#tvgSheet .tq{margin-top:12px;padding-top:12px;border-top:1px solid #2a2416}#tvgSheet .tq h4{margin:0;font-size:15px;color:#ffd773}#tvgSheet .tq h4 small{font-weight:400;font-size:12px;color:#9aa89c;margin-left:6px}' +
+    '#tvgSheet .three{display:flex;flex-direction:column;gap:8px;margin:10px 0 4px}#tvgSheet .three button{display:block;width:100%;text-align:left;padding:10px 14px;border-radius:12px;border:1px solid #6b5626;background:#0d0c08;color:#ffe9a8;font:inherit}' +
+    '#tvgSheet .three button b{display:block;font-size:15px}#tvgSheet .three button small{display:block;font-size:12px;color:#9aa89c;margin-top:2px;line-height:1.45}#tvgSheet .three button i{float:right;font-style:normal;font-size:11px;margin-top:2px}' +
+    '#tvgSheet .three button.cur{background:linear-gradient(180deg,#ffe9a8,#c9a03e);border-color:#c9a03e;color:#1a1408}#tvgSheet .three button.cur small{color:#3a2d10}#tvgSheet .three button:disabled:not(.cur){opacity:.45}' +
     '#tvgSheet .err{color:#ff8c7a;font-size:14px;min-height:18px;margin:6px 0}#tvgSheet .okm{color:#35e07a;font-size:14px;margin:6px 0}' +
     '#tvgSheet .go{display:block;width:100%;margin-top:12px;padding:13px 14px;border-radius:12px;border:1px solid #a57c26;background:linear-gradient(#f3d27a,#c99a3a);color:#1a1205;font:inherit;font-weight:800;font-size:15px}' +
     '#tvgSheet .auto{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #2a2416;font-size:13px;color:#cfd6cc}' +
@@ -95,7 +132,7 @@
   document.head.appendChild(css);
   const btn = document.createElement('button');
   btn.id = 'tvgBtn'; btn.type = 'button'; btn.hidden = true;
-  btn.addEventListener('click', () => { state.open = true; state.msg = ''; paint(); });
+  btn.addEventListener('click', () => { state.open = true; state.msg = ''; state.qmsg = ''; paint(); loadQuality(); });
   (document.getElementById('app') || document.body).appendChild(btn);
 
   function paintBtn() {
@@ -115,9 +152,17 @@
       '<div class="two">' + b('slot') + b('derby') + '</div>' +
       (needPin ? '<p>切り替えには casa DERBY のスタッフ PIN（' + esc(s ? s.name : id) + '）が要ります。1 回入れると、このスマホの casa DERBY のスタッフ画面と同じく覚えます。</p><input id="tvgPin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="8" placeholder="PIN">' : '') +
       (state.msg ? '<div class="' + (/^OK /.test(state.msg) ? 'okm' : 'err') + '" id="tvgMsg">' + esc(state.msg.replace(/^OK /, '')) + '</div>' : '') +
+      qHtml() +
       (g === 'derby' ? '<button type="button" class="go" data-tvg="go">今すぐ casa DERBY のスタッフ画面へ</button>' : '') + // 2026-10-19: 紙幣の手続きの途中でも、スタッフの判断ですぐ移れる
       '<div class="auto"><span>このスマホの画面も自動で入れ替える<br><small style="color:#9aa89c">casa DERBY のときは casa DERBY のスタッフ画面に</small></span><button type="button" data-tvg="auto">' + (auto() ? 'する' : 'しない') + '</button></div>' +
       '<button type="button" class="close" data-tvg="close">閉じる</button></div>';
+  }
+  function qHtml() { // テレビの画質（2026-10-19）。PIN の欄は上のものを使う
+    const q = state.qId === derbyId() ? state.q : undefined;
+    return '<div class="tq" id="tvqBox"><h4>テレビの画質<small>casa DERBY を映しているとき</small></h4>' +
+      '<p class="now">いま: <b id="tvqNow">' + (q === undefined ? '確認中…' : q === null ? '読めませんでした' : QN[q]) + '</b></p>' +
+      '<div class="three">' + QS3.map(([v, name, note]) => '<button type="button" data-tvq="' + v + '" class="' + (q === v ? 'cur' : '') + '"' + (q === v || state.busy || q === undefined ? ' disabled' : '') + '>' + (q === v ? '<i>いまこちら</i>' : '') + '<b>' + name + '</b><small>' + note + '</small></button>').join('') + '</div>' +
+      (state.qmsg ? '<div class="' + (/^OK /.test(state.qmsg) ? 'okm' : 'err') + '" id="tvqMsg">' + esc(state.qmsg.replace(/^OK /, '')) + '</div>' : '') + '</div>';
   }
   function paint() {
     paintBtn();
@@ -129,6 +174,8 @@
     const pin = sh.querySelector('#tvgPin'); if (pin) pin.value = keep;
   }
   async function onClick(e) {
+    const tq = e.target.closest('[data-tvq]');
+    if (tq) return onQuality(qNorm(tq.dataset.tvq));
     const t = e.target.closest('[data-tvg]');
     if (!t) { if (e.target.id === 'tvgSheet' && !state.busy) { state.open = false; paint(); } return; }
     const a = t.dataset.tvg;
@@ -157,6 +204,25 @@
       if (err.code === 'bad_pin' && sv && sv.store === id) { lsSet(STAFF_KEY, null); state.msg = 'casa DERBY のスタッフ PIN が変わっています。新しい PIN を入れてください。'; } // casa DERBY のスタッフ画面と同じく、古い PIN は忘れる
     }
     state.busy = false; paint(); kick();
+  }
+
+  async function onQuality(v) { // テレビの画質を変える（確認 → casa DERBY のスタッフとして書く → 「1 分ほどでテレビに反映」）
+    if (state.busy || state.q === undefined || v === state.q) return;
+    const id = derbyId(), s = bill(), sv = staffSaved(), inp = $('tvgPin');
+    const pin = sv && sv.store === id ? sv.pin : (inp ? inp.value.trim() : '');
+    if (!pin) { state.qmsg = 'casa DERBY のスタッフ PIN を入れてください（上の欄）。'; return paint(); }
+    if (!window.confirm((s ? s.name : '') + ' のテレビの画質を「' + QN[v] + '」にします。\n1 分ほどでテレビに反映されます（レース中は終わってから）。' + (v === 'max' ? '\nきれい優先は動きがカクカクすることがあります。' : ''))) return;
+    state.busy = true; state.qmsg = ''; paint();
+    try {
+      await setQuality(id, pin, v);
+      if (!(sv && sv.store === id) && (!sv || sv.store === id)) lsSet(STAFF_KEY, JSON.stringify({ store: id, name: (s && s.name) || id, pin })); // テレビのゲームと同じく覚える
+      state.q = v; state.qId = id;
+      state.qmsg = 'OK 画質を「' + QN[v] + '」にしました。1 分ほどでテレビに反映されます（レース中は終わってから）。';
+    } catch (err) {
+      state.qmsg = err.message;
+      if (err.code === 'bad_pin' && sv && sv.store === id) { lsSet(STAFF_KEY, null); state.qmsg = 'casa DERBY のスタッフ PIN が変わっています。新しい PIN を入れてください。'; }
+    }
+    state.busy = false; paint();
   }
 
   /* ---------- 店の設定を見張る → スマホの画面の入れ替え ---------- */
@@ -197,5 +263,5 @@
   setInterval(async () => { if (T.live.on || !derbyId()) return; const d = await T.readDoc(); if (d) onDoc(d); }, POLL_MS);
   setTimeout(async () => { if (!T.live.on && derbyId()) { const d = await T.readDoc(); if (d) onDoc(d); } }, 3000);
   setInterval(() => { if (lastDoc && derbyId() !== state.id) onDoc(lastDoc); else paintBtn(); }, 2000); // ログイン・店舗の切り替えのあと
-  window.PhoneSwitch = { state, derbyId, open() { state.open = true; paint(); }, maybeGo };
+  window.PhoneSwitch = { state, derbyId, open() { state.open = true; paint(); loadQuality(); }, maybeGo, loadQuality };
 })();
