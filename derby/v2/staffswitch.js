@@ -16,6 +16,8 @@
      casa SLOT の下に置いた公開版だけ（DERBY_SLOT_BILL があるとき）。認証・受け取りの確認の画面や、番号を手で入れている途中なら、画面の中の確認の窓を出してから。
      手で移ったら localStorage 'casa.phoneSwitchManual' = { store, game: 移ったときの店のゲーム, to, at }。店のゲームがそれと同じあいだは自動で入れ替えない
      （紙幣のページと同じ決まり）。店のゲームが変わったら記録を消して今までどおり。手で移った分は行ったり来たりの回数に数えない。
+   - 2026-10-19 その 3（オーナー「テストレース開始ボタンがあれば、すぐ始まるように」）: 店のテレビが casa SLOT なら、押すと casa DERBY に切り替えてすぐ走らせる
+     （staff.js の testPress → DerbyCloud.testRace の switchTv。終わったあと SLOT には戻さない）。説明の文は STAFF.test.hint
    - 2026-10-19 その 2（オーナー「すぐテストレースを走らせるみたいなボタン」）: シートに「テストレースを今すぐ走らせる」。
      「次へ」の「この店だけテストレース」と同じもの（staff.js の window.STAFF.test。1 分後＝参加受付 30 秒 → 投票 30 秒。押せないときは同じ理由） */
 (function () {
@@ -160,8 +162,7 @@
     const X = S().test; if (!X) return '';
     const [t, off] = X.why();
     return '<div class="tr" id="trBox"><h4>テストレース<small>この店のテレビだけ・集計に入りません</small></h4>' +
-      '<p class="now" id="trNow">' + esc(t || '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）') + '</p>' +
-      (state.game === 'slot' ? '<p class="warn">いまテレビは casa SLOT です。テレビで見るには、先に上で casa DERBY にしてください。</p>' : '') +
+      '<p class="now" id="trNow">' + esc(t || (X.hint ? X.hint() : '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）')) + '</p>' + // その 3: テレビが SLOT なら「切り替えてから」
       '<button type="button" class="go" data-tvg="test"' + (off || X.busy || state.busy ? ' disabled' : '') + '>テストレースを今すぐ走らせる</button></div>';
   }
   function paintTest() { const b = $('trBox'); if (b && state.open) { const h = trHtml(); if (b.outerHTML !== h) b.outerHTML = h; } }
