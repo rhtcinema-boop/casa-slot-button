@@ -2,11 +2,13 @@
    通信は v2/client.js（DerbyCloud）。API は v2/API.md。
    - 店舗を選んで PIN を 1 回入れる（このスマホに覚える）
    - 認証: お客さんの認証 QR（derby:auth:<tid>）を読む → 会計番号・ニックネーム・「チップ 3,000」 → 「リングバウンティ 600枚を受け取って認証」（交換の割合: リングバウンティ 20枚 ＝ 100チップ。中の 1 枚 = 100 チップ。管理の設定 bountyPerTicket。2026-10-17）
-   - 受け取り: 当たりの QR（derby:pay:<pid>）を読む → 「当選額 18,300 を渡す」→「当選額 18,300 を渡した（確定）」（額は 1 枚 = 100。2026-10-16）。受け取り済みは赤で拒否（二重防止はサーバー）
+   - 受け取り: 当たりの QR（derby:pay:<pid>）を読む → 「当選額 18,300pt を渡す」→「当選額 18,300pt を渡した（確定）」（額は 1 枚 = 100。2026-10-16。単位 pt と「切り上げ済み」は 2026-10-20）。受け取り済みは赤で拒否（二重防止はサーバー）
    - 参加受付（2026-10-16 受付の 2 段）: 認証できるのは参加受付の締切（exchangeCloseAt）まで。認証・次への画面に「参加受付 あと m:ss」、締切のあとは赤で「参加受付は締め切りました」
    - 返却: 投票しなかった券の QR（返却）を読む → 「返却 リングバウンティ 600枚」→「リングバウンティ 600枚を返した（確定）」（認証したときの割合。返還も同じ。当選額とは別）
-   - 次へ: その店のテレビの結果画面を進める。その下に「この店だけテストレース」（2026-10-19。押すと、この店のテレビだけで 1 分後にテストのレース＝参加受付 30 秒・投票 30 秒。集計には入らない。
+   - 次へ: その店のテレビの結果画面を進める。その下に「この店だけテストレース」（2026-10-19。押すと、この店のテレビだけで 1 分半後にテストのレース＝参加受付 1 分・投票 30 秒（2026-10-20 その 5。前は 1 分＝30 秒・30 秒）。集計には入らない。
      2026-10-19 その 2: 上の「テレビ」のシート（v2/staffswitch.js）からも押せる。window.STAFF.test を使う）
+     2026-10-20 その 4: 押せるかは「受付の始まり〜結果画面の終わり」とぶつかるかで見る（紙幣のページと同じ。次のレースがあるだけでは止めない）。
+     テレビが casa SLOT のゲーム中なら、進行役のテレビが「テレビが casa DERBY に来た」のを確かめてから作る（5 分まで。待つ間は「ゲーム中です。終わってから切り替えます」）
    - 記録: 今日の会計番号ごとの認証・当たり・受け取り
    カメラ: BarcodeDetector があれば使い、なければ jsQR（jsdelivr、版を固定）。カメラが使えないときは番号を手で入れる。
    テスト用: window.STAFF.inject('derby:auth:...') で読み取ったことにできる。 */
@@ -20,13 +22,16 @@
   const hhmm = (ms) => { if (!ms) return ''; const d = new Date(ms + 9 * 3600e3); return d.getUTCHours() + ':' + pad(d.getUTCMinutes()); }; // いつも日本時間
   // 払い戻しは「額」（2026-10-16 オーナー決定。1 枚 = 100・単位なし・3 桁ごとのカンマ）。認証（リングバウンティ）は枚のまま
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
+  /* 金額の単位「pt」（2026-10-20 オーナー決定。以前は単位なし）: チップ・当選額・受取額などは数字のすぐ後ろに「pt」。ptT＝文字、ptH＝大きな数字の横に小さく。
+     リングバウンティは「枚」のまま。当選額は 10 の位で切り上げた額（決めるときに切り上げ済み＝ここでは計算しない） */
+  const ptT = (n) => amt(n) + 'pt', ptH = (n) => amt(n) + '<small>pt</small>';
   /* 交換の割合（2026-10-17）: リングバウンティ ○枚 ＝ 投票券 1 枚（state.settings.bountyPerTicket。なければ 20）。認証した券・返却・返還は券に残した割合のリングバウンティ */
   const rateNow = () => { const r = st && st.settings && Number(st.settings.bountyPerTicket); return Number.isInteger(r) && r >= 1 ? r : 20; };
   const rb = (n) => 'リングバウンティ ' + amt(n) + '枚';
   // 交換の割合の 1 行（2026-10-19 オーナー「Bounty X 枚で 100 と交換。説明のどこかに明記」。テレビの参加受付・お客さんの参加画面と同じ言葉）
-  const rateLine = () => '交換 ' + esc(rb(rateNow())) + ' → 100';
+  const rateLine = () => '交換 ' + esc(rb(rateNow())) + ' → 100pt';
   /* casa DERBY CHIPS（2026-10-17 オーナー「リングバウンティ20枚で casa DERBY 100チップ入る感じ」）: お客さんの投票券は「チップ」で見せる（中の 1 枚 = 100 チップ・数字だけ）。リングバウンティは本物の札なので「枚」 */
-  const chips = (n) => amt((Number(n) || 0) * 100);
+  const chips = (n) => ptT((Number(n) || 0) * 100), chipsH = (n) => ptH((Number(n) || 0) * 100); // 2026-10-20 から「3,000pt」
   // 記録 1 行のリングバウンティ（core.js の logBounty と同じ。以前の記録: 認証は枚数＝1 対 1、返却・返還は額 ÷ 100）
   const logB = (l) => (l.bounty != null ? Number(l.bounty) || 0 : l.type === 'auth' ? Number(l.count) || 0 : Math.round((Number(l.count) || 0) / 100));
   const payB = (p) => (p.bounty != null ? Number(p.bounty) || 0 : Math.round((Number(p.amount) || 0) / 100));
@@ -55,7 +60,7 @@
   function xBannerHtml() {
     const x = xState(), nx = st && st.next;
     if (!x.open) return '<div class="xstage none"><b>受付中のレースがありません</b><small>' + (nx ? '次のレース ' + hhmm(nx.at) + ' 発走' : '次のレースを待っています') + '</small></div>';
-    if (!x.closed) return '<div class="xstage ' + (x.left < 15000 ? 'hot' : 'on') + '"><span>参加受付 あと</span><b>' + mmss(x.left) + '</b><small>' + hhmm(x.open.at) + ' 発走のレース・投票締切 ' + hhmm(x.open.closeAt) + '</small><small class="xr">' + rateLine() + '</small></div>';
+    if (!x.closed) return '<div class="xstage ' + (x.left < 15000 ? 'hot' : 'on') + '"><span>参加受付 あと</span><b>' + mmss(x.left) + '</b></div>'; // 2026-10-20 オーナーの文字帳: 「発走のレース・投票締切」と「交換 リングバウンティ → 100」は消した。「参加受付 あと」は大きく（staff.css）
     return '<div class="xstage shut"><b>参加受付は締め切りました</b><small>リングバウンティは受け取らないでください。次のレース' + (nx ? '（' + hhmm(nx.at) + ' 発走）' : '') + 'の受付は ' + mmss(x.voteLeft) + ' 後から</small></div>';
   }
   function drawXBanner() { { const g = $('guide'), sm = g && mode === 'auth' && g.querySelector('small'); if (sm && sm.textContent !== rateLine()) sm.textContent = rateLine(); } /* 割合が変わったら認証の案内も直す */ const e = $('xstage'); if (!e) return; const h = xBannerHtml(); if (e.innerHTML !== h) e.innerHTML = h; e.hidden = !(mode === 'auth' || mode === 'next'); }
@@ -114,7 +119,7 @@
     hideViews();
     if (m === 'auth' || m === 'pay') {
       $('scanView').classList.remove('hidden');
-      $('guide').innerHTML = m === 'auth' ? 'お客さんの<b>認証 QR</b> を枠に入れてください<small>' + rateLine() + '</small>' : 'お客さんの<b>当たり・返却の QR</b> を枠に入れてください<small>渡す当選額（返すリングバウンティ）が出ます</small>';
+      $('guide').innerHTML = m === 'auth' ? 'お客さんの<b>認証 QR</b> を枠に入れてください' /* 交換の割合の行は消した（2026-10-20 オーナーの文字帳 t0374） */ : 'お客さんの<b>当たり・返却の QR</b> を枠に入れてください<small>渡す当選額（返すリングバウンティ）が出ます</small>';
       startCam();
     } else { stopCam(); }
     if (m === 'next') { $('nextView').classList.remove('hidden'); drawNext(true); }
@@ -145,9 +150,7 @@
       loop();
     } catch (e) {
       stopCam();
-      msg.textContent = location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'
-        ? 'カメラは https のページでしか使えません。「番号を手で入れる」を使ってください'
-        : 'カメラを使えません（許可されていないか、カメラがありません）。「番号を手で入れる」を使ってください';
+      msg.textContent = ''; /* 2026-10-20 オーナーの文字帳 t0385: カメラが使えないときの長い説明は消した（「番号を手で入れる」も消したため）。下の「カメラを再起動」で開き直す */
     }
   }
   function stopCam() {
@@ -179,7 +182,7 @@
     raf = requestAnimationFrame(tick);
   }
   $('camBtn').onclick = () => { stopCam(); startCam(); };
-  $('manualBtn').onclick = manual;
+  if ($('manualBtn')) $('manualBtn').onclick = manual; // 「番号を手で入れる」のボタンは消した（2026-10-20 オーナーの文字帳「この機能いらない」）。テスト用の STAFF.inject は 6 桁の番号も読める
 
   function manual() {
     const box = $('login'); box.classList.remove('hidden');
@@ -256,8 +259,8 @@
   function showAuth(t, p) {
     const S = { pending: '認証待ち', authorized: '認証済み（まだ投票していない）', voted: '投票済み', void: '無効' };
     const rate = t.rate != null ? t.rate : rateNow(), bounty = t.bounty != null ? t.bounty : t.count * rate; // 認証前は今の割合、認証済みは券に残した割合
-    const head = '<div class="kind">認証</div><div class="amtk">チップ</div><div class="amt">' + chips(t.count) + '</div><div class="rbline">' + esc(rb(bounty)) + '</div>' +
-      facts([['会計番号', t.bill], ['ニックネーム', t.nick], ['状態', S[t.status] || t.status]]);
+    const head = '<div class="kind">認証</div><div class="amtk">チップ</div><div class="amt">' + chipsH(t.count) + '</div><div class="rbline">' + esc(rb(bounty)) + '</div>' +
+      facts([['会計番号', t.bill], ['ニックネーム', t.nick]]); /* 「状態」の行は消した（2026-10-20 オーナーの文字帳。認証済み・無効などは下の赤い枠で出る） */ void S;
     if (t.storeId && t.storeId !== saved.store) return showNg('認証', 'ほかの店舗の QR です', '');
     if (t.status === 'void') { openSheet(head + '<div class="cause">対象外</div><div class="verdict ng">この QR は使えません<small>お客さんが「チップを変える」でやり直したか、古い QR です。お客さんのスマホの新しい QR を読んでください</small></div><button class="btn ghost big" data-x>閉じて次を読む</button>', 'bad'); return ($('sheet').querySelector('[data-x]').onclick = closeSheet); }
     if (t.status !== 'pending') {
@@ -282,7 +285,7 @@
       catch (e) {
         if (e.code === 'network') { const b = $('doAuth'); if (b) b.textContent = '通信を確かめています…'; const x = await landedAfterNet('auth', p.code, t0); if (x) return done(x); }
         if (e.code === 'exchange_closed') return showNg('認証', '参加受付は締め切りました', 'リングバウンティは受け取らないでください（記録していません）');
-        if (e.code === 'rate_changed') { const r2 = e.body && Number(e.body.rate); if (st && st.settings && r2) st.settings.bountyPerTicket = r2; toast('交換の割合が変わりました（' + rb(r2 || rateNow()) + ' ＝ 100チップ）', true); return showAuth(Object.assign({}, t, { rate: null, bounty: null }), p); } // 受け取る枚数を出し直す（まだ記録していない）
+        if (e.code === 'rate_changed') { const r2 = e.body && Number(e.body.rate); if (st && st.settings && r2) st.settings.bountyPerTicket = r2; toast('交換の割合が変わりました（' + rb(r2 || rateNow()) + ' ＝ 100pt）', true); return showAuth(Object.assign({}, t, { rate: null, bounty: null }), p); } // 受け取る枚数を出し直す（まだ記録していない）
         if (!pinGone(e)) showNg('認証', errText(e));
       }
     };
@@ -290,9 +293,9 @@
 
   function showPay(py, p) {
     const rf = py.kind === 'refund', nv = !!py.novote, what = nv ? '返却（投票なし）' : rf ? '返還の受け取り' : '当たりの受け取り', chip = rf ? 'リングバウンティ' : 'リングチップ', give = rf ? '返す' : '渡す', gave = rf ? '返した' : '渡した';
-    const back = rf ? payB(py) : 0, lbl = nv ? '返却' : rf ? '返還' : '当選額', money = rf ? rb(back) : '当選額 ' + amt(py.amount); // 例「当選額 18,300」「リングバウンティ 600枚」（返却・返還はリングバウンティ。額ではない）
-    const head = '<div class="kind">' + what + '</div><div class="amtk">' + (rf ? lbl + ' リングバウンティ' : lbl) + '</div><div class="amt">' + amt(rf ? back : py.amount) + (rf ? '<small>枚</small>' : '') + '</div>' +
-      facts([['会計番号', py.bill], ['ニックネーム', py.nick], ['馬番', py.horse != null && !rf ? (py.horse + 1) + ' 番' : ''], ['状態', { paid: '受け取り済み', expired: '期限切れ', void: '取り消し' }[py.status] || '未受け取り']]);
+    const back = rf ? payB(py) : 0, lbl = nv ? '返却' : rf ? '返還' : '当選額', money = rf ? rb(back) : '当選額 ' + ptT(py.amount); // 例「当選額 18,300pt」「リングバウンティ 600枚」（返却・返還はリングバウンティ。額ではない）
+    const head = '<div class="kind">' + what + '</div><div class="amtk">' + (rf ? lbl + ' リングバウンティ' : lbl) + '</div><div class="amt">' + (rf ? amt(back) + '<small>枚</small>' : ptH(py.amount) + '<small class="rup">切り上げ済み</small>') + '</div>' + /* 2026-10-20 オーナー決定: 渡す額の横に小さく「切り上げ済み」（当選額は 10 の位で切り上げた額） */
+      facts([['会計番号', py.bill], ['ニックネーム', py.nick]]); /* 「馬番」「状態」の行は消した（2026-10-20 オーナーの文字帳。受け取り済み・期限切れなどは下の赤い枠で出る） */
     if (py.storeId && py.storeId !== saved.store) return showNg(what, rf ? 'ほかの店舗の返還です' : 'ほかの店舗の当たりです', '当たった店舗でお受け取りください');
     const ng = (t, sub) => { openSheet(head + '<div class="verdict ng">' + esc(t) + '<small>' + esc(sub) + '</small></div><button class="btn ghost big" data-x>閉じて次を読む</button>', 'bad'); return ($('sheet').querySelector('[data-x]').onclick = closeSheet); };
     if (py.status === 'expired') return ng('受け取りの期限が切れています', '営業日が変わったので無効です。' + chip + 'は渡さないでください');
@@ -305,13 +308,13 @@
     openSheet(head + (nv ? '<p class="note">投票締切までに投票がなかった券です。認証のときに受け取ったリングバウンティを返します</p>' : '') + '<button class="btn ok big" id="doPay">' + money + (rf ? 'を' : ' を') + give + '</button><button class="btn ghost" data-x>やめる</button>', 'pay');
     $('sheet').querySelector('[data-x]').onclick = closeSheet;
     $('doPay').onclick = () => {
-      openSheet(head + '<div class="verdict ok" style="color:var(--cream)">' + money + (rf ? 'を' : ' を') + '<br>お客さんに' + (rf ? '返しましたか？' : '渡しましたか？') + (rf ? '' : '<small>受取額 ' + amt(py.amount) + '</small>') + '</div><button class="btn ok big" id="doClaim">' + money + (rf ? 'を' : ' を') + gave + '（確定）</button><button class="btn ghost" data-x>' + (rf ? '返していない' : '渡していない') + '（戻る）</button>', 'pay');
+      openSheet(head + '<div class="verdict ok" style="color:var(--cream)">' + money + (rf ? 'を' : ' を') + '<br>お客さんに' + (rf ? '返しましたか？' : '渡しましたか？') + (rf ? '' : '<small>受取額 ' + ptT(py.amount) + '</small>') + '</div><button class="btn ok big" id="doClaim">' + money + (rf ? 'を' : ' を') + gave + '（確定）</button><button class="btn ghost" data-x>' + (rf ? '返していない' : '渡していない') + '（戻る）</button>', 'pay');
       $('sheet').querySelector('[data-x]').onclick = () => showPay(py, p);
       $('doClaim').onclick = async () => {
         $('doClaim').disabled = true; $('doClaim').textContent = '記録しています…';
         const t0 = C.serverNow();
         const done = (x) => {
-          doneSheet('<div class="kind">' + what + '</div><div class="verdict ok"><i class="chk">✓</i>記録しました<small>' + esc(x.bill) + '・' + esc(x.nick) + ' さん ' + (rf ? esc(rb(payB(x))) + 'を' + gave : '受取額 ' + amt(x.amount)) + '</small></div><button class="btn ok big" data-x>次を読む</button>', 'pay');
+          doneSheet('<div class="kind">' + what + '</div><div class="verdict ok"><i class="chk">✓</i>記録しました<small>' + esc(x.bill) + '・' + esc(x.nick) + ' さん ' + (rf ? esc(rb(payB(x))) + 'を' + gave : '受取額 ' + ptT(x.amount)) + '</small></div><button class="btn ok big" data-x>次を読む</button>', 'pay');
           $('sheet').querySelector('[data-x]').onclick = closeSheet;
           logsCache = null;
         };
@@ -350,7 +353,7 @@
       (st && st.next ? '<div class="stat"><span>次のレース</span><b>' + hhmm(st.next.at) + '</b></div>' : '') + '</div>' +
       '<div class="panel"><h4>結果画面を次へ</h4><p class="note">この店のテレビだけ、結果画面を閉じて待ち時間の画面にします。次のレースは時刻表どおりに始まります（全店同時）。</p>' +
       '<button class="btn ok big" id="doNext">テレビを次へ進める</button></div>' +
-      '<div class="panel trace"><h4>テスト用</h4><p class="note">この店のテレビだけで、1 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走。集計には入りません）。上の「テレビ」からも押せます。</p><p class="note trs" id="trState"></p>' +
+      '<div class="panel trace"><h4>テスト用</h4><p class="note">この店のテレビだけで、1 分半後にテストのレースが走ります（参加受付 1 分 → 投票 30 秒 → 発走。お客さんも参加・投票できます。集計には入りません）。上の「テレビ」からも押せます。</p><p class="note trs" id="trState"></p>' +
       '<button class="btn ghost" id="doTest">この店だけテストレース</button></div>';
     $('doTest').onclick = testPress;
     drawTest();
@@ -366,33 +369,62 @@
   /* ================= この店だけテストレース（2026-10-19） =================
      押せないとき: 進行役のテレビがいない／この店でレースの受付中・レース中・結果画面のあいだ／押したあと（準備中・そのレースが終わるまで） */
   let trS = null, trAt = 0, trBusy = false, trT = 0, trMsg = '', trExt = false; const trCbs = [];
-  const TEST_SEC = 60; // 2026-10-19 その 2: 2 分 → 1 分（ルールの下限。参加受付 30 秒・投票 30 秒＝core.js の testStages）
+  const TEST_SEC = 90; // 2026-10-19 その 2: 2 分 → 1 分。2026-10-20 その 5: 1 分半（参加受付 1 分・投票 30 秒＝core.js の TEST_RACE.quickSec・testStages。投票できるように）
   /* その 3（2026-10-19）: 店のテレビが casa SLOT なら、押すと casa DERBY に切り替えてすぐ走らせる（client の testRace の switchTv。終わったあと SLOT には戻さない）。
      進行役のテレビ自身の店が SLOT になっているだけのとき（trS.wake）も押せる: DERBY にして、進行役が戻ってから作る（戻るまで最大 90 秒「切り替えています…」） */
-  const WAIT_MS = 90000;
-  const trPending = (r, n) => !!r && !r.raceId && !r.err && n - r.at < WAIT_MS; // 進行役のテレビが戻るのを待つときは最大 90 秒
+  /* その 4（2026-10-20）: 店のテレビが casa SLOT のゲーム中（回転中・CREDIT 残り・設定画面）なら、終わって casa DERBY に来てから作る（進行役のテレビが derbyTvs の名乗りで確かめる）。
+     待つのは 5 分まで（Core.TEST_RACE.tvWaitSec。過ぎたら進行役が err 'tv_wait' ＝理由を出す）。押してから 20 秒は「切り替えています…」、そのあと「ゲーム中です。終わってから切り替えます」。
+     押せるかの判断（その 4 の 1）: 「まだ締め切っていない次のレースがある」だけでは止めない。紙幣のページ（js/phoneswitch.js の clash）と同じく、
+     店のレースの「受付の始まり〜結果画面の終わり」が、押してから走り終わるまでとぶつかるときだけ止める（時刻表のレースは 15 分先まで作ってあるため） */
+  const TV_WAIT_MS = 300000, GRACE_MS = 20000, SWITCH_SEC = 120; // core.js の TEST_RACE の tvWaitSec・tvGraceSec・switchSec と同じ（このページは core.js を先に読まないことがあるので数で持つ）
+  const WAIT_MS = TV_WAIT_MS + 15000; // 進行役が理由を書くまで（5 分＋少し）
+  const trPending = (r, n) => !!r && !r.raceId && !r.err && n - r.at < WAIT_MS;
+  const numOr = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
+  function trClash(n, sec) { // [押せない理由] 'now' ＝受付中・レース中・結果画面／レース ＝もうすぐ次のレース／null ＝ぶつからない
+    if (!st) return null;
+    const S = st.settings || {}, gate = S.scenes && S.scenes.gate === false ? 0 : numOr(S.gateSec, 8), post = numOr(S.postSec, 28), res = numOr(S.resultSec, 300), bet = numOr(S.betSec, 120);
+    const end = n + (sec + gate + 60 + post + res) * 1000, seen = new Set();
+    const list = [st.live, st.last, st.open, st.next].filter((r) => r && !seen.has(r.id) && seen.add(r.id));
+    // 時刻表の予定（st.upcoming）は見ない: 紙幣のページと同じく、作ってあるレースだけ（進行役が 15 分先まで作る。作るときに進行役も確かめる）
+    for (const r of list) {
+      if (r.status === 'void') continue;
+      const s = r.openAt != null ? r.openAt : r.at - bet * 1000;
+      const e = r.endAt || (r.revealAt ? r.revealAt + res * 1000 : (r.runAt || r.at) + 60000 + (post + res) * 1000);
+      if (s < end && e > n) return s <= n ? 'now' : r;
+    }
+    return null;
+  }
   async function testPoll(now0) {
     clearTimeout(trT);
     if ((mode !== 'next' && !trExt) || !C || !C.testRaceStatus) return; // trExt: 「テレビ」のシートを開いている間（v2/staffswitch.js）
     try { trS = await C.testRaceStatus(saved.pin); trAt = Date.now(); } catch (e) { if (pinGone(e)) return; trS = trS || null; }
     drawTest();
     const r = trS && trS.req, pending = trPending(r, C.serverNow());
-    trT = setTimeout(testPoll, pending ? 3000 : 30000); // 準備中は 3 秒ごと、ふだんは 30 秒ごと（この画面か「テレビ」のシートを開いているときだけ）
+    trT = setTimeout(testPoll, pending ? (C.serverNow() - r.at < GRACE_MS ? 3000 : 5000) : 30000); // 準備中は 3 秒ごと（テレビのゲームが終わるのを待つ間は 5 秒ごと。その 4）、ふだんは 30 秒ごと（この画面か「テレビ」のシートを開いているときだけ）
   }
   function testWhy() {
     const n = C ? C.serverNow() : Date.now(), r = trS && trS.req;
     if (!trS) return ['読み込み中…', true];
-    if (trPending(r, n)) return [trS.decider ? '準備中…（進行役のテレビがレースを作っています）' : 'テレビを casa DERBY に切り替えています…（進行役のテレビが戻るのを待っています）', true];
+    if (trPending(r, n)) return [testWaitText(r, n, !!trS.decider), true];
     if (r && r.raceAt && r.raceAt > n) return ['テストのレース 発走まで ' + mmss(r.raceAt - n), true];
-    if (r && !r.raceId && !r.err && n - r.at < 180000) return ['進行役のテレビが戻りませんでした。テレビを確かめてください', true];
+    const gaveUp = !!r && !r.raceId && (r.err === 'tv_wait' || !r.err) && n - r.at < WAIT_MS + 180000; // その 4: 5 分待ってやめた（押し直しはできる）
+    const note = gaveUp ? (r.err === 'tv_wait' || trS.decider ? TV_GAVE_UP : '進行役のテレビが戻りませんでした。テレビを確かめてください') : '';
     if (!trS.decider && !trS.wake) return [trS.deciderStore && trS.deciderGame === 'slot' ? '進行役のテレビ（' + (trS.deciderName || trS.deciderStore) + '）が casa SLOT になっています' : '進行役のテレビがありません', true];
-    if ((st && (st.open || st.live)) || (st && st.last && st.last.endAt > n)) return ['受付中・レース中は押せません', true];
+    const c = trClash(n, trS.game === 'slot' && !trS.wake ? SWITCH_SEC : TEST_SEC); // その 4 の 1: 紙幣のページと同じ判断・同じ言葉
+    if (c === 'now') return ['いまはレース中です', true]; // 2026-10-20 オーナーの文字帳 t0508「受付中・レース中は押せません」を消す → 押せない理由が分からなくならないよう短い言い方に
+    if (c) return ['もうすぐ次のレース（' + hhmm(c.at) + ' 発走）があるので押せません', true];
     if (r && r.err === 'busy' && n - r.at < 120000) return ['作れませんでした（もうすぐ次のレースです）', true];
-    return [trMsg, false];
+    return [note || trMsg, false];
+  }
+  const TV_GAVE_UP = 'テレビのスロットのゲームが 5 分たっても終わらなかったので、やめました。ゲームが終わってからもう一度押してください';
+  function testWaitText(r, n, alive) { // 待っている間の文（紙幣のページ js/phoneswitch.js と同じ言葉）
+    if (alive && r.startIn !== SWITCH_SEC && !r.wait) return '準備中…（進行役のテレビがレースを作っています）';
+    if (n - r.at < GRACE_MS || (alive && !r.wait)) return alive ? 'テレビを casa DERBY に切り替えています…' : 'テレビを casa DERBY に切り替えています…（進行役のテレビが戻るのを待っています）';
+    return 'テレビはスロットのゲーム中です。終わってから切り替えます';
   }
   function testHint() { // 押せるときの説明（テレビが SLOT なら切り替えてから）
-    if (!trS || trS.game !== 'slot') return '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）';
-    return '押すとテレビを casa DERBY に切り替えて、' + (trS.wake ? '進行役のテレビが戻ってから 1 分後' : '1 分半後') + 'に発走します';
+    if (!trS || trS.game !== 'slot') return '押すと 1 分半後に発走します（参加受付 1 分 → 投票 30 秒）';
+    return '押すとテレビを casa DERBY に切り替えて、' + (trS.wake ? '進行役のテレビが戻ってから 1 分半後' : 'テレビが切り替わってから 1 分半後') + 'に発走します（スロットのゲーム中は、終わるまで待ちます）';
   }
   function drawTest() {
     trCbs.forEach((cb) => { try { cb(); } catch (e) { /* noop */ } }); // 「テレビ」のシートの同じ表示も塗り直す
@@ -402,8 +434,8 @@
   async function testPress() {
     const [, off] = testWhy(); if (off || trBusy) return;
     const sw = !!trS && trS.game === 'slot';
-    if (!confirm(sw ? saved.name + 'のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (trS.wake ? '進行役のテレビが戻ってから 1 分後' : '1 分半後') + 'に発走）。'
-      : saved.name + 'のテレビだけで、' + Math.round(TEST_SEC / 60) + ' 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走）。')) return;
+    if (!confirm(sw ? saved.name + 'のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (trS.wake ? '進行役のテレビが戻ってから 1 分半後' : 'テレビが切り替わってから 1 分半後') + 'に発走）。'
+      : saved.name + 'のテレビだけで、' + Math.floor(TEST_SEC / 60) + ' 分半後にテストのレースが走ります（参加受付 1 分 → 投票 30 秒 → 発走）。お客さんも参加・投票できます（集計には入りません）。')) return;
     trBusy = true; drawTest();
     try { const d = await C.testRace(saved.pin, TEST_SEC, { switchTv: true }); toast(d && d.switched ? 'テレビを casa DERBY に切り替えました' : d && d.raceId ? 'テストのレースを作りました' : 'テストのレースをお願いしました'); trMsg = ''; }
     catch (e) { if (!pinGone(e)) { toast(errText(e), true); trMsg = errText(e); } } // 理由はボタンの上にも残す（「テレビ」のシートでは知らせが隠れるため）
@@ -436,7 +468,7 @@
   }
   let logLimit = 200;
   // 記録 1 行の数字: 認証は「30枚・リングバウンティ 600枚」、返却・返還は「リングバウンティ 600枚」、当たり・受け取りは額
-  const logVal = (l) => (l.type === 'auth' ? 'チップ ' + chips(l.count) + '・' + rb(logB(l)) : (l.type === 'return' || l.type === 'refund' || ((l.type === 'paid' || l.type === 'expired') && l.kind === 'refund')) ? rb(logB(l)) : amt(l.count));
+  const logVal = (l) => (l.type === 'auth' ? 'チップ ' + chips(l.count) + '・' + rb(logB(l)) : (l.type === 'return' || l.type === 'refund' || ((l.type === 'paid' || l.type === 'expired') && l.kind === 'refund')) ? rb(logB(l)) : ptT(l.count)); // 当選額・受取額は「pt」
   function drawLogs() {
     const v = $('logsView'); if (v.classList.contains('hidden')) return;
     if (!logsCache) { v.innerHTML = '<div class="panel"><p class="note">読み込み中…</p></div>'; return; }
@@ -447,14 +479,14 @@
     const all = logFilter ? logs.filter((l) => l.bill === logFilter) : logs, shown = all.slice(0, logLimit);
     v.innerHTML = '<div class="panel"><h4>今日の合計</h4>' +
       '<div class="stat"><span>チップ（認証）</span><b>' + chips(sum.auth) + '</b></div><div class="stat"><span>受け取ったリングバウンティ</span><b>' + amt(sum.bounty) + ' 枚</b></div>' +
-      '<div class="stat"><span>当選額</span><b>' + amt(sum.win) + '</b></div><div class="stat"><span>受取額（渡した）</span><b>' + amt(sum.paid) + '</b></div>' +
+      '<div class="stat"><span>当選額</span><b>' + ptT(sum.win) + '</b></div><div class="stat"><span>受取額（渡した）</span><b>' + ptT(sum.paid) + '</b></div>' +
       (sum.ret ? '<div class="stat"><span>返却（投票なし）リングバウンティ</span><b>' + amt(sum.ret) + ' 枚（返した ' + amt(sum.retPaid) + '）</b></div>' : '') +
       (sum.refund ? '<div class="stat"><span>返還（不成立）リングバウンティ</span><b>' + amt(sum.refund) + ' 枚（返した ' + amt(sum.refundPaid) + '）</b></div>' : '') +
-      (sum.expired ? '<div class="stat"><span>期限切れ（渡していない当選額）</span><b>' + amt(sum.expired) + '</b></div>' : '') +
-      (sum.unclaimed > 0 ? '<div class="stat"><span>未受け取りの当選額</span><b style="color:#ffb84d">' + amt(sum.unclaimed) + '</b></div>' : '') +
+      (sum.expired ? '<div class="stat"><span>期限切れ（渡していない当選額）</span><b>' + ptT(sum.expired) + '</b></div>' : '') +
+      (sum.unclaimed > 0 ? '<div class="stat"><span>未受け取りの当選額</span><b style="color:#ffb84d">' + ptT(sum.unclaimed) + '</b></div>' : '') +
       (sum.unreturned > 0 ? '<div class="stat"><span>まだ返していないリングバウンティ</span><b style="color:#ffb84d">' + amt(sum.unreturned) + ' 枚</b></div>' : '') + '</div>' +
       '<div class="panel"><h4>会計番号ごと</h4>' + (bills.length ? '<table class="tbl"><tr><th>会計番号</th><th>チップ</th><th>リングバウンティ</th><th>当選額</th><th>受取額</th></tr>' +
-        bills.map((b) => { const x = by[b]; return '<tr data-bill="' + esc(b) + '" class="' + (logFilter === b ? 'open' : '') + '"><td><b>' + esc(b) + '</b><br><small style="color:var(--dim)">' + esc(nick[b] || '') + '</small></td><td>' + chips(x.auth) + '</td><td>' + amt(x.bounty) + '</td><td>' + amt(x.win) + '</td><td class="' + (x.unclaimed > 0 || x.unreturned > 0 ? 'warn' : '') + '">' + amt(x.paid) + (x.ret ? '<br><small style="color:var(--dim)">返却 リングバウンティ ' + amt(x.retPaid) + '/' + amt(x.ret) + '</small>' : '') + (x.refund ? '<br><small style="color:var(--dim)">返還 リングバウンティ ' + amt(x.refundPaid) + '/' + amt(x.refund) + '</small>' : '') + '</td></tr>'; }).join('') + '</table><p class="note" style="margin-top:8px">行を押すと、その会計番号の記録だけを下に出します。</p>' : '<p class="note">今日の記録はまだありません。</p>') + '</div>' +
+        bills.map((b) => { const x = by[b]; return '<tr data-bill="' + esc(b) + '" class="' + (logFilter === b ? 'open' : '') + '"><td><b>' + esc(b) + '</b><br><small style="color:var(--dim)">' + esc(nick[b] || '') + '</small></td><td>' + chips(x.auth) + '</td><td>' + amt(x.bounty) + '</td><td>' + ptT(x.win) + '</td><td class="' + (x.unclaimed > 0 || x.unreturned > 0 ? 'warn' : '') + '">' + ptT(x.paid) + (x.ret ? '<br><small style="color:var(--dim)">返却 リングバウンティ ' + amt(x.retPaid) + '/' + amt(x.ret) + '</small>' : '') + (x.refund ? '<br><small style="color:var(--dim)">返還 リングバウンティ ' + amt(x.refundPaid) + '/' + amt(x.refund) + '</small>' : '') + '</td></tr>'; }).join('') + '</table><p class="note" style="margin-top:8px">行を押すと、その会計番号の記録だけを下に出します。</p>' : '<p class="note">今日の記録はまだありません。</p>') + '</div>' +
       '<div class="panel"><h4>' + (logFilter ? '会計 No.' + esc(logFilter) + ' の記録 <a href="#" id="lfAll" style="color:var(--gold);font-size:12px;margin-left:8px">全部を出す</a>' : '記録（新しい順）') + '</h4><div class="hist">' +
         (shown.length ? shown.map((l) => '<div class="r"><small>' + hhmm(l.at) + '</small><span class="k ' + esc(l.type) + '">' + esc(l.type === 'paid' && l.novote ? '返却の受取' : l.type === 'paid' && l.kind === 'refund' ? '返還の受取' : K[l.type] || l.type) + '</span><span style="flex:1">No.' + esc(l.bill) + ' ' + esc(l.nick || '') + '</span><b>' + esc(logVal(l)) + '</b></div>').join('') : '<p class="note">まだありません。</p>') +
       (all.length > shown.length ? '<button class="btn ghost" id="lmore">もっと見る（あと ' + (all.length - shown.length) + ' 件）</button>' : '') +
