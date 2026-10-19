@@ -1,9 +1,9 @@
 {
- "v": "b126",
+ "v": "b127",
  "files": [
   {
    "path": "index.html",
-   "sha256": "0ef3e2f19be744796a68cf722e70baa524ca24fd50798437f7dc745a740ecf44"
+   "sha256": "dbe8ce63b8dd031bcaa5c2de6ef433d914150600ada0264a0eeb3fc8c769b1f3"
   },
   {
    "path": "manifest.webmanifest",
@@ -75,7 +75,7 @@
   },
   {
    "path": "js/phoneswitch.js",
-   "sha256": "c8fbd2db0f8546d7560d3d16ae3cf3f619f8d91dec1cac5f129e3c4d7ed71105"
+   "sha256": "748e7edf5c2296bfdabb46c7e1f1b7083a07db2240679badbd1065dc093e190f"
   },
   {
    "path": "js/reel.js",
