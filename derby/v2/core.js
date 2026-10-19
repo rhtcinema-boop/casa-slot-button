@@ -9,7 +9,7 @@
 
   const JST = 9 * 3600 * 1000, DAY = 86400000;
   /* お金の単位（2026-10-16 オーナー決定）: 投票は枚（リングバウンティ 1 枚）のまま、払い戻し・設定額・上限・集計の払い出しは「額」（1 枚 = 100）。
-     当選額 = 枚数 × オッズ × 100（outcome.js の stakePayout。0.1 刻みなので整数）。返還・返却はリングバウンティで返す（下の bountyPerTicket。2026-10-17） */
+     当選額 = 枚数 × オッズ × 100 を 10 の倍数に切り上げた額（outcome.js の stakePayout・roundPay。2026-10-20 オーナー決定。渡す額・集計・1 日の上限・目標の幅の判定は全部この額）。返還・返却はリングバウンティで返す（下の bountyPerTicket。2026-10-17） */
   const MONEY_PER_TICKET = 100;
   const roundAmount = (v) => Math.max(0, Math.round((Number(v) || 0) / MONEY_PER_TICKET) * MONEY_PER_TICKET); // 管理画面で入れた額は 100 単位に丸める
   /* リングバウンティ → 投票券の交換の割合（2026-10-17 オーナー「リングバウンティ20枚につき投票権1枚と交換する感じにして」）:
@@ -435,7 +435,8 @@
     const w = res.winner, fo = res.finalOdds[w], payouts = [];
     let paid = 0;
     voted.forEach((tk) => {
-      const amount = (tk.picks || picksFromMap(tk.pickMap)).filter((p) => p.horse === w).reduce((a, p) => a + Outcome.stakePayout(p.count, fo), 0);
+      const raw = (tk.picks || picksFromMap(tk.pickMap)).filter((p) => p.horse === w).reduce((a, p) => a + Outcome.stakePayout(p.count, fo), 0);
+      const amount = Outcome.roundPay ? Outcome.roundPay(raw) : raw; // 渡す額（10 の倍数に切り上げ。2026-10-20 オーナー決定。stakePayout が 1 件ごとに切り上げ済みなので、ここは念のため）
       if (amount > 0) { payouts.push({ kind: 'win', tid: tk.tid, owner: tk.owner || null, raceId: race.id, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: w, amount, status: 'unpaid', test: isT(tk) }); paid += amount; }
     });
     decision.paid = paid;
@@ -478,7 +479,22 @@
      switchSec: 店のテレビを切り替えたとき、ほかの店の進行役のテレビがすぐ作るときの発走まで（テレビの切り替え 1〜3 秒＋Fire TV の読み込み 10〜20 秒を見込んで、
      切り替わってから 60 秒以上空ける。受付は 30 秒あとから＝testStages の waitSec）。
      進行役のテレビ自身の店が SLOT のとき: そのテレビが DERBY に戻って決める係になってから作る＝作った時刻から quickSec（60 秒）。戻るのを待つのは deciderWaitSec まで */
-  const TEST_RACE = { startIn: 120, quickSec: 60, switchSec: 90, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 90 };
+  /* 2026-10-20 その 4（スロット係「テレビがスロットのゲーム中なら待ってほしい」）: casa SLOT のテレビは回転中・CREDIT 残り・設定画面の間は移らない（js/tvswitch.js）。
+     そのため、店のテレビを切り替えたお願い（switchSec）は、進行役のテレビが「その店の Fire TV が casa DERBY に来た」（derbyTvs/<uid> の連絡の時刻がお願いより後）のを
+     確かめてから作る（来た時刻から quickSec）。待つのは tvWaitSec（5 分）まで。過ぎたら err 'tv_wait'（スタッフに理由を出す）。
+     進行役のテレビ自身の店のとき（そのテレビが戻ってから作る）も同じ 5 分（deciderWaitSec）。tvGraceSec: 押してからこの秒数は「切り替えています…」、そのあと「ゲーム中です」 */
+  /* 2026-10-20 その 5（オーナー「テストレースでも投票できるように」）: 参加受付 30 秒では、お客さんが QR を読んで入力し、スタッフが認証するのに間に合わない。
+     スタッフの画面から押すテストレースは quickSec 90 秒（参加受付 60 秒 → 投票 30 秒）。テレビを切り替えたときは switchSec 120 秒（切り替わるまで 30 秒あけてから同じ 60＋30）。
+     決まりの範囲（60〜600 秒）の中。前の版の画面からの 60 秒・90 秒のお願いも今までどおり作れる（90 は切り替えの印ではなくなる＝待たずに作る） */
+  const TEST_RACE = { startIn: 120, quickSec: 90, switchSec: 120, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 300, tvWaitSec: 300, tvGraceSec: 20, tvSeenDays: 14 };
+  /* その 4: 店の Fire TV が casa DERBY に来たか。tvs: [{ store, kind, at（ミリ秒） }]（derbyTvs の名乗り。テレビは開いたときと 5 分ごとに書く）。
+     null ＝待たない（その店の Fire TV の名乗りが 14 日以内に無い＝分からない。今までどおりすぐ作る）／'arrived' ＝お願いのあとに名乗った／'waiting' ＝まだ。
+     ブラウザのテレビ（kind 'browser'）は見ない（casa SLOT を映さず、ずっと casa DERBY のままのことがあるため） */
+  function testTvWait(tvs, store, reqAt, t) {
+    const mine = (tvs || []).filter((x) => x && x.store === store && x.kind === 'casatv' && Number(x.at) > t - TEST_RACE.tvSeenDays * DAY);
+    if (!mine.length) return null;
+    return mine.some((x) => Number(x.at) >= reqAt) ? 'arrived' : 'waiting';
+  }
   const testRaceId = (store, reqAtMs) => 'x-' + Math.round(reqAtMs).toString(36) + 'test-' + store; // お願いの時刻から決まる（何度やっても同じレース＝二重に作らない）
   const testStartIn = (v) => Math.max(TEST_RACE.minSec, Math.min(TEST_RACE.maxSec, Math.round(Number(v) || TEST_RACE.startIn)));
   /* テストのレースの 2 段: 投票は全体の秒数（30）か発走までの半分の短いほう。参加受付は「押した時刻〜投票の始まり」（全体の秒数より長くしない）。
@@ -530,7 +546,7 @@
   function pidFor(Outcome, salt, raceId, tid, kind) { return 'p' + Outcome.hash(salt, raceId, tid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', tid, raceId, salt).toString(36); }
   function shortFor(Outcome, salt, id, k) { return String(100000 + (Outcome.hash(salt, id, 'short', k || 0) % 900000)); }
 
-  return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, MONEY_PER_TICKET, roundAmount, BOUNTY_DEFAULT, BOUNTY_MAX, rateOf, bountyRate, ticketBounty, payoutBounty, isBountyLog, logBounty, sumBill, statBounty, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
+  return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, MONEY_PER_TICKET, roundAmount, BOUNTY_DEFAULT, BOUNTY_MAX, rateOf, bountyRate, ticketBounty, payoutBounty, isBountyLog, logBounty, sumBill, statBounty, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, openRaceFor, publicRace, stateFor,
     cleanTicket, cleanPicks, picksFromMap, parseCode, ticketView, payoutView, effectiveCap, decideRace, winnersFrom, refundPlan, novotePlan, pidFor, shortFor,
