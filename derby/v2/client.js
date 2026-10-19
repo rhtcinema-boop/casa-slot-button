@@ -87,7 +87,7 @@
       get offset() { return impl ? impl.offset : 0; }, get synced() { return impl ? impl.synced : false; },
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
       createTicket: call('createTicket'), getTicket: call('getTicket'), cancelTicket: call('cancelTicket'), vote: call('vote'),
-      staffLogin: call('staffLogin'), staffTicket: call('staffTicket'), auth: call('auth'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'),
+      staffLogin: call('staffLogin'), staffTicket: call('staffTicket'), auth: call('auth'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
       testRace: call('testRace'), testRaceStatus: call('testRaceStatus'), // この店だけテストレース（2026-10-19）
       // 進行役のテレビ（2026-10-19）: cb({ on, code, asking, decider, account })。返り値で止める
       onPair(cb) { let un = null, closed = false; getImpl().then((i) => { if (!closed && i.pair) un = i.pair.on(cb); }).catch(() => {}); return () => { closed = true; if (un) un(); }; },
@@ -173,6 +173,7 @@
       claim: (pin, code) => post('/api/payout/claim', { store, pin, code }),
       next: (pin) => post('/api/next', { store, pin }),
       tvGame: (pin, game) => post('/api/staff/tvgame', { store, pin, game }), // テレビのゲーム（2026-10-19。その店のスタッフ）
+      tvQuality: (pin, quality) => post('/api/staff/tvquality', { store, pin, quality }), // テレビの画質（2026-10-19。その店のスタッフ。'' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先）
       testRace: (pin, startIn) => post('/api/staff/testrace', { store, pin, startIn }), // この店だけテストレース（2026-10-19）
       testRaceStatus: (pin) => post('/api/staff/testrace/status', { store, pin }),
       onPair(cb) { if (typeof cb !== 'function') return () => {}; pairCbs.push(cb); try { cb(Object.assign({}, pairSt)); } catch (e) { /* noop */ } return () => { const i = pairCbs.indexOf(cb); if (i >= 0) pairCbs.splice(i, 1); }; },
