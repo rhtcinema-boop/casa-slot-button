@@ -472,9 +472,18 @@
      スタッフは derbyTestReq/<店舗>（Firestore）か POST /api/staff/testrace（模擬クラウド）で「お願い」を書くだけ。レースを作るのは決める係（進行役のテレビ・サーバー）。
      レース: その店だけ（storeId）・test: true（券・当たり・返却は全部テスト扱い）・startIn 秒後に発走・払い戻しの合計は管理画面の「テストのレースを作る」と同じ既定値。
      作れないとき（busy）: その店に見えるレースの「受付の始まり〜結果画面の終わり」が、テストのレースの「今〜終わり」と重なる（時刻表のまだ作っていない分も） */
-  const TEST_RACE = { startIn: 120, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600 };
+  /* 2026-10-19 その 2（オーナー「すぐテストレースを走らせるボタン」）: スタッフの画面から押すのは quickSec（60 秒）＝ルールの下限（firestore.rules の startIn 60〜600）。
+     受付の 2 段は testStages: 押した時刻から受付を始める（参加受付 30 秒 → 投票 30 秒 → 発走）。startIn が 120 秒なら今までと同じ（参加受付 90・投票 30） */
+  const TEST_RACE = { startIn: 120, quickSec: 60, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600 };
   const testRaceId = (store, reqAtMs) => 'x-' + Math.round(reqAtMs).toString(36) + 'test-' + store; // お願いの時刻から決まる（何度やっても同じレース＝二重に作らない）
   const testStartIn = (v) => Math.max(TEST_RACE.minSec, Math.min(TEST_RACE.maxSec, Math.round(Number(v) || TEST_RACE.startIn)));
+  /* テストのレースの 2 段: 投票は全体の秒数（30）か発走までの半分の短いほう。参加受付は「押した時刻〜投票の始まり」（全体の秒数より長くしない）。
+     受付の始まり（openAt）が押した時刻より前にならない＝テレビは押した直後から受付の画面（待ち時間なし・途中から始まらない） */
+  function testStages(startIn, tuning) {
+    const T = tuningOf(tuning), sec = testStartIn(startIn), lead = Math.max(0, Number(T.closeLeadSec) || 0);
+    const vo = Math.min(T.voteSec, Math.floor(sec / 2)), ex = Math.max(10, Math.min(T.exchangeSec, sec - lead - vo));
+    return { exchangeSec: ex, voteSec: vo };
+  }
   function raceSpan(r, T) {
     const start = r.openAt != null ? r.openAt : r.at - (T.exchangeSec + T.voteSec) * 1000;
     const end = r.endAt || (r.revealAt ? r.revealAt + T.resultSec * 1000 : (r.runAt || r.at) + 60000 + (T.postSec + T.resultSec) * 1000);
@@ -516,7 +525,7 @@
   function pidFor(Outcome, salt, raceId, tid, kind) { return 'p' + Outcome.hash(salt, raceId, tid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', tid, raceId, salt).toString(36); }
   function shortFor(Outcome, salt, id, k) { return String(100000 + (Outcome.hash(salt, id, 'short', k || 0) % 900000)); }
 
-  return { TEST_RACE, testRaceId, testStartIn, testRaceBusy, MONEY_PER_TICKET, roundAmount, BOUNTY_DEFAULT, BOUNTY_MAX, rateOf, bountyRate, ticketBounty, payoutBounty, isBountyLog, logBounty, sumBill, statBounty, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
+  return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, MONEY_PER_TICKET, roundAmount, BOUNTY_DEFAULT, BOUNTY_MAX, rateOf, bountyRate, ticketBounty, payoutBounty, isBountyLog, logBounty, sumBill, statBounty, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, openRaceFor, publicRace, stateFor,
     cleanTicket, cleanPicks, picksFromMap, parseCode, ticketView, payoutView, effectiveCap, decideRace, winnersFrom, refundPlan, novotePlan, pidFor, shortFor,
