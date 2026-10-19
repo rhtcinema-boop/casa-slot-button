@@ -168,6 +168,13 @@
 .v2net::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #ffb300; animation: blink 1s step-end infinite; }
 .v2net.show { display: flex; }
 .v2key { bottom: 60px; max-width: 60%; line-height: 1.3; } /* テレビの合言葉が無い・違う（v2/tv.js） */
+/* 進行役のテレビの確認の数字（2026-10-19）: 上の帯の「発走の時刻」の札のすぐ右（left は v2/tv.js が合わせる）。確認の間（最長 3 分）だけ。目立ちすぎない紺に金の縁 */
+.v2pair { position: absolute; z-index: 90; left: 700px; top: 8px; display: none; flex-direction: column; align-items: center; justify-content: center; min-width: 150px; height: 64px; padding: 0 16px; border-radius: 16px; background: rgba(14, 26, 44, .94); box-shadow: 0 0 0 3px #e9c25e, 0 8px 20px rgba(0, 0, 0, .35); color: #fff; font-family: var(--font-tv); pointer-events: none; white-space: nowrap; }
+.v2pair.show { display: flex; }
+.v2pair small { font: 800 14px/1 var(--font-ui); color: #ffd54f; letter-spacing: .04em; }
+.v2pair b { margin-top: 4px; font: 900 38px/1 var(--font-num); letter-spacing: .12em; }
+.v2pair.msg b { display: none; }
+.v2pair.msg small { font-size: 22px; color: #fff; }
 .v2snd { position: absolute; z-index: 70; left: 18px; bottom: 14px; display: none; padding: 8px 16px; border-radius: 18px; background: rgba(0, 0, 0, .6); color: #fff; font: 800 18px/1 var(--font-ui); }
 .v2snd.show { display: block; }
 #splash .v2sub { font-size: 30px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 rgba(0, 0, 0, .35); }
