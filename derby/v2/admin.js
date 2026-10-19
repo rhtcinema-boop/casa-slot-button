@@ -73,6 +73,7 @@
   let stFrom = '', stTo = '', stStore = '', statsData = null, statsErr = '';
   let logBill = '', logsData = null, logsErr = '';
   let raceAll = false, refundOpen = null; // 今日のレース: 全部を表示するか／その場で開いているレース取消（レース id）
+  let pairData = null, pairErr = '', pairSeq = 0; // 進行役のテレビ（2026-10-19）: api('tvs') の答え { tvs, decider, lock, now }
   let memoOn = false, connOpen = false, editFrom = null; // memoOn: 今日のレースの内部メモ（1 着の選び方・演出。最初は隠す）／connOpen: テレビの「接続の設定」を開いているか／editFrom: 店舗の編集をどのタブから開いたか
   const tplOpen = new Set(); // 時刻表: 開いているテンプレート（id）
   const tplAll = new Set(); // 時刻表: 行を全部見せているテンプレート（id）。ふだんは最初の 10 行だけ（2026-10-19 改善 3）
@@ -137,7 +138,7 @@
   // タブの印: 「詳細の調整」（tuning）は「設定」タブの中の画面なので、設定タブを光らせる
   const markTab = () => document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (tab === 'tuning' ? 'ops' : tab)));
   function switchTab(name) {
-    if (name === tab) { if (!editStore) { if (tab === 'races') racesData = null; render(); } return; } // いまのタブを押したら読み直す
+    if (name === tab) { if (!editStore) { if (tab === 'races') { racesData = null; pairData = null; } render(); } return; } // いまのタブを押したら読み直す
     if (!leaveOk()) return;
     if (tab === 'timetable' && ttDirty) { tt = null; ttDirty = false; }
     if (tab === 'tuning') tunDirty = false;
@@ -153,7 +154,7 @@
     main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats');
     if (tab === 'stores') { main.innerHTML = editStore ? viewStoreEdit() : viewStores(); if (editStore) validateStore(); }
     else if (tab === 'timetable') { if (!tt) loadTT(); main.innerHTML = viewTT(); paintTT(); }
-    else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
+    else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); if (!pairData && pairOk()) loadPair(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
     else if (tab === 'tuning') { main.innerHTML = viewTuning(); validateTuning(); }
     else if (tab === 'stats') { if (!stFrom) { stTo = bizToday(); stFrom = addDays(stTo, -6); } main.innerHTML = viewStats(); if (!statsData && !statsErr) loadStats(); }
     else if (tab === 'ops') { main.innerHTML = viewOps(); }
@@ -243,12 +244,76 @@
           '<button class="btn sm ghost" data-act="tv-reload" data-store="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'のテレビを読み込み直す">読み込み直す</button></div>';
       }).join('') : '<div class="empty">まだ店舗がありません（「店舗」で追加）</div>') +
       (S.length > 1 ? '<div class="acts l tvall"><button class="btn sm ghost" data-act="tv-reload" data-store="">全店舗のテレビを読み込み直す</button></div>' : '') +
+      viewPair() +
       '<details class="fold conn" id="connFold"' + (connOpen ? ' open' : '') + '><summary>テレビ・スマホ・スタッフ画面のリンク</summary><div class="in">' +
       S.map((s) => '<details class="fold"><summary>' + esc(s.name) + '</summary><div class="in">' + link('テレビ用', tvUrl(s)) + link('お客様用', 'bet.html?store=' + encodeURIComponent(s.id)) + link('スタッフ用', 'staff.html?store=' + encodeURIComponent(s.id)) + '</div></details>').join('') +
       (cfg.tvKey ? '<p class="hint">テレビ用のリンクはお客さんに見せないでください。</p>' : '') +
       (isFs() ? '<p class="hint">テレビ用アカウントは最初に 1 回だけ作ります。</p>' : '') +
       '<div class="acts l">' + (isFs() ? '<button class="btn sm ghost" data-act="tvacct-new">テレビ用アカウントを作る</button>' : '') + (cfg.tvKey ? '<button class="btn sm ghost" data-act="tvkey-new">テレビのリンクを作り直す（漏れたとき）</button>' : '') + '</div>' +
       '</div></details></div>';
+  }
+  /* ---------- 進行役のテレビ（2026-10-19）: パスワードを打たずに、ここで 1 タップ ----------
+     名乗っているテレビ（7 日以内に連絡）の一覧と「進行役にする」。押すとそのテレビの上の帯に 4 けたの数字が出る → この画面の数字と同じなら OK。
+     進行役は 1 台だけ（前のテレビは外れる）。Web デモでは出さない（デモのテレビはデモの決める係で動く） */
+  const pairOk = () => !(window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo) && !!A && typeof A.tvs === 'function';
+  const kindName = (k) => (k === 'casatv' ? 'Fire TV' : 'ブラウザ');
+  const agoTxt = (ms) => { const m = Math.floor(Math.max(0, ms) / 60000); return m < 2 ? 'たった今' : m < 60 ? m + '分前' : m < 1440 ? Math.floor(m / 60) + '時間前' : Math.floor(m / 1440) + '日前'; };
+  function tvLabels(tvs) { // 同じ店に何台もあるときは「上野のテレビ 2」（新しく連絡した順）
+    const n = {}, out = {};
+    tvs.forEach((x) => { n[x.store] = (n[x.store] || 0) + 1; });
+    const seen = {};
+    tvs.forEach((x) => { seen[x.store] = (seen[x.store] || 0) + 1; out[x.id] = storeName(x.store) + 'のテレビ' + (n[x.store] > 1 ? ' ' + seen[x.store] : ''); });
+    return out;
+  }
+  function viewPair() {
+    if (!pairOk()) return '';
+    const P = pairData, head = '<div class="phd"><b>進行役のテレビ</b><small>結果を決めて進める役</small><span class="sp"></span><button type="button" class="btn xs ghost" data-act="pair-reload">最新にする</button></div>';
+    if (!P) return '<div class="pair" id="pairBox">' + head + '<div class="hint">' + (pairErr ? esc(pairErr) : '読み込み中…') + '</div></div>';
+    const t = P.now || now(), tvs = P.tvs || [], lab = tvLabels(tvs), d = P.decider, STALE = 12 * 60000;
+    const dName = d ? lab[d.id] || storeName(d.store) + 'のテレビ' : '';
+    const nowLine = d
+      ? '<div class="pnow">いま <b>' + esc(dName) + '</b> <small class="' + (d.seen && t - d.seen < STALE ? '' : 'warn') + '">' + (d.seen ? (t - d.seen < STALE ? (t - d.seen < 120000 ? '連絡あり' : agoTxt(t - d.seen) + 'に連絡') : '連絡がありません（' + agoTxt(t - d.seen) + '）') : '連絡がありません') + '</small><button type="button" class="btn xs ghost" data-act="pair-stop">やめる</button></div>'
+      : '<div class="pnow">いま <b>なし</b>' + (P.lock && P.lock.kind === 'account' ? ' <small>パスワードのテレビ（' + esc(storeName(P.lock.store)) + '）が進めています</small>' : '') + '</div>';
+    const rows = tvs.map((x) => {
+      const me = d && d.id === x.id, old = t - x.at >= STALE;
+      return '<div class="prow' + (me ? ' me' : '') + '" data-tv="' + esc(x.id) + '"><span class="nm">' + esc(lab[x.id]) + '<small' + (old ? ' class="old"' : '') + '>' + kindName(x.kind) + '・' + agoTxt(t - x.at) + '</small></span>' +
+        (me ? '<span class="chip on">進行役</span>' : '<button type="button" class="btn sm ghost" data-act="pair-set" data-id="' + esc(x.id) + '">進行役にする</button>') + '</div>';
+    }).join('');
+    return '<div class="pair" id="pairBox">' + head + nowLine + (rows ? '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') + '</div>';
+  }
+  async function loadPair() {
+    const my = ++pairSeq;
+    try { const r = await api('tvs'); if (my !== pairSeq) return; pairData = r || { tvs: [] }; pairErr = ''; }
+    catch (e) { if (my !== pairSeq) return; pairErr = errText(e); pairData = null; }
+    if (tab === 'races' && !editStore) { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); }
+  }
+  // 「進行役にする」: テレビに数字を出してもらい（tvAsk）、同じ数字なら OK → 進行役に（setDecider）。やめる・閉じるとテレビの数字も消す
+  async function pairStart(btn) {
+    const id = btn.dataset.id, x = ((pairData && pairData.tvs) || []).find((y) => y.id === id); if (!x) return;
+    const name = tvLabels(pairData.tvs)[id];
+    btn.disabled = true;
+    let r; try { r = await api('tvAsk', id, true); } catch (e) { btn.disabled = false; toast(errText(e)); return; }
+    btn.disabled = false;
+    const code = (r && r.code) || x.code || '----';
+    const w = document.createElement('div'); w.className = 'onceScrim'; w.id = 'pairAsk';
+    w.innerHTML = '<div class="onceCard pairCard" role="dialog" aria-label="進行役の確認"><h3>' + esc(name) + 'を進行役にします</h3>' +
+      '<p>' + esc(name) + 'の画面の上に出ている数字が</p><div class="pcode" id="pairCode">' + esc(code) + '</div><p>なら OK を押してください。</p>' +
+      '<p class="hint">数字が出ていない・ちがうときは「やめる」。前の進行役は外れます。</p>' +
+      '<div class="acts"><button type="button" class="btn ghost" data-pa="no">やめる</button><button type="button" class="btn" data-pa="ok">OK</button></div></div>';
+    document.body.appendChild(w);
+    const done = await new Promise((res) => w.addEventListener('click', (e) => { const b = e.target.closest('[data-pa]'); if (b) res(b.dataset.pa === 'ok'); else if (e.target === w) res(false); }));
+    w.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    try {
+      if (done) { await api('setDecider', id); toast(name + 'を進行役にしました'); }
+      else await api('tvAsk', id, false).catch(() => {});
+    } catch (e) { toast('失敗しました: ' + errText(e)); }
+    finally { w.remove(); pairData = null; loadPair(); }
+  }
+  async function pairStop() {
+    const d = pairData && pairData.decider; if (!d) return;
+    if (!confirm('進行役をやめますか？\nほかに進めるテレビがないと、レースが進まなくなります。')) return;
+    try { await api('setDecider', null); toast('進行役をやめました'); } catch (e) { toast('失敗しました: ' + errText(e)); }
+    pairData = null; loadPair();
   }
   /* テレビのゲームの切り替え（今日の「店のテレビ」から）: 書き込みは店舗の編集の「保存」とまったく同じ（saveStore。tvGame だけ変えて保存） */
   async function quickTvGame(b) {
@@ -1075,6 +1140,9 @@
         /* 店舗 */
         case 'cfg-reload': await reloadCfg(); render(); toast('最新の情報にしました'); return;
         case 'tvacct-new': return createTvAccount(b);
+        case 'pair-set': return pairStart(b); // 進行役のテレビ（2026-10-19）
+        case 'pair-stop': return pairStop();
+        case 'pair-reload': pairData = null; { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); } return loadPair();
         case 'tvkey-new': if (!confirm('テレビのリンクを作り直します（リンクが漏れたときに使います）。\n今のテレビは、新しいリンクで開き直すまで結果を受け取れなくなります。')) return; await api('tvKey', {}); await reloadCfg(); render(); toast('作り直しました。各店のテレビを新しいリンクで開き直してください'); return;
         case 'store-new': editStore = { isNew: true, id: '', name: '', pin: '', orig: {}, x: sset({ settings: {} }) }; return render();
         case 'store-edit': { const s = cfg.stores.find((x) => x.id === b.dataset.id); if (!s) return; if (tab !== 'stores') { if (!leaveOk()) return; editFrom = tab; if (tab === 'races') memoOn = false; tab = 'stores'; markTab(); } editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s) }; window.scrollTo(0, 0); return render(); }
@@ -1159,7 +1227,7 @@
   });
 
   window.DerbyAdmin = { // テスト用の入口（tests/v2-admin.plan.js）
-    get tt() { return tt; }, get cfg() { return cfg; }, get dirty() { return ttDirty; },
+    get tt() { return tt; }, get cfg() { return cfg; }, get dirty() { return ttDirty; }, get pair() { return pairData; }, loadPair,
     validate: () => (tt ? validateTT() : null), templatesToRules: () => templatesToRules(tt.tpls), daySchedule: (d, s) => daySchedule(tt.tpls, d, s || null).map((x) => ({ t: x.t, p: x.p, store: x.group })),
     go(name) { const b = document.querySelector('#tabs [data-tab="' + name + '"]'); if (b) b.click(); else if (name === 'tuning') switchTab('tuning'); return tab; }, // 詳細の調整（tuning）はタブではなく設定の中の画面
   };
