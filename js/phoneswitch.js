@@ -22,6 +22,9 @@
      casa DERBY のスタッフ画面の「この店だけテストレース」と同じお願い（derbyTestReq/<店舗ID> = { at: サーバーの時刻, by: 自分, startIn: 60 }。ルールは今のまま）を、
      上と同じ casa DERBY のスタッフ PIN で書く。進行役のテレビが 1 分後（参加受付 30 秒 → 投票 30 秒）のその店だけのレースを作る。
      押せないときの理由: 進行役のテレビ（derbyLock/decider の期限）・受付中・レース中・もうすぐ次のレース（derbyLive/<店舗ID> のレース）・準備中・発走まで
+   - 2026-10-19 その 3（オーナー「テストレース開始ボタンがあれば、すぐ始まるように」）: 店のテレビが casa SLOT なら、テストレースを押すと
+     同じ書き込みで店のテレビを casa DERBY にする（店の設定と derbySwitch/tv。スタッフとして自分の店だけ＝今の決まりのまま）。発走は 90 秒後（テレビの切り替えと読み込みを見込む）。
+     終わったあと SLOT には戻さない。進行役のテレビ自身の店が SLOT になっているだけなら、DERBY にして戻るのを待つ（最大 90 秒）
    - テスト用: localhost のときだけ ?derbyApi=<URL> で Google の入口（ログインと Firestore）を差し替える（js/derbyswitch-master.js と同じ） */
 (function () {
   'use strict';
@@ -122,6 +125,7 @@
     state.qLoading = false; if (state.open) paint();
   }
 
+  let lastDoc = null; // 店のテレビのゲームの最後の知らせ（derbySwitch/tv。下の見張りが入れる）
   /* ---------- この店だけテストレース（2026-10-19 その 2）。casa DERBY のスタッフ画面と同じお願いを REST で ---------- */
   function fv(v) { // Firestore の REST の値 → ふつうの値
     if (!v) return null;
@@ -140,28 +144,35 @@
     const j = await r.json().catch(() => ({}));
     return fv({ mapValue: { fields: (j && j.fields) || {} } });
   }
-  const tr = { decider: undefined, races: [], pub: {}, req: null, msg: '', id: null, t: 0 };
+  /* その 3（2026-10-19）: 店のテレビが casa SLOT なら、押すと同じ書き込みで店のテレビを casa DERBY にする（終わったあと SLOT には戻さない）。
+     進行役のテレビ自身の店が SLOT になっているだけ（鍵 derbyLock/decider に残る店がこの店で、期限切れ）なら押せる: DERBY にして、進行役が戻ってから作る */
+  const tr = { decider: undefined, dStore: null, races: [], pub: {}, req: null, msg: '', id: null, t: 0 };
+  const DNAMES = { shibuya: '渋谷', ueno: '上野', sapporo: '札幌' };
+  const WAIT_MS = 90000;
+  const reqOf = (q) => (q ? { at: num(q.at, 0), startIn: q.startIn, raceId: q.raceId || null, raceAt: q.raceAt || null, err: q.err || null } : null);
   const num = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
+  const gameIn = (sid) => (lastDoc && sid ? T.gameOf(lastDoc, sid) : null);
+  const wake = () => tr.decider === false && !!tr.dStore && tr.dStore === derbyId() && state.game === 'slot';
+  const trPending = (r, n) => !!r && !r.raceId && !r.err && n - r.at < WAIT_MS; // 進行役のテレビが戻るのを待つときは最大 90 秒
   async function loadTest(reqOnly) { // シートを開いたとき（進行役・店のレース・お願い）／押したあと（お願いだけ）
     const id = derbyId(); if (!id) return;
-    if (tr.id !== id) { Object.assign(tr, { decider: undefined, races: [], pub: {}, req: null, msg: '', id }); }
+    if (tr.id !== id) { Object.assign(tr, { decider: undefined, dStore: null, races: [], pub: {}, req: null, msg: '', id }); }
     try {
       if (!reqOnly) {
         const [lock, live] = await Promise.all([getDoc('derbyLock/decider'), getDoc('derbyLive/' + encodeURIComponent(id))]);
-        tr.decider = !!(lock && Number(lock.until) > Date.now());
+        tr.decider = !!(lock && Number(lock.until) > Date.now()); tr.dStore = (lock && lock.store) || null;
         tr.races = (live && Array.isArray(live.races) ? live.races : []); tr.pub = (live && live.pub) || {};
       }
       const sv = staffSaved();
       if (sv && sv.store === id) { // お願いは、その店のスタッフだけが読める（ルールの staffOf）
         await asStaff(id, sv.pin).catch(() => null);
-        const q = await getDoc('derbyTestReq/' + encodeURIComponent(id)).catch(() => null);
-        tr.req = q ? { at: num(q.at, 0), startIn: q.startIn, raceId: q.raceId || null, raceAt: q.raceAt || null, err: q.err || null } : null;
+        tr.req = reqOf(await getDoc('derbyTestReq/' + encodeURIComponent(id)).catch(() => null));
       }
     } catch (e) { if (tr.decider === undefined) tr.decider = null; } // null ＝読めなかった
     tr.t = Date.now(); paintTest();
-    const r = tr.req, pending = r && !r.raceId && !r.err && Date.now() - r.at < 60000;
+    const r = tr.req, pending = trPending(r, Date.now());
     clearTimeout(loadTest.h);
-    if (state.open && pending) loadTest.h = setTimeout(() => loadTest(true), 3000); // 準備中は 3 秒ごと（シートを開いている間だけ）
+    if (state.open && pending) loadTest.h = setTimeout(() => loadTest(!tr.decider ? false : true), 3000); // 準備中は 3 秒ごと（進行役を待つ間は鍵も読む。シートを開いている間だけ）
     else if (state.open && r && r.raceId && !tr.races.some((x) => x.id === r.raceId)) loadTest.h = setTimeout(() => loadTest(false), 1500); // できたレースを店のレースの一覧に
   }
   function clash(n) { // 押すと、店のレース（受付の始まり〜結果画面の終わり）とぶつかる？（core.js の testRaceBusy と同じ考え方。時刻表のレースは進行役が 15 分先まで作ってある）
@@ -175,18 +186,23 @@
     }
     return null;
   }
-  function trWhy() { // [いまの文, 押せない]
+  function trWhy() { // [いまの文, 押せない]（casa DERBY のスタッフ画面の staff.js testWhy と同じ順番・同じ言葉）
     const n = Date.now(), r = tr.req;
     if (tr.decider === undefined) return ['確認中…', true];
-    if (r && !r.raceId && !r.err && n - r.at < 60000) return ['準備中…（進行役のテレビがレースを作っています）', true];
+    if (trPending(r, n)) return [tr.decider ? '準備中…（進行役のテレビがレースを作っています）' : 'テレビを casa DERBY に切り替えています…（進行役のテレビが戻るのを待っています）', true];
     if (r && r.raceAt && r.raceAt > n) return ['テストのレース 発走まで ' + mmss(r.raceAt - n), true];
+    if (r && !r.raceId && !r.err && n - r.at < 180000) return ['進行役のテレビが戻りませんでした。テレビを確かめてください', true];
     if (tr.decider === null) return ['casa DERBY の状態を読めませんでした。閉じて開き直してください', true];
-    if (!tr.decider) return ['進行役のテレビがありません', true];
+    if (!tr.decider && !wake()) return [tr.dStore && gameIn(tr.dStore) === 'slot' ? '進行役のテレビ（' + (DNAMES[tr.dStore] || tr.dStore) + '）が casa SLOT になっています' : '進行役のテレビがありません', true];
     const c = clash(n);
     if (c === 'now') return ['受付中・レース中は押せません', true];
     if (c) return ['もうすぐ次のレース（' + hhmm(c.at) + ' 発走）があるので押せません', true];
     if (r && r.err === 'busy' && n - r.at < 120000) return ['作れませんでした（もうすぐ次のレースです）', true];
     return [tr.msg, false];
+  }
+  function trHint() {
+    if (state.game !== 'slot') return '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）';
+    return '押すとテレビを casa DERBY に切り替えて、' + (wake() ? '進行役のテレビが戻ってから 1 分後' : '1 分半後') + 'に発走します';
   }
   const pad2 = (x) => ('0' + x).slice(-2);
   const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + pad2(s % 60); };
@@ -197,16 +213,25 @@
     const id = derbyId(), s = bill(), sv = staffSaved(), inp = $('tvgPin');
     const pin = sv && sv.store === id ? sv.pin : (inp ? inp.value.trim() : '');
     if (!pin) { tr.msg = 'casa DERBY のスタッフ PIN を入れてください（上の欄）。'; return paint(); }
-    if (!window.confirm((s ? s.name : '') + ' のテレビだけで、1 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走）。\n集計には入りません。' + (state.game === 'slot' ? '\nいまテレビは casa SLOT です。テレビで見るには casa DERBY にしてください。' : ''))) return;
+    const switching = state.game === 'slot', wk = wake();
+    if (!window.confirm(switching ? (s ? s.name : '') + ' のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (wk ? '進行役のテレビが戻ってから 1 分後' : '1 分半後') + 'に発走）。\n集計には入りません。'
+      : (s ? s.name : '') + ' のテレビだけで、1 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走）。\n集計には入りません。')) return;
     state.busy = true; tr.msg = ''; paint();
     try {
       const ss = await asStaff(id, pin);
-      const { r } = await post(FS + ':commit', { writes: [{ update: { name: DB + '/derbyTestReq/' + id, fields: { by: { stringValue: ss.uid }, startIn: { integerValue: String(TEST_SEC) } } }, updateTransforms: [{ fieldPath: 'at', setToServerValue: 'REQUEST_TIME' }] }] }, ss.idToken);
+      const sec = switching && !wk ? 90 : TEST_SEC; // ほかの店の進行役がすぐ作る → テレビが切り替わって読み込む時間を足す（core.js の TEST_RACE.switchSec）
+      const fields = { by: { stringValue: ss.uid }, startIn: { integerValue: String(sec) } };
+      const writes = [{ update: { name: DB + '/derbyTestReq/' + id, fields }, updateTransforms: [{ fieldPath: 'at', setToServerValue: 'REQUEST_TIME' }] }];
+      if (switching) writes.push( // テレビのゲームの切り替えと同じ 2 か所（スタッフとして自分の店だけ）
+        { update: { name: DB + '/derbyStores/' + id, fields: { settings: { mapValue: { fields: { tvGame: { stringValue: 'derby' } } } } } }, updateMask: { fieldPaths: ['settings.tvGame'] }, currentDocument: { exists: true } },
+        { update: { name: DB + '/derbySwitch/tv', fields: { [id]: { stringValue: 'derby' } } }, updateMask: { fieldPaths: [id] } });
+      const { r } = await post(FS + ':commit', { writes }, ss.idToken);
       if (r.status === 401) { sess = null; throw new Error('ログインの期限が切れました。もう一度押してください。'); }
       if (r.status === 403) throw new Error('少し待ってからもう一度押してください（前のお願いから 3 分たっていません）。');
       if (!r.ok) throw new Error('お願いできませんでした（' + r.status + '）。');
       if (!(sv && sv.store === id) && (!sv || sv.store === id)) lsSet(STAFF_KEY, JSON.stringify({ store: id, name: (s && s.name) || id, pin })); // テレビのゲームと同じく覚える
-      tr.req = { at: Date.now(), startIn: TEST_SEC, raceId: null, raceAt: null, err: null };
+      tr.req = { at: Date.now(), startIn: sec, raceId: null, raceAt: null, err: null };
+      if (switching) { state.game = 'derby'; state.at = Date.now(); }
     } catch (err) {
       tr.msg = err.message;
       if (err.code === 'bad_pin' && sv && sv.store === id) { lsSet(STAFF_KEY, null); tr.msg = 'casa DERBY のスタッフ PIN が変わっています。新しい PIN を入れてください。'; }
@@ -216,8 +241,7 @@
   function trHtml() {
     const [t, off] = trWhy();
     return '<div class="tr" id="trBox"><h4>テストレース<small>この店のテレビだけ・集計に入りません</small></h4>' +
-      '<p class="now" id="trNow">' + esc(t || '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）') + '</p>' +
-      (state.game === 'slot' ? '<p class="warn">いまテレビは casa SLOT です。テレビで見るには、先に上で casa DERBY にしてください。</p>' : '') +
+      '<p class="now" id="trNow">' + esc(t || trHint()) + '</p>' + // その 3: テレビが SLOT なら「切り替えてから」
       '<button type="button" class="go" data-tvg="test"' + (off || state.busy ? ' disabled' : '') + '>テストレースを今すぐ走らせる</button></div>';
   }
   function paintTest() { const b = $('trBox'); if (b && state.open) { const h = trHtml(); if (b.outerHTML !== h) b.outerHTML = h; } }
@@ -401,7 +425,6 @@
     state.leaving = true; state.why = 'go'; mark();
     location.href = 'derby/v2/staff.html?store=' + encodeURIComponent(id) + '&via=slot';
   }
-  let lastDoc = null;
   function onDoc(doc) {
     lastDoc = doc;
     const id = derbyId(); state.id = id; if (!id) return paintBtn();
