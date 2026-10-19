@@ -275,7 +275,11 @@ window.Race3D = (function () {
      =================================================================================== */
   /* 画質の段: 'high'（ふつう）→ 'low'（軽い。?lite=1・?q=low）→ 'tv'（Fire TV 向けのさらに軽い。?q=tv、Fire TV・Android TV のときは最初から）。
      'tv' のとき部品には 'low' を渡し、R3D.tv = true で会場・土煙がさらに減らす（観客を板の人に・木と支柱を間引く・ラチを粗く）。統合側は影を切り（馬の足元のぼかした丸は残す）、解像度を 0.8 倍に */
-  const TV_K = Math.max(0.5, Math.min(1, Number((QS.match(/[?&]tvk=([\d.]+)/) || [])[1] || 0.8)));
+  const TVK_Q = (QS.match(/[?&]tvk=([\d.]+)/) || [])[1];               // ?tvk=0.8 などで Fire TV の解像度を固定（重さの測定用）
+  const TV_K_FIX = TVK_Q ? Math.max(0.5, Math.min(1.2, Number(TVK_Q))) : 0;
+  // 2026-10-19: Fire TV の解像度は「画面の画素と同じ」（最大 1.2 倍＝1920 の幅）から始め、重いときだけ 0.1 ずつ下げる（最低 0.7）。軽ければ 1 分たってから戻す
+  // （以前は 0.8 倍で固定＝3D だけ引き伸ばして映っていて、走る場面だけ荒く見えた。オーナー指摘）
+  const TV_K_MIN = 0.7, TV_K_MAX = 1.2;
   const PERF_UI = /[?&]perf=1/.test(QS);   // ?perf=1: 左上に重さの表示（Fire TV の確認用。v2/FIRETV_TEST.md）
   function guessQuality() {
     if (/[?&]q=tv/.test(QS)) return 'tv';
@@ -352,10 +356,16 @@ window.Race3D = (function () {
     if (force || !this.resAt || now - this.resAt > 500) {
       this.resAt = now;
       const rw = (this.cv.getBoundingClientRect && this.cv.getBoundingClientRect().width) || W, dpr = window.devicePixelRatio || 1;
-      const k = this.tv ? TV_K : Math.round(Math.max(1, Math.min(this.lite ? 1 : Math.min(MAXK, this.kCap || 9), (rw || W) * Math.max(1, dpr) / W)) * 4) / 4;
+      const k = this.tv ? this.tvK(rw, dpr) : Math.round(Math.max(1, Math.min(this.lite ? 1 : Math.min(MAXK, this.kCap || 9), (rw || W) * Math.max(1, dpr) / W)) * 4) / 4;
       if (k !== this.k || force) { this.k = k; this.cv.width = Math.round(W * k); this.cv.height = Math.round(H * k); this.renderer.setPixelRatio(k); this.renderer.setSize(W, H, false); }
     }
     this.ctx.setTransform(this.k || 1, 0, 0, this.k || 1, 0, 0);
+  };
+  // Fire TV の解像度: 画面に映る大きさ × 画素密度（0.1 刻み、0.7〜1.2）。重さで下げた上限（tvCap）を超えない
+  Race3D.prototype.tvK = function (rw, dpr) {
+    if (TV_K_FIX) return TV_K_FIX;
+    const want = Math.max(TV_K_MIN, Math.min(TV_K_MAX, Math.round((rw || W) * Math.max(1, dpr || 1) / W * 10) / 10));
+    return this.tvCap ? Math.min(want, this.tvCap) : want;
   };
   Race3D.prototype.setRace = function (race) {
     this.runSeq = (this.runSeq || 0) + 1; // 走っている本番・再生・勝ち馬のアップの描画ループを止める（v2 のテレビが途中でレースを切り替えるとき）
@@ -1476,6 +1486,10 @@ window.Race3D = (function () {
       if (pf.gap > 21 && this.k > 1) { this.kCap = Math.max(1, this.k - 0.25); pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: 解像度を ' + this.k + ' 倍に下げました'); }
       else if (pf.gap > 36 && this.k <= 1) this.goLite();
     } else if (ADAPT && this.lite && !this.tv && document.visibilityState === 'visible' && pf.frames > 120 && pf.gap > 36) this.goTv(); // 軽い描き方でも 28fps を下回る → Fire TV 向けへ
+    else if (ADAPT && this.tv && !TV_K_FIX && document.visibilityState === 'visible' && pf.frames > 90) { // Fire TV: 45fps を下回ったら 0.1 下げる。55fps を超えて 1 分たったら 0.1 戻す
+      if (pf.gap > 22 && this.k > TV_K_MIN) { this.tvCap = Math.max(TV_K_MIN, Math.round((this.k - 0.1) * 10) / 10); this.tvDownAt = now; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に下げました'); }
+      else if (this.tvCap && pf.gap < 18.2 && pf.frames > 600 && now - (this.tvDownAt || 0) > 60000) { this.tvCap = Math.round((this.tvCap + 0.1) * 10) / 10; if (this.tvCap >= TV_K_MAX) this.tvCap = 0; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に戻しました'); }
+    }
     if (PERF_UI) this.perfUi(now);
   };
   // 遅いとき: まず解像度だけ 1.25 倍に下げ、それでも遅ければ軽い描き方（影・後処理・馬の作りを軽く）
