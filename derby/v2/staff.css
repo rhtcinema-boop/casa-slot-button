@@ -141,3 +141,4 @@ html, body { margin: 0; height: 100%; background-color: #070a08; color: #e8e3d2;
 
 /* 交換の割合（2026-10-17）: 認証の「投票券 30枚」の下に「リングバウンティ 600枚」 */
 .rbline { text-align: center; color: var(--gold); font-size: 18px; font-weight: 700; margin: -2px 0 8px; font-variant-numeric: tabular-nums; }
+.xstage small.xr { color: #ffd773; font-weight: 800; font-size: 14px; }
