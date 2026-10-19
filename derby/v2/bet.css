@@ -461,3 +461,36 @@ h1.show { margin: 0; letter-spacing: .06em; color: #1a1408; font-size: 22px; }
 .card .hsub i { font-style: normal; padding: 0 5px; border-radius: 4px; color: #2a1c12; font-weight: 900; font-size: 11px; line-height: 1.45; }
 .xrate { margin: 2px 0 0; text-align: center; font-size: 15px; font-weight: 700; color: var(--cream); }
 .xrate b { color: var(--gold); font-weight: 900; font-variant-numeric: tabular-nums; }
+
+/* ======================================================================================================
+   2026-10-20 オーナーの「画面の文字帳」の直し
+   ====================================================================================================== */
+/* 上の帯の「発走 2:48」「参加受付 あと 3:39」を大きく */
+.race { margin-top: 6px; gap: 10px; font-size: 16px; }
+.race span { padding: 6px 14px; font-weight: 700; }
+.race span b { font-size: 22px; margin-left: 4px; }
+@media (max-width: 360px) { .race { gap: 6px; font-size: 14px; } .race span { padding: 5px 10px; } .race span b { font-size: 19px; } }
+/* 会計番号・ニックネーム・投票額・スタッフに見せる QR: 見えている高さ（テンキーが出ているときはその上）の上下の真ん中に（v2/bet.js の midFit が --vvh と --toph を入れる） */
+.scr.min.mid { padding-top: 0; justify-content: center; min-height: calc(100vh - 104px - 40px); min-height: calc(var(--vvh, 100dvh) - var(--toph, 104px) - 40px - var(--sab)); }
+/* 「次へ」を大きく */
+.btn.nx { min-height: 68px; font-size: 26px; font-weight: 900; letter-spacing: .14em; padding-left: calc(14px + .14em); }
+/* 投票画面の「0」を消したので、－100 / ＋100 / ＋1,000 / ＋10,000 の 4 つに */
+.plus.five { grid-template-columns: 1fr 1fr 1.15fr 1.35fr; }
+/* スタッフに見せる QR の見出し（「下記QRをスタッフに／提示してください」の 2 行） */
+h1.show { line-height: 1.3; padding-top: 10px; padding-bottom: 10px; white-space: normal; }
+/* 上の帯が少し高くなったので、投票画面の「残り」の帯は上の帯の実際の高さの下に貼り付ける（低い画面・横向きは今までどおり） */
+@media (min-height: 601px) { .scr.vote .left { top: var(--toph, 107px); } .scr.vote { min-height: calc(100dvh - var(--toph, 107px) - 16px); } }
+/* 馬名の下の小さな行に調子（2026-10-20）: 「差し 調子 ○好調 近走 1-6-1」 */
+.card .hsub .cnd b { color: var(--cream); font-weight: 900; }
+
+/* 2026-10-20 オーナー決定: 金額の単位「pt」（数字のすぐ後ろ・数字より少し小さく）と、当選額の切り上げの説明。投票額の画面にも「－100」（馬を選ぶ画面と同じ並び） */
+.pt { font-size: .5em; font-weight: 800; margin-left: .06em; letter-spacing: 0; color: inherit; opacity: .92; }
+.counter .num .pt { font-size: .42em; color: var(--gold); }
+.left .lt b .pt { font-size: .5em; }
+.hit .a .pt { font-size: .4em; color: var(--gold); margin-left: .06em; }
+.ifsum b .pt, .card .if em .pt, .card .if b .pt, .mc-b em .pt, .mc-b b .pt, .pif b .pt { font-size: .62em; }
+.picks .pick .n .pt { font-size: .5em; color: var(--gold); margin-left: .04em; }
+.total b .pt, .authn b .pt { font-size: .5em; }
+.hit .rnote { margin: 6px auto 0; max-width: 300px; font-size: 13px; line-height: 1.45; color: #e8dcb6; text-align: center; }
+.plus.five.cnt { margin-top: 2px; }
+.plus.five.cnt button { min-height: 58px; }
