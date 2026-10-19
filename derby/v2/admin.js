@@ -18,7 +18,7 @@
   // 記録 1 行のリングバウンティ（core.js の logBounty と同じ。以前の記録: 認証は枚数＝1 対 1、返却・返還は額 ÷ 100）
   const isBLog = (l) => l.type === 'auth' || l.type === 'return' || l.type === 'refund' || ((l.type === 'paid' || l.type === 'expired') && l.kind === 'refund');
   const logB = (l) => (!isBLog(l) ? 0 : l.bounty != null ? Number(l.bounty) || 0 : l.type === 'auth' ? Number(l.count) || 0 : Math.round((Number(l.count) || 0) / 100));
-  const per1 = (o) => (o ? fmtN(Math.round(Number(o) * 10) * 10) : '');
+  const per1 = (o) => (o ? (Math.round(Number(o) * 10) / 10).toFixed(1) + '倍' : ''); // オッズは倍率（2026-10-19 オーナー「オッズ表記は倍率にしよう」。以前は 100あたりの額）
   const STATUS = { upcoming: ['予定', 'st-upcoming'], open: ['受付中', 'st-open'], vote: ['投票中', 'st-open'], closed: ['締切', 'st-closed'], decided: ['レース中', 'st-decided'], done: ['確定', 'st-done'], void: ['取り消し済み', 'st-void'] };
   const MODES = [['auto', 'ずっと自動で始める'], ['bet', '誰かが賭けたら始める'], ['staff', 'スタッフが始める']];
   const modeName = (m) => (MODES.find((x) => x[0] === m) || MODES[0])[1];
@@ -157,7 +157,7 @@
     else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); if (!pairData && pairOk()) loadPair(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
     else if (tab === 'tuning') { main.innerHTML = viewTuning(); validateTuning(); }
     else if (tab === 'stats') { if (!stFrom) { stTo = bizToday(); stFrom = addDays(stTo, -6); } main.innerHTML = viewStats(); if (!statsData && !statsErr) loadStats(); }
-    else if (tab === 'ops') { main.innerHTML = viewOps(); }
+    else if (tab === 'ops') { main.innerHTML = viewOps(); validateBp(); }
   }
   const keepScroll = (fn) => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
@@ -850,8 +850,6 @@
       stepRow('払い出しの上限（1 日）', '0 = なし。全店の当選額の合計（額）' + (cfg.capDayOk ? '' : '（<b style="color:var(--warn)">サーバー側の対応待ち。まだ保存されません</b>）'), 'payoutCapDay', T.payoutCapDay || 0, '', 0, 999999900, 10000) +
       '</div>' +
       viewCues(T) +
-      '<div class="panel" id="bountyPanel"><h3>交換の割合</h3><p class="hint">店舗・お客さんに見せてよい設定です（スマホとスタッフ画面に出ます）。<b>これから認証する分</b>から新しい割合になります。</p>' +
-      stepRow('交換の割合（リングバウンティ ○枚 ＝ 100チップ）', '例 20 なら チップ 3,000 ＝ リングバウンティ 600枚。当たりの額（チップ × オッズ）は変わりません', 'bountyPerTicket', T.bountyPerTicket || 20, '枚', 1, 1000, 1) + '</div>' +
       '<div class="panel"><h3>時間</h3><p class="hint">上の 3 つは<b>店舗を追加したときの初期値</b>。ゲートインとゴール後は全店共通です。</p>' +
       stepRow('参加受付の時間（初期値）', 'リングバウンティと交換できる時間', 'exchangeSec', T.exchangeSec != null ? T.exchangeSec : 90, '秒', 10, 1800, 5) +
       stepRow('投票の時間（初期値）', '参加受付が終わってから', 'voteSec', T.voteSec != null ? T.voteSec : 30, '秒', 10, 600, 5) +
@@ -881,6 +879,33 @@
     const t = fired.length ? '演出: ' + fired.map(([k, name]) => { const h = cz[k].horse, no = r.horses && r.horses[h] ? r.horses[h].no || h + 1 : h + 1; return name + '→' + no + '番 ' + (h === r.result.winner ? '○' : '×'); }).join(' / ') : '演出なし';
     return '<small class="hint cue-txt" style="display:block;margin:0">' + esc(t) + '</small>';
   }
+  /* リングバウンティの交換（2026-10-19 オーナー「Bounty X 枚で 100 と交換できる感じ。X はマスターからいじれるように」）:
+     「設定」タブのいちばん上。全店共通の 1 つの値（v2/core.js の bountyPerTicket。整数 1〜1000・初期 20。店ごとの設定はない）。
+     テレビの参加受付中の画面・お客さんの参加画面（チップ）・スタッフの認証の案内に「リングバウンティ ○枚 → 100」と出る。
+     保存はこの枠の「保存」だけ（詳細設定とは別）。認証したときの割合を券に残すので、変えても認証済みの券・返却・返還は前の割合のまま */
+  function viewBounty(T) {
+    const x = Number(T.bountyPerTicket) || 20;
+    return '<div class="panel" id="bountyPanel"><h3>リングバウンティの交換</h3>' +
+      '<p class="bpnow">いま <b>リングバウンティ <span id="bpNow">' + fmtN(x) + '</span>枚 → 100</b></p>' +
+      stepRow('リングバウンティ ○枚 → 100', '1〜1000 の整数。全店共通', 'bountyPerTicket', x, '枚', 1, 1000, 1) +
+      '<p class="hint">テレビ（参加受付中）・お客さんのスマホ（参加画面）・スタッフ画面にこの割合が出ます。<b>これから認証する分</b>から新しい割合です（認証済みの券・返却・返還は認証したときの割合のまま）。当たりの額（チップ × オッズ）は変わりません。</p>' +
+      '<div class="savebar"><div class="msg" id="bpmsg"></div><button type="button" class="btn" data-act="bp-save" id="bpsave" disabled>保存</button></div></div>';
+  }
+  function validateBp() {
+    if (!$('bpsave')) return 1;
+    const ok = numOk('bountyPerTicket'), v = numOf('bountyPerTicket'), dirty = ok && v !== (Number(cfg.tuning.bountyPerTicket) || 20);
+    $('bpmsg').innerHTML = !ok ? '<div class="err">1〜1000 の整数にしてください</div>' : dirty ? '<div class="warnmsg">保存すると「リングバウンティ ' + fmtN(v) + '枚 → 100」になります</div>' : '<div class="okmsg">保存済みです</div>';
+    $('bpsave').disabled = !ok || !dirty;
+    return ok ? 0 : 1;
+  }
+  async function saveBp() {
+    if (validateBp()) return;
+    const v = Math.round(numOf('bountyPerTicket')); if (v === (Number(cfg.tuning.bountyPerTicket) || 20)) return;
+    $('bpsave').disabled = true;
+    try { await api('saveTuning', { bountyPerTicket: v }); await reloadCfg(); toast('交換の割合を「リングバウンティ ' + fmtN(v) + '枚 → 100」にしました。これから認証する分から使います'); }
+    catch (e) { toast(errText(e)); }
+    keepScroll(render);
+  }
   /* 馬の見た目（全店共通。v2/core.js の horseLook）: 押すとすぐ保存。全店のテレビが次のレースから同じ見た目にそろう（受付中・走っている途中のレースは変わらない） */
   const HORSE_LOOKS = [['cute', 'かわいい（標準）'], ['real', '本物寄り']];
   function viewHorseLook(T) {
@@ -906,7 +931,7 @@
     return '目標 ' + fmtN(tg) + ' なら <b>' + fmtN(lo) + '〜' + fmtN(hi) + '</b> に入る馬から、勝ちやすさで抽選。いない時はいちばん近い馬';
   }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
-  const TUN_KEYS = ['payoutRate', 'volatility', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'exchangeSec', 'voteSec', 'resultSec', 'gateSec', 'postSec', 'bountyPerTicket'].concat(CUE_KEYS);
+  const TUN_KEYS = ['payoutRate', 'volatility', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'exchangeSec', 'voteSec', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS); /* 交換の割合（bountyPerTicket）は 2026-10-19 から「設定」の上の枠（viewBounty。保存も別） */
   function validateTuning() {
     if (!$('tumsg')) return 1;
     const bad = TUN_KEYS.filter((k) => !numOk(k)).length;
@@ -922,7 +947,6 @@
       bandBelow: Math.round(numOf('bandBelow')) / 100, bandAbove: Math.round(numOf('bandAbove')) / 100,
       payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')),
       exchangeSec: Math.round(numOf('exchangeSec')), voteSec: Math.round(numOf('voteSec')), resultSec: Math.round(numOf('resultSec')), gateSec: Math.round(numOf('gateSec')), postSec: Math.round(numOf('postSec')),
-      bountyPerTicket: Math.round(numOf('bountyPerTicket')), /* 交換の割合（整数 1〜1000） */
     };
     // 変えた項目だけ送る（ほかの画面で変えた項目を、この画面の古い値で戻さない）
     const T0 = cfg.tuning, near = (a, b) => Math.abs(Number(a || 0) - Number(b || 0)) < 1e-9;
@@ -1065,6 +1089,7 @@
   /* 設定（2026-10-19 改善 2）: テレビの読み込み直しとレース取消は「今日」へ移した（その場で終わる）。ここは 馬の見た目・オーナー用の詳細設定・テスト用 だけ */
   function viewOps() {
     return '<p class="opsnote">テレビの切り替え・読み込み直しとレース取消は「今日」にあります。</p>' +
+      viewBounty(cfg.tuning) +
       viewHorseLook(cfg.tuning) +
       '<button type="button" class="panel rowlink" data-act="go-tuning"><span><b>オーナー用の詳細設定</b><small>店舗には見せない設定</small></span><i aria-hidden="true">›</i></button>' +
       '<details class="panel"><summary>テスト用（本番では使わない）</summary>' +
@@ -1079,6 +1104,7 @@
     const el = e.target;
     if (tab === 'stores' && editStore) return validateStore();
     if (tab === 'tuning') { tunDirty = true; return validateTuning(); }
+    if (tab === 'ops' && el.id === 'n-bountyPerTicket') return validateBp();
     if (tab === 'timetable' && tt) {
       const t = tplOf(el);
       if (t && el.dataset.rf) { const r = rowOf(t, el); if (r) r[el.dataset.rf] = el.value; return ttTouched(); }
@@ -1159,6 +1185,7 @@
         case 'copy': { const v = b.dataset.copy || ''; try { await navigator.clipboard.writeText(v); b.textContent = 'コピーしました'; setTimeout(() => { if (document.contains(b)) b.textContent = 'コピー'; }, 1500); } catch (err) { toast('コピーできませんでした。リンクを長押ししてコピーしてください'); } return; }
         case 'sg-tv': { const sel = $('stvgame'); if (!sel) return; sel.value = b.dataset.v === 'derby' ? 'derby' : 'slot'; paintTvSeg(); return validateStore(); }
         case 'go-tuning': return switchTab('tuning');
+        case 'bp-save': return saveBp();
         case 'go-ops': return switchTab('ops');
         case 'tpl-open': { const t = tplOf(b), box = b.closest('[data-tk]'); if (!t) return; const op = !tplOpen.has(t.id); if (op) tplOpen.add(t.id); else tplOpen.delete(t.id); box.classList.toggle('open', op); b.setAttribute('aria-expanded', String(op)); return; }
         case 'tpl-on': { const t = tplOf(b); t.enabled = !t.enabled; ttDirty = true; return ttRerender(); }
