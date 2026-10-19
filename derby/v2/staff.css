@@ -35,10 +35,11 @@ html, body { margin: 0; height: 100%; background-color: #070a08; color: #e8e3d2;
 .cam.hit .aim i { border-color: var(--ok); }
 .camMsg { position: absolute; left: 10px; right: 10px; bottom: 10px; text-align: center; font-size: 14px; color: #fff; text-shadow: 0 1px 4px #000; background: rgba(0, 0, 0, .45); border-radius: 10px; padding: 8px; }
 .camMsg:empty { display: none; }
-.guide { margin: 0; text-align: center; font-size: 16px; color: var(--cream); line-height: 1.6; }
+.guide { margin: 0; text-align: center; font-size: 20px; text-wrap: balance; /* 2026-10-20 オーナーの文字帳「大きくして」（16 → 20）。折り返すときは 2 行を同じくらいの長さに */ color: var(--cream); line-height: 1.6; }
 .guide small { display: block; color: var(--dim); font-size: 13px; }
 
 .row { display: flex; gap: 10px; } .row > * { flex: 1; }
+.row.one { justify-content: center; } .row.one > * { flex: 0 1 60%; } /* 2026-10-20: ボタン 1 つ（カメラを再起動）を真ん中に */
 .btn { width: 100%; padding: 14px; font: inherit; font-size: 16px; border-radius: 12px; border: 1px solid var(--gold2); background: #0d0c08; color: var(--cream); min-height: 50px; }
 .btn.ok { background: linear-gradient(180deg, var(--cream), var(--gold2)); color: #1a1408; font-weight: 700; border: 0; }
 .btn.big { min-height: 70px; font-size: 20px; }
@@ -125,8 +126,8 @@ html, body { margin: 0; height: 100%; background-color: #070a08; color: #e8e3d2;
 #xstage { flex: none; padding: 8px 12px 0; }
 #xstage[hidden] { display: none; }
 .xstage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid #1e6e3e; background: #0c1d12; color: var(--ok); }
-.xstage span { font-size: 15px; font-weight: 700; }
-.xstage b { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.xstage span { font-size: 20px; font-weight: 800; } /* 2026-10-20 オーナーの文字帳「参加受付 あと」を大きく（15 → 20、数字 26 → 36） */
+.xstage b { font-size: 36px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .xstage small { flex-basis: 100%; font-size: 13px; color: #cfd6cc; }
 .xstage.hot { border-color: #d2a03f; background: #251c08; color: #ffd773; }
 .xstage.shut { border-color: #ff6b78; background: #dc3545; color: #fff; }
@@ -142,3 +143,7 @@ html, body { margin: 0; height: 100%; background-color: #070a08; color: #e8e3d2;
 /* 交換の割合（2026-10-17）: 認証の「投票券 30枚」の下に「リングバウンティ 600枚」 */
 .rbline { text-align: center; color: var(--gold); font-size: 18px; font-weight: 700; margin: -2px 0 8px; font-variant-numeric: tabular-nums; }
 .xstage small.xr { color: #ffd773; font-weight: 800; font-size: 14px; }
+
+/* 2026-10-20 オーナー決定: 金額の単位「pt」（数字のすぐ後ろ・少し小さく）と、渡す額の横に小さく「切り上げ済み」 */
+.sheet .amt small { margin-left: 2px; }
+.sheet .amt small.rup { display: inline-block; vertical-align: middle; margin-left: 10px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--gold); color: var(--gold); font-size: 13px; font-weight: 800; letter-spacing: .02em; line-height: 1.2; position: relative; top: -6px; }
