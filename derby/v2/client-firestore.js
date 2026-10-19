@@ -765,7 +765,9 @@
       /* 期限切れの見回りは 15 分に 1 回と、営業日の区切り（5 時）を越えたとき */ const dayNow = Core.bizDate(t, sc.tuning.dayStartHour); if (t - decider.lastExpire > 15 * 60000 || decider.lastExpireDay !== dayNow) { decider.lastExpire = t; decider.lastExpireDay = dayNow; const n = await expirePayouts(); if (n) did.push('expire ' + n); }
       return { leader: true, did };
     }
-    /* ---------- この店だけテストレース（2026-10-19）: スタッフのお願い derbyTestReq/<店舗> を見て、決める係（の鍵を持つ 1 台）が作る ---------- */
+    /* ---------- この店だけテストレース（2026-10-19）: スタッフのお願い derbyTestReq/<店舗> を見て、決める係（の鍵を持つ 1 台）が作る ----------
+       その 3（2026-10-19）: 店のテレビが casa SLOT のときは、スタッフが押すと同じ書き込みで店のテレビのゲームを casa DERBY にする（今のスタッフの決まり tvGameOnly のまま）。
+       発走まで 90 秒（switchSec）のお願いは、テレビが切り替わってから受付を始める（30 秒あとから）。終わったあと SLOT に戻すことはしない（オーナー決定） */
     let testWatch = null, testReqs = {};
     function ensureTestWatch() {
       if (testWatch) return;
@@ -783,7 +785,7 @@
         if (made) { await ref.set({ raceId: id, raceAt: made.at, doneAt: t }, { merge: true }); continue; } // 作ったあとに止まっていた: 印だけ
         if (!(await getStores()).some((s) => s.id === sid)) { await ref.set({ err: 'no_store', doneAt: t }, { merge: true }); continue; }
         if (Core.testRaceBusy(races, sid, t, startIn, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
-        const r = await writeRace({ id, at: t + startIn * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, Core.testStages(startIn, sc.tuning)); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
+        const r = await writeRace({ id, at: t + startIn * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, Core.testStages(startIn, sc.tuning, startIn === Core.TEST_RACE.switchSec ? startIn - Core.TEST_RACE.quickSec : 0)); /* その 3: テレビを切り替えたとき（90 秒）は、切り替わってから受付（30 秒あとから） */ // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
         await ref.set({ raceId: r.id, raceAt: r.at, doneAt: t }, { merge: true });
         did.push('test ' + r.id);
       }
@@ -791,24 +793,41 @@
     }
     // スタッフ: 進行役のテレビがいるか（決める係の鍵の期限。鍵は 20 秒ごとに延ばすので、止まると 60 秒以内に切れる）
     async function deciderAlive() { const l = data(await doc(COL.lock, 'decider').get()); return !!(l && l.until > now()); }
-    async function testRace(pin, startIn) {
+    /* スタッフ: テストレースの前の様子。鍵（derbyLock/decider）には最後の決める係の店 store が残る。進行役を替える・やめると管理画面が鍵を消すので、
+       鍵が残っていて期限が切れている＝選ばれた進行役のテレビがいま DERBY を映していない（その店が SLOT になっているだけ） */
+    async function testPre() {
+      const [l, sw, q] = await Promise.all([doc(COL.lock, 'decider').get().then(data).catch(() => null), doc(COL.tvSwitch, 'tv').get().then(data).catch(() => null), doc(COL.testReq, store).get().then(data).catch(() => null)]);
+      const alive = !!(l && l.until > now()), game = sw && sw[store] === 'derby' ? 'derby' : 'slot', dStore = (l && l.store) || null;
+      return { alive, game, dStore, dGame: dStore ? (sw && sw[dStore] === 'derby' ? 'derby' : 'slot') : null, wake: !alive && dStore === store && game === 'slot', sw, q };
+    }
+    async function testRace(pin, startIn, o) {
       await staffEnsure(pin);
-      const sec = Core.testStartIn(startIn);
-      if (!(await deciderAlive().catch(() => false))) throw E(409, 'no_decider', '進行役のテレビがありません');
+      o = o || {};
+      const p = await testPre();
+      if (!p.alive && !p.wake) throw p.dStore && p.dGame === 'slot' ? E(409, 'decider_slot', '進行役のテレビ（' + storeNameOf(await getStores().catch(() => null))(p.dStore) + '）が casa SLOT になっています') : E(409, 'no_decider', '進行役のテレビがありません');
+      const switching = p.game === 'slot' && o.switchTv !== false;
+      let sec = Core.testStartIn(startIn);
+      if (switching && !p.wake) sec = Math.max(sec, Core.TEST_RACE.switchSec); // ほかの店の進行役がすぐ作る → テレビが切り替わって読み込む時間を足す
       if (Core.testRaceBusy(await getRaces(true), store, now(), sec, await getPublic(), [])) throw E(409, 'busy', 'いまはテストのレースを作れません（受付中・レース中か、もうすぐ次のレースです）');
-      const write = () => doc(COL.testReq, store).set({ at: FieldValue.serverTimestamp(), by: uid(), startIn: sec });
+      const write = async () => {
+        const b = db.batch();
+        b.set(doc(COL.testReq, store), { at: FieldValue.serverTimestamp(), by: uid(), startIn: sec });
+        if (switching) { b.update(doc(COL.stores, store), { 'settings.tvGame': 'derby' }); b.set(doc(COL.tvSwitch, 'tv'), { [store]: 'derby' }, { merge: true }); }
+        await b.commit();
+      };
       try { await write(); }
       catch (e) {
         if (!(e && e.code === 'permission-denied')) throw mapErr(e);
         staffOk = null; await staffEnsure(pin); // PIN が変わっていた → bad_pin。登録し直せたら 1 回だけやり直す
         try { await write(); } catch (e2) { if (e2 && e2.code === 'permission-denied') throw E(429, 'too_soon', '少し待ってからもう一度押してください'); throw mapErr(e2); }
       }
-      return { ok: true, pending: true, startIn: sec };
+      return { ok: true, pending: true, startIn: sec, switched: switching, wait: p.wake };
     }
     async function testRaceStatus(pin) {
       await staffEnsure(pin);
-      const [alive, q] = await Promise.all([deciderAlive().catch(() => false), doc(COL.testReq, store).get().then(data).catch(() => null)]);
-      return { decider: alive, req: q ? { at: msOf(q.at), startIn: q.startIn, raceId: q.raceId || null, raceAt: q.raceAt || null, err: q.err || null } : null };
+      const p = await testPre(), q = p.q;
+      return { decider: p.alive, deciderStore: p.dStore, deciderGame: p.dGame, deciderName: p.dStore && !p.alive ? storeNameOf(await getStores().catch(() => null))(p.dStore) : null, game: p.game, wake: p.wake,
+        req: q ? { at: msOf(q.at), startIn: q.startIn, raceId: q.raceId || null, raceAt: q.raceAt || null, err: q.err || null } : null };
     }
 
     /* ---------- 進行役のテレビ（2026-10-19: パスワードを打たずに管理画面の 1 タップで） ----------
