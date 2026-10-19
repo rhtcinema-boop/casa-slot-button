@@ -28,7 +28,12 @@
   function hash() { let h = 2166136261 >>> 0; for (let k = 0; k < arguments.length; k++) { const s = String(arguments[k]); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } h ^= 0x2c; h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
   const toT = (o) => Math.round(o * 10);
   const UNIT = 100; // 1 枚の額
-  const amountT = (count, oddT) => count * oddT * (UNIT / 10); // 1 件の払い戻し（額。整数）
+  /* 当選額の切り上げ（2026-10-20 オーナー決定「当選額は 10 の位で切り上げて渡す」例 243 → 250・240 → 240）: 1 件（券 1 枚の当たり）ごとに 10 の倍数へ切り上げる。
+     渡す額＝集計の額＝結果の決め方（目標の幅・上限の判定）に使う額を、全部この切り上げた額にそろえる（実際に渡した額で集計が合うように）。
+     今の決まり（オッズ 0.1 刻み・1 枚 = 100）では元から 10 の倍数なので、数は変わらない（オッズの刻みや 1 枚の額を変えたときの守り） */
+  const PAY_STEP = 10;
+  const roundPay = (v) => { const x = Math.round((Number(v) || 0) * 1000) / 1000; return x > 0 ? Math.ceil(x / PAY_STEP) * PAY_STEP : 0; };
+  const amountT = (count, oddT) => roundPay(count * oddT * (UNIT / 10)); // 1 件の払い戻し（額。10 の倍数に切り上げ）
 
   // stakes: [{ horse, count, group? }] → 馬ごと・グループごとの一覧
   function groupStakes(stakes, n, scope) {
@@ -180,10 +185,10 @@
     return { winner, order: fs.order, finalOdds, seed: fs.seed, natural: fs.natural, tries: fs.tries, payout: ch.winner == null ? 0 : ch.payout, perGroup: ch.perGroup || {}, reason: ch.reason, target: ch.target, scope: ch.scope, cands: ch.cands, band: ch.band };
   }
 
-  // 1 件ごとの払い戻し（サーバーが payouts を作るとき）
+  // 1 件ごとの払い戻し（サーバーが payouts を作るとき。10 の倍数に切り上げ済み）
   function stakePayout(count, odds) { return amountT(Math.floor(count), toT(odds)); }
 
   // 1 枚あたりの額（オッズの表示の代わり）: 6.1 → 610
   function perTicket(odds) { return toT(odds) * (UNIT / 10); }
-  return { chooseWinner, weightOf, shiftOf, shapeOdds, findSeed, resolve, stakePayout, perTicket, UNIT, hash, mulberry, MIN_T, MAX_T };
+  return { chooseWinner, weightOf, shiftOf, shapeOdds, findSeed, resolve, stakePayout, perTicket, roundPay, PAY_STEP, UNIT, hash, mulberry, MIN_T, MAX_T };
 });
