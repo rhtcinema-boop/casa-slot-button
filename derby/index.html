@@ -179,7 +179,7 @@ window.addEventListener('error', function (e) {
 <script>window.R3D_LAZY = { HorseReal: 'js/r3d/horse3d-real.js?v=r8' }; if (/[?&]horse=real\b/.test(location.search)) document.write('<script src="' + window.R3D_LAZY.HorseReal + '"><\/script>');</script>
 <script src="js/r3d/venue3d.js?v=k3g"></script>
 <script src="js/r3d/director3d.js?v=k3n"></script>
-<script src="js/race3d.js?v=k3u"></script>
+<script src="js/race3d.js?v=k3v"></script>
 <script src="js/bonus.js?v=k3"></script>
 <script src="js/voice.js?v=k4"></script>
 <script src="js/commentary.js?v=k6"></script>
@@ -189,7 +189,7 @@ window.addEventListener('error', function (e) {
 <script>
 (function () {
   // _r＝管理画面の「テレビを読み込み直す」で付く印。v2 のファイルの版に足して、古いファイル（キャッシュ）を使わない
-  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't18a' + (r ? '-' + r : '');
+  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't18b' + (r ? '-' + r : '');
   if (/[?&]store=[^&]/.test(location.search)) document.write('<link rel="stylesheet" href="v2/tv.css?v=' + v + '"><script src="v2/client.js?v=' + v + '"><\/script><script src="v2/qr.js?v=' + v + '"><\/script><script src="v2/tv.js?v=' + v + '"><\/script><script src="v2/tvswitch.js?v=' + v + '"><\/script>');
   else document.write('<script src="js/game.js?v=k10"><\/script>');
 })();
