@@ -90,8 +90,10 @@
   // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
   stageEl.appendChild(el('<div class="v2down" id="v2down"><b>通信が切れています</b><span>自動でつなぎ直します</span></div>'));
   stageEl.appendChild(el('<div class="v2net" id="v2net">通信中…</div>'));
-  stageEl.appendChild(el('<div class="v2net v2key" id="v2key"><b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）テレビの合言葉がありません。管理画面のテレビの URL で開き直してください</small></div>'));
+  stageEl.appendChild(el('<div class="v2net v2key" id="v2key"><b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）テレビの合言葉がありません。管理画面のテレビの URL で開き直すか、管理画面の「進行役にする」で選んでください</small></div>'));
   stageEl.appendChild(el('<div class="v2snd" id="v2snd">決定ボタン（OK）を押すと音が出ます</div>'));
+  // 進行役のテレビ（2026-10-19）: 管理画面で「進行役にする」を押されている間だけ、上の帯のまん中に確認の 4 けたの数字（オーナーが管理画面の数字と見くらべる）
+  stageEl.appendChild(el('<div class="v2pair" id="v2pair" aria-live="polite"><small id="v2pairLbl">進行役の確認</small><b id="v2pairCode"></b></div>'));
 
   // ---------- クラウド ----------
   if (!window.DerbyCloud || !DerbyCloud.create) { console.error('casa DERBY v2: v2/client.js が読めません'); }
@@ -119,6 +121,29 @@
   let tvAuth = null; // サーバーの答え: true（合言葉 OK）/ false（無い・違う）/ null（Firestore 版など、使わない）
   const C = window.DerbyCloud && DerbyCloud.create ? DerbyCloud.create({ store: STORE, role: 'tv', tvKey: TVKEY }) : null;
   const now = () => (C && C.serverNow ? C.serverNow() : Date.now());
+  /* 進行役のテレビ（2026-10-19）: 数字は「確認中」の間だけ（最長 3 分）。選ばれた・外れたときは 8 秒だけ知らせる（ふだんは何も出さない） */
+  {
+    let was = null, msgT = 0; window.__derbyPair = null;
+    // 置き場所: 上の帯の「発走の時刻」の札のすぐ右（左の状態の札の長さで動くので、出すたびと 1 秒ごとに合わせる）。ロゴには重ねない
+    const place = () => {
+      const b = $('v2pair'); if (!b.classList.contains('show')) return;
+      const sr = stageEl.getBoundingClientRect(), k = sr.width / 1600 || 1, ri = stageEl.querySelector('.top .raceinfo'), lg = stageEl.querySelector('.top .logo');
+      const r = ri && ri.getBoundingClientRect(), lr = lg && lg.getBoundingClientRect(), w = b.offsetWidth || 170;
+      let x = r && r.width ? (r.right - sr.left) / k + 14 : 700; if (lr && lr.width) x = Math.min(x, (lr.left - sr.left) / k - 14 - w);
+      b.style.left = Math.max(20, Math.round(x)) + 'px';
+    };
+    setInterval(place, 1000);
+    const show = (lbl, code, cls) => { const b = $('v2pair'); $('v2pairLbl').textContent = lbl; $('v2pairCode').textContent = code || ''; b.className = 'v2pair show' + (cls ? ' ' + cls : ''); place(); };
+    const hide = () => { $('v2pair').className = 'v2pair'; };
+    if (C && C.onPair) C.onPair((p) => {
+      window.__derbyPair = p; // テスト用（window.DERBY.pair）
+      clearTimeout(msgT);
+      if (p.asking && p.code) show('進行役の確認', p.code);
+      else if (was !== null && p.decider !== was) { show(p.decider ? '進行役になりました' : '進行役を外れました', '', 'msg'); msgT = setTimeout(hide, 8000); }
+      else hide();
+      was = !!p.decider;
+    });
+  }
   let S = null;                    // いちばん新しい /api/state
   // 店ごとの設定（/api/state の settings）: 場面の有無と長さ・回し方・テストモード
   const ST = () => (S && S.settings) || {};
@@ -144,7 +169,7 @@
     if (seq != null) { if (seenSeq != null && seq > seenSeq) onNext(); seenSeq = seq; }
     const rs = s.store && s.store.reloadSeq;
     if (rs != null) { if (seenReload != null && rs > seenReload) reloadWithUpdate(); seenReload = rs; }
-    if (s.store && s.store.name) { $('v2store').textContent = s.store.name + (/店$/.test(s.store.name) ? '' : '店') + (ST().test ? '（テスト）' : ''); $('v2store').classList.toggle('test', !!ST().test); }
+    if (s.store && s.store.name) { $('v2store').textContent = s.store.name + (/店$/.test(s.store.name) ? '' : '店') + (ST().test || (s.open && s.open.test) || (s.live && s.live.test) ? '（テスト）' : ''); $('v2store').classList.toggle('test', !!(ST().test || (s.open && s.open.test) || (s.live && s.live.test))); } /* テストのレース（2026-10-19。スタッフの「この店だけテストレース」）もテストモードの店と同じ印 */
     renderQR();
   }
   function onNext() { // スタッフの「次へ」: いま出している結果画面を閉じる。回し方が「スタッフが開始」の店では、次のレース（走っていれば今のレース）を流す合図
@@ -887,6 +912,7 @@
 
   // ---------- テスト・確認用 ----------
   window.DERBY = {
+    get pair() { return window.__derbyPair; }, // 進行役のテレビ（2026-10-19）
     v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV,
     upd: UPD, updCheck: (force) => autoUpdate(force), updSafe, // 自動アップデート（tests/v2-tv-update.test.js）
     get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now,
