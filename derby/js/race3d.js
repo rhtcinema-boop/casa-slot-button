@@ -18,7 +18,8 @@ window.Race3D = (function () {
   // 解像度の上限（画素密度の倍率）。きれいさ優先で、ふつうの機械は 2 倍まで（?hd=1.5 などで指定可）。軽い描き方では 1 倍
   // 解像度の上限（画素密度の倍率）。ふつうは 1.5 倍から始め、60fps を保てないときだけ 0.25 ずつ下げる（?hd=2 で 2 倍から）
   const HD = Number((QS.match(/[?&]hd=([\d.]+)/) || [])[1] || 0), MAXK = Math.max(1, Math.min(2, HD || 1.5));
-  const ADAPT = !/[?&]adapt=0/.test(QS);                         // ?adapt=0 で自動の画質調整を止める（重さの測定用）
+  const MAXQ = (() => { try { return localStorage.getItem('casa.derby.q') === 'max'; } catch (e) { return false; } })(); // 2026-10-19: 管理者が「画質を最高に」したテレビ（v2/tvswitch.js）
+  const ADAPT = !/[?&]adapt=0/.test(QS) && !MAXQ;                         // ?adapt=0 で自動の画質調整を止める（重さの測定用）
   const STD_CAM = /[?&]cam=std/.test(QS);
   const LAYOUT_OLD = /[?&]layout=old/.test(QS);
   const THEME = (QS.match(/[?&]theme=(\w+)/) || [])[1] || '';   // 会場の季節・時間（normal / autumn / sakura / night）   // テスト用: カメラ担当の部品を使わず 2D 版と同じカメラ台本で撮る
@@ -282,6 +283,7 @@ window.Race3D = (function () {
   const TV_K_MIN = 0.7, TV_K_MAX = 1.2;
   const PERF_UI = /[?&]perf=1/.test(QS);   // ?perf=1: 左上に重さの表示（Fire TV の確認用。v2/FIRETV_TEST.md）
   function guessQuality() {
+    if (MAXQ) return 'high'; // 画質を最高に: Fire TV でもふつうの画質（影・ふちのなめらか）、細かさは画面と同じ（自動で下げない）
     if (/[?&]q=tv/.test(QS)) return 'tv';
     if (/[?&]lite=1/.test(QS)) return 'low';
     if (/[?&]q=low/.test(QS)) return 'low';
