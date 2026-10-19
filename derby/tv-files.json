@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 21550,
-   "sha256": "35aaf49105312ea2817c7638610d9f62f82afc64e5629fbbea0e02bf8672c5ca"
+   "sha256": "07ce0b3c1467918f92eee0b941415be6d5465a6db6b5c4a6fbe12ea2e48c35f9"
   },
   {
    "path": "js/audio.js",
@@ -323,13 +323,13 @@
   },
   {
    "path": "v2/tv.css",
-   "size": 61855,
-   "sha256": "0a5e6db0d5369829bbc3dad6fede8e69a3d9dd1154e1e30318885658c738b50f"
+   "size": 71015,
+   "sha256": "046087f0124aec8971d79783f3ae15981cd83f93a2e0a94021019d947c073706"
   },
   {
    "path": "v2/tv.js",
-   "size": 86595,
-   "sha256": "e848c90f27faf96eb91cd6691e28c8d941197c0009f91ee94c8fc67c1ee409c1"
+   "size": 87139,
+   "sha256": "7a8bb3dcec3d2c802422e644dc1bdb519491290e42c40c7fac7b9e6dcc18a3fc"
   },
   {
    "path": "v2/tvswitch.js",
