@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 21597,
-   "sha256": "52560384dddde041a5320e7f3b7f10363d745171925616a2a107500efa14c684"
+   "sha256": "d4aff3ae914a1db7bdea82c3552732f1d8eada739d9132298c372257904e416e"
   },
   {
    "path": "js/audio.js",
@@ -293,8 +293,8 @@
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 103410,
-   "sha256": "ee774db149c5932d608bc2288e336e5b18a860d964e2fa41320d95f2da01e234"
+   "size": 103479,
+   "sha256": "c25f8ef9af6d9004d6a171ca5cdea3046d14dea59a5c869c0880b9fdde3a6ea0"
   },
   {
    "path": "v2/client.js",
@@ -308,8 +308,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 54613,
-   "sha256": "620e5c1745036b9676b2a4124c0579f8c84a6c6d4588d2eaca9b0b5383b31bfd"
+   "size": 55793,
+   "sha256": "e59959009d7ecec347d8aed7d35869ed1212b3bb80c555a1c6a6c5375bc2fb23"
   },
   {
    "path": "v2/form.js",
