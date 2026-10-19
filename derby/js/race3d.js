@@ -18,7 +18,8 @@ window.Race3D = (function () {
   // 解像度の上限（画素密度の倍率）。きれいさ優先で、ふつうの機械は 2 倍まで（?hd=1.5 などで指定可）。軽い描き方では 1 倍
   // 解像度の上限（画素密度の倍率）。ふつうは 1.5 倍から始め、60fps を保てないときだけ 0.25 ずつ下げる（?hd=2 で 2 倍から）
   const HD = Number((QS.match(/[?&]hd=([\d.]+)/) || [])[1] || 0), MAXK = Math.max(1, Math.min(2, HD || 1.5));
-  const MAXQ = (() => { try { return localStorage.getItem('casa.derby.q') === 'max'; } catch (e) { return false; } })(); // 2026-10-19: 管理者が「画質を最高に」したテレビ（v2/tvswitch.js）
+  const QMODE = (() => { try { return localStorage.getItem('casa.derby.q') || ''; } catch (e) { return ''; } })(); // 2026-10-19: 管理者が店舗の設定で選んだテレビの画質（v2/tvswitch.js）。'max'＝最高、'sharp'＝軽い描き方のまま細かさ 1.2 倍で固定
+  const MAXQ = QMODE === 'max';
   const ADAPT = !/[?&]adapt=0/.test(QS) && !MAXQ;                         // ?adapt=0 で自動の画質調整を止める（重さの測定用）
   const STD_CAM = /[?&]cam=std/.test(QS);
   const LAYOUT_OLD = /[?&]layout=old/.test(QS);
@@ -277,7 +278,7 @@ window.Race3D = (function () {
   /* 画質の段: 'high'（ふつう）→ 'low'（軽い。?lite=1・?q=low）→ 'tv'（Fire TV 向けのさらに軽い。?q=tv、Fire TV・Android TV のときは最初から）。
      'tv' のとき部品には 'low' を渡し、R3D.tv = true で会場・土煙がさらに減らす（観客を板の人に・木と支柱を間引く・ラチを粗く）。統合側は影を切り（馬の足元のぼかした丸は残す）、解像度を 0.8 倍に */
   const TVK_Q = (QS.match(/[?&]tvk=([\d.]+)/) || [])[1];               // ?tvk=0.8 などで Fire TV の解像度を固定（重さの測定用）
-  const TV_K_FIX = TVK_Q ? Math.max(0.5, Math.min(1.2, Number(TVK_Q))) : 0;
+  const TV_K_FIX = TVK_Q ? Math.max(0.5, Math.min(1.2, Number(TVK_Q))) : (QMODE === 'sharp' ? 1.2 : 0); // くっきり（sharp）: 自動で下げない
   // 2026-10-19: Fire TV の解像度は「画面の画素と同じ」（最大 1.2 倍＝1920 の幅）から始め、重いときだけ 0.1 ずつ下げる（最低 0.7）。軽ければ 1 分たってから戻す
   // （以前は 0.8 倍で固定＝3D だけ引き伸ばして映っていて、走る場面だけ荒く見えた。オーナー指摘）
   const TV_K_MIN = 0.7, TV_K_MAX = 1.2;
