@@ -1,7 +1,30 @@
-/* 音（WebAudio で合成。音声ファイルなし）。最初のタップで unlock() を呼ぶ。 */
+/* 音（WebAudio で合成。音声ファイルなし）。最初のタップで unlock() を呼ぶ。
+   2026-10-19 オーナー「効果音、全体的にもうちょいこもってる感じの柔らかい音にしたい」「レース中以外は音を出さない」:
+   - こもった柔らかい音: 元の音（効果音ラボの録音・合成の音）はそのままにして、鳴らすときに通り道でまとめて絞る（softBus）。
+     高い音を削る（1.4kHz から上を −4dB、2.6kHz と 5kHz の 2 段で落とす）・全体を約 −1.5dB・合成の音の立ち上がりを 0.03 秒に丸め、角ばった波形（矩形・のこぎり）は三角波に。
+     効果音・ゲートの音・蹄の音（js/hooves.js）・観客のざわめき（js/commentary.js）がここを通る。実況の声は聞き取りやすさのため通さない（scene だけ通る）。
+     元に戻して聞きくらべるときは ?softsfx=0。
+   - レース中だけ鳴らす: scene(on) で全部の音（効果音・蹄・実況・観客・読み上げ）の出口を開け閉めする（閉めるときは 0.3 秒ほどで消す）。
+     v2 のテレビ（v2/tv.js）は場面が「レース」（締切〜ゲートイン〜発走〜ゴール〜リプレイ・写真判定〜勝ち馬〜着順掲示板）のときだけ開ける。
+     閉まっている間の play() は鳴らさない（log に残すだけ）。一人用（js/game.js）は呼ばないので、いつも開いている。
+   - log: play() の呼び出しの記録（テスト用。{ at, name, ok }。ok＝出口が開いていた） */
 window.Sfx = (function () {
   'use strict';
   let ctx = null, master = null, duck = null, muted = false, gateRec = null, gateTried = false;
+  const SOFT = !(typeof location !== 'undefined' && /[?&]softsfx=0/.test(location.search));
+  let sceneOpen = true, sceneG = null, softIn = null;
+  const log = [];
+  // こもった柔らかい音の通り道（入口を返す）。出口は scene の開け閉め
+  function softBus() {
+    const inp = ctx.createGain(); inp.gain.value = 1;
+    if (!SOFT) { inp.connect(sceneG); return inp; }
+    const hs = ctx.createBiquadFilter(); hs.type = 'highshelf'; hs.frequency.value = 1400; hs.gain.value = -4;
+    const lp1 = ctx.createBiquadFilter(); lp1.type = 'lowpass'; lp1.frequency.value = 2600; lp1.Q.value = 0.5;
+    const lp2 = ctx.createBiquadFilter(); lp2.type = 'lowpass'; lp2.frequency.value = 5000; lp2.Q.value = 0.6;
+    const vol = ctx.createGain(); vol.gain.value = 0.84;
+    inp.connect(hs); hs.connect(lp1); lp1.connect(lp2); lp2.connect(vol); vol.connect(sceneG);
+    return inp;
+  }
   /* ゲートの音の録音（効果音ラボ「牢屋の扉を閉める」「鉄の扉を閉める」。商用無料・クレジット不要・ファイルの再配布は禁止）。
      読めないときは gateClang の合成の音で鳴らす */
   function loadGate() {
@@ -14,16 +37,20 @@ window.Sfx = (function () {
     if (ctx) { if (ctx.state === 'suspended' && !muted) ctx.resume(); return; }
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // master → duck（ゲートが開く直前に下げる）→ スピーカー。ゲートの音（gateClang）は duck を通らない
-      duck = ctx.createGain(); duck.gain.value = 1; duck.connect(ctx.destination);
+      // 出口: scene（レース中だけ開く）→ スピーカー。その手前に こもった柔らかい音の通り道（softIn）
+      sceneG = ctx.createGain(); sceneG.gain.value = sceneOpen ? 1 : 0; sceneG.connect(ctx.destination);
+      softIn = softBus();
+      // master → duck（ゲートが開く直前に下げる）→ softIn。ゲートの音（gateClang）は duck を通らない（softIn へ直接）
+      duck = ctx.createGain(); duck.gain.value = 1; duck.connect(softIn);
       master = ctx.createGain(); master.gain.value = 0.5; master.connect(duck); setTimeout(loadGate, 0); if (muted) ctx.suspend(); // 消音中に作ったときは止めておく
     } catch (e) { ctx = null; }
   }
   function tone(freq, t0, dur, type, vol) {
     if (!ctx || muted) return;
     const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = type || 'triangle'; o.frequency.value = freq;
-    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol || 0.3, t0 + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    type = type || 'triangle'; if (SOFT && (type === 'square' || type === 'sawtooth')) type = 'triangle'; // 角ばった波形は柔らかい三角波に
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(vol || 0.3, t0 + (SOFT ? Math.min(0.03, dur * 0.3) : 0.01)); // 立ち上がりを丸める g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
     o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + dur + 0.02);
   }
   function noise(t0, dur, vol) {
@@ -51,7 +78,7 @@ window.Sfx = (function () {
     const out = ctx.createDynamicsCompressor(); out.threshold.value = -22; out.knee.value = 4; out.ratio.value = 8; out.attack.value = 0.001; out.release.value = 0.25;
     const vol = ctx.createGain(); vol.gain.value = 3.2; const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.0003; lim.release.value = 0.12;
     const clip = ctx.createWaveShaper(), cv = new Float32Array(2048); for (let i = 0; i < 2048; i++) { const x = i / 1023.5 - 1; cv[i] = 0.93 * Math.tanh(1.6 * x) / Math.tanh(1.6); } clip.curve = cv;
-    out.connect(vol); vol.connect(lim); lim.connect(clip); clip.connect(ctx.destination);
+    out.connect(vol); vol.connect(lim); lim.connect(clip); clip.connect(softIn || ctx.destination);
     const play = (buf, at, off, rate, gain, pan, lp, dur) => {
       const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = buf; s.playbackRate.value = rate; g.gain.value = gain;
       let last = s; if (lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; s.connect(f); last = f; }
@@ -86,7 +113,7 @@ window.Sfx = (function () {
     const vol = ctx.createGain(); vol.gain.value = 4.5; const lim = ctx.createDynamicsCompressor();
     lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.0003; lim.release.value = 0.12;
     const clip = ctx.createWaveShaper(), cv = new Float32Array(2048); for (let i = 0; i < 2048; i++) { const x = i / 1023.5 - 1; cv[i] = 0.93 * Math.tanh(1.6 * x) / Math.tanh(1.6); } clip.curve = cv;
-    out.connect(vol); vol.connect(lim); lim.connect(clip); clip.connect(ctx.destination);
+    out.connect(vol); vol.connect(lim); lim.connect(clip); clip.connect(softIn || ctx.destination);
     // 屋外の短い反響（スタンド・ゲートの鉄骨に跳ね返る）
     const dl = ctx.createDelay(1), fb = ctx.createGain(), wet = ctx.createGain(), lp = ctx.createBiquadFilter();
     dl.delayTime.value = 0.09; fb.gain.value = 0.3; wet.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 3000;
@@ -218,6 +245,14 @@ window.Sfx = (function () {
     },
     lose() { const t = now(); tone(330, t, 0.25, 'triangle', 0.15); tone(262, t + 0.22, 0.4, 'triangle', 0.15); },
   };
-  // ctx(): 実況エンジン（js/commentary.js）が同じ AudioContext を使うため
-  return { unlock, ctx() { return ctx; }, play(name) { if (play[name]) try { play[name].apply(null, [].slice.call(arguments, 1)); } catch (e) {} }, mute(v) { muted = !!v; if (ctx) { try { if (muted) ctx.suspend(); else ctx.resume(); } catch (e) { } } if (muted && window.Voice && Voice.stop) Voice.stop(); }, isMuted() { return muted; } };
+  // レース中だけ鳴らす（上の説明）。閉めるときはゲートインの環境音も止める
+  function scene(on) {
+    on = !!on; if (on === sceneOpen) return;
+    sceneOpen = on;
+    if (ctx && sceneG) { const t = ctx.currentTime, g = sceneG.gain; g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.setTargetAtTime(on ? 1 : 0, t, on ? 0.05 : 0.1); if (!on) giBedStop(t, 0.4); }
+    if (!on && window.Voice && Voice.stop) Voice.stop();
+  }
+  // ctx(): 実況エンジン（js/commentary.js）が同じ AudioContext を使うため。softIn(): こもった柔らかい音の通り道の入口（蹄・観客）。sceneIn(): 出口（実況の声）
+  return { unlock, ctx() { return ctx; }, softIn() { return softIn; }, sceneIn() { return sceneG; }, scene, sceneOn() { return sceneOpen; }, log, soft: SOFT,
+    play(name) { if (log.length >= 600) log.shift(); log.push({ at: Date.now(), name, ok: sceneOpen }); if (!sceneOpen) return; if (play[name]) try { play[name].apply(null, [].slice.call(arguments, 1)); } catch (e) {} }, mute(v) { muted = !!v; if (ctx) { try { if (muted) ctx.suspend(); else ctx.resume(); } catch (e) { } } if (muted && window.Voice && Voice.stop) Voice.stop(); }, isMuted() { return muted; } };
 })();
