@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 21550,
-   "sha256": "08e2e4d61e8f72bea7094d236cba6ae6d46f04f0132e3eab626a7443c40db3d9"
+   "sha256": "54f9561d5c0f3e778d388a0a714c18327a46c76f2648b5f9567cf72b75d7a5f7"
   },
   {
    "path": "js/audio.js",
@@ -248,8 +248,8 @@
   },
   {
    "path": "js/r3d/look3d.js",
-   "size": 52434,
-   "sha256": "c4319d53ddff3133d03346d7cb12291bd14cd177593afc33c2d86ba35e99b12b"
+   "size": 52610,
+   "sha256": "093be6a26969bff93e1acddf9e480921e389ad83bc45c15c61600368dd1f6476"
   },
   {
    "path": "js/r3d/venue3d.js",
@@ -263,8 +263,8 @@
   },
   {
    "path": "js/race3d.js",
-   "size": 176035,
-   "sha256": "530208f90f54651f8fdf7e45400cb8ca6c438e0e845b665ef6b4b6471c6be59c"
+   "size": 177821,
+   "sha256": "f74896637310f9eb51367de269cf4340867429640e6dbf158dcbe35c65721b99"
   },
   {
    "path": "js/splash3d.js",
