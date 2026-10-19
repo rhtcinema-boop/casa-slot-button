@@ -68,7 +68,7 @@
     function getImpl() {
       if (!implP) implP = (async () => {
         if (!window.Engine) await loadScript(DIR + '../js/engine.js');
-        if (!window.Outcome) await loadScript(DIR + 'outcome.js');
+        if (!window.Outcome) await loadScript(DIR + 'outcome.js' + VQ); // 2026-10-20: 当選額の切り上げ（roundPay）が入ったので版の印を付ける（古い控えを使わない）
         if (!window.DerbyCore) await loadScript(DIR + 'core.js' + VQ);
         if (!window.DerbyFirestore) await loadScript(DIR + 'client-firestore.js' + VQ);
         const env = await window.DerbyFirestore.connect(cfg);
