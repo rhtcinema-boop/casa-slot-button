@@ -357,7 +357,7 @@
         const tk = await db.runTransaction(async (tx) => {
           const s = data(await tx.get(ref));
           if (s.status !== 'pending') throw E(409, 'already_authorized', s.status === 'void' ? 'この投票券は無効です' : 'もう認証済みです');
-          if (count != null && count !== '' && Number(count) !== s.count) throw E(400, 'count_mismatch', 'お客さんの枚数（' + s.count + ' 枚）と違います');
+          if (count != null && count !== '' && Number(count) !== s.count) throw E(400, 'count_mismatch', 'お客さんの投票額（' + (s.count * 100).toLocaleString('ja-JP') + 'pt）と違います');
           // 参加受付の締切（サーバーの時計。ルールも request.time で同じ時刻を見る）。認証したレース authRaceId を券に残す（このレースで投票しなければ返却）
           const rr = data(await tx.get(doc(COL.races, r0.id))); if (!rr || rr.status !== 'upcoming') throw E(409, 'exchange_closed', '参加受付は締め切りました');
           exchangeGuard(rr, stInfo.settings);
@@ -783,13 +783,30 @@
         const ref = doc(COL.testReq, sid), id = Core.testRaceId(sid, at), startIn = Core.testStartIn(q.startIn);
         const made = data(await doc(COL.races, id).get());
         if (made) { await ref.set({ raceId: id, raceAt: made.at, doneAt: t }, { merge: true }); continue; } // 作ったあとに止まっていた: 印だけ
+        if (t - at > Core.TEST_RACE.tvWaitSec * 1000) { await ref.set({ err: 'tv_wait', doneAt: t }, { merge: true }); did.push('test tv_wait ' + sid); continue; } // その 4: 5 分待っても作れなかった（テレビがゲーム中のまま・進行役が戻らない）→ 理由を出してやめる
         if (!(await getStores()).some((s) => s.id === sid)) { await ref.set({ err: 'no_store', doneAt: t }, { merge: true }); continue; }
-        if (Core.testRaceBusy(races, sid, t, startIn, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
-        const r = await writeRace({ id, at: t + startIn * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, Core.testStages(startIn, sc.tuning, startIn === Core.TEST_RACE.switchSec ? startIn - Core.TEST_RACE.quickSec : 0)); /* その 3: テレビを切り替えたとき（90 秒）は、切り替わってから受付（30 秒あとから） */ // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
+        let sec = startIn, waitSec = startIn === Core.TEST_RACE.switchSec ? startIn - Core.TEST_RACE.quickSec : 0; /* その 3: テレビを切り替えたとき（90 秒）は、切り替わってから受付（30 秒あとから） */
+        if (startIn === Core.TEST_RACE.switchSec) { // その 4: 店のテレビを切り替えたお願い → その店の Fire TV が casa DERBY に来てから作る（来た時刻から 60 秒）
+          const w = await tvArrival(sid, at, t);
+          if (w === 'waiting') { if (!q.wait) { await ref.set({ wait: 'tv', waitAt: t }, { merge: true }); did.push('test wait-tv ' + sid); } continue; }
+          if (w === 'arrived') { sec = Core.TEST_RACE.quickSec; waitSec = 0; }
+        }
+        if (Core.testRaceBusy(races, sid, t, sec, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
+        const r = await writeRace({ id, at: t + sec * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, Core.testStages(sec, sc.tuning, waitSec)); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
         await ref.set({ raceId: r.id, raceAt: r.at, doneAt: t }, { merge: true });
         did.push('test ' + r.id);
       }
       return did;
+    }
+    /* その 4（2026-10-20）: その店の Fire TV が casa DERBY に来たか（Core.testTvWait。derbyTvs の名乗りの時刻）。待っている間だけ、決める係の 1 回ごとに 1 回読む。
+       derbyTvs を決める係が読めるのは新しいルールから（貼り直しの前は読めない → null ＝今までどおりすぐ作る。10 分ごとに読めるか確かめ直す） */
+    let tvsDeniedAt = 0;
+    async function tvArrival(sid, reqAt, t) {
+      if (tvsDeniedAt && local() - tvsDeniedAt < 10 * 60000) return null;
+      let q;
+      try { q = await db.collection(COL.tvs).where('store', '==', sid).get(); tvsDeniedAt = 0; }
+      catch (e) { if (e && e.code === 'permission-denied') { tvsDeniedAt = local(); logD([now(), 'tvs denied']); } return null; }
+      return Core.testTvWait(q.docs.map((d) => { const x = d.data() || {}; return { store: x.store, kind: x.kind, at: msOf(x.at) }; }), sid, reqAt, t);
     }
     // スタッフ: 進行役のテレビがいるか（決める係の鍵の期限。鍵は 20 秒ごとに延ばすので、止まると 60 秒以内に切れる）
     async function deciderAlive() { const l = data(await doc(COL.lock, 'decider').get()); return !!(l && l.until > now()); }
@@ -827,7 +844,7 @@
       await staffEnsure(pin);
       const p = await testPre(), q = p.q;
       return { decider: p.alive, deciderStore: p.dStore, deciderGame: p.dGame, deciderName: p.dStore && !p.alive ? storeNameOf(await getStores().catch(() => null))(p.dStore) : null, game: p.game, wake: p.wake,
-        req: q ? { at: msOf(q.at), startIn: q.startIn, raceId: q.raceId || null, raceAt: q.raceAt || null, err: q.err || null } : null };
+        req: q ? { at: msOf(q.at), startIn: q.startIn, raceId: q.raceId || null, raceAt: q.raceAt || null, err: q.err || null, wait: q.wait || null } : null }; // wait: その 4（テレビが casa DERBY に来るのを待っている）
     }
 
     /* ---------- 進行役のテレビ（2026-10-19: パスワードを打たずに管理画面の 1 タップで） ----------
