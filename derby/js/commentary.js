@@ -723,10 +723,15 @@ window.Commentary = (function () {
       S.ctx = ctx;
       S.gain = ctx.createGain(); S.gain.gain.value = 1;
       const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
-      S.gain.connect(lim); lim.connect(ctx.destination);
+      /* 2026-10-19: 実況の声は出口（js/audio.js の scene＝レース中だけ開く）へそのまま（聞き取りやすさのため、こもらせない）。
+         観客のざわめき・歓声は効果音と同じ「こもった柔らかい音」の通り道へ（リミッターは声と同じ −4dB のものを別に持つ） */
+      S.gain.connect(lim); lim.connect((Sfx.sceneIn && Sfx.sceneIn()) || ctx.destination);
+      S.cgain = ctx.createGain(); S.cgain.gain.value = 1;
+      const lim2 = ctx.createDynamicsCompressor(); lim2.threshold.value = -4; lim2.knee.value = 0; lim2.ratio.value = 20; lim2.attack.value = 0.001; lim2.release.value = 0.12;
+      S.cgain.connect(lim2); lim2.connect((Sfx.softIn && Sfx.softIn()) || ctx.destination);
       const rnd = seeded(12345);
       S.pa = buildPA(ctx, S.gain, rnd);
-      S.crowd = new Crowd(ctx, S.gain, rnd);
+      S.crowd = new Crowd(ctx, S.cgain, rnd);
     }
     loadLib(ctx).catch(() => {});
   }
@@ -762,7 +767,7 @@ window.Commentary = (function () {
   function tick() {
     if (!S.active) return;
     const now = S.ctx.currentTime;
-    S.gain.gain.value = enabled() ? 1 : 0;
+    S.gain.gain.value = enabled() ? 1 : 0; if (S.cgain) S.cgain.gain.value = S.gain.gain.value;
     const st = snap();
     S.dir.tick(st, now, S.out);
     // 観客: 直線で大きく
