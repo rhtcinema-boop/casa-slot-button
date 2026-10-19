@@ -783,7 +783,7 @@
         if (made) { await ref.set({ raceId: id, raceAt: made.at, doneAt: t }, { merge: true }); continue; } // 作ったあとに止まっていた: 印だけ
         if (!(await getStores()).some((s) => s.id === sid)) { await ref.set({ err: 'no_store', doneAt: t }, { merge: true }); continue; }
         if (Core.testRaceBusy(races, sid, t, startIn, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
-        const r = await writeRace({ id, at: t + startIn * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, Core.manualStages({}, startIn, sc.tuning)); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test
+        const r = await writeRace({ id, at: t + startIn * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, Core.testStages(startIn, sc.tuning)); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
         await ref.set({ raceId: r.id, raceAt: r.at, doneAt: t }, { merge: true });
         did.push('test ' + r.id);
       }
