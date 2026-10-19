@@ -5,7 +5,7 @@
    - 受け取り: 当たりの QR（derby:pay:<pid>）を読む → 「当選額 18,300 を渡す」→「当選額 18,300 を渡した（確定）」（額は 1 枚 = 100。2026-10-16）。受け取り済みは赤で拒否（二重防止はサーバー）
    - 参加受付（2026-10-16 受付の 2 段）: 認証できるのは参加受付の締切（exchangeCloseAt）まで。認証・次への画面に「参加受付 あと m:ss」、締切のあとは赤で「参加受付は締め切りました」
    - 返却: 投票しなかった券の QR（返却）を読む → 「返却 リングバウンティ 600枚」→「リングバウンティ 600枚を返した（確定）」（認証したときの割合。返還も同じ。当選額とは別）
-   - 次へ: その店のテレビの結果画面を進める
+   - 次へ: その店のテレビの結果画面を進める。その下に「この店だけテストレース」（2026-10-19。押すと、この店のテレビだけで 2 分後にテストのレース。集計には入らない）
    - 記録: 今日の会計番号ごとの認証・当たり・受け取り
    カメラ: BarcodeDetector があれば使い、なければ jsQR（jsdelivr、版を固定）。カメラが使えないときは番号を手で入れる。
    テスト用: window.STAFF.inject('derby:auth:...') で読み取ったことにできる。 */
@@ -36,7 +36,7 @@
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* noop */ } };
 
   function toast(t, err, ms) { const el = $('toast'); el.textContent = t; el.className = 'toast' + (err ? ' err' : ''); clearTimeout(toast.h); toast.h = setTimeout(() => el.classList.add('hidden'), ms || 2800); }
-  const ERR = { rate_changed: '交換の割合が変わりました。もう一度読み取ってください', exchange_closed: '参加受付は締め切りました', no_open_race: '受付中のレースがありません（次のレースの受付を待ってください）', wrong_store: 'ほかの店舗の QR です', already_authorized: 'もう認証されています', already_paid: '受け取り済みです', not_revealed: 'まだ結果発表の前です', count_mismatch: 'チップがお客さんの画面と合いません', not_found: '見つかりません（QR が違うか、古い可能性があります）', bad_pin: 'PIN が違います', bad_code: '読み取った QR が casa DERBY のものではありません', wrong_code: 'QR の種類が違います（認証と受け取りを確かめてください）', no_store: '店舗が見つかりません' };
+  const ERR = { no_decider: '進行役のテレビがありません', busy: 'いまはテストのレースを作れません（受付中・レース中か、もうすぐ次のレースです）', too_soon: '少し待ってからもう一度押してください', rate_changed: '交換の割合が変わりました。もう一度読み取ってください', exchange_closed: '参加受付は締め切りました', no_open_race: '受付中のレースがありません（次のレースの受付を待ってください）', wrong_store: 'ほかの店舗の QR です', already_authorized: 'もう認証されています', already_paid: '受け取り済みです', not_revealed: 'まだ結果発表の前です', count_mismatch: 'チップがお客さんの画面と合いません', not_found: '見つかりません（QR が違うか、古い可能性があります）', bad_pin: 'PIN が違います', bad_code: '読み取った QR が casa DERBY のものではありません', wrong_code: 'QR の種類が違います（認証と受け取りを確かめてください）', no_store: '店舗が見つかりません' };
   // 管理画面で PIN が変わった（401）: どの操作でも、ログインし直しの画面へ
   const pinGone = (e) => { if (!(e && (e.status === 401 || e.code === 'bad_pin'))) return false; closeSheet(); toast('PIN が変わりました。ログインし直してください', true, 4000); logout(true); return true; };
   const errText = (e) => (e && ERR[e.code]) || (e && !e.status ? '通信できませんでした。もう一度お試しください' : (e && e.body && e.body.message) || 'うまくいきませんでした');
@@ -346,13 +346,53 @@
       (p ? '<div class="stat"><span>参加（全店）</span><b>' + (p.total || 0) + ' 人</b></div><div class="stat"><span>参加（この店）</span><b>' + ((p.byStore || {})[saved.store] || 0) + ' 人</b></div>' : '') +
       (st && st.next ? '<div class="stat"><span>次のレース</span><b>' + hhmm(st.next.at) + '</b></div>' : '') + '</div>' +
       '<div class="panel"><h4>結果画面を次へ</h4><p class="note">この店のテレビだけ、結果画面を閉じて待ち時間の画面にします。次のレースは時刻表どおりに始まります（全店同時）。</p>' +
-      '<button class="btn ok big" id="doNext">テレビを次へ進める</button></div>';
+      '<button class="btn ok big" id="doNext">テレビを次へ進める</button></div>' +
+      '<div class="panel trace"><h4>テスト用</h4><p class="note">この店のテレビだけで、2 分後にテストのレースが走ります（集計には入りません）。</p><p class="note trs" id="trState"></p>' +
+      '<button class="btn ghost" id="doTest">この店だけテストレース</button></div>';
+    $('doTest').onclick = testPress;
+    drawTest();
+    if (Date.now() - trAt > 10000) testPoll(true); // 画面を作り直すたびには読まない（参加人数が変わるたびに作り直すので）
     $('doNext').onclick = async () => {
       if (!confirm('この店のテレビの結果画面を閉じますか？')) return;
       $('doNext').disabled = true;
       try { const d = await C.next(saved.pin); toast('テレビを次へ進めました（' + d.nextSeq + '）'); } catch (e) { if (!pinGone(e)) toast(errText(e), true); }
       $('doNext').disabled = false;
     };
+  }
+
+  /* ================= この店だけテストレース（2026-10-19） =================
+     押せないとき: 進行役のテレビがいない／この店でレースの受付中・レース中・結果画面のあいだ／押したあと（準備中・そのレースが終わるまで） */
+  let trS = null, trAt = 0, trBusy = false, trT = 0, trMsg = '';
+  const TEST_SEC = 120;
+  async function testPoll(now0) {
+    clearTimeout(trT);
+    if (mode !== 'next' || !C || !C.testRaceStatus) return;
+    try { trS = await C.testRaceStatus(saved.pin); trAt = Date.now(); } catch (e) { if (pinGone(e)) return; trS = trS || null; }
+    drawTest();
+    const r = trS && trS.req, pending = r && !r.raceId && !r.err && (C.serverNow() - r.at) < 60000;
+    trT = setTimeout(testPoll, pending ? 3000 : 30000); // 準備中は 3 秒ごと、ふだんは 30 秒ごと（この画面を開いているときだけ）
+  }
+  function testWhy() {
+    const n = C ? C.serverNow() : Date.now(), r = trS && trS.req;
+    if (!trS) return ['読み込み中…', true];
+    if (r && !r.raceId && !r.err && n - r.at < 60000) return ['準備中…（進行役のテレビがレースを作っています）', true];
+    if (r && r.raceAt && r.raceAt > n) return ['テストのレース 発走まで ' + mmss(r.raceAt - n), true];
+    if (!trS.decider) return ['進行役のテレビがありません', true];
+    if ((st && (st.open || st.live)) || (st && st.last && st.last.endAt > n)) return ['受付中・レース中は押せません', true];
+    if (r && r.err === 'busy' && n - r.at < 120000) return ['作れませんでした（もうすぐ次のレースです）', true];
+    return [trMsg, false];
+  }
+  function drawTest() {
+    const el = $('trState'), b = $('doTest'); if (!el || !b) return;
+    const [t, off] = testWhy(); el.textContent = t; b.disabled = off || trBusy;
+  }
+  async function testPress() {
+    const [, off] = testWhy(); if (off || trBusy) return;
+    if (!confirm(saved.name + 'のテレビだけで、' + Math.round(TEST_SEC / 60) + ' 分後にテストのレースが走ります。')) return;
+    trBusy = true; drawTest();
+    try { const d = await C.testRace(saved.pin, TEST_SEC); toast(d && d.raceId ? 'テストのレースを作りました' : 'テストのレースをお願いしました'); trMsg = ''; }
+    catch (e) { if (!pinGone(e)) { toast(errText(e), true); trMsg = ''; } }
+    trBusy = false; testPoll(true);
   }
 
   /* ================= 記録（今日、会計番号ごと） ================= */
@@ -427,7 +467,7 @@
     drawTop(); setMode(mode);
   }
   setInterval(() => {
-    if (mode === 'next' && !$('nextView').classList.contains('hidden')) { const el = $('nowTxt'); if (el) el.textContent = nowText(); }
+    if (mode === 'next' && !$('nextView').classList.contains('hidden')) { const el = $('nowTxt'); if (el) el.textContent = nowText(); drawTest(); }
     if (saved && C) drawXBanner();
     const xl = $('xleft'); if (xl) { const x = xState(); xl.textContent = x.closed ? '参加受付は締め切りました' : '参加受付 あと ' + mmss(x.left); xl.classList.toggle('shut', x.closed); const b = $('doAuth'); if (b && x.closed && !b.disabled) { b.disabled = true; b.innerHTML = '参加受付は締め切りました<br><small>受け取らないでください</small>'; } } // 確認の画面を開いたまま締切をまたいだ
   }, 1000);
