@@ -1,6 +1,10 @@
 /* casa DERBY v2 スタッフのスマホ。あとで casa SLOT の紙幣ページ（bill.html）に合流するので、同じ色・同じ部品の形にそろえる */
 :root { --gold: #ffd773; --gold2: #c9a03e; --cream: #ffe9a8; --dim: #9aa89c; --bg: #0b0f0c; --ok: #35e07a; --err: #ff8c7a; --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* この店だけテストレース（2026-10-19）: 「次へ」の下。ふだんは目立たない灰 */
+.panel.trace { opacity: .92; }
+.panel.trace h4 { color: var(--dim, #9a9a9a); }
+.panel.trace .trs { min-height: 1.4em; font-weight: 700; color: #ffd27a; }
 html { background: #070a08; }
 html, body { margin: 0; height: 100%; background-color: #070a08; color: #e8e3d2; font-family: -apple-system, "Helvetica Neue", "Hiragino Sans", sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 #app { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 30%, #13231a, #070a08 70%); display: flex; flex-direction: column; }
