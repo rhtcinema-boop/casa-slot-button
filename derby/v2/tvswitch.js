@@ -116,7 +116,7 @@
     const app = fb.app('derby'); if (!app.auth().currentUser) return undefined;
     const d = await app.firestore().doc('derbyStores/' + STORE).get({ source: 'server' });
     const st = d.exists ? (d.data().settings || {}) : {};
-    return st.tvQuality === 'max' || st.tvQuality === 'sharp' ? st.tvQuality : ''; // 'sharp'＝軽い描き方のまま細かさ 1.2 倍で固定（2026-10-19）
+    return st.tvQuality === 'max' || st.tvQuality === 'auto' ? st.tvQuality : ''; // 標準（空・'sharp'）＝軽い描き方のまま細かさ 1.2 倍で固定。'auto'＝重いと自動で下げる、'max'＝最高（2026-10-19）
   }
   async function checkQuality() {
     if (navigator.onLine === false) return;
