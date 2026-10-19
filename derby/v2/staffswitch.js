@@ -19,7 +19,7 @@
    - 2026-10-19 その 3（オーナー「テストレース開始ボタンがあれば、すぐ始まるように」）: 店のテレビが casa SLOT なら、押すと casa DERBY に切り替えてすぐ走らせる
      （staff.js の testPress → DerbyCloud.testRace の switchTv。終わったあと SLOT には戻さない）。説明の文は STAFF.test.hint
    - 2026-10-19 その 2（オーナー「すぐテストレースを走らせるみたいなボタン」）: シートに「テストレースを今すぐ走らせる」。
-     「次へ」の「この店だけテストレース」と同じもの（staff.js の window.STAFF.test。1 分後＝参加受付 30 秒 → 投票 30 秒。押せないときは同じ理由） */
+     「次へ」の「この店だけテストレース」と同じもの（staff.js の window.STAFF.test。1 分半後＝参加受付 1 分 → 投票 30 秒（2026-10-20 その 5）。押せないときは同じ理由） */
 (function () {
   'use strict';
   const T = window.DerbyTvSwitch, S = () => window.STAFF;
@@ -147,10 +147,8 @@
   }
   function sheetHtml() {
     const g = state.game, s = S().saved;
-    const b = (x) => '<button type="button" data-tvg="' + x + '" class="' + (g === x ? 'cur' : '') + '"' + (g === x || state.busy || !g ? ' disabled' : '') + '>' + NAMES[x] + (g === x ? '<small>いまこちら</small>' : '') + '</button>';
-    return '<div class="card"><h3>店のテレビのゲーム</h3>' +
-      '<p class="now">' + esc(s ? s.name : '') + ' のテレビ: <b>' + (g ? NAMES[g] : '確認中…') + '</b></p>' +
-      '<p>押すと、この店のテレビ（Fire TV）が数秒で切り替わります（ゲーム中・レース中は終わってから）。管理画面・casa SLOT のマスター画面と同じ設定です。</p>' +
+    const b = (x) => '<button type="button" data-tvg="' + x + '" class="' + (g === x ? 'cur' : '') + '"' + (g === x || state.busy || !g ? ' disabled' : '') + '>' + NAMES[x] + '<span style="display:block;font-size:13px;font-weight:600;margin-top:3px">をテレビで表示</span>' + (g === x ? '<small>いまこちら</small>' : '') + '</button>'; // 2026-10-20 オーナーの文字帳: 「casa SLOT をテレビで表示」「casa DERBY をテレビで表示」
+    return '<div class="card"><h3>テレビで表示中のゲーム</h3>' + // 2026-10-20 オーナーの文字帳: 見出しを直し、「○○ のテレビ: ○○」の行と説明の文は消した
       '<div class="two">' + b('slot') + b('derby') + '</div>' +
       (state.msg ? '<div class="' + (/^OK /.test(state.msg) ? 'okm' : 'err') + '" id="tvgMsg">' + esc(state.msg.replace(/^OK /, '')) + '</div>' : '') +
       trHtml() + // テストレース（2026-10-19 その 2）
@@ -162,7 +160,7 @@
     const X = S().test; if (!X) return '';
     const [t, off] = X.why();
     return '<div class="tr" id="trBox"><h4>テストレース<small>この店のテレビだけ・集計に入りません</small></h4>' +
-      '<p class="now" id="trNow">' + esc(t || (X.hint ? X.hint() : '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）')) + '</p>' + // その 3: テレビが SLOT なら「切り替えてから」
+      '<p class="now" id="trNow">' + esc(t || (X.hint ? X.hint() : '押すと 1 分半後に発走します（参加受付 1 分 → 投票 30 秒）')) + '</p>' + // その 3: テレビが SLOT なら「切り替えてから」
       '<button type="button" class="go" data-tvg="test"' + (off || X.busy || state.busy ? ' disabled' : '') + '>テストレースを今すぐ走らせる</button></div>';
   }
   function paintTest() { const b = $('trBox'); if (b && state.open) { const h = trHtml(); if (b.outerHTML !== h) b.outerHTML = h; } }
