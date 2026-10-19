@@ -1719,7 +1719,7 @@ window.Race3D = (function () {
     // 通過順の帯は発走から約 11 秒（残り 810m 前後）で 0.5 秒かけて出す。残り 800m のハロン棒で「800m」の縦の札を 1.5 秒（ref/START_STUDY.md 3-3）
     const sa = dom ? clamp((run.t - 11) / 0.5, 0, 1) : 1;
     if (dom && race.dist > 800) { const r8 = (1 - Math.min(1, run.pos[L_])) * race.dist; if (r8 <= 800 && this.t800 == null) this.t800 = run.t; if (r8 > 800) this.t800 = null; }
-    if (dom && this.t800 != null && run.t - this.t800 < 1.5 && run.t >= this.t800) { c.globalAlpha = fa; c.fillStyle = 'rgba(20,36,54,.86)'; roundRect(c, 212, H - 118, 26, 76, 4); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(212, H - 118, 26, 3); c.fillStyle = '#fff'; c.font = 'bold 15px ' + CLK_FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; ['8', '0', '0', 'm'].forEach((ch, j) => c.fillText(ch, 225, H - 104 + j * 16)); }
+    if (dom && !this.no800 && this.t800 != null && run.t - this.t800 < 1.5 && run.t >= this.t800) { /* no800: v2 の店内モニターは出さない（2026-10-20 オーナー） */ c.globalAlpha = fa; c.fillStyle = 'rgba(20,36,54,.86)'; roundRect(c, 212, H - 118, 26, 76, 4); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(212, H - 118, 26, 3); c.fillStyle = '#fff'; c.font = 'bold 15px ' + CLK_FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; ['8', '0', '0', 'm'].forEach((ch, j) => c.fillText(ch, 225, H - 104 + j * 16)); }
     c.globalAlpha = fa * sa;
     const span = 25 * (order.length - 1) + (ex[ex.length - 1] || 0) * esc, toR = this.ordDir > 0;
     const chipX = (k) => (toR ? x0 + span - (k * 25 + ex[k] * esc) : x0 + k * 25 + ex[k] * esc);
