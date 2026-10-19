@@ -148,6 +148,12 @@
       '<input id="tvkeyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;font-size:24px;padding:10px;border-radius:10px;border:1px solid #2a2a31;background:#0b0b0d;color:#fff">' +
       (home() && STORE ? '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #2a2a31"><button id="tvkeySlot" type="button" style="font:700 22px/1 sans-serif;padding:14px 22px;border-radius:12px;border:2px solid #a57c26;background:#232329;color:#f3ead0">casa SLOT に戻す</button>' +
         '<div style="font-size:15px;color:#a89f89;margin-top:8px">' + (local() === 'derby' ? 'このテレビは casa DERBY に固定されています。' : '') + 'このテレビだけ casa SLOT に固定して戻ります（下・上で選んで決定）。店の設定どおりに戻すのは casa SLOT の設定画面「このテレビのゲーム」で。</div></div>' : '') + '</div>';
+    // 2026-10-19: 画質の確認用に 1 行（3D の細かさ・1 秒のコマ数・画面の大きさ・版）。お客さんには見えない（この画面はスタッフ・オーナーだけ）
+    const dg = document.createElement('div'); dg.id = 'tvDiag'; dg.style.cssText = 'margin-top:14px;font-size:15px;color:#8f8a7c';
+    const r3 = window.R3D && window.R3D.inst, pf = r3 && r3.perf, tvv = ((document.querySelector('script[src*="v2/tv.js?v="]') || {}).src || '').split('v=')[1] || '';
+    dg.textContent = '画質: ' + (r3 ? (r3.k || 0) + ' 倍・' + Math.round((pf && pf.fps) || 0) + ' コマ/秒' + (r3.tvCap ? '（重いので ' + r3.tvCap + ' 倍まで）' : '') : '3D なし') + '・画面 ' + innerWidth + '×' + innerHeight + '・密度 ' + (window.devicePixelRatio || 1) + '・' + tvv;
+    w.firstChild.appendChild(dg);
+    fetch('../version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((j) => { if (j && j.v) dg.textContent += '・' + j.v; }).catch(() => {});
     document.body.appendChild(w);
     const inp = w.querySelector('input'), sb = w.querySelector('#tvkeySlot');
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); e.stopPropagation(); submit(); } });
