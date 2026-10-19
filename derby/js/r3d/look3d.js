@@ -354,7 +354,7 @@ R3D.Look = (function () {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.autoUpdate = true;
     // 画素密度は統合側（race3d.js の fitRes）が決めるので、ここでは上限を超えているときだけ下げる
-    const maxPixelRatio = () => (hq() ? 2 : 1);
+    const maxPixelRatio = () => (hq() ? 2 : 1.2); // 軽い描き方でも 1.2 倍まで（Fire TV は画面と同じ細かさ＝1920 の幅で描く。2026-10-19、以前は 1 倍で止めていて 3D だけ荒かった）
     function applyQuality() {
       renderer.shadowMap.type = hq() ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
       if (renderer.getPixelRatio() > maxPixelRatio()) renderer.setPixelRatio(maxPixelRatio());
