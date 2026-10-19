@@ -1,7 +1,7 @@
 /* casa DERBY v2 お客さんのスマホ（bet.html?store=<id>）。API は v2/API.md、通信は v2/client.js（DerbyCloud）だけを使う。
    流れ: 会計番号 → ニックネーム → チップ（＋100/＋1,000/＋10,000。下に小さく「リングバウンティ 600」）→ 認証 QR（スタッフ待ち）
    casa DERBY CHIPS（2026-10-17 オーナー「リングバウンティ20枚で casa DERBY 100チップ入る感じ」）: 中の単位（券の count・割り振り）は今までの「枚」のまま、
-   見せるのはチップ＝枚 × 100（数字だけ・単位の字は付けない）。ボタンは 100 刻み（＋100＝1 枚）。当たったら = チップ × オッズ（今までの額と同じ数）
+   見せるのはチップ＝枚 × 100（2026-10-20 から単位「pt」を付ける。例 300pt）。ボタンは 100 刻み（＋100＝1 枚）。当たったら = チップ × オッズ（今までの額と同じ数）
         → 投票（単勝・複数の馬に割り振り・合計ちょうど）→ 確認 → 確定（取り消し不可）→ レース待ち → 結果（当たりなら受け取り QR）→ 次のレースへ
    受付は 2 段（2026-10-16）: 参加受付（番号・名前・枚数 → スタッフの認証）は exchangeCloseAt まで、投票は締切（closeAt）まで。
    認証した券はそのレースにだけ投票できる。投票しないまま締切を過ぎた券は「返却」（認証した枚数を返す QR が出る）。
@@ -73,26 +73,32 @@
      オッズは倍率（2026-10-19 オーナー「オッズ表記は倍率にしよう」。いつも小数 1 桁、例 2.4 倍。以前は 100あたりの額 240）。
      当選額 = 枚数 × オッズ × 100（outcome.js の stakePayout と同じ整数の計算）は今までどおり額で出す */
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
-  const CHIP = 100, chips = (n) => amt((Number(n) || 0) * CHIP); // 中の枚数 → 見せるチップ（1 枚 = 100 チップ）
+  /* 金額の単位「pt」（2026-10-20 オーナー決定。以前は単位なし）: チップ・投票額・当選額は数字のすぐ後ろに「pt」（空白なし）。見た目は数字より少し小さく（.pt）。
+     ptH＝画面の HTML 用、ptT＝ボタンの文字・読み上げ・お知らせ用。オッズは「倍」、リングバウンティは「枚」のまま */
+  const ptH = (n) => amt(n) + '<small class="pt">pt</small>', ptT = (n) => amt(n) + 'pt';
+  const CHIP = 100, chips = (n) => ptH((Number(n) || 0) * CHIP), chipsT = (n) => ptT((Number(n) || 0) * CHIP); // 中の枚数 → 見せるチップ（1 枚 = 100pt）
+  const MIN_COUNT = 1; // 投票額の最低（1 枚 = 100pt）。投票額の画面の「－100」はこれより下げない（2026-10-20 オーナー決定）
+  // 当選額の説明（2026-10-20 オーナー決定）: 当たりの画面の当選額のすぐ下
+  const ROUND_NOTE = '<p class="rnote">当選額は10の位を切り上げて、<br>リングチップでお渡しします</p>';
   const oddsTxt = (o) => (!o ? '—' : (Math.round(Number(o) * 10) / 10).toFixed(1)); // 倍率の数字（小数 1 桁。「倍」は横に小さく）
   /* 出馬表と同じ「脚質」と「近 3 走」（2026-10-19。v2/form.js。テレビと同じ値＝馬名＋営業日の種）。スマホでは馬名の下に小さく */
   const FORM = window.DerbyForm || null;
   const formLine = (r, h) => { const raw = r && r.horses && r.horses[h.i]; if (!raw) return ''; const fm = FORM ? FORM.formOf(raw, r.at, st && st.settings && st.settings.dayStartHour, r.horses.length) : null;
-    return '<div class="hsub">' + (h.typeLabel ? '<i style="background:' + h.typeColor + '">' + esc(h.typeLabel) + '</i>' : '') + (fm ? '<span>近走 ' + fm.recent.join('-') + '</span>' : '') + '</div>'; };
+    return '<div class="hsub">' + (h.typeLabel ? '<i style="background:' + h.typeColor + '">' + esc(h.typeLabel) + '</i>' : '') + (raw.cond && raw.cond.mark ? '<span class="cnd">調子 <b>' + esc(raw.cond.mark + raw.cond.label) + '</b></span>' : '') /* 2026-10-20 オーナー「馬の調子をスマホにも」: テレビのパドック・出馬表と同じ h.cond（サーバーが出す馬のデータにある） */ + (fm ? '<span>近走 ' + fm.recent.join('-') + '</span>' : '') + '</div>'; };
   // 当たったときの当選額の目安。サーバー（outcome.js の stakePayout）と同じく整数で計算する
   // （Math.floor(45 * 1.4) は 62.999… → 62 枚になり、実際の 63 枚より 1 枚少なく出ていた。コードレビュー 2026-10-14）
   /* 交換の割合（2026-10-17「リングバウンティ20枚につき投票権1枚」）: 投票券 1 枚 = リングバウンティ ○枚（店舗の設定 state.settings.bountyPerTicket。なければ 20）。
      認証した券は券に残した割合（ticket.bounty）。返却・返還はリングバウンティで返す（res.bounty）。当選額（1 枚 = 100）とは混ぜない */
   const rate = () => { const r = st && st.settings && Number(st.settings.bountyPerTicket); return Number.isInteger(r) && r >= 1 ? r : 20; };
   const bountyOf = (n) => { const t = tk && tk.ticket; return t && t.bounty != null && t.count === n ? t.bounty : (n | 0) * rate(); };
-  const rbTxt = (n) => 'リングバウンティ ' + amt(n);
+  const rbTxt = (n) => 'リングバウンティ ' + amt(n) + '枚と交換'; // 2026-10-20 オーナーの文字帳（t0256）: 「リングバウンティ 120」→「リングバウンティ 120枚と交換」
   // 交換の割合（2026-10-19 オーナー「Bounty X 枚で 100 と交換できる感じ。説明のどこかに明記」）: 参加画面（チップ）の見出しの下に「リングバウンティ 20枚 → 100」
-  const rateTxt = () => 'リングバウンティ <b>' + amt(rate()) + '枚</b> → <b>100</b>';
+  const rateTxt = () => 'リングバウンティ <b>' + amt(rate()) + '枚</b> → <b>100pt</b>'; // 2026-10-20: 100 → 100pt
   const has = (res) => !!res && ((res.amount | 0) > 0 || (res.bounty | 0) > 0); // 渡す・返すものがある（当選額か、返却・返還のリングバウンティ）
   const isRb = (x) => !!x && (x.novote || x.refund || (x.payout && x.payout.kind === 'refund') || ((x.bounty | 0) > 0 && !((x.amount | 0) > 0)));
   const rbOf = (x) => (x.bounty != null ? x.bounty | 0 : Math.round((x.amount | 0) / 100)); // 以前のスマホに覚えた返却・返還（額 = 枚数 × 100）は 1 対 1
-  const valTxt = (x) => (isRb(x) ? rbTxt(rbOf(x)) : amt(x.amount)); // 未受け取りの一覧・お知らせ
-  const payEst = (n, o) => Math.floor(n) * Math.round(Number(o) * 10) * 10; // 当選額（額。整数）
+  const valTxt = (x) => (isRb(x) ? rbTxt(rbOf(x)) : ptT(x.amount)); // 未受け取りの一覧・お知らせ（当選額は「1,300pt」）
+  const payEst = (n, o) => { const v = Math.floor(n) * Math.round(Number(o) * 10) * 10; return v > 0 ? Math.ceil(v / 10) * 10 : 0; }; // 当選額（額。outcome.js の stakePayout と同じく 10 の倍数に切り上げ＝実際に渡す額。2026-10-20）
   const sumAlloc = () => Object.keys(S.alloc || {}).reduce((a, k) => a + (S.alloc[k] | 0), 0);
   const picksOf = () => { const t = tk && tk.ticket; if (t && t.picks && t.picks.length) return t.picks; return Object.keys(S.alloc || {}).filter((k) => S.alloc[k] > 0).map((k) => ({ horse: Number(k), count: S.alloc[k] })); };
 
@@ -185,28 +191,29 @@
   R.boot = () => '<div class="scr"><p class="lead" style="margin-top:40px">読み込み中…</p></div>';
 
   /* 各画面 = 短い見出し ＋ 入力か数字 ＋ 主なボタン 1 つ（2026-10-17） */
-  R.bill = () => '<div class="scr min">' + unpaidNote() + '<h1>会計番号</h1>' +
+  R.bill = () => '<div class="scr min mid">' + unpaidNote() + '<h1>会計番号</h1>' +
     '<input class="big" id="bill" type="text" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next" autocomplete="off" autocapitalize="off" maxlength="12" value="' + esc(S.bill) + '" aria-label="会計番号">' +
-    '<p class="err" id="err" role="alert"></p><button class="btn" data-act="bill">次へ</button></div>';
+    '<p class="err" id="err" role="alert"></p><button class="btn nx" data-act="bill">次へ</button></div>';
 
-  R.nick = () => '<div class="scr min"><h1>ニックネーム</h1>' +
+  R.nick = () => '<div class="scr min mid"><h1>ニックネーム</h1>' +
     '<input class="big nick" id="nick" type="text" autocomplete="off" autocapitalize="off" enterkeyhint="done" value="' + esc(S.nick) + '" aria-label="ニックネーム（' + MAX_NICK + '文字まで）">' +
-    '<p class="err" id="err" role="alert"></p><button class="btn" data-act="nick">次へ</button><button class="link" data-act="toBill">戻る</button></div>';
+    '<p class="err" id="err" role="alert"></p><button class="btn nx" data-act="nick">次へ</button><button class="link" data-act="toBill">戻る</button></div>';
 
   R.count = () => {
     const c = S.count || 0;
-    return '<div class="scr min">' + unpaidNote() + '<div id="late">' + lateNote() + '</div>' +
-      '<h1>チップ</h1><p class="xrate" id="xrate">' + rateTxt() + '</p>' +
+    return '<div class="scr min mid">' + unpaidNote() + '<div id="late">' + lateNote() + '</div>' +
+      '<h1>投票額選択</h1><p class="xrate" id="xrate">' + rateTxt() + '</p>' + /* 2026-10-20 文字帳（t0272）: 見出し「チップ」→「投票額選択」 */
       '<div class="counter" aria-live="polite"><span class="num" id="cnum">' + chips(c) + '</span><div class="eq rb" id="crb">' + rbTxt(c * rate()) + '</div></div>' +
-      '<div class="plus"><button data-add="1" aria-label="100 ふやす">＋100</button><button data-add="10" aria-label="1,000 ふやす">＋1,000</button><button data-add="100" aria-label="10,000 ふやす">＋10,000</button></div>' +
-      '<div class="minor"><button data-act="cnt0" aria-label="0 にもどす">0</button></div>' +
-      '<p class="err" id="err" role="alert"></p><button class="btn" data-act="count" ' + (c > 0 && !dayOver() && !xClosed() ? '' : 'disabled') + '>' + cntBtn(c) + '</button>' +
+      /* 2026-10-20 オーナー決定「－100 を足す」: 馬を選ぶ画面と同じ「－100 ＋100 ＋1,000 ＋10,000」の並び・見た目（plus five）。最低額（100pt）のときは押せない */
+      '<div class="plus five cnt"><button data-act="cMinus" aria-label="100 へらす"' + (c > MIN_COUNT ? '' : ' disabled') + '>－100</button><button data-add="1" aria-label="100 ふやす">＋100</button><button data-add="10" aria-label="1,000 ふやす">＋1,000</button><button data-add="100" aria-label="10,000 ふやす">＋10,000</button></div>' +
+      /* 2026-10-20 文字帳（t0277）: 「0」に戻すボタンは消す（並びごと。cnt0 の処理は残しておく＝古い画面から押されても壊れない） */
+      '<p class="err" id="err" role="alert"></p><button class="btn nx" data-act="count" ' + (c > 0 && !dayOver() && !xClosed() ? '' : 'disabled') + '>' + cntBtn(c) + '</button>' +
       '<button class="link" data-act="toBill">' + esc(S.bill) + '・' + esc(S.nick) + '　変更</button></div>';
   };
 
   /* スタッフに見せる QR: 「スタッフに見せる」＋ QR を大きく ＋ チップ（数字だけ）＋ 小さくリングバウンティ */
-  R.auth = () => '<div class="scr min">' +
-    (xClosed() ? closedNote() : '<h1 class="show">スタッフに見せる</h1>') +
+  R.auth = () => '<div class="scr min mid">' +
+    (xClosed() ? closedNote() : '<h1 class="show">下記QRをスタッフに<br>提示してください</h1>') + /* 2026-10-20 文字帳（t0280）。長いので 2 行 */
     '<div class="qrbox big' + (xClosed() ? ' wait' : '') + '" id="qr" role="img" aria-label="認証の QR コード"></div>' +
     '<div class="authn"><b>' + chips(S.count) + '</b></div><div class="eq rb authrb" id="arb">' + rbTxt(bountyOf(S.count)) + '</div>' +
     '<button class="link" data-act="redo">チップを変える</button></div>';
@@ -225,8 +232,8 @@
   function ifSumHtml(rows, anyMey) {
     const g = ifRange(rows); if (!g) return '';
     const m = anyMey ? '<i class="mey">目安</i>' : '';
-    return g.n === 1 ? '<span class="k">当たったら</span><b>' + amt(g.max) + '</b>' + m
-      : '<span class="k">当たったら 最大</span><b>' + amt(g.max) + '</b>' + m + '<small>最小 ' + amt(g.min) + '</small>';
+    return g.n === 1 ? '<span class="k">当たったら</span><b>' + ptH(g.max) + '</b>' + m
+      : '<span class="k">当たったら 最大</span><b>' + ptH(g.max) + '</b>' + m + '<small>最小 ' + ptT(g.min) + '</small>';
   }
   const allocRows = (r) => horsesOf(r).map((h) => [h, (S.alloc && S.alloc[h.i]) | 0]);
   R.vote = () => {
@@ -240,16 +247,16 @@
       '<div class="ifsum" id="ifsum">' + ifSumHtml(allocRows(r), oddsMove()) + '</div></div>' +
       '<div class="list" id="cards">' + hs.map(cardHtml).join('') + '</div>' +
       '<div class="dock"><div class="who" id="who">' + whoText(r) + '</div>' +
-      '<div class="plus five"><button data-act="vMinus" aria-label="100 へらす">－100</button><button data-va="1" aria-label="100 ふやす">＋100</button><button data-va="10" aria-label="1,000 ふやす">＋1,000</button><button data-va="100" aria-label="10,000 ふやす">＋10,000</button><button data-act="vClr" aria-label="この馬を 0 に">0</button></div>' +
+      '<div class="plus five"><button data-act="vMinus" aria-label="100 へらす">－100</button><button data-va="1" aria-label="100 ふやす">＋100</button><button data-va="10" aria-label="1,000 ふやす">＋1,000</button><button data-va="100" aria-label="10,000 ふやす">＋10,000</button></div>' + /* 2026-10-20 文字帳（t0277）: 「0」のボタンは消す（－100 で減らせる） */
       '<button class="btn" data-act="toConfirm" ' + (left === 0 ? '' : 'disabled') + '>' + goText(left) + '</button></div></div>';
   };
-  const goText = (left) => (left === 0 ? '投票を確認' : 'あと ' + chips(left) + ' えらんでください');
+  const goText = (left) => (left === 0 ? '投票を確認' : 'あと ' + chipsT(left) + ' えらんでください');
   function cardHtml(h) {
     const n = (S.alloc && S.alloc[h.i]) | 0;
     return '<div class="card' + (sel === h.i ? ' sel' : '') + (n ? ' has' : '') + '" data-h="' + h.i + '" role="button" aria-pressed="' + (sel === h.i) + '">' + waku(h) +
       '<div class="cm"><div class="hname">' + esc(h.name) + '</div>' + formLine(voteRace(), h) + '</div>' +
       '<div class="per"><b>' + oddsTxt(oddsOf(h)) + '</b><small>倍</small></div>' +
-      (n ? '<div class="if"><b>' + chips(n) + '</b> → 当たったら <em>' + amt(payEst(n, oddsOf(h))) + '</em>' + meyasu(h) + '</div>' : '') + '</div>';
+      (n ? '<div class="if"><b>' + chips(n) + '</b> → 当たったら <em>' + ptH(payEst(n, oddsOf(h))) + '</em>' + meyasu(h) + '</div>' : '') + '</div>';
   }
   function whoText(r) {
     if (sel == null) return '<span class="wn">馬をえらぶ</span>';
@@ -262,11 +269,11 @@
     const r = voteRace(); if (!r) return R.vote();
     shownRaceId = r.id;
     const rows = picksOf().map((p) => [horse(r, p.horse), p.count]).filter((x) => x[0]);
-    const go1 = rows.length === 1 ? rows[0][0].no + '番に ' + chips(rows[0][1]) + ' 投票する' : rows.length + '頭に ' + chips(S.count) + ' 投票する'; // 確定ボタンは具体的に（REVIEW_TODO 7）
+    const go1 = rows.length === 1 ? rows[0][0].no + '番に ' + chipsT(rows[0][1]) + ' 投票する' : rows.length + '頭に ' + chipsT(S.count) + ' 投票する'; // 確定ボタンは具体的に（REVIEW_TODO 7）
     /* 確認: 1 頭ごとに 枚数 と 当たったら額。合計の枚数と「当たったら 最大」。取り消せないことはボタンの読み上げに入れる */
     return '<div class="scr confirm"><h1>投票の確認</h1><div class="list picks">' +
       rows.map(([h, n]) => '<div class="pick">' + waku(h) + '<div class="nm"><span class="no">' + h.no + '番</span>' + esc(h.name) + '<small>オッズ ' + oddsTxt(oddsOf(h)) + '倍</small></div><div class="n">' + chips(n) + '</div>' +
-        '<div class="pif"><span>当たったら</span><b>' + amt(payEst(n, oddsOf(h))) + '</b>' + meyasu(h) + '</div></div>').join('') +
+        '<div class="pif"><span>当たったら</span><b>' + ptH(payEst(n, oddsOf(h))) + '</b>' + meyasu(h) + '</div></div>').join('') +
       '</div><div class="total"><span>合計 <b>' + chips(S.count) + '</b></span>' + (rows.length > 1 ? '<span class="ifsum">' + ifSumHtml(rows, oddsMove()) + '</span>' : '') + '</div>' +
       // 確定ボタンは画面の下に固定（投票画面の「確認へ」と同じ場所。2 度押しの 2 回目は 0.6 秒の守りで止める＝tests/v2-mobile.plan.js）
       '<div class="dock cdock"><p class="err" id="err" role="alert"></p><button class="btn ghost" data-act="toVote">戻る</button><button class="btn" data-act="vote" aria-label="' + go1 + '（取り消しできません）">' + go1 + '</button></div></div>';
@@ -277,7 +284,7 @@
      レース中も勝ち馬につながる目立たせ方はしない（額だけ） */
   function myCards(r, rows) {
     return rows.map(([h, n]) => '<div class="mycard">' + waku(h) + '<div class="mc"><div class="mc-h">' + h.no + '番 ' + esc(h.name) + '</div>' +
-      '<div class="mc-b"><b>' + chips(n) + '</b> → 当たったら <em>' + amt(payEst(n, oddsOf(h))) + '</em>' + meyasu(h) + '</div></div></div>').join('');
+      '<div class="mc-b"><b>' + chips(n) + '</b> → 当たったら <em>' + ptH(payEst(n, oddsOf(h))) + '</em>' + meyasu(h) + '</div></div></div>').join('');
   }
   R.wait = () => {
     const r = tkRace(), rows = picksOf().map((p) => [horse(r, p.horse), p.count]).filter((x) => x[0]);
@@ -306,12 +313,12 @@
     const t = tk.ticket, res = t.result || {}, p = res.payout || null, amount = res.amount | 0;
     const paid = !!(p && p.status === 'paid'), expired = !!(p && p.status === 'expired'), back = res.bounty | 0;
     const nextBtn = '<button class="btn' + (has(res) && p && p.status === 'unpaid' ? ' ghost' : '') + '" data-act="next">次のレースへ</button>';
-    const rbBlock = '<div class="k">リングバウンティ</div><div class="a">' + amt(back) + '</div>'; // 返却・返還はリングバウンティ（額ではない）
+    const rbBlock = '<div class="k">リングバウンティ</div><div class="a">' + amt(back) + '<small class="pt">枚</small></div>'; // 返却・返還はリングバウンティ（額ではない。2026-10-20 から「枚」を付ける＝pt と見分ける）
     if (res.novote) return '<div class="scr min"><div class="hit ret"><h1 class="t">返却</h1>' + rbBlock + '</div>' + payBlock(p, paid, expired) + nextBtn + '</div>';
     const refunded = !!res.refunded; // 返還（レースが成立しなかった）: 当たりではなく、賭けた枚数を返す
     let body;
     if (refunded && back > 0) body = '<div class="hit ret"><h1 class="t">返還</h1>' + rbBlock + '</div>' + payBlock(p, paid, expired);
-    else if (!refunded && amount > 0) body = '<div class="hit"><h1 class="t">当たり</h1><div class="k">当選額</div><div class="a">' + amt(amount) + '</div></div>' + payBlock(p, paid, expired);
+    else if (!refunded && amount > 0) body = '<div class="hit"><h1 class="t">当たり</h1><div class="k">当選額</div><div class="a">' + ptH(amount) + '</div>' + ROUND_NOTE + '</div>' + payBlock(p, paid, expired);
     else if (refunded) body = '<div class="miss"><h1 class="t">返還</h1></div><p class="nextr">お返しはありません</p>';
     else body = '<div class="miss"><h1 class="t">はずれ</h1></div>' + nextRaceLine();
     return '<div class="scr min">' + body + nextBtn + '</div>';
@@ -319,7 +326,7 @@
 
   R.unpaid = () => {
     const u = (S.unpaid || []).filter((x) => x.tid !== S.tid)[0]; if (!u) return R.count();
-    return '<div class="scr min"><div class="hit' + (isRb(u) ? ' ret' : '') + '"><h1 class="t">' + (u.novote ? '返却' : u.refund ? '返還' : '当たり') + '</h1>' + (isRb(u) ? '<div class="k">リングバウンティ</div><div class="a">' + amt(rbOf(u)) + '</div>' : '<div class="k">当選額</div><div class="a">' + amt(u.amount) + '</div>') + '</div>' +
+    return '<div class="scr min"><div class="hit' + (isRb(u) ? ' ret' : '') + '"><h1 class="t">' + (u.novote ? '返却' : u.refund ? '返還' : '当たり') + '</h1>' + (isRb(u) ? '<div class="k">リングバウンティ</div><div class="a">' + amt(rbOf(u)) + '<small class="pt">枚</small></div>' : '<div class="k">当選額</div><div class="a">' + ptH(u.amount) + '</div>' + ROUND_NOTE) + '</div>' +
       '<div class="qrbox big" id="qr" role="img" aria-label="スタッフに見せる QR コード"></div><button class="btn ghost" data-act="back">もどる</button></div>';
   };
 
@@ -353,7 +360,7 @@
     const r = voteRace(); if (!r || !$('left')) return;
     const left = S.count - sumAlloc();
     document.querySelectorAll('.card').forEach((c) => { c.outerHTML = cardHtml(horse(r, c.dataset.h)); });
-    $('left').textContent = chips(left); document.querySelector('.left').classList.toggle('zero', left === 0);
+    $('left').innerHTML = chips(left); document.querySelector('.left').classList.toggle('zero', left === 0);
     $('who').innerHTML = whoText(r);
     const fs = $('ifsum'), fh = ifSumHtml(allocRows(r), oddsMove()); if (fs && fs.innerHTML !== fh) fs.innerHTML = fh;
     const b = document.querySelector('[data-act=toConfirm]');
@@ -368,6 +375,11 @@
   }
 
   /* ================= 行き先を決める（再読み込み・通知のたびに） ================= */
+  function showCount() { // 投票額の画面: 数字（pt つき）・リングバウンティ・「次へ」・「－100」を今の額に
+    if ($('cnum')) $('cnum').innerHTML = chips(S.count); if ($('crb')) $('crb').textContent = rbTxt(S.count * rate());
+    const k = document.querySelector('[data-act=count]'); if (k) { k.disabled = !(S.count > 0) || dayOver() || xClosed(); k.textContent = cntBtn(S.count); }
+    const m = document.querySelector('[data-act=cMinus]'); if (m) m.disabled = !((S.count | 0) > MIN_COUNT);
+  }
   function syncCount() { // 枚数の画面: 案内と「認証へ」のボタン（今日のレースが終わったら押せない）
     const l = $('late'); if (l) { const h = lateNote(); if (l.innerHTML !== h) l.innerHTML = h; }
     const k = document.querySelector('[data-act=count]'); if (k && !busy) { k.disabled = !(S.count > 0) || dayOver() || xClosed(); const tx = cntBtn(S.count); if (k.textContent !== tx) k.textContent = tx; }
@@ -473,6 +485,7 @@
       S.nick = v; save(); return go('count');
     }
     if (a === 'cnt0') { S.count = 0; save(); return draw(); }
+    if (a === 'cMinus') { if ((S.count | 0) > MIN_COUNT) { S.count = Math.max(MIN_COUNT, (S.count | 0) - 1); save(); showCount(); } return; } // －100（最低額より下げない）
     if (a === 'count') {
       if (busy || !(S.count > 0)) return;
       if (xClosed()) { syncCount(); return err(errText({ code: 'exchange_closed' })); }
@@ -527,7 +540,7 @@
       if (b.dataset.act === 'vote' && e.isTrusted && e.timeStamp - shownAt < 600) return; // timeStamp＝指が触れた時刻（端末が重くて処理が遅れても 2 回目を見分ける）
       act(b.dataset.act, b); return;
     }
-    if (b.dataset.add) { S.count = Math.min(MAX_COUNT, (S.count | 0) + Number(b.dataset.add)); save(); $('cnum').textContent = chips(S.count); if ($('crb')) $('crb').textContent = rbTxt(S.count * rate()); const k = document.querySelector('[data-act=count]'); if (k) { k.disabled = !(S.count > 0) || dayOver() || xClosed(); k.textContent = cntBtn(S.count); } return; }
+    if (b.dataset.add) { S.count = Math.min(MAX_COUNT, (S.count | 0) + Number(b.dataset.add)); save(); showCount(); return; }
     if (b.dataset.va) { if (sel == null) return toast('馬をえらんでください'); const left = S.count - sumAlloc(), add = Math.min(left, Number(b.dataset.va)); if (add <= 0) return toast('残り 0'); S.alloc[sel] = (S.alloc[sel] | 0) + add; save(); drawVoteParts(); return; }
     if (b.classList.contains('card')) { sel = Number(b.dataset.h); drawVoteParts(); }
   });
@@ -575,6 +588,22 @@
     if (screen !== 'badStore' && (!online || ['count', 'vote'].indexOf(screen) >= 0)) refreshState();
     if ((S.unpaid || []).length) refreshUnpaid();
   }, 6000);
+
+  /* 画面の真ん中に置く（2026-10-20 オーナー「画面中央に配置」「テンキーがある状態で」）: 会計番号・ニックネーム・投票額・スタッフに見せる QR の画面（.scr.mid）は、
+     いま見えている高さ（キーボード・テンキーが出ているときはその上の部分＝visualViewport）から上の帯の高さを引いた中で上下の真ん中に置く。
+     CSS の --vvh（見えている高さ）と --toph（上の帯の高さ）をここで入れる。入らない古いブラウザは CSS の 100dvh のまま */
+  (function midFit() {
+    const root = document.documentElement, vv = window.visualViewport;
+    let last = '';
+    const fit = () => { try {
+      const h = Math.round(vv ? vv.height : window.innerHeight), top = document.querySelector('.top'), th = top && top.getBoundingClientRect ? Math.round(top.getBoundingClientRect().height) : 0;
+      const k = h + '|' + th; if (!(h > 0) || k === last || !root || !root.style || !root.style.setProperty) return; last = k;
+      root.style.setProperty('--vvh', h + 'px'); if (th) root.style.setProperty('--toph', th + 'px');
+    } catch (e) { /* 測れない環境（古い端末・テストの作り物の画面）は CSS の既定のまま */ } };
+    fit(); if (window.addEventListener) window.addEventListener('resize', fit); if (vv && vv.addEventListener) vv.addEventListener('resize', fit);
+    setInterval(fit, 500); // 上の帯の高さが変わったとき（時刻の札の行が増えた・減った）
+    window.__betMidFit = fit;
+  })();
 
   /* ================= 起動 ================= */
   async function boot() {
