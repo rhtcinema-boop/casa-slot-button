@@ -367,34 +367,45 @@
      押せないとき: 進行役のテレビがいない／この店でレースの受付中・レース中・結果画面のあいだ／押したあと（準備中・そのレースが終わるまで） */
   let trS = null, trAt = 0, trBusy = false, trT = 0, trMsg = '', trExt = false; const trCbs = [];
   const TEST_SEC = 60; // 2026-10-19 その 2: 2 分 → 1 分（ルールの下限。参加受付 30 秒・投票 30 秒＝core.js の testStages）
+  /* その 3（2026-10-19）: 店のテレビが casa SLOT なら、押すと casa DERBY に切り替えてすぐ走らせる（client の testRace の switchTv。終わったあと SLOT には戻さない）。
+     進行役のテレビ自身の店が SLOT になっているだけのとき（trS.wake）も押せる: DERBY にして、進行役が戻ってから作る（戻るまで最大 90 秒「切り替えています…」） */
+  const WAIT_MS = 90000;
+  const trPending = (r, n) => !!r && !r.raceId && !r.err && n - r.at < WAIT_MS; // 進行役のテレビが戻るのを待つときは最大 90 秒
   async function testPoll(now0) {
     clearTimeout(trT);
     if ((mode !== 'next' && !trExt) || !C || !C.testRaceStatus) return; // trExt: 「テレビ」のシートを開いている間（v2/staffswitch.js）
     try { trS = await C.testRaceStatus(saved.pin); trAt = Date.now(); } catch (e) { if (pinGone(e)) return; trS = trS || null; }
     drawTest();
-    const r = trS && trS.req, pending = r && !r.raceId && !r.err && (C.serverNow() - r.at) < 60000;
+    const r = trS && trS.req, pending = trPending(r, C.serverNow());
     trT = setTimeout(testPoll, pending ? 3000 : 30000); // 準備中は 3 秒ごと、ふだんは 30 秒ごと（この画面か「テレビ」のシートを開いているときだけ）
   }
   function testWhy() {
     const n = C ? C.serverNow() : Date.now(), r = trS && trS.req;
     if (!trS) return ['読み込み中…', true];
-    if (r && !r.raceId && !r.err && n - r.at < 60000) return ['準備中…（進行役のテレビがレースを作っています）', true];
+    if (trPending(r, n)) return [trS.decider ? '準備中…（進行役のテレビがレースを作っています）' : 'テレビを casa DERBY に切り替えています…（進行役のテレビが戻るのを待っています）', true];
     if (r && r.raceAt && r.raceAt > n) return ['テストのレース 発走まで ' + mmss(r.raceAt - n), true];
-    if (!trS.decider) return ['進行役のテレビがありません', true];
+    if (r && !r.raceId && !r.err && n - r.at < 180000) return ['進行役のテレビが戻りませんでした。テレビを確かめてください', true];
+    if (!trS.decider && !trS.wake) return [trS.deciderStore && trS.deciderGame === 'slot' ? '進行役のテレビ（' + (trS.deciderName || trS.deciderStore) + '）が casa SLOT になっています' : '進行役のテレビがありません', true];
     if ((st && (st.open || st.live)) || (st && st.last && st.last.endAt > n)) return ['受付中・レース中は押せません', true];
     if (r && r.err === 'busy' && n - r.at < 120000) return ['作れませんでした（もうすぐ次のレースです）', true];
     return [trMsg, false];
   }
+  function testHint() { // 押せるときの説明（テレビが SLOT なら切り替えてから）
+    if (!trS || trS.game !== 'slot') return '押すと 1 分後に発走します（参加受付 30 秒 → 投票 30 秒）';
+    return '押すとテレビを casa DERBY に切り替えて、' + (trS.wake ? '進行役のテレビが戻ってから 1 分後' : '1 分半後') + 'に発走します';
+  }
   function drawTest() {
     trCbs.forEach((cb) => { try { cb(); } catch (e) { /* noop */ } }); // 「テレビ」のシートの同じ表示も塗り直す
     const el = $('trState'), b = $('doTest'); if (!el || !b) return;
-    const [t, off] = testWhy(); el.textContent = t; b.disabled = off || trBusy;
+    const [t, off] = testWhy(); el.textContent = t || testHint(); b.disabled = off || trBusy;
   }
   async function testPress() {
     const [, off] = testWhy(); if (off || trBusy) return;
-    if (!confirm(saved.name + 'のテレビだけで、' + Math.round(TEST_SEC / 60) + ' 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走）。')) return;
+    const sw = !!trS && trS.game === 'slot';
+    if (!confirm(sw ? saved.name + 'のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (trS.wake ? '進行役のテレビが戻ってから 1 分後' : '1 分半後') + 'に発走）。'
+      : saved.name + 'のテレビだけで、' + Math.round(TEST_SEC / 60) + ' 分後にテストのレースが走ります（参加受付 30 秒 → 投票 30 秒 → 発走）。')) return;
     trBusy = true; drawTest();
-    try { const d = await C.testRace(saved.pin, TEST_SEC); toast(d && d.raceId ? 'テストのレースを作りました' : 'テストのレースをお願いしました'); trMsg = ''; }
+    try { const d = await C.testRace(saved.pin, TEST_SEC, { switchTv: true }); toast(d && d.switched ? 'テレビを casa DERBY に切り替えました' : d && d.raceId ? 'テストのレースを作りました' : 'テストのレースをお願いしました'); trMsg = ''; }
     catch (e) { if (!pinGone(e)) { toast(errText(e), true); trMsg = errText(e); } } // 理由はボタンの上にも残す（「テレビ」のシートでは知らせが隠れるため）
     trBusy = false; testPoll(true);
   }
@@ -479,7 +490,7 @@
 
   window.STAFF = { inject: (t) => handleCode(t, 'test'), get mode() { return mode; }, setMode, get C() { return C; }, get saved() { return saved; }, get sheetOpen() { return sheetOpen; }, closeSheet, xState, get st() { return st; },
     /* この店だけテストレース（2026-10-19 その 2）: 「テレビ」のシートが使う。watch(true) の間は状態を読み続ける・onChange で塗り直しを知らせる */
-    test: { why: testWhy, press: testPress, get busy() { return trBusy; }, sec: TEST_SEC, watch(on) { trExt = !!on; if (on) { if (Date.now() - trAt > 3000) testPoll(true); } else if (mode !== 'next') clearTimeout(trT); }, onChange(cb) { trCbs.push(cb); } } }; // sheetOpen: v2/staffswitch.js が見る（確認の画面の途中では画面を入れ替えない。2026-10-19）。st: いつもの状態（テレビの画質 settings.tvQuality を staffswitch.js が見る。2026-10-19）
+    test: { why: testWhy, hint: testHint, press: testPress, get s() { return trS; }, get busy() { return trBusy; }, sec: TEST_SEC, watch(on) { trExt = !!on; if (on) { if (Date.now() - trAt > 3000) testPoll(true); } else if (mode !== 'next') clearTimeout(trT); }, onChange(cb) { trCbs.push(cb); } } }; // sheetOpen: v2/staffswitch.js が見る（確認の画面の途中では画面を入れ替えない。2026-10-19）。st: いつもの状態（テレビの画質 settings.tvQuality を staffswitch.js が見る。2026-10-19）
 
   (async function boot() {
     if (!window.DerbyCloud) { $('login').classList.remove('hidden'); $('login').innerHTML = LOGO_H1 + '<p>読み込みに失敗しました。ページを開き直してください。</p>'; return; }
