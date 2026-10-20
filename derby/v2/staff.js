@@ -353,7 +353,7 @@
       (st && st.next ? '<div class="stat"><span>次のレース</span><b>' + hhmm(st.next.at) + '</b></div>' : '') + '</div>' +
       '<div class="panel"><h4>結果画面を次へ</h4><p class="note">この店のテレビだけ、結果画面を閉じて待ち時間の画面にします。次のレースは時刻表どおりに始まります（全店同時）。</p>' +
       '<button class="btn ok big" id="doNext">テレビを次へ進める</button></div>' +
-      '<div class="panel trace"><h4>テスト用</h4><p class="note">この店のテレビだけで、1 分半後にテストのレースが走ります（参加受付 1 分 → 投票 30 秒 → 発走。お客さんも参加・投票できます。集計には入りません）。上の「テレビ」からも押せます。</p><p class="note trs" id="trState"></p>' +
+      '<div class="panel trace"><h4>テスト用</h4><p class="note">この店のテレビだけで、テストのレースが走ります（参加受付 1 分 → 投票 → 発走。発走までの時間は下に出します。お客さんも参加・投票できます。集計には入りません）。上の「テレビ」からも押せます。</p><p class="note trs" id="trState"></p>' +
       '<button class="btn ghost" id="doTest">この店だけテストレース</button></div>';
     $('doTest').onclick = testPress;
     drawTest();
@@ -380,6 +380,12 @@
   const WAIT_MS = TV_WAIT_MS + 15000; // 進行役が理由を書くまで（5 分＋少し）
   const trPending = (r, n) => !!r && !r.raceId && !r.err && n - r.at < WAIT_MS;
   const numOr = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
+  /* その 6（2026-10-20）: 参加受付は必ず 1 分（core.js の TEST_RACE.exchangeSec）。投票はこの店で効く秒数（いつもの状態の settings.voteSec。店の上書きつき）。
+     本番の投票が 45 秒だと 1 分 45 秒後に発走（前は 1 分半のまま参加受付が 45 秒に縮んでいた）。押してから発走までと説明の文はここで出す */
+  const TEST_EX = 60;
+  function testPlan(sw) { const S = (st && st.settings) || {}, vo = Math.max(0, numOr(S.voteSec, 30)), lead = Math.max(0, numOr(S.closeLeadSec, 0)); return { ex: TEST_EX, vo, total: Math.max(TEST_SEC, TEST_EX + vo + lead), wait: sw ? SWITCH_SEC - TEST_SEC : 0 }; }
+  function durText(s) { s = Math.round(s); const m = Math.floor(s / 60), r = s % 60; return m ? m + ' 分' + (r === 30 ? '半' : r ? ' ' + r + ' 秒' : '') : r + ' 秒'; }
+  const stagesText = (p) => '参加受付 ' + durText(p.ex) + ' → 投票 ' + durText(p.vo);
   function trClash(n, sec) { // [押せない理由] 'now' ＝受付中・レース中・結果画面／レース ＝もうすぐ次のレース／null ＝ぶつからない
     if (!st) return null;
     const S = st.settings || {}, gate = S.scenes && S.scenes.gate === false ? 0 : numOr(S.gateSec, 8), post = numOr(S.postSec, 28), res = numOr(S.resultSec, 300), bet = numOr(S.betSec, 120);
@@ -410,7 +416,7 @@
     const gaveUp = !!r && !r.raceId && (r.err === 'tv_wait' || !r.err) && n - r.at < WAIT_MS + 180000; // その 4: 5 分待ってやめた（押し直しはできる）
     const note = gaveUp ? (r.err === 'tv_wait' || trS.decider ? TV_GAVE_UP : '進行役のテレビが戻りませんでした。テレビを確かめてください') : '';
     if (!trS.decider && !trS.wake) return [trS.deciderStore && trS.deciderGame === 'slot' ? '進行役のテレビ（' + (trS.deciderName || trS.deciderStore) + '）が casa SLOT になっています' : '進行役のテレビがありません', true];
-    const c = trClash(n, trS.game === 'slot' && !trS.wake ? SWITCH_SEC : TEST_SEC); // その 4 の 1: 紙幣のページと同じ判断・同じ言葉
+    const sw = trS.game === 'slot' && !trS.wake, tp = testPlan(sw), c = trClash(n, tp.total + tp.wait); // その 4 の 1: 紙幣のページと同じ判断・同じ言葉
     if (c === 'now') return ['いまはレース中です', true]; // 2026-10-20 オーナーの文字帳 t0508「受付中・レース中は押せません」を消す → 押せない理由が分からなくならないよう短い言い方に
     if (c) return ['もうすぐ次のレース（' + hhmm(c.at) + ' 発走）があるので押せません', true];
     if (r && r.err === 'busy' && n - r.at < 120000) return ['作れませんでした（もうすぐ次のレースです）', true];
@@ -423,8 +429,9 @@
     return 'テレビはスロットのゲーム中です。終わってから切り替えます';
   }
   function testHint() { // 押せるときの説明（テレビが SLOT なら切り替えてから）
-    if (!trS || trS.game !== 'slot') return '押すと 1 分半後に発走します（参加受付 1 分 → 投票 30 秒）';
-    return '押すとテレビを casa DERBY に切り替えて、' + (trS.wake ? '進行役のテレビが戻ってから 1 分半後' : 'テレビが切り替わってから 1 分半後') + 'に発走します（スロットのゲーム中は、終わるまで待ちます）';
+    const tp = testPlan(false);
+    if (!trS || trS.game !== 'slot') return '押すと ' + durText(tp.total) + '後に発走します（' + stagesText(tp) + '）';
+    return '押すとテレビを casa DERBY に切り替えて、' + (trS.wake ? '進行役のテレビが戻ってから ' : 'テレビが切り替わってから ') + durText(tp.total) + '後に発走します（スロットのゲーム中は、終わるまで待ちます）';
   }
   function drawTest() {
     trCbs.forEach((cb) => { try { cb(); } catch (e) { /* noop */ } }); // 「テレビ」のシートの同じ表示も塗り直す
@@ -433,9 +440,9 @@
   }
   async function testPress() {
     const [, off] = testWhy(); if (off || trBusy) return;
-    const sw = !!trS && trS.game === 'slot';
-    if (!confirm(sw ? saved.name + 'のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (trS.wake ? '進行役のテレビが戻ってから 1 分半後' : 'テレビが切り替わってから 1 分半後') + 'に発走）。'
-      : saved.name + 'のテレビだけで、' + Math.floor(TEST_SEC / 60) + ' 分半後にテストのレースが走ります（参加受付 1 分 → 投票 30 秒 → 発走）。お客さんも参加・投票できます（集計には入りません）。')) return;
+    const sw = !!trS && trS.game === 'slot', tp = testPlan(false);
+    if (!confirm(sw ? saved.name + 'のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (trS.wake ? '進行役のテレビが戻ってから ' : 'テレビが切り替わってから ') + durText(tp.total) + '後に発走）。'
+      : saved.name + 'のテレビだけで、' + durText(tp.total) + '後にテストのレースが走ります（' + stagesText(tp) + ' → 発走）。お客さんも参加・投票できます（集計には入りません）。')) return;
     trBusy = true; drawTest();
     try { const d = await C.testRace(saved.pin, TEST_SEC, { switchTv: true }); toast(d && d.switched ? 'テレビを casa DERBY に切り替えました' : d && d.raceId ? 'テストのレースを作りました' : 'テストのレースをお願いしました'); trMsg = ''; }
     catch (e) { if (!pinGone(e)) { toast(errText(e), true); trMsg = errText(e); } } // 理由はボタンの上にも残す（「テレビ」のシートでは知らせが隠れるため）
