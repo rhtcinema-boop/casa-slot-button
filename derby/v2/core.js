@@ -486,7 +486,11 @@
   /* 2026-10-20 その 5（オーナー「テストレースでも投票できるように」）: 参加受付 30 秒では、お客さんが QR を読んで入力し、スタッフが認証するのに間に合わない。
      スタッフの画面から押すテストレースは quickSec 90 秒（参加受付 60 秒 → 投票 30 秒）。テレビを切り替えたときは switchSec 120 秒（切り替わるまで 30 秒あけてから同じ 60＋30）。
      決まりの範囲（60〜600 秒）の中。前の版の画面からの 60 秒・90 秒のお願いも今までどおり作れる（90 は切り替えの印ではなくなる＝待たずに作る） */
-  const TEST_RACE = { startIn: 120, quickSec: 90, switchSec: 120, minSec: 60, maxSec: 600, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 300, tvWaitSec: 300, tvGraceSec: 20, tvSeenDays: 14 };
+  /* 2026-10-20 その 6（本番 b137 17:41 の上野のテストレースで参加受付が 45 秒しかなかった）: 本番の投票の秒数が 45 秒だったため、
+     「投票は全体の秒数か発走までの半分」「参加受付は残り」の決め方では 90 秒のうち参加受付が 45 秒になった。
+     → 参加受付は必ず exchangeSec（60 秒）取る。投票はその店で実際に効く秒数（店の設定 voteSec があればそれ＝ルールの exchangeCloseMs と同じ）。
+       足りなければ発走を後ろへずらす（testStages の startIn。決まりの上限 600 秒まで）。お願いの startIn（90／120）の意味は今までどおり */
+  const TEST_RACE = { startIn: 120, quickSec: 90, switchSec: 120, minSec: 60, maxSec: 600, exchangeSec: 60, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 300, tvWaitSec: 300, tvGraceSec: 20, tvSeenDays: 14 };
   /* その 4: 店の Fire TV が casa DERBY に来たか。tvs: [{ store, kind, at（ミリ秒） }]（derbyTvs の名乗り。テレビは開いたときと 5 分ごとに書く）。
      null ＝待たない（その店の Fire TV の名乗りが 14 日以内に無い＝分からない。今までどおりすぐ作る）／'arrived' ＝お願いのあとに名乗った／'waiting' ＝まだ。
      ブラウザのテレビ（kind 'browser'）は見ない（casa SLOT を映さず、ずっと casa DERBY のままのことがあるため） */
@@ -500,10 +504,20 @@
   /* テストのレースの 2 段: 投票は全体の秒数（30）か発走までの半分の短いほう。参加受付は「押した時刻〜投票の始まり」（全体の秒数より長くしない）。
      受付の始まり（openAt）が押した時刻より前にならない＝テレビは押した直後から受付の画面（待ち時間なし・途中から始まらない） */
   /* waitSec（その 3）: 受付の前に空ける秒数（店のテレビを DERBY に切り替えたとき、テレビが切り替わって読み込むまで受付を始めない） */
-  function testStages(startIn, tuning, waitSec) {
-    const T = tuningOf(tuning), sec = testStartIn(startIn), lead = Math.max(0, Number(T.closeLeadSec) || 0) + Math.max(0, Number(waitSec) || 0);
-    const vo = Math.min(T.voteSec, Math.floor(sec / 2)), ex = Math.max(10, Math.min(T.exchangeSec, sec - lead - vo));
-    return { exchangeSec: ex, voteSec: vo };
+  /* その 6: storeSettings（その店の設定）の投票の秒数の上書きも見る。返り値の startIn ＝実際の発走までの秒数（お願いの秒数より長くなることがある）。
+     参加受付は TEST_RACE.exchangeSec（60 秒）以上・全体の参加受付の秒数（90）まで（お願いの秒数に余りがあるとき） */
+  function testVoteSec(T, ss) {
+    const s = ss || {};
+    if (secOf(s.voteSec) != null) return secOf(s.voteSec);
+    if (secOf(s.exchangeSec) == null && secOf(s.betSec) != null) return 30; // 以前の betSec だけの店（stagesFor・ルールと同じ）
+    return T.voteSec;
+  }
+  function testStages(startIn, tuning, waitSec, storeSettings) {
+    const T = tuningOf(tuning), lead = Math.max(0, Number(T.closeLeadSec) || 0) + Math.max(0, Number(waitSec) || 0);
+    const vo = Math.max(0, testVoteSec(T, storeSettings)), EX = TEST_RACE.exchangeSec;
+    const sec = Math.min(TEST_RACE.maxSec, Math.max(testStartIn(startIn), Math.ceil(lead + EX + vo)));
+    const ex = Math.max(10, Math.min(Math.max(EX, T.exchangeSec), sec - lead - vo));
+    return { exchangeSec: ex, voteSec: vo, startIn: sec };
   }
   function raceSpan(r, T) {
     const start = r.openAt != null ? r.openAt : r.at - (T.exchangeSec + T.voteSec) * 1000;
