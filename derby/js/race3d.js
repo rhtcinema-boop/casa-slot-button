@@ -1707,8 +1707,13 @@ window.Race3D = (function () {
       dom && this.slow < 0.7 ? ['SLOW', 'MOTION', '#ff7a6b'] : null,
     ]);
     const order = race.horses.map((_, i) => i).sort((p, q) => run.pos[q] - run.pos[p]);
-    const ex = [0]; for (let k = 1; k < order.length; k++) ex.push(ex[k - 1] + Math.min(40, Math.max(0, (run.pos[order[k - 1]] - run.pos[order[k]]) * race.dist) * 4));
-    const esc = Math.min(1, (420 - 25 * (order.length - 1)) / (ex[ex.length - 1] || 1)), x0 = 240;
+    /* ordBig（v2 の店内モニターだけ。2026-10-20 オーナー「画面中央にもっと大きく。横だけずらせばいい」）: 通過順の丸を 1.8 倍にして、横だけ画面のまん中に置く（縦の位置は同じ）。
+       幅は左下のロゴ・コース名（〜x250）と右下のコース図・距離（x814〜）に重ならないよう、丸の中心どうしで 380 まで（矢印と丸の半分を足しても x270〜730 に入る） */
+    const OB = this.ordBig ? 1.8 : 1, cap = this.ordBig ? 380 : 420, nn = order.length - 1;
+    const ex = [0]; for (let k = 1; k < order.length; k++) ex.push(ex[k - 1] + Math.min(40, Math.max(0, (run.pos[order[k - 1]] - run.pos[order[k]]) * race.dist) * 4) * OB);
+    const stp = nn > 0 ? Math.min(25 * OB, cap / nn) : 0;
+    const esc = Math.min(1, Math.max(0, cap - stp * nn) / (ex[ex.length - 1] || 1));
+    const x0 = this.ordBig ? W / 2 - (stp * nn + (ex[ex.length - 1] || 0) * esc) / 2 : 240;
     // 本物の中継と同じく、画面の中で馬が走っている向きに先頭を置く（右へ走る画なら先頭が右端・矢印も右向き）。
     // 先頭の進む向きをカメラの右方向に投影して決める。カットが変わったらすぐ、同じカメラの中でははっきり傾いたときだけ切り替える（正面・真後ろでちらつかない）
     const lh = this.horsePos(L_); _r.setFromMatrixColumn(this.camera.matrixWorld, 0);
@@ -1721,13 +1726,13 @@ window.Race3D = (function () {
     if (dom && race.dist > 800) { const r8 = (1 - Math.min(1, run.pos[L_])) * race.dist; if (r8 <= 800 && this.t800 == null) this.t800 = run.t; if (r8 > 800) this.t800 = null; }
     if (dom && !this.no800 && this.t800 != null && run.t - this.t800 < 1.5 && run.t >= this.t800) { /* no800: v2 の店内モニターは出さない（2026-10-20 オーナー） */ c.globalAlpha = fa; c.fillStyle = 'rgba(20,36,54,.86)'; roundRect(c, 212, H - 118, 26, 76, 4); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(212, H - 118, 26, 3); c.fillStyle = '#fff'; c.font = 'bold 15px ' + CLK_FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; ['8', '0', '0', 'm'].forEach((ch, j) => c.fillText(ch, 225, H - 104 + j * 16)); }
     c.globalAlpha = fa * sa;
-    const span = 25 * (order.length - 1) + (ex[ex.length - 1] || 0) * esc, toR = this.ordDir > 0;
-    const chipX = (k) => (toR ? x0 + span - (k * 25 + ex[k] * esc) : x0 + k * 25 + ex[k] * esc);
+    const span = stp * nn + (ex[ex.length - 1] || 0) * esc, toR = this.ordDir > 0;
+    const chipX = (k) => (toR ? x0 + span - (k * stp + ex[k] * esc) : x0 + k * stp + ex[k] * esc);
     c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath();
-    if (toR) { const ax = chipX(0) + 21; c.moveTo(ax, H - 31); c.lineTo(ax - 7, H - 37); c.lineTo(ax - 7, H - 25); }
-    else { c.moveTo(x0 - 21, H - 31); c.lineTo(x0 - 14, H - 37); c.lineTo(x0 - 14, H - 25); }
+    if (toR) { const ax = chipX(0) + 21 * OB; c.moveTo(ax, H - 31); c.lineTo(ax - 7 * OB, H - 31 - 6 * OB); c.lineTo(ax - 7 * OB, H - 31 + 6 * OB); }
+    else { c.moveTo(x0 - 21 * OB, H - 31); c.lineTo(x0 - 14 * OB, H - 31 - 6 * OB); c.lineTo(x0 - 14 * OB, H - 31 + 6 * OB); }
     c.fill();
-    for (let k = order.length - 1; k >= 0; k--) badge(c, chipX(k), H - 31, 11.5, race.horses[order[k]]);
+    for (let k = order.length - 1; k >= 0; k--) badge(c, chipX(k), H - 31, 11.5 * OB, race.horses[order[k]]);
     c.globalAlpha = fa;
     const mx = W - 92, my = H - 40, sx = 0.17;
     c.lineCap = 'round'; c.lineJoin = 'round';
