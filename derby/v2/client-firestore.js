@@ -446,7 +446,7 @@
     }
     /* 店ごとの「いまの状態」: その店に見えるレース（30 分前より後・まだ終わっていないもの）を、スマホに見せてよい項目だけで。
        結果（result）と当たった人（winners）は発表後（done）だけ。設定額・決定の中身は入れない。中身が変わったときだけ書く */
-    const LIVE_KEYS = ['id', 'storeId', 'at', 'openAt', 'exchangeCloseAt', 'exchangeSec', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec'];
+    const LIVE_KEYS = ['id', 'storeId', 'at', 'openAt', 'exchangeCloseAt', 'exchangeSec', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test']; /* test: この店だけテストレースの印（2026-10-20。スマホにも同じ印が届く。模擬クラウドと同じ） */
     function liteRace(r) { const o = {}; LIVE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; }); if (o.status === 'closing') o.status = 'closed'; if (r.status === 'done') { o.result = r.result || null; o.winners = r.winners || []; o.photo = !!r.photo; } return o; }
     const liveKeys = {};
     async function publishLive(races) {
@@ -784,15 +784,18 @@
         const made = data(await doc(COL.races, id).get());
         if (made) { await ref.set({ raceId: id, raceAt: made.at, doneAt: t }, { merge: true }); continue; } // 作ったあとに止まっていた: 印だけ
         if (t - at > Core.TEST_RACE.tvWaitSec * 1000) { await ref.set({ err: 'tv_wait', doneAt: t }, { merge: true }); did.push('test tv_wait ' + sid); continue; } // その 4: 5 分待っても作れなかった（テレビがゲーム中のまま・進行役が戻らない）→ 理由を出してやめる
-        if (!(await getStores()).some((s) => s.id === sid)) { await ref.set({ err: 'no_store', doneAt: t }, { merge: true }); continue; }
+        const stRow = (await getStores()).find((s) => s.id === sid);
+        if (!stRow) { await ref.set({ err: 'no_store', doneAt: t }, { merge: true }); continue; }
         let sec = startIn, waitSec = startIn === Core.TEST_RACE.switchSec ? startIn - Core.TEST_RACE.quickSec : 0; /* その 3: テレビを切り替えたとき（90 秒）は、切り替わってから受付（30 秒あとから） */
         if (startIn === Core.TEST_RACE.switchSec) { // その 4: 店のテレビを切り替えたお願い → その店の Fire TV が casa DERBY に来てから作る（来た時刻から 60 秒）
           const w = await tvArrival(sid, at, t);
           if (w === 'waiting') { if (!q.wait) { await ref.set({ wait: 'tv', waitAt: t }, { merge: true }); did.push('test wait-tv ' + sid); } continue; }
           if (w === 'arrived') { sec = Core.TEST_RACE.quickSec; waitSec = 0; }
         }
+        /* その 6（2026-10-20）: 参加受付は必ず 60 秒（Core.testStages）。投票はその店で効く秒数（店の設定の上書き＝ルールの exchangeCloseMs と同じ）。足りなければ発走を後ろへ */
+        const sg = Core.testStages(sec, sc.tuning, waitSec, stRow.settings); sec = sg.startIn;
         if (Core.testRaceBusy(races, sid, t, sec, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
-        const r = await writeRace({ id, at: t + sec * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, Core.testStages(sec, sc.tuning, waitSec)); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
+        const r = await writeRace({ id, at: t + sec * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, sg); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
         await ref.set({ raceId: r.id, raceAt: r.at, doneAt: t }, { merge: true });
         did.push('test ' + r.id);
       }
@@ -825,7 +828,9 @@
       const switching = p.game === 'slot' && o.switchTv !== false;
       let sec = Core.testStartIn(startIn);
       if (switching && !p.wake) sec = Math.max(sec, Core.TEST_RACE.switchSec); // ほかの店の進行役がすぐ作る → テレビが切り替わって読み込む時間を足す
-      if (Core.testRaceBusy(await getRaces(true), store, now(), sec, await getPublic(), [])) throw E(409, 'busy', 'いまはテストのレースを作れません（受付中・レース中か、もうすぐ次のレースです）');
+      const pubT = await getPublic(), myRow = (await getStores().catch(() => [])).find((x) => x.id === store) || {};
+      const runIn = Core.testStages(sec, pubT, sec === Core.TEST_RACE.switchSec && !p.wake ? sec - Core.TEST_RACE.quickSec : 0, myRow.settings).startIn; // その 6: 実際の発走まで（参加受付 60 秒＋その店の投票の秒数）。お願いに書くのは今までどおり sec（90／120）
+      if (Core.testRaceBusy(await getRaces(true), store, now(), runIn, pubT, [])) throw E(409, 'busy', 'いまはテストのレースを作れません（受付中・レース中か、もうすぐ次のレースです）');
       const write = async () => {
         const b = db.batch();
         b.set(doc(COL.testReq, store), { at: FieldValue.serverTimestamp(), by: uid(), startIn: sec });
@@ -838,7 +843,7 @@
         staffOk = null; await staffEnsure(pin); // PIN が変わっていた → bad_pin。登録し直せたら 1 回だけやり直す
         try { await write(); } catch (e2) { if (e2 && e2.code === 'permission-denied') throw E(429, 'too_soon', '少し待ってからもう一度押してください'); throw mapErr(e2); }
       }
-      return { ok: true, pending: true, startIn: sec, switched: switching, wait: p.wake };
+      return { ok: true, pending: true, startIn: sec, runIn, switched: switching, wait: p.wake };
     }
     async function testRaceStatus(pin) {
       await staffEnsure(pin);
