@@ -461,7 +461,7 @@
         if (!res) continue;
         if (!p || p.status !== 'unpaid' || !has(res)) { // 受け取り済み・期限切れ（5 時の区切り）・取り消し
           S.unpaid = S.unpaid.filter((x) => x.tid !== u.tid); save();
-          toast(p && p.status === 'paid' ? (u.novote ? '返却 ' : u.refund ? '返還 ' : '当選額 ') + valTxt(u) + ' を受け取りました' : p && p.status === 'expired' ? '受け取り期限切れ' : '受け取りを更新しました', p && p.status === 'expired');
+          toast(p && p.status === 'paid' ? (isRb(u) ? 'リングバウンティ ' + amt(rbOf(u)) + '枚が返却されました' /* 2026-10-20 オーナー: 「返却 リングバウンティ 120枚と交換 を受け取りました」は不自然 → 返すときは「と交換」を付けない */ : '当選額 ' + valTxt(u) + ' を受け取りました') : p && p.status === 'expired' ? '受け取り期限切れ' : '受け取りを更新しました', p && p.status === 'expired');
           if (screen === 'unpaid') go(backTo || 'count'); else if (['bill', 'nick', 'vote', 'confirm'].indexOf(screen) < 0) draw(); // 入力中・割り振り中の画面は描き直さない
         } else if (('derby:pay:' + p.pid) !== u.code || (res.amount | 0) !== (u.amount | 0) || (res.bounty | 0) !== (u.bounty | 0)) { Object.assign(u, { code: p.code || DerbyQR.payload('pay', p.pid), short: p.short || null, amount: res.amount | 0, bounty: res.bounty | 0, refund: p.kind === 'refund' || undefined }); save(); if (screen === 'unpaid') draw(); }
       } catch (e) { if (e.status === 404) { S.unpaid = S.unpaid.filter((x) => x.tid !== u.tid); save(); } }
