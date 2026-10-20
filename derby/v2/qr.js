@@ -90,11 +90,23 @@
     });
   }
 
-  function joinURL(storeId, base) {
+  /* 2026-10-20（本番 b137 の上野のテストレースで「QR を読んでも参加できなかった」）: casa SLOT の Fire TV アプリの中では、
+     ページの場所が https://appassets.androidplatform.net/assets/www/derby/index.html（アプリの中だけの住所。スマホからは開けない）。
+     いまのページの場所から組み立てると、QR がこのアプリの中の住所になっていた → アプリの中（と file: など）では公開サイトの同じ場所に置きかえる。
+     公開サイトは v2/config.js（本番 = config.prod.js）の publicSite、無ければ casa SLOT の公開先（js/game.js の版の確かめと同じ） */
+  const APP_HOST = 'appassets.androidplatform.net', APP_ROOT = '/assets/www/';
+  const PUBLIC_SITE = 'https://rhtcinema-boop.github.io/casa-slot-button/';
+  function publicSite() { const c = root.DERBY_FIREBASE; let s = (c && typeof c.publicSite === 'string' && /^https:\/\//.test(c.publicSite) ? c.publicSite : '') || PUBLIC_SITE; if (!/\/$/.test(s)) s += '/'; return s; }
+  function joinURL(storeId, base, loc) {
     let b = base;
     if (!b) {
-      const p = location.pathname.replace(/[^/]*$/, ''); // いまのページのフォルダ
-      b = location.origin + (/\/v2\/$/.test(p) ? p : p + 'v2/') + 'bet.html';
+      const L = loc || location;
+      const p = L.pathname.replace(/[^/]*$/, ''); // いまのページのフォルダ
+      const dir = /\/v2\/$/.test(p) ? p : p + 'v2/';
+      if (L.hostname === APP_HOST || !/^https?:$/.test(L.protocol)) { // アプリの中: …/assets/www/<ここから下> を公開サイトの同じ場所へ
+        const i = dir.indexOf(APP_ROOT), rest = i >= 0 ? dir.slice(i + APP_ROOT.length) : 'derby/v2/';
+        b = publicSite() + rest + 'bet.html';
+      } else b = L.origin + dir + 'bet.html';
     }
     return b + (b.indexOf('?') >= 0 ? '&' : '?') + 'store=' + encodeURIComponent(storeId);
   }
