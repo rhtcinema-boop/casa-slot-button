@@ -177,6 +177,8 @@
 .v2pair.msg small { font-size: 22px; color: #fff; }
 .v2snd { position: absolute; z-index: 70; left: 18px; bottom: 14px; display: none; padding: 8px 16px; border-radius: 18px; background: rgba(0, 0, 0, .6); color: #fff; font: 800 18px/1 var(--font-ui); }
 .v2snd.show { display: block; }
+/* 2026-10-20: 店のテレビは最初から音が出る（音量はテレビのリモコン）→ 音ON/音OFF のボタンと「決定ボタンを押すと音が出ます」は出さない（v2/tv.js の AUTO_SOUND） */
+.tv-autosnd .soundbtn, .tv-autosnd .v2snd { display: none !important; }
 #splash .v2sub { font-size: 30px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 rgba(0, 0, 0, .35); }
 #stage.v2.m-live .onair { display: flex; }
 #stage.v2.m-live .raceinfo, #stage.v2.m-live .v2ppl { opacity: 0; }
