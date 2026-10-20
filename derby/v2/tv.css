@@ -926,3 +926,19 @@
 .v2res .rnote { display: none; grid-column: 2; grid-row: 2; align-self: end; margin: 0 0 228px 6px; height: 36px; font: 900 30px/36px var(--font-tv); color: #ffe14d; white-space: nowrap; text-shadow: 0 2px 0 rgba(0, 0, 0, .55); }
 .v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 276px; }
 .v2res.has-w:not(.sub-on) .rnote { display: block; }
+/* ======================================================================================================
+   2026-10-20 オーナーの文字帳（2 回目）: 参加方法 4 行・QR の上下の余白・「参加締切まで あと」
+   ====================================================================================================== */
+/* 「参加締切／まで あと」（前より短い）→ 2 行のまま、もう一段大きく */
+.v2info .cd.xlbl small { font-size: 58px; line-height: 1.1; }
+/* 参加方法を 4 行に（①QR を読む ②引き換える ③認証を待つ ④投票を行う）。見出し・行の間を詰めて、交換の帯まで枠に収める。
+   行の文字の大きさは v2/tv.js の fitHow が 4 行そろえて決める（幅と高さの両方。番号の丸は文字の大きさに合わせて伸び縮み） */
+.v2info .how:not(.xshut) { padding: 14px 30px; gap: 10px; }
+.v2info .how:not(.xshut) h4 { font-size: 34px; line-height: 1.1; }
+.v2info .how:not(.xshut) ol { gap: 17px; }
+.v2info .how:not(.xshut) ol li { line-height: 1.15; }
+.v2info .how:not(.xshut) ol li::before { width: 1.3em; height: 1.3em; font-size: .82em; }
+.v2info .how:not(.xshut) .v2rate { margin-top: 0; }
+/* 待ち受け・参加受付の大きな QR: 上の札「アプリ不要 スマホで参加」に近すぎた → QR を下へ。札の下端〜QR の黒い所と、QR の黒い所〜枠の下端の白い余白をそろえる
+  （札は枠の上の線にまたがって下に約 23px 出ている。QR の絵の中の白い余白は 3 マス。上 22px・下 0 で、上下とも約 3 マス分の白） */
+#stage.v2.m-open .v2qr, #stage.v2.m-wait .v2qr { padding: 22px 10px 0; }
