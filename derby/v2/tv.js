@@ -21,6 +21,14 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   if (MUTE) Sfx.mute(true);
+  /* 2026-10-20 オーナー「テレビから音を出すのはデフォルトでいい。音量調整は全部テレビのリモコンでやる」: 店のテレビ（Web デモ以外）は最初から音を出す。
+     画面の「音ON/音OFF」のボタン・「決定ボタン（OK）を押すと音が出ます」の案内は出さない。前に保存された 'off'（casaDerby.sound）は使わずに消す。
+     鳴るのは今までどおりレースの場面だけ（下の scene）。?mute=1 はテスト専用の無音（そのまま）。
+     Fire TV のアプリ（casa SLOT の APK）は setMediaPlaybackRequiresUserGesture(false) なので、触らなくても音を作って鳴らせる。
+     ふつうのブラウザは人が触るまで音を止めることがある → 何か押されたとき・レースの場面に入るたびに鳴らし直す（unlockAudio） */
+  const AUTO_SOUND = !(window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo) && !window.__derbyDemoPage;
+  if (AUTO_SOUND) { try { document.documentElement.classList.add('tv-autosnd'); } catch (e) { } }
+  let audioOn = false; // 音を鳴らせる状態になったか（下の unlockAudio）
   /* 2026-10-19 オーナー「レース中以外は音を出さない」: 音の出口（js/audio.js の scene）は場面が「レース」（m-live）のときだけ開ける（setMode）。
      レース＝締切（「締切ました」）→ ファンファーレ → ゲートイン → 発走 → レース → ゴール → リプレイ・写真判定 → 勝ち馬のアップ → 着順掲示板（確定）まで。
      待ち受け・前のレースのハイライト・参加受付・投票・結果発表の画面は無音（パドックの蹄・結果の音・音ボタンの「ピッ」も鳴らさない） */
@@ -29,7 +37,9 @@
 
   // ---------- 音のオン・オフ（game.js と同じ。状態は端末に保存） ----------
   (function soundButton() {
-    const KEY = 'casaDerby.sound', btns = Array.from(document.querySelectorAll('.soundbtn')); if (!btns.length) return;
+    const KEY = 'casaDerby.sound', btns = Array.from(document.querySelectorAll('.soundbtn'));
+    if (AUTO_SOUND) { try { if (localStorage.getItem(KEY) != null) localStorage.removeItem(KEY); } catch (e) { } btns.forEach((b) => { b.hidden = true; b.tabIndex = -1; }); return; } // 店のテレビ: ボタンなし・S キーもなし・保存の 'off' は消す
+    if (!btns.length) return;
     let saved = null; try { saved = localStorage.getItem(KEY); } catch (e) { }
     if (saved === 'off') Sfx.mute(true);
     const show = () => { const off = Sfx.isMuted(); btns.forEach((btn) => { btn.classList.toggle('off', off); btn.setAttribute('aria-label', off ? '音を出す' : '音を消す'); btn.querySelector('small').textContent = off ? '音OFF' : '音ON'; }); };
@@ -345,6 +355,7 @@
     if (TV.mode === m) return;
     TV.mode = m; TV.log.push([Math.round(now()), m]); if (TV.log.length > 50) TV.log.shift();
     if (Sfx.scene) Sfx.scene(m === 'live'); // 音はレースの場面だけ（上の説明）
+    if (m === 'live' && AUTO_SOUND && !audioOn) unlockAudio(); // 店のテレビ: 音が止められていたら、レースに入るときにもう一度鳴らし直す
     ['m-wait', 'm-hl', 'm-open', 'm-live', 'm-result'].forEach((c) => stageEl.classList.toggle(c, c === 'm-' + m));
     if (m === 'wait' || m === 'open') setTimeout(() => { try { fitHow(); } catch (e) { } }, 700); // 参加方法の文字の大きさ（QR が動き終わってから測る）
   }
@@ -879,23 +890,28 @@
   }
 
   // ---------- 起動画面: 全店同時なので自動で閉じる（音は決定ボタン・タップで出る） ----------
-  let audioOn = false;
+  const audioRunning = () => { try { const c = Sfx.ctx && Sfx.ctx(); return !!c && c.state === 'running'; } catch (e) { return false; } };
   function unlockAudio() {
-    if (audioOn) return; audioOn = true;
+    if (audioOn) return;
     try { Sfx.unlock(); if (window.Voice) Voice.unlock(); if (window.Commentary) Commentary.unlock(); } catch (e) { }
+    // 鳴らせる状態になったら済み。ブラウザに止められている（suspended）間は、次に押されたとき・次のレースでまた鳴らし直す（unlock が resume する）
+    if (MUTE || !AUTO_SOUND || audioRunning()) audioOn = true;
+    else { try { const c = Sfx.ctx && Sfx.ctx(); if (c && !c.__tvWatch) { c.__tvWatch = true; c.addEventListener('statechange', () => { if (c.state === 'running') audioOn = true; }); } } catch (e) { } }
     $('v2snd').classList.remove('show');
   }
+  TV.audio = () => ({ auto: AUTO_SOUND, on: audioOn, state: (Sfx.ctx && Sfx.ctx() && Sfx.ctx().state) || 'none', muted: Sfx.isMuted(), scene: !!(Sfx.sceneOn && Sfx.sceneOn()) }); // 確認用（テスト）
   (function splash() {
     const sp = $('splash'); if (!sp) return;
     const sub = sp.querySelector('.sub'); if (sub) sub.textContent = '参加費無料 スマホでカンタン投票';
-    const go = sp.querySelector('.splash-go'); if (go) go.innerHTML = '<p class="tap">スタート</p><p class="keys">決定ボタン（OK）を押すと音が出ます</p>';
+    const go = sp.querySelector('.splash-go'); if (go) go.innerHTML = '<p class="tap">スタート</p>' + (AUTO_SOUND ? '' : '<p class="keys">決定ボタン（OK）を押すと音が出ます</p>'); // 店のテレビは最初から音が出る（案内なし）
     let splashRun = null;
     try { if (window.Splash3D && window.Race && window.Race.Race3D && !/[?&]r2d=1/.test(QS)) { splashRun = Splash3D.start($('splashRun'), Engine.makeRace().horses, { quality: (window.R3D && R3D.quality) || 'high' }); if (splashRun) $('splashRun').classList.add('is3d'); } } catch (e) { splashRun = null; }
-    const bye = () => { if (!sp.parentNode) return; sp.id = ''; sp.classList.add('bye'); setTimeout(() => { sp.remove(); if (splashRun) { try { splashRun.stop(); } catch (e) { } } }, 520); if (!audioOn && !MUTE && !Sfx.isMuted()) $('v2snd').classList.add('show'); };
+    const bye = () => { if (!sp.parentNode) return; sp.id = ''; sp.classList.add('bye'); setTimeout(() => { sp.remove(); if (splashRun) { try { splashRun.stop(); } catch (e) { } } }, 520); if (!audioOn && !MUTE && !AUTO_SOUND && !Sfx.isMuted()) $('v2snd').classList.add('show'); };
     sp.addEventListener('click', () => { unlockAudio(); bye(); });
     setTimeout(bye, MUTE ? 600 : 4000);
   })();
   ['keydown', 'pointerdown', 'touchend'].forEach((ev) => document.addEventListener(ev, () => unlockAudio(), { passive: true }));
+  if (AUTO_SOUND && !MUTE) unlockAudio(); // 店のテレビ: 触らなくても最初から（Fire TV のアプリはこのまま鳴る。ブラウザで止められたら上の予備）
   Sprites.load().then(() => { if (view) { raceView.draw(); renderHorses(); } }).catch(() => {});
 
   /* ---------- 自動アップデート（Fire TV のアプリの中だけ。2026-10-18） ----------
