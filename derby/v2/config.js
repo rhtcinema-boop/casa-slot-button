@@ -6,4 +6,5 @@ window.DERBY_FIREBASE = {
   firebase: { apiKey: 'AIzaSyDuElvskkcKBs4XisXjTe7-mSxjq3KuswA', authDomain: 'casa-derby.firebaseapp.com', projectId: 'casa-derby', storageBucket: 'casa-derby.firebasestorage.app', messagingSenderId: '431109044793', appId: '1:431109044793:web:dd4a929a82e9603717ebe8' },
   masterEmail: 'rhtcinema@gmail.com',
   tvEmail: 'derby-tv@casa-derby.jp',
+  publicSite: 'https://rhtcinema-boop.github.io/casa-slot-button/', // 公開サイト（2026-10-20: Fire TV アプリの中のテレビの QR は、ここの derby/v2/bet.html を指す。v2/qr.js の joinURL）
 };
