@@ -81,7 +81,8 @@
   top.insertBefore(el('<div class="v2ppl" id="v2ppl"><small>全店で</small><b id="v2pplNum">0</b><small>人が参加</small></div>'), sndBtn);
   top.insertBefore(el('<span class="v2store" id="v2store"></span>'), sndBtn);
   stageEl.appendChild(el('<div class="v2info" id="v2info"><div class="cd" id="v2cd"><small id="v2cdLbl">発走まで</small><b id="v2cdNum">--:--</b><div class="cdl"><i id="v2cdSt"></i><span id="v2cdSub"></span></div></div>' +
-    '<div class="how" id="v2how"><h4>参加方法</h4><ol><li>画面右下のQRを読む</li><li>投票枚数を決めて、スタッフ認証を待つ</li><li>スマホで投票</li></ol>' +
+    /* 2026-10-20 オーナーの文字帳: 参加方法は 4 行（② リングバウンティと投票ptを引き換える ③ スタッフに認証を待つ ④ 投票を行う）。大きさは fitHow が 4 行そろえて枠に収める */
+    '<div class="how" id="v2how"><h4>参加方法</h4><ol><li>画面右下のQRを読む</li><li>リングバウンティと投票ptを引き換える</li><li>スタッフに認証を待つ</li><li>投票を行う</li></ol>' +
     // 交換の割合（2026-10-19 オーナー「Bounty X 枚で 100 と交換。参加受付中の画面にはっきりと。X はマスターからいじれるように」）: 数字は tickLabels が設定（settings.bountyPerTicket）から入れる
     '<div class="v2rate" id="v2rate"><i>交換</i><span>リングバウンティ</span><b id="v2rateX">20</b><span class="u">枚</span><em>→</em><b>100<small class="pt">pt</small></b></div></div></div>')); /* 2026-10-20: 100 → 100pt */
   // QR の下の URL は出さない（テレビでは途中で折り返して読めない。2026-10-14 見た目の講評）。#v2qrUrl は中身だけ持つ（確認用）
@@ -223,6 +224,7 @@
   const raceView = new Race($('race'));
   raceView.timeScale = 1;
   raceView.no800 = true; // 2026-10-20 オーナー「消して」: 残り 800m の縦の札（js/race3d.js）は店内モニターでは出さない
+  raceView.ordBig = true; // 2026-10-20 オーナー「画面中央にもっと大きく」: レース中の通過順の丸（js/race3d.js）を大きく・横だけまん中に（一人用のゲームは今まで通り）
   const T = Engine.TYPES;
   let view = null;                 // いま映像に入っているレース（Race オブジェクト）
   let viewOdds = null;             // 出馬表・字幕のオッズ（受付中は表示用、締切後は確定）
@@ -778,16 +780,23 @@
   const rateNow = () => { const r = Number(ST().bountyPerTicket); return Number.isInteger(r) && r >= 1 && r <= 1000 ? r : 20; };
   const xShut = (r, t) => !!r && t >= xAt(r) && t < r.closeAt; // 参加受付は締め切った・投票はまだ
   let howOrig = null, xShown = null;
-  /* 参加方法の 3 行（2026-10-20）: いちばん長い行が枠に入る大きさに 3 行そろえる（48px から 30px まで。折り返さない・QR の下にもぐらない） */
+  /* 参加方法の行（2026-10-20。同じ日の文字帳で 3 行 → 4 行）: いちばん長い行が枠に入る大きさに全部の行をそろえる（48px から 30px まで。折り返さない・QR の下にもぐらない）。
+     4 行になったので高さも見る: 見出し〜交換の帯が枠の高さに入らなければ、全部の行をそろえて小さくする（24px まで） */
   function fitHow() {
     const L = Array.from(document.querySelectorAll('#v2how ol li')); if (!L.length || !L[0].clientWidth) return;
     // 枠の右側は QR の札が重なっている（QR が出ている間）→ 使える幅は QR の左端まで。画面は拡縮されているので、測った幅を 1600 の座標に直す
     const k = (stageEl.getBoundingClientRect().width / 1600) || 1, q = $('v2qr'), qr = q && getComputedStyle(q).opacity !== '0' ? q.getBoundingClientRect() : null;
-    const room = (li) => { const r = li.getBoundingClientRect(); return Math.min(li.clientWidth, qr && qr.left > r.left ? (qr.left - r.left) / k - 20 : 1e9); };
+    // 枠は長い行に合わせて横に伸びる（折り返さないため）→ 文字の端＋枠の右の余白が QR の枠の 8px 手前までに入る大きさにする（2026-10-20: 枠の端が QR の枠に 2px 重なっていた）
+    const padR = parseFloat(getComputedStyle($('v2how')).paddingRight) || 0;
+    const room = (li) => { const r = li.getBoundingClientRect(); return Math.min(li.clientWidth, qr && qr.left > r.left ? (qr.left - r.left) / k - padR - 8 : 1e9); };
     const over = (li) => { const r = document.createRange(); r.selectNodeContents(li); const w = (r.getBoundingClientRect().right - li.getBoundingClientRect().left) / k; return w > room(li) + 1; };
     let f = 48; L.forEach((li) => { li.style.fontSize = ''; });
     L.forEach((li) => { li.style.fontSize = f + 'px'; while (f > 30 && (li.scrollWidth > li.clientWidth + 1 || over(li))) { f -= 1; li.style.fontSize = f + 'px'; } });
     L.forEach((li) => { li.style.fontSize = f + 'px'; });
+    const box = $('v2how'), cs = getComputedStyle(box), kids = Array.from(box.children).filter((e) => e.getClientRects().length);
+    const tall = () => { if (!kids.length) return false; const t = kids[0].getBoundingClientRect().top, b = kids[kids.length - 1].getBoundingClientRect().bottom; return (b - t) / k > box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) + 1; };
+    while (f > 24 && tall()) { f -= 1; L.forEach((li) => { li.style.fontSize = f + 'px'; }); }
+    box.dataset.fit = f; // 確認用（テスト・写真で何 px にそろったか）
   }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHow).catch(() => {});
   setTimeout(fitHow, 1500);
@@ -816,15 +825,15 @@
     if (m === 'open') {
       R = S.open;
       if (R && !xShut(R, t) && t < xAt(R)) { // 参加受付: 大きく「参加受付 あと」、小さく「投票締切」
-        lbl = '参加受付締め切りまで あと'; target = xAt(R); sub = '投票締切 ' + hhmm(R.closeAt) + (hhmm(R.closeAt) === hhmm(R.at) ? '' : '・' + hhmm(R.at) + ' 発走');
+        lbl = '参加締切まで あと'; target = xAt(R); sub = '投票締切 ' + hhmm(R.closeAt) + (hhmm(R.closeAt) === hhmm(R.at) ? '' : '・' + hhmm(R.at) + ' 発走');
         const xl = xAt(R) - t; stx = xl < 15000 ? 'まもなく参加受付の締切' : '参加受付中'; stc = xl < 15000 ? 'hot' : 'on';
       } else if (R) { // 投票: 参加受付は締切。大きく「投票 あと」
         lbl = '投票 あと'; target = R.closeAt; sub = ''; stx = '参加受付は締切'; stc = 'shut'; // 発走時刻は上の帯（同じ時刻を 2 回出さない）
       }
     }
-    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレースの発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { const can = S.open && R.id === S.open.id && t < xAt(R); if (can && m === 'wait') { lbl = '参加受付締め切りまで あと'; target = xAt(R); sub = ''; } /* 2026-10-19: 次のレースが受付中なら、受付の画面と同じく「参加受付 あと」（上の札「次のレース 受付中」とそろえる。発走時刻は小さな行） */ stx = can || R.openAt <= t ? '参加受付中' : hhmm(R.openAt) + ' 受付開始'; stc = can || R.openAt <= t ? 'on' : ''; } } // 次のレースが受付中（スマホで参加できる）なら、そう出す（上の札とそろえる）
+    else if (m === 'wait' || m === 'hl') { R = nextRaceOf(); lbl = '次のレースの発走まで'; target = R && R.at; sub = R ? hhmm(R.at) + ' 発走' : '本日のレースは終了しました'; if (R) { const can = S.open && R.id === S.open.id && t < xAt(R); if (can && m === 'wait') { lbl = '参加締切まで あと'; target = xAt(R); sub = ''; } /* 2026-10-19: 次のレースが受付中なら、受付の画面と同じく「参加受付 あと」（上の札「次のレース 受付中」とそろえる。発走時刻は小さな行） */ stx = can || R.openAt <= t ? '参加受付中' : hhmm(R.openAt) + ' 受付開始'; stc = can || R.openAt <= t ? 'on' : ''; } } // 次のレースが受付中（スマホで参加できる）なら、そう出す（上の札とそろえる）
     else if (m === 'result') { R = S.open || nextRaceOf(); lbl = '次のレースまで'; target = R && R.at; }
-    const left = target ? target - t : 0, hot = !!target && left < (lbl === '参加受付締め切りまで あと' ? 15000 : 30000) && m === 'open';
+    const left = target ? target - t : 0, hot = !!target && left < (lbl === '参加締切まで あと' ? 15000 : 30000) && m === 'open';
     stageTexts(m === 'open' && xShut(S.open, t));
     // 交換の割合「リングバウンティ X枚 → 100」（管理画面の設定。全店共通）。参加のしかたの枠の下（投票の段＝参加受付の締切のあとは枠ごと入れ替わるので出ない）
     { const xe = $('v2rateX'), x = rateNow(); if (xe && xe.textContent !== String(x)) xe.textContent = String(x); }
@@ -835,8 +844,9 @@
     $('v2clock').classList.toggle('hot', m === 'open' && !!S.open && S.open.closeAt - t < 30000);
     const mh = runMode() === 'staff' && !TV.armed ? 'スタッフの「次へ」でレースを流します' : runMode() === 'bet' ? 'この店で投票があるとレースを流します' : '';
     if (mh && (m === 'wait' || m === 'open')) sub = sub ? sub + '\n' + mh : mh;
-    /* 2026-10-20 オーナー「参加受付 あと を、もっと大きく」: 「参加受付締め切り／まで あと」の 2 行にして文字を大きく（.cd.xlbl。読み上げの中身は同じ文） */
-    { const xl = lbl === '参加受付締め切りまで あと', lh = xl ? '参加受付締め切り<br>まで あと' : esc(lbl), le = $('v2cdLbl'); if (le.innerHTML !== lh) le.innerHTML = lh; $('v2cd').classList.toggle('xlbl', xl); }
+    /* 2026-10-20 オーナー「参加受付 あと を、もっと大きく」: 「参加受付締め切り／まで あと」の 2 行にして文字を大きく（.cd.xlbl。読み上げの中身は同じ文）。
+       2026-10-20 オーナーの文字帳: 見出しは「参加締切まで あと」（2 行「参加締切／まで あと」で大きく） */
+    { const xl = lbl === '参加締切まで あと', lh = xl ? '参加締切<br>まで あと' : esc(lbl), le = $('v2cdLbl'); if (le.innerHTML !== lh) le.innerHTML = lh; $('v2cd').classList.toggle('xlbl', xl); }
     $('v2cdNum').textContent = target ? fmtLeft(left) : '—';
     if ($('v2cdSub').textContent !== sub) { $('v2cdSub').textContent = sub; fitText($('v2cdSub'), 24, 15); }
     const se = $('v2cdSt'); if (se.textContent !== stx) se.textContent = stx; se.className = stc; se.hidden = !stx;
