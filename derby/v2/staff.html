@@ -15,39 +15,32 @@
 <link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
 <link rel="icon" href="../icon-derby-180.png" sizes="180x180" type="image/png">
 <link rel="apple-touch-icon" href="../icon-derby-180.png">
-<link rel="stylesheet" href="staff.css?v=12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap"><!-- casa DERBY の文字（2026-10-21 オーナー: ゲーム全体を Noto Sans JP に統一。読めなければ端末の文字のまま） -->
+<link rel="stylesheet" href="staff.css?v=v4a">
 </head>
 <body>
 <div id="app">
   <header class="top">
     <b class="crest"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="86" height="28" alt="casa DERBY" draggable="false"><span>スタッフ</span></b>
     <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
+    <div class="tvrow hidden" id="tvRow"></div>
+    <div class="nextrow hidden" id="nextRow"></div>
   </header>
-  <nav class="tabs hidden" id="tabs">
-    <button data-mode="auth" class="on">認証</button>
-    <button data-mode="pay">受け取り</button>
-    <button data-mode="next">次へ</button>
-    <button data-mode="logs">記録</button>
+  <main class="body hidden" id="main"></main>
+  <nav class="dockbar hidden" id="dock">
+    <button type="button" data-sheet="release">番号を空ける</button>
+    <button type="button" data-sheet="test">テストレース</button>
+    <button type="button" data-sheet="more">その他</button>
   </nav>
-  <div id="xstage" hidden></div>
-  <section class="body hidden" id="scanView">
-    <div class="cam" id="cam">
-      <video id="video" playsinline muted autoplay></video>
-      <div class="aim"><i></i><i></i><i></i><i></i></div>
-      <div class="camMsg" id="camMsg">カメラを起動しています…</div>
-    </div>
-    <p class="guide" id="guide"></p>
-    <div class="row one"><button class="btn ghost" id="camBtn">カメラを再起動</button></div><!-- 2026-10-20 オーナーの文字帳: 「番号を手で入れる」はいらない → 消して「カメラを再起動」を真ん中に -->
-  </section>
-  <section class="body hidden" id="nextView"></section>
-  <section class="body hidden" id="logsView"></section>
   <div class="login hidden" id="login"></div>
   <div class="sheet hidden" id="sheet"></div>
-  <div class="toast hidden" id="toast"></div>
+  <div class="toast hidden" id="toast" role="status"></div>
 </div>
-<script src="client.js?v=13"></script>
-<script src="staff.js?v=16"></script>
-<script src="tvswitch.js?v=s3"></script><!-- 2026-10-19: 店のテレビのゲームの見張り（スマホでは見張るだけ） -->
-<script src="staffswitch.js?v=s5"></script><!-- 2026-10-19: スタッフのスマホからテレビのゲームを切り替える・casa SLOT のときは紙幣のページへ入れ替え／その 2: 左上の「スロット ｜ 競馬」・シートのテストレース -->
+<script src="client.js?v=v4a"></script>
+<script src="staff.js?v=v4a"></script>
+<script src="tvswitch.js?v=s3"></script><!-- 店のテレビのゲームの見張り（スマホでは見張るだけ） -->
+<script src="staffswitch.js?v=v4a"></script><!-- 左上の「スロット ｜ 競馬」・casa SLOT のときは紙幣のページへ入れ替え -->
 </body>
 </html>
