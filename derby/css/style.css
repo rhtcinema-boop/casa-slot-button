@@ -3,9 +3,9 @@
    ベット中: 左上=パドック映像、右=出馬表と展開予想、下=馬券のマス目と操作
    レース中（#stage.racing）: 映像を 1.5 倍に広げ、まわりのパネルは隠し、下に自分の馬券だけ出す */
 :root {
-  --font-ui: "Hiragino Maru Gothic ProN", "Rounded Mplus 1c", "M PLUS Rounded 1c", "Hiragino Sans", "Yu Gothic", "Meiryo", "Noto Sans JP", system-ui, sans-serif;
-  --font-tv: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "Noto Sans JP", sans-serif;
-  --font-num: "Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-ui: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; /* 2026-10-21 Noto Sans JP に統一 */
+  --font-tv: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --font-num: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
   --wood: #a0622d; --wood-dark: #6e3f17; --cream: #fff8e6; --ink: #3b2a1e; --ink-sub: #7a5a3e;
   --orange: #ff8a00; --orange-dark: #d86b00; --green: #5fb53a; --green-dark: #2f7a1e;
   --navy: #14213d; --navy-2: #1f3260; --gold: #ffc107; --led: #ffa31a;
@@ -389,6 +389,11 @@ button { font-family: inherit; }
 .wincard .w2 { margin-top: 10px; font: 900 52px/1.05 var(--font-tv); letter-spacing: .02em; transform-origin: 0 50%; }
 .wincard .w2.pop { animation: wcName .7s var(--ease-out) both; }
 @keyframes wcName { 0% { transform: scale(1); color: #fff; } 35% { transform: scale(1.12); color: #ffd54f; text-shadow: 0 0 18px rgba(255, 200, 60, .8); } 100% { transform: scale(1); color: #fff; text-shadow: none; } }
+/* v4（2 連単）: 1 着のアップのあとの 2 着のアップは同じカードを銀に（左の帯と「2着」の文字。js/race3d.js の 2 位の丸と同じ銀 #c9d3de） */
+.wincard.second::before { background: #c9d3de; }
+.wincard.second .w1 b { color: #dfe6ee; }
+.wincard.second .w2.pop { animation-name: wcName2; }
+@keyframes wcName2 { 0% { transform: scale(1); color: #fff; } 35% { transform: scale(1.1); color: #eef3f8; text-shadow: 0 0 18px rgba(220, 230, 245, .85); } 100% { transform: scale(1); color: #fff; text-shadow: none; } }
 .gain { left: 560px; top: 710px; width: 480px; height: 78px; border-radius: 39px; background: #f4b400; color: #142436; display: flex; align-items: center; justify-content: center; gap: 12px; font: 900 36px/1 var(--font-tv); box-shadow: 0 0 0 4px #fff, 0 8px 0 4px #b47f00, 0 14px 28px rgba(0, 0, 0, .35); transform: scale(.6); }
 .gain.show { transform: none; transition: opacity .2s, transform .45s var(--ease-back); }
 .gain b { font: 900 52px/1 var(--font-num); font-variant-numeric: tabular-nums; }
