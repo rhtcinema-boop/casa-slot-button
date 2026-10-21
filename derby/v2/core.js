@@ -1,6 +1,12 @@
-/* casa DERBY v2 の決まりごと（DOM・通信なし。node とブラウザの両方で動く）: window.DerbyCore
+/* casa DERBY の決まりごと（DOM・通信なし。node とブラウザの両方で動く）: window.DerbyCore
    v2/server.js（模擬クラウド）と同じ計算を、データを引数で受け取る形にしたもの。Firestore 版（v2/client-firestore.js）と
-   「結果を決めるテレビ」はこれを使う。中身は server.js と同じ決まり（API.md・DESIGN.md）。 */
+   「結果を決めるテレビ」はこれを使う。
+   v4（2026-10-21・仕様書_v4_大改修.md。設計のまとめは v2/V4_CORE_NOTES.md）:
+   - 参加無料。1 票 ＝「店＋会計番号（2 桁 01〜99）」ごとに 1 レース 1 票。ニックネームは必ず（8 文字まで）。リングバウンティの交換・認証・返却はなくした。
+   - 投票は 2 連単だけ（1 着・2 着を順番どおり。30 通り）。締切までは選び直せる（最後の選択が 1 票）。選び直せるのは最初に投票したスマホだけ。
+   - 当選額 ＝ 100pt × 2 連単の倍率 を 100pt 単位に切り上げ（v2/outcome.js の payFor）。受け取りは投票した店で、その営業日のうち（朝 5 時の区切り）。
+   - 時刻表の時刻 ＝ レースが走り出す時刻（at）。投票は at の voteSec 秒前（初期 180 秒）から at まで。テストレースは投票 60 秒。
+   - 投票が始まった時刻に、そのレースが見える店のテレビのゲームを DERBY にする（tvAutoPlan。レースのあとも DERBY のまま）。 */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.DerbyCore = factory();
@@ -8,65 +14,36 @@
   'use strict';
 
   const JST = 9 * 3600 * 1000, DAY = 86400000;
-  /* お金の単位（2026-10-16 オーナー決定）: 投票は枚（リングバウンティ 1 枚）のまま、払い戻し・設定額・上限・集計の払い出しは「額」（1 枚 = 100）。
-     当選額 = 枚数 × オッズ × 100 を 10 の倍数に切り上げた額（outcome.js の stakePayout・roundPay。2026-10-20 オーナー決定。渡す額・集計・1 日の上限・目標の幅の判定は全部この額）。返還・返却はリングバウンティで返す（下の bountyPerTicket。2026-10-17） */
-  const MONEY_PER_TICKET = 100;
-  const roundAmount = (v) => Math.max(0, Math.round((Number(v) || 0) / MONEY_PER_TICKET) * MONEY_PER_TICKET); // 管理画面で入れた額は 100 単位に丸める
-  /* リングバウンティ → 投票券の交換の割合（2026-10-17 オーナー「リングバウンティ20枚につき投票権1枚と交換する感じにして」）:
-     bountyPerTicket ＝ 投票券 1 枚に必要なリングバウンティの枚数（初期 20・整数 1〜1000。公開してよい）。
-     認証したときの割合を券に残す（tk.rate・tk.bounty = 枚数 × 割合）。あとで割合を変えても前の券・記録・返却は変わらない。
-     割合のない以前の券・受け取り・記録は 1 対 1（rate 1）。返却・返還はリングバウンティで返す（受け取りの bounty。amount は 0）。
-     当選額・受取額（1 枚 = 100）はこれまでどおり（混ぜない） */
-  const BOUNTY_DEFAULT = 20, BOUNTY_MAX = 1000;
-  const rateOf = (x) => { const r = x && Number(x.rate); return Number.isInteger(r) && r >= 1 ? r : 1; };
-  const bountyRate = (t) => { const r = t && Number(t.bountyPerTicket); return Number.isInteger(r) && r >= 1 && r <= BOUNTY_MAX ? r : BOUNTY_DEFAULT; };
-  const ticketBounty = (tk) => (tk && tk.bounty != null && Number.isFinite(Number(tk.bounty)) ? Number(tk.bounty) : ((tk && Number(tk.count)) || 0) * rateOf(tk));
-  // 返却・返還の受け取りのリングバウンティ（以前の受け取りは amount が額＝枚数 × 100 だったので ÷100。当たりは 0）
-  const payoutBounty = (p) => (!p || p.kind !== 'refund' ? 0 : p.bounty != null ? Number(p.bounty) || 0 : Math.round((Number(p.amount) || 0) / MONEY_PER_TICKET));
-  // 記録 1 行のリングバウンティ（認証・返却・返還・返却/返還の受け取りと期限切れ）。以前の記録: 認証は枚数（1 対 1）、ほかは額 ÷100
-  const isBountyLog = (l) => !!l && (l.type === 'auth' || l.type === 'return' || l.type === 'refund' || ((l.type === 'paid' || l.type === 'expired') && l.kind === 'refund'));
-  const logBounty = (l) => (!isBountyLog(l) ? 0 : l.bounty != null ? Number(l.bounty) || 0 : l.type === 'auth' ? Number(l.count) || 0 : Math.round((Number(l.count) || 0) / MONEY_PER_TICKET));
-  /* 会計番号ごとの集計（server.js・Firestore 版の記録 API の byBill）: auth＝認証した投票券の枚数・bounty＝受け取ったリングバウンティ・win/paid/expired＝当選額・受取額・期限切れ（額）・
-     refund／return＝返還／返却するリングバウンティ・paidBack＝返したリングバウンティ・expiredBack＝期限切れのリングバウンティ */
+  /* お金: 1 票 ＝ 100pt（STAKE）。当選額 ＝ 100pt × 倍率 の 100pt 切り上げ。時刻表の「当選額の目標」・上限も pt（100 単位に丸めて保存） */
+  const STAKE = 100, MONEY_PER_TICKET = STAKE; // MONEY_PER_TICKET は以前の名前（同じ 100）
+  const roundAmount = (v) => Math.max(0, Math.round((Number(v) || 0) / STAKE) * STAKE); // 管理画面で入れた額は 100 単位に丸める
+  /* 会計番号ごとの集計（記録 API の byBill）: win＝当選額・paid＝渡した額・expired＝期限切れ（どれも pt） */
   function sumBill(logs) {
     const by = {};
     (logs || []).forEach((l) => {
-      const x = (by[l.bill] = by[l.bill] || { auth: 0, bounty: 0, win: 0, paid: 0, expired: 0, refund: 0, return: 0, paidBack: 0, expiredBack: 0, nick: l.nick }), n = Number(l.count) || 0, b = logBounty(l);
-      if (l.type === 'auth') { x.auth += n; x.bounty += b; }
-      else if (l.type === 'win') x.win += n;
-      else if (l.type === 'paid') { if (l.kind === 'refund') x.paidBack += b; else x.paid += n; }
-      else if (l.type === 'expired') { if (l.kind === 'refund') x.expiredBack += b; else x.expired += n; }
-      else if (l.type === 'refund') x.refund += b;
-      else if (l.type === 'return') x.return += b;
+      const k = (l.storeId ? l.storeId + ':' : '') + l.bill, x = (by[k] = by[k] || { storeId: l.storeId || null, bill: l.bill, nick: l.nick, votes: 0, win: 0, paid: 0, expired: 0 }), n = Number(l.amount != null ? l.amount : l.count) || 0;
+      if (l.type === 'win') x.win += n; else if (l.type === 'paid') x.paid += n; else if (l.type === 'expired') x.expired += n; else if (l.type === 'vote') x.votes++;
+      if (l.nick) x.nick = l.nick;
     });
     return by;
   }
-  /* 集計 1 日（または店ごと）のリングバウンティ: 新しい項目（bountyBet・betRated・bountyReturned・returnedTickets・bountyRefund…）と、以前の項目（returned・refund は額）を合わせる。
-     bountyIn＝受け取ったリングバウンティ（投票した券＋返却した券）、exchanged＝引き換えた投票券の枚数 */
-  function statBounty(s) {
-    s = s || {}; const n = (k) => Number(s[k]) || 0, old = (k) => Math.round(n(k) / MONEY_PER_TICKET);
-    const retT = n('returnedTickets') + old('returned'), ret = n('bountyReturned') + old('returned');
-    return { bountyIn: n('bountyBet') + Math.max(0, n('bet') - n('betRated')) + ret, exchanged: n('bet') + retT, bountyReturned: ret, bountyReturnedPaid: n('bountyReturnedPaid') + old('returnedPaid'), bountyReturnedExpired: n('bountyReturnedExpired') + old('returnedExpired'), bountyRefund: n('bountyRefund') + old('refund'), bountyRefundPaid: n('bountyRefundPaid'), bountyRefundExpired: n('bountyRefundExpired') + old('refundExpired') };
-  }
   const RUN_LEAD_MS = 2000, LATE_CAP_MS = 60000; // 遅れて決めたとき: ゲートは「決めた 2 秒後」より前に開けない／60 秒より大きく遅れたらすぐ発表
-  /* 確定演出（2026-10-16 オーナー決定。パチンコの確定演出のように、レースの中に勝ち馬のヒントを隠す。店舗には見せない裏の調整）:
-     6 つの演出 CUE_KEYS。それぞれ show＝出す割合（%）・hit＝出たとき本当の勝ち馬を指す割合（%。100 = 確定。外れたときは別の馬を指す）。
-     決め方は cuesFor（seed から決まるので、どの決める係・サーバーでも同じ）。テレビに届くのは合言葉のあるテレビだけ（publicRace の out.cues） */
+  /* 確定演出（2026-10-16 オーナー決定。v4 でも「1 着の馬だけ教える」のまま）: 6 つの演出 CUE_KEYS。show＝出す割合（%）・hit＝出たとき本当の 1 着を指す割合（%） */
   const CUE_KEYS = ['fruit', 'crowd', 'sign', 'cloud', 'gateLate', 'eye'];
   const DEFAULT_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
-  const DEFAULT_TUNING = { payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, exchangeSec: 90, voteSec: 30, betSec: 120, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, bountyPerTicket: BOUNTY_DEFAULT };
-  const PUBLIC_TUNING_KEYS = ['shiftUp', 'shiftDown', 'exchangeSec', 'voteSec', 'betSec', 'resultSec', 'gateSec', 'postSec', 'photoExtraSec', 'closeLeadSec', 'scenes', 'dayStartHour', 'horizonMin', 'horseLook', 'horseLookPrev', 'horseLookAt', 'bountyPerTicket']; /* bountyPerTicket（交換の割合）は公開してよい。cues（演出の割合）は裏＝入れない */
+  /* 調整の初期値（ver: 4 ＝ v4 の形。ver のない以前の保存データは、投票の秒数の意味が違う＝2 段の 2 段目だったので初期値 180 秒に読み替える） */
+  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES };
+  const PUBLIC_TUNING_KEYS = ['ver', 'shiftUp', 'shiftDown', 'voteSec', 'resultSec', 'gateSec', 'postSec', 'photoExtraSec', 'closeLeadSec', 'scenes', 'dayStartHour', 'horizonMin', 'horseLook', 'horseLookPrev', 'horseLookAt']; /* cues（演出の割合）・当たりの幅・上限・払い戻し率は裏＝入れない */
+  const LEGACY_TUNING_KEYS = ['exchangeSec', 'betSec', 'bountyPerTicket', 'shiftWidth']; // 以前の形の項目（読むときに捨てる）
+  const SHIFT_UP_MAX = 10000, SHIFT_DOWN_MAX = 1; // 締切のあとの倍率のずらし幅（2026-10-20「上限なしで管理画面から全部決められる」）: 上げ幅は事実上上限なし・下げ幅は 100% まで（倍率は 1.0 倍より下げない）
   const pct = (v, d) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : d; };
-  // 保存されている演出の割合 → 6 つぶんそろえた形（足りない演出は初期値）
   function cuesOf(stored) {
     const src = stored && typeof stored === 'object' ? stored : {}, out = {};
     CUE_KEYS.forEach((k) => { const s = src[k] && typeof src[k] === 'object' ? src[k] : {}, d = DEFAULT_CUES[k]; out[k] = { show: pct(s.show, d.show), hit: pct(s.hit, d.hit) }; });
     return out;
   }
-  // 種から決まる乱数（js/engine.js の rng と同じ mulberry32。core.js は Engine を持たないので写し）
   function mulberry(seed) { let a = (seed >>> 0) || 0x9e3779b9; return function () { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-  /* 演出を決める。winner: 勝ち馬（0〜5）。演出ごとに別の種（salt・レース id・'cues'・演出名）なので、1 つの割合を変えてもほかの演出の出方は変わらない。
-     返り値 { fruit: { horse: 2 } | null, crowd, sign, cloud, gateLate, eye }（null = 出さない。horse は 0 始まりの馬の添字） */
+  /* 演出を決める。winner: 1 着の馬（0〜5）。返り値 { fruit: { horse: 2 } | null, crowd, sign, cloud, gateLate, eye } */
   function cuesFor(Outcome, salt, raceId, winner, tuning, n) {
     const C = cuesOf(tuning && tuning.cues), out = {}, N = n || 6, w = Number(winner);
     CUE_KEYS.forEach((k) => {
@@ -79,9 +56,7 @@
     return out;
   }
   const withoutCues = (result) => { if (!result || result.cues === undefined) return result; const o = Object.assign({}, result); delete o.cues; return o; };
-  /* 馬の見た目（全店共通。2026-10-14 オーナー「全店でそろえる」）: 'cute'＝かわいい（標準・js/r3d/horse3d.js）| 'real'＝本物寄り（js/r3d/horse3d-real.js）。
-     切り替えはレースの区切りで: 変えた時刻 horseLookAt から HORSE_LOOK_GRACE_MS 後より後に受付が始まる（openAt）レースから新しい見た目、それより前のレースは前の見た目（horseLookPrev）。
-     どのテレビも同じ決まりで決めるので全店そろう（受付中・走っている途中のレースは変わらない）。猶予はテレビに設定が届いて本物寄りの馬を読み込むための時間 */
+  /* 馬の見た目（全店共通。'cute' | 'real'）: 変えた時刻 horseLookAt から HORSE_LOOK_GRACE_MS 後より後に投票が始まる（openAt）レースから新しい見た目 */
   const HORSE_LOOKS = ['cute', 'real'], HORSE_LOOK_GRACE_MS = 30000;
   function horseLookFor(s, race) {
     s = s || {}; const cur = HORSE_LOOKS.indexOf(s.horseLook) >= 0 ? s.horseLook : 'cute', prev = HORSE_LOOKS.indexOf(s.horseLookPrev) >= 0 ? s.horseLookPrev : 'cute', at = Number(s.horseLookAt) || 0;
@@ -90,43 +65,19 @@
     return open >= at + HORSE_LOOK_GRACE_MS ? cur : prev;
   }
 
-  /* ---------- 受付の 2 段（2026-10-16 オーナー決定） ----------
-     参加受付（引き換え）: 会計番号・ニックネーム・枚数 → スタッフがリングバウンティと引き換えて認証。exchangeCloseAt まで。
-     投票: 認証済みのお客さんが馬を選ぶ。voteCloseAt（＝これまでの closeAt）まで。認証済みなら参加受付の間も投票できる。
-     exchangeCloseAt = closeAt − voteSec、openAt（テレビの受付画面の始まり）= exchangeCloseAt − exchangeSec。
-     以前の betSec（1 つだけ）は exchangeSec = max(betSec − 30, 10)・voteSec = 30 に読み替える（betSec には合計を写す＝古い画面用） */
-  const STAGE_DEFAULT = { exchangeSec: 90, voteSec: 30 };
+  /* ---------- 投票の時間（v4: 1 段だけ） ----------
+     closeAt（締切）＝ at（発走）− closeLeadSec（初期 0）。openAt（投票の始まり）＝ closeAt − voteSec。全店同じ（店ごとの上書きはしない）。
+     テレビの QR はいつも出す。openAt より前に読んだスマホは「次のレースは 21:00、投票は 20:57 から」で待つ */
+  const VOTE_SEC_MIN = 10, VOTE_SEC_MAX = 3600;
   const secOf = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)));
-  function stageSecs(src, base) {
-    src = src || {}; base = base || STAGE_DEFAULT;
-    let ex = secOf(src.exchangeSec), vo = secOf(src.voteSec);
-    const bet = secOf(src.betSec);
-    if (ex == null && vo == null && bet != null) { ex = Math.max(bet - 30, 10); vo = 30; } /* 以前の betSec だけ */
-    return { exchangeSec: ex != null ? ex : base.exchangeSec, voteSec: vo != null ? vo : base.voteSec };
-  }
-  const hasStage = (s) => !!s && (secOf(s.exchangeSec) != null || secOf(s.voteSec) != null || secOf(s.betSec) != null);
-  /* レースの 2 段の時刻（店ごとの上書きつき）。レースの exchangeSec・voteSec は作った時点の全体の値。店の設定があればそちら（betSec と同じく、見せるときに計算）。
-     古いレース（exchangeCloseAt なし）は 1 段のまま（参加受付も投票も closeAt まで）。v2/firestore.rules の exchangeCloseMs と同じ決まり */
-  function stagesFor(r, ss) {
-    if (!r) return null;
-    const close = Number(r.closeAt) || 0, xr = r.exchangeCloseAt != null ? Number(r.exchangeCloseAt) : close;
-    const base = { exchangeSec: r.exchangeSec != null ? Number(r.exchangeSec) : Math.max(0, (xr - (Number(r.openAt) || xr)) / 1000), voteSec: r.voteSec != null ? Number(r.voteSec) : Math.max(0, (close - xr) / 1000) };
-    const sg = hasStage(ss) ? stageSecs(ss, base) : base;
-    const voteFixed = !(ss && (secOf(ss.voteSec) != null || (secOf(ss.exchangeSec) == null && secOf(ss.betSec) != null)));
-    const x = voteFixed ? xr : close - sg.voteSec * 1000;
-    return { exchangeSec: sg.exchangeSec, voteSec: voteFixed ? Math.max(0, (close - xr) / 1000) : sg.voteSec, exchangeCloseAt: x, voteCloseAt: close, openAt: x - sg.exchangeSec * 1000 };
-  }
-  /* 手動のレース（管理のテスト用 createRace）: exchangeSec・voteSec（または以前の betSec）を渡せる。voteSec を渡さないときは投票の秒数を inSec の半分までにする
-     （すぐ締め切る確かめ用のレースでも参加受付が少しはできるように）。betSec だけなら受付の合計の長さ（openAt）はそのまま */
+  function voteWindow(r) { if (!r) return null; const close = Number(r.closeAt) || 0, open = r.openAt != null ? Number(r.openAt) : close - (Number(r.voteSec) || 0) * 1000; return { openAt: open, closeAt: close, voteSec: Math.max(0, Math.round((close - open) / 1000)) }; }
+  // いま投票できるか（締切前の upcoming で、投票の始まりを過ぎた）
+  const votingOpen = (r, t) => !!r && r.status === 'upcoming' && t >= voteWindow(r).openAt && t < Number(r.closeAt);
+  /* 手動のレース（管理のテスト用 createRace）: voteSec を渡せる。渡さないときは min(全体の voteSec, inSec)（作ってすぐ投票できる） */
   function manualStages(b, inSec, tuning) {
-    b = b || {}; const T = tuningOf(tuning), given = (v) => v != null && v !== '';
-    const sg = stageSecs({ exchangeSec: b.exchangeSec, voteSec: b.voteSec, betSec: b.betSec }, T);
-    const vo = given(b.voteSec) ? sg.voteSec : Math.min(sg.voteSec, Math.floor(Math.max(0, Number(inSec) || 0) / 2));
-    const ex = given(b.exchangeSec) ? sg.exchangeSec : given(b.betSec) ? Math.max(0, Number(b.betSec) - vo) : sg.exchangeSec;
-    return { exchangeSec: ex, voteSec: vo, sims: b.sims };
+    b = b || {}; const T = tuningOf(tuning), v = secOf(b.voteSec), i = Math.max(0, Number(inSec) || 0);
+    return { voteSec: v != null ? v : Math.min(T.voteSec, i), sims: b.sims };
   }
-  // いま新しい参加受付（券を作る・認証）ができるか
-  const exchangeOpen = (r, ss, t) => { const g = stagesFor(r, ss); return !!g && t < g.exchangeCloseAt; };
 
   /* ---------- エラー（DerbyCloud と同じ形: err.code / err.status / err.body） ---------- */
   function err(status, code, message, extra) { const e = new Error(message || code); e.status = status; e.code = code; e.body = Object.assign({ error: code, message: message || code }, extra || {}); return e; }
@@ -135,15 +86,15 @@
   const dateStr = (ms) => new Date(ms + JST).toISOString().slice(0, 10);
   const dayStart = (ds) => { const p = ds.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) - JST; };
   const weekday = (ds) => { const p = ds.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); };
-  const hhmm = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim()); return m && Number(m[2]) < 60 ? Number(m[1]) * 60 + Number(m[2]) : null; }; // 分は 0〜59（"10:75" を 11:15 として通していた）。時は 24 以上も可（深夜 25:30 など）
+  const hhmm = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim()); return m && Number(m[2]) < 60 ? Number(m[1]) * 60 + Number(m[2]) : null; };
   const fmtTime = (ms) => new Date(ms + JST).toISOString().slice(11, 16);
   const compact = (ds) => ds.replace(/-/g, '');
   const bizDate = (ms, h) => dateStr(ms - (h == null ? 5 : h) * 3600000);
   const bizDay = (ms, h) => compact(bizDate(ms, h));
-  // 当たり・返還の受け取りの期限: 時刻 ms（発表・返還を作った時刻のうち遅いほう）が入る営業日の終わり（次の区切り h 時）
+  // 受け取りの期限: 時刻 ms（発表した時刻とレースの時刻の遅いほう）が入る営業日の終わり（次の区切り h 時）
   const expireAtFor = (ms, h) => { h = h == null ? 5 : h; return dayStart(bizDate(ms, h)) + DAY + h * 3600000; };
 
-  /* ---------- 時刻表 ---------- */
+  /* ---------- 時刻表（時刻 ＝ レースが走り出す時刻。全店同じ） ---------- */
   function ruleTimes(rule) {
     if (Array.isArray(rule.times)) return rule.times.map(hhmm).filter((x) => x != null);
     const from = hhmm(rule.from), to = hhmm(rule.to), ev = Math.max(1, Number(rule.everyMin) || 0);
@@ -152,7 +103,7 @@
     return out;
   }
   function ruleSlots(rule) {
-    const pay = Math.max(0, Math.floor(Number(rule.payout) || 0)); // 額（1 枚 = 100）
+    const pay = Math.max(0, Math.floor(Number(rule.payout) || 0));
     if (Array.isArray(rule.races)) return rule.races.map((x) => ({ min: hhmm(x.time), payout: x.payout != null ? Math.max(0, Math.floor(Number(x.payout) || 0)) : pay })).filter((x) => x.min != null);
     return ruleTimes(rule).map((min) => ({ min, payout: pay }));
   }
@@ -162,7 +113,6 @@
     if (rule.kind === 'weekday') return Array.isArray(rule.weekdays) && rule.weekdays.map(Number).includes(weekday(ds));
     return rule.kind === 'daily' || !rule.kind;
   }
-  // その日の出走の一覧（全店の決まりと店舗ごとの決まりは別々に判定。優先: 日付 > 曜日 > 毎日）
   function expandDate(ds, rules) {
     const groups = {};
     (rules || []).forEach((r, idx) => { const g = r.storeId || ''; (groups[g] = groups[g] || []).push(Object.assign({ _idx: idx }, r)); });
@@ -180,18 +130,16 @@
     });
     return Object.values(out).sort((a, b) => a.at - b.at);
   }
-  // 昨日〜明日。前の日の「24:30」と次の日の「00:30」は同じ時刻なので 1 つにする（前の日のほうを残す。以前は同じ時刻にレースが 2 つできた。QA 2026-10-14）
   function scheduleAround(t, rules) {
     const all = [].concat(expandDate(dateStr(t - DAY), rules), expandDate(dateStr(t), rules), expandDate(dateStr(t + DAY), rules)), seen = {};
     return all.filter((e) => { const k = (e.storeId || '') + '|' + e.at; if (seen[k]) return false; seen[k] = 1; return true; }).sort((a, b) => a.at - b.at);
   }
-  // 管理画面から来た決まりを確かめて整える（server.js の POST /api/admin/timetable と同じ）
   function normalizeRules(input, storeIds, storeName) {
     if (!Array.isArray(input)) throw err(400, 'bad_rules', '時刻表の決まりがありません');
     const rules = input.map((r, i) => {
       const kind = ['daily', 'weekday', 'date'].includes(r.kind) ? r.kind : 'daily';
       if (kind === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) throw err(400, 'bad_rule', '日付の形がちがいます（' + (i + 1) + ' 行目）');
-      const rule = { id: String(r.id || 'r' + (i + 1)), enabled: r.enabled !== false, kind, payout: roundAmount(r.payout), /* 払い戻しの合計は額（100 単位に丸める） */ scope: r.scope === 'store' ? 'store' : 'all', storeId: r.storeId || null };
+      const rule = { id: String(r.id || 'r' + (i + 1)), enabled: r.enabled !== false, kind, payout: roundAmount(r.payout), scope: r.scope === 'store' ? 'store' : 'all', storeId: r.storeId || null };
       if (kind === 'weekday') rule.weekdays = (r.weekdays || []).map(Number).filter((d) => d >= 0 && d <= 6);
       if (kind === 'date') rule.date = r.date;
       if (r.tpl != null) rule.tpl = String(r.tpl).slice(0, 64);
@@ -216,36 +164,65 @@
     });
     return rules;
   }
-  /* 保存されている調整値 → 初期値で埋めた調整値。
-     確定オッズのずらし幅は上下別々（shiftUp＝上げてよい幅・shiftDown＝下げてよい幅。2026-10-16）。以前の保存データ（shiftWidth だけ）は両方に使う。
-     shiftWidth は古いテレビ（決める係）のために max(shiftUp, shiftDown) を写しておく（読むのは新しい 2 つ） */
+  /* 時刻表の間隔の目安（管理画面の確かめ用）: 投票＋ゲートイン＋走り（約 60 秒）＋リプレイ（postSec）。これより短い間隔だと前のレースの結果発表と次の投票が重なる */
+  /* 公開の時刻表（Firestore derbySchedule/public・模擬クラウド GET /api/schedule）: 時刻と秒数だけ。目標額 payout・名前・型の印は入れない。
+     casa SLOT のテレビが v2/next-open.js（DerbyNextOpen.next）で投票の始まりを求めて DERBY へ移るために読む（ログインなしで読める）。
+     管理画面で時刻表・調整（投票の秒数など）を保存したときに書き直す */
+  function publicRules(rules) {
+    return (Array.isArray(rules) ? rules : []).map((r) => {
+      const o = { id: String(r.id || ''), enabled: r.enabled !== false, kind: ['daily', 'weekday', 'date'].includes(r.kind) ? r.kind : 'daily', storeId: r.storeId || null };
+      if (o.kind === 'weekday') o.weekdays = (r.weekdays || []).map(Number);
+      if (o.kind === 'date') o.date = String(r.date || '');
+      if (Array.isArray(r.races)) o.races = r.races.map((x) => ({ time: String((x && x.time) || '') }));
+      else if (Array.isArray(r.times)) o.times = r.times.map(String);
+      else { o.from = String(r.from || ''); o.to = String(r.to || ''); o.everyMin = Number(r.everyMin) || 0; }
+      return o;
+    });
+  }
+  /* 投票の秒数（voteSec）を変えたとき、もう作ってあるがまだ投票が始まっていない時刻表のレースも新しい秒数に合わせる（2026-10-21）。
+     そうしないと、作ってある 15 分先までのレースは前の秒数のまま＝公開の時刻表（casa SLOT のテレビが読む）と投票の始まりがずれる。
+     手動・テストのレース（id が x- / t-）・投票が 5 秒以内に始まるもの・新しい始まりが 5 秒以内になるものは変えない。返り値 [{ id, openAt, voteSec }] */
+  function revoteRaces(races, tuning, t) {
+    const T = tuningOf(tuning), out = [];
+    (races || []).forEach((r) => {
+      if (!r || r.status !== 'upcoming' || r.test || /^[xt]-/.test(r.id) || !(r.closeAt > 0)) return;
+      const cur = voteWindow(r), openAt = r.closeAt - T.voteSec * 1000;
+      if (cur.voteSec === T.voteSec || cur.openAt <= t + 5000 || openAt <= t + 5000) return;
+      out.push({ id: r.id, openAt, voteSec: T.voteSec });
+    });
+    return out;
+  }
+  function publicSchedule(rules, tuning, t) { const T = tuningOf(tuning); return { rules: publicRules(rules), voteSec: T.voteSec, closeLeadSec: T.closeLeadSec, dayStartHour: T.dayStartHour, updatedAt: Number(t) || 0 }; }
+  function minGapSec(tuning) { const T = tuningOf(tuning), gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec; return T.voteSec + gate + 60 + T.postSec + 2 * T.photoExtraSec; }
+
+  /* 保存されている調整値 → 初期値で埋めた調整値。以前の形の項目（交換の割合・参加受付の秒数など）は捨てる。
+     ver のない以前のデータの voteSec（2 段の 2 段目＝30 秒など）は v4 の初期値 180 秒に読み替える。以前の shiftWidth（±1 つ）は上げ・下げの両方に */
   function tuningOf(stored) {
     const src = stored || {}, t = Object.assign(JSON.parse(JSON.stringify(DEFAULT_TUNING)), src);
     if (src.shiftWidth != null) { const w = Math.min(0.5, Math.max(0, Number(src.shiftWidth) || 0)); if (src.shiftUp == null) t.shiftUp = w; if (src.shiftDown == null) t.shiftDown = w; }
-    const sg = stageSecs(src, STAGE_DEFAULT); t.exchangeSec = sg.exchangeSec; t.voteSec = sg.voteSec; t.betSec = sg.exchangeSec + sg.voteSec; /* 以前の betSec だけのデータは 2 段に読み替え */
-    t.cues = cuesOf(src.cues); /* 演出の割合: 足りない演出は初期値 */
-    t.bountyPerTicket = bountyRate(src); /* 交換の割合（ない・おかしい値は 20） */
+    if (src.ver !== 4) t.voteSec = DEFAULT_TUNING.voteSec;
+    t.ver = 4;
+    LEGACY_TUNING_KEYS.forEach((k) => { delete t[k]; });
+    t.cues = cuesOf(src.cues);
     return t;
   }
-  // 調整値の確かめ（server.js の POST /api/admin/tuning と同じ範囲）
+  // 調整値の確かめ（管理画面の保存。範囲の外は 400 bad_tuning。以前の画面が送る交換の割合などは黙って捨てる）
   function mergeTuning(cur, b, now) {
     const t = tuningOf(cur);
-    const num = (k, lo, hi) => { if (b[k] == null) return; const v = Number(b[k]); if (!Number.isFinite(v) || v < lo || v > hi) throw err(400, 'bad_tuning', k + ' は ' + lo + '〜' + hi + ' です'); t[k] = v; };
-    num('payoutRate', 0.3, 1.2); num('volatility', 0.2, 3); num('payoutCap', 0, 1e11); num('payoutCapDay', 0, 1e12); /* 上限は額 */
-    num('shiftWidth', 0, 0.5); if (b.shiftWidth != null) { t.shiftUp = Math.min(0.3, t.shiftWidth); t.shiftDown = Math.min(0.3, t.shiftWidth); } /* 以前の形（±1 つ）で来たら両方に */
-    num('shiftUp', 0, 0.3); num('shiftDown', 0, 0.3); t.shiftWidth = Math.max(t.shiftUp, t.shiftDown);
+    b = b || {};
+    const num = (k, lo, hi) => { if (b[k] == null || b[k] === '') return; const v = Number(b[k]); if (!Number.isFinite(v) || v < lo || v > hi) throw err(400, 'bad_tuning', k + ' は ' + lo + '〜' + hi + ' です'); t[k] = v; };
+    num('payoutRate', 0.3, 1.2); num('volatility', 0.2, 3); num('payoutCap', 0, 1e11); num('payoutCapDay', 0, 1e12);
+    if (b.shiftWidth != null && b.shiftUp == null && b.shiftDown == null) { const w = Number(b.shiftWidth); if (!Number.isFinite(w) || w < 0 || w > SHIFT_DOWN_MAX) throw err(400, 'bad_tuning', 'shiftWidth は 0〜' + SHIFT_DOWN_MAX + ' です'); t.shiftUp = w; t.shiftDown = w; }
+    num('shiftUp', 0, SHIFT_UP_MAX); num('shiftDown', 0, SHIFT_DOWN_MAX);
     num('bandBelow', 0, 0.5); num('bandAbove', 0, 0.5);
-    num('betSec', 0, 3600); num('exchangeSec', 0, 3600); num('voteSec', 0, 600); num('resultSec', 0, 3600); num('gateSec', 0, 60); num('postSec', 0, 120); num('photoExtraSec', 0, 60); num('closeLeadSec', 0, 600); num('oddsSims', 100, 10000); num('horizonMin', 1, 120); num('dayStartHour', 0, 12);
-    if (b.betSec != null && b.exchangeSec == null && b.voteSec == null) { const sg = stageSecs({ betSec: t.betSec }); t.exchangeSec = sg.exchangeSec; t.voteSec = sg.voteSec; } /* 以前の形（締切までの秒数 1 つ）で来たら 2 段に */
-    t.betSec = t.exchangeSec + t.voteSec;
-    if (b.bountyPerTicket != null) { const raw = b.bountyPerTicket, v = typeof raw === 'number' || (typeof raw === 'string' && raw.trim() !== '') ? Number(raw) : NaN; if (!Number.isInteger(v) || v < 1 || v > BOUNTY_MAX) throw err(400, 'bad_tuning', '交換の割合（bountyPerTicket）は 1〜' + BOUNTY_MAX + ' の整数です'); t.bountyPerTicket = v; }
+    num('voteSec', VOTE_SEC_MIN, VOTE_SEC_MAX); num('resultSec', 0, 3600); num('gateSec', 0, 60); num('postSec', 0, 120); num('photoExtraSec', 0, 60); num('closeLeadSec', 0, 600); num('oddsSims', 100, 10000); num('horizonMin', 1, 120); num('dayStartHour', 0, 12);
     if (b.scenes && typeof b.scenes === 'object') t.scenes = Object.assign({}, t.scenes, b.scenes);
-    if (b.horseLook != null) { // 馬の見た目: 変わったときだけ、前の見た目と変えた時刻を残す（レースの区切りで切り替えるため。horseLookFor）
+    if (b.horseLook != null) {
       if (HORSE_LOOKS.indexOf(b.horseLook) < 0) throw err(400, 'bad_tuning', 'horseLook は cute か real です');
       const old = HORSE_LOOKS.indexOf(t.horseLook) >= 0 ? t.horseLook : 'cute';
       if (b.horseLook !== old) { t.horseLookPrev = horseLookFor(t, { openAt: Number(now) || Date.now() }); t.horseLook = b.horseLook; t.horseLookAt = Number(now) || Date.now(); }
     }
-    if (b.cues != null) { /* 演出の割合: 送られた演出・項目だけ変える。0〜100 の数字以外は 400。知らない演出名は無視 */
+    if (b.cues != null) {
       if (typeof b.cues !== 'object' || Array.isArray(b.cues)) throw err(400, 'bad_tuning', 'cues は { fruit: { show, hit }, ... } です');
       const next = cuesOf(t.cues);
       CUE_KEYS.forEach((k) => {
@@ -255,6 +232,7 @@
       });
       t.cues = next;
     }
+    t.ver = 4;
     return t;
   }
   const publicTuning = (t) => { const o = {}; PUBLIC_TUNING_KEYS.forEach((k) => { if (t[k] !== undefined) o[k] = t[k]; }); return o; };
@@ -269,51 +247,61 @@
     }
     return s.modeDefault || 'auto';
   }
+  // テレビ・スマホ・スタッフに配る設定（/api/state の settings）。当たりの幅・上限・払い戻し率・演出の割合は入れない
   function settingsFor(tuning, storeSettings, t) {
     const T = tuningOf(tuning), s = storeSettings || {};
-    const sg = stageSecs(s, T);
-    return { exchangeSec: sg.exchangeSec, voteSec: sg.voteSec, betSec: sg.exchangeSec + sg.voteSec, resultSec: s.resultSec != null ? s.resultSec : T.resultSec, gateSec: T.gateSec, postSec: T.postSec, closeLeadSec: T.closeLeadSec,
+    return { voteSec: T.voteSec, testVoteSec: TEST_RACE.voteSec, stake: STAKE, resultSec: s.resultSec != null ? s.resultSec : T.resultSec, gateSec: T.gateSec, postSec: T.postSec, photoExtraSec: T.photoExtraSec, closeLeadSec: T.closeLeadSec,
       scenes: Object.assign({}, T.scenes, s.scenes || {}), sceneSec: Object.assign({ gate: T.gateSec, replay: T.postSec }, s.sceneSec || {}),
       modes: Array.isArray(s.modes) ? s.modes : [], modeDefault: s.modeDefault || 'auto', mode: modeNow(s, t), test: !!s.test, dayStartHour: T.dayStartHour,
       horseLook: T.horseLook || 'cute', horseLookPrev: T.horseLookPrev || 'cute', horseLookAt: Number(T.horseLookAt) || 0, horseLookFrom: (Number(T.horseLookAt) || 0) ? Number(T.horseLookAt) + HORSE_LOOK_GRACE_MS : 0,
-      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, bountyPerTicket: bountyRate(T), tvQuality: tvQualityOf(s) }; /* tvQuality: テレビの画質（2026-10-19。下の tvQualityOf）。スマホの「オッズは締切で確定します」の表示用（当たりの幅・設定額は出さない） */
+      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, tvQuality: tvQualityOf(s), tvGame: tvGameOf(s) };
   }
 
   /* ---------- レースを作る ---------- */
   function tuneOf(Engine, t) { return { sigmaMul: Math.round(Engine.TUNE.sigmaMul * Math.max(0.2, Math.min(3, Number(t.volatility) || 1)) * 1000) / 1000, payoutRate: Math.max(0.3, Math.min(1.2, Number(t.payoutRate) || 0.85)) }; }
-  const engineRace = (r) => ({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds });
-  function hashOf(Outcome) { return Outcome.hash; }
-  // 出走馬（seed から決まる）。オッズは重いので別（oddsFor。テレビは Worker で計算してよい）
+  const engineRace = (r) => ({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta });
   function raceBase(Engine, Outcome, salt, id, tuning) {
-    const base = Engine.makeRace(Engine.rng(hashOf(Outcome)(salt, id, 'horses')));
+    const base = Engine.makeRace(Engine.rng(Outcome.hash(salt, id, 'horses')));
     return Object.assign(base, { tune: tuneOf(Engine, tuning) });
   }
-  function oddsFor(Engine, Outcome, salt, id, base, sims) { const o = Engine.calcOdds(base, Engine.rng(hashOf(Outcome)(salt, id, 'odds')), sims || 1500); return { tansho: o.tansho, winProb: o.winProb, tenkai: o.tenkai }; }
-  /* entry: { id, at, payout, scope, storeId, ruleId }。返り値 { race（公開してよい部分）, secret（設定額など。マスターと決める係だけ） } */
+  /* 倍率（重い。テレビは Worker で計算してよい＝v2/client.js の oddsWorker も同じ形を返す）: { tansho（参考の単勝）, winProb, tenkai, exacta（2 連単 30 通り）, exactaProb } */
+  function oddsFor(Engine, Outcome, salt, id, base, sims) { const o = Engine.calcOdds(base, Engine.rng(Outcome.hash(salt, id, 'odds')), sims || 1500); return { tansho: o.tansho, winProb: o.winProb, tenkai: o.tenkai, exacta: o.exacta, exactaProb: o.exactaProb }; }
+  /* entry: { id, at, payout, scope, storeId, ruleId, test? }。opt: { odds?, sims?, voteSec? }。返り値 { race（公開してよい部分）, secret（目標額など。マスターと決める係だけ） } */
   function buildRace(Engine, Outcome, entry, tuning, salt, t, opt) {
     opt = opt || {};
     const T = tuningOf(tuning);
     const base = raceBase(Engine, Outcome, salt, entry.id, T);
-    const odds = opt.odds || oddsFor(Engine, Outcome, salt, entry.id, base, opt.sims || T.oddsSims);
-    const sg = hasStage(opt) ? stageSecs(opt, T) : stageSecs(T), gateSec = T.scenes && T.scenes.gate === false ? 0 : T.gateSec; /* opt.betSec（以前の形）も読む */
-    const closeAt = entry.at - T.closeLeadSec * 1000, xAt = closeAt - sg.voteSec * 1000;
+    const odds = opt.odds && opt.odds.exacta ? opt.odds : oddsFor(Engine, Outcome, salt, entry.id, base, opt.sims || T.oddsSims);
+    const vs = secOf(opt.voteSec) != null ? secOf(opt.voteSec) : T.voteSec, gateSec = T.scenes && T.scenes.gate === false ? 0 : T.gateSec;
+    const closeAt = entry.at - T.closeLeadSec * 1000;
     const race = {
-      id: entry.id, storeId: entry.storeId || null, at: entry.at, openAt: xAt - sg.exchangeSec * 1000, exchangeCloseAt: xAt, exchangeSec: sg.exchangeSec, voteSec: sg.voteSec, closeAt, runAt: entry.at + gateSec * 1000, revealAt: 0, endAt: 0,
+      id: entry.id, storeId: entry.storeId || null, at: entry.at, openAt: closeAt - vs * 1000, voteSec: vs, closeAt, runAt: entry.at + gateSec * 1000, revealAt: 0, endAt: 0,
       gateSec, postSec: T.postSec, resultSec: T.resultSec, status: 'upcoming', createdAt: t,
       dist: base.dist, weather: base.weather, surface: base.surface, horses: base.horses, tune: base.tune,
-      odds: odds.tansho, tenkai: odds.tenkai, participants: { total: 0, byStore: {}, medals: 0 }, refunded: false, day: bizDate(entry.at, T.dayStartHour),
+      odds: odds.tansho, exacta: odds.exacta, tenkai: odds.tenkai, participants: { total: 0, byStore: {}, combos: {} }, refunded: false, day: bizDate(entry.at, T.dayStartHour),
     };
-    if (entry.test) race.test = true; // スタッフの「この店だけテストレース」（2026-10-19）: このレースの券・当たり・返却は全部テスト扱い（集計・1 日の上限に入れない）
+    if (entry.test) race.test = true; // テストレース（スタッフの「この店だけテストレース」）: 当たりは払わない・集計に入れない
     race.revealAt = race.runAt + 60000 + race.postSec * 1000;
     race.endAt = race.revealAt + race.resultSec * 1000;
-    const secret = { payoutTarget: entry.payout || 0, scope: entry.scope === 'store' ? 'store' : 'all', ruleId: entry.ruleId || null, winProb: odds.winProb };
+    const secret = { payoutTarget: entry.payout || 0, scope: entry.scope === 'store' ? 'store' : 'all', ruleId: entry.ruleId || null, winProb: odds.winProb, comboProb: odds.exactaProb };
     return { race, secret };
   }
 
   /* ---------- 誰に見せるか ---------- */
   const visibleTo = (race, store) => !race.storeId || race.storeId === store;
-  function openRaceFor(races, store, t) { return races.filter((r) => visibleTo(r, store)).sort((a, b) => a.at - b.at).find((r) => r.status === 'upcoming' && r.closeAt > t) || null; }
-  /* r: レース。o: { role, store, storeSettings, openId, result（TV・done 後）, winners } */
+  // いまのレース: その店に見える、締切前の upcoming のうち一番早いもの（投票の前で待っているときも）
+  function currentRaceFor(races, store, t) { return races.filter((r) => visibleTo(r, store)).sort((a, b) => a.at - b.at).find((r) => r.status === 'upcoming' && r.closeAt > t) || null; }
+  // いま投票できるレース（いまのレースが投票の時間に入っていれば）
+  function openRaceFor(races, store, t) { const r = currentRaceFor(races, store, t); return r && t >= voteWindow(r).openAt ? r : null; }
+  /* 2 連単の人気の上位（テレビの「人気の組み合わせ上位 6」・レース中の右側）: 実際の票が多い順。票が 0・同じ数のときは倍率の低い順で補う。
+     odds は使う倍率（締切前は race.exacta、レース中は result.finalExacta）。返り値 [{ combo, first, second, odds, votes }]（テレビには順番と倍率だけ出す） */
+  function popularCombos(race, n, odds) {
+    if (!race) return [];
+    const ex = odds || (race.result && race.result.finalExacta) || race.exacta || {}, cnt = (race.participants && race.participants.combos) || {};
+    return Object.keys(ex).map((k) => { const m = /^(\d+)-(\d+)$/.exec(k); return { combo: k, first: Number(m[1]), second: Number(m[2]), odds: Number(ex[k]), votes: Number(cnt[k]) || 0 }; })
+      .sort((a, b) => b.votes - a.votes || a.odds - b.odds || (a.combo < b.combo ? -1 : 1)).slice(0, n || 6);
+  }
+  /* r: レース。o: { role, store, storeSettings, openId, result（TV・done 後）, winners, secret（管理） } */
   function publicRace(r, o) {
     if (!r) return null;
     o = o || {};
@@ -322,205 +310,199 @@
     if (status === 'closing') status = 'closed';
     if (status === 'upcoming' && o.openId === r.id) status = 'open';
     const ss = o.storeSettings || {};
-    // 結果画面の長さは店ごと（API.md 8 章）: その店の endAt = revealAt + 店の resultSec。以前は全体の resultSec のままで、管理画面で店ごとに変えても効かなかった（コードレビュー 2026-10-14）
     const rs = ss.resultSec != null && ss.resultSec !== '' ? Number(ss.resultSec) : NaN;
-    const sg = stagesFor(r, ss); // 参加受付の締切・受付画面の始まり（店ごとの上書きつき）
+    const vw = voteWindow(r);
     const out = {
-      id: r.id, storeId: r.storeId || null, at: r.at, openAt: sg.openAt, exchangeCloseAt: sg.exchangeCloseAt, exchangeSec: sg.exchangeSec, voteSec: sg.voteSec, closeAt: r.closeAt, runAt: r.runAt, revealAt: r.revealAt, endAt: r.revealAt && Number.isFinite(rs) && rs >= 0 ? r.revealAt + rs * 1000 : r.endAt, status,
-      dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, tenkai: r.tenkai,
-      participants: r.participants || { total: 0, byStore: {}, medals: 0 }, result: null, winners: null, refunded: !!r.refunded, refundedAt: r.refundedAt || null,
+      id: r.id, storeId: r.storeId || null, at: r.at, openAt: vw.openAt, voteSec: vw.voteSec, closeAt: r.closeAt, runAt: r.runAt, revealAt: r.revealAt, endAt: r.revealAt && Number.isFinite(rs) && rs >= 0 ? r.revealAt + rs * 1000 : r.endAt, status,
+      dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta || null, tenkai: r.tenkai,
+      participants: Object.assign({ total: 0, byStore: {}, combos: {} }, r.participants || {}), result: null, winners: null, refunded: !!r.refunded, refundedAt: r.refundedAt || null,
     };
-    if (r.test) out.test = true; // テストのレース（2026-10-19。スタッフの「この店だけテストレース」）
-    const result = r.result || o.result || null, priv = o.role === 'tv' || o.role === 'admin'; /* 'tv' は合言葉のあるテレビだけ（server.js の viewRole／Firestore のルール） */
-    if (result && (revealed || priv)) { out.result = withoutCues(result); out.photo = !!r.photo; }
-    // 確定演出（勝ち馬のヒント）: 合言葉のあるテレビと管理にだけ、結果と一緒に（ゲートインの前に届く）。スマホ・スタッフ・合言葉のないテレビには発表後も出さない
+    if (r.test) out.test = true;
+    const result = r.result || o.result || null, priv = o.role === 'tv' || o.role === 'admin';
+    if (result && (revealed || priv)) { out.result = withoutCues(result); out.photo = !!r.photo; out.photo2 = !!r.photo2; }
+    // 2 連単の人気の上位 6（テレビの右の列・投票中の「人気の組み合わせ上位 6」。V4_RACE_NOTES.md 5 章の形 { first, second, odds }。倍率は見せてよい結果があれば確定倍率）
+    out.exactaTop = popularCombos(out, 6, out.result && out.result.finalExacta).map((x) => ({ first: x.first, second: x.second, odds: x.odds, combo: x.combo }));
     if (priv) { const cues = r.cues || (r.result && r.result.cues) || (o.result && o.result.cues) || (o.secret && o.secret.decision && o.secret.decision.cues) || null; if (cues) out.cues = cues; }
-    // テストモードの店の当たりは、その店（と管理）にだけ見せる（ほかの店のテレビに「テストの当たり」を出さない。QA 2026-10-14）
+    // テストのレース・テストの店の当たりは、その店（と管理）にだけ見せる
     if (revealed || o.role === 'admin') out.winners = (r.winners || o.winners || []).filter((w) => !w.test || o.role === 'admin' || !o.store || w.storeId === o.store);
-    if (o.role === 'admin' && o.secret) { out.payoutTarget = o.secret.payoutTarget; out.scope = o.secret.scope; out.decision = o.secret.decision || null; out.winProb = o.secret.winProb; }
+    if (o.role === 'admin' && o.secret) { out.payoutTarget = o.secret.payoutTarget; out.scope = o.secret.scope; out.decision = o.secret.decision || null; out.winProb = o.secret.winProb; out.comboProb = o.secret.comboProb; }
     return out;
   }
-  /* 今の状態（GET /api/state と同じ形）。races は見える範囲のレース（公開部分＋ result があれば）、results は { raceId: result }（TV 用） */
+  /* 今の状態（GET /api/state と同じ形）。
+     open: いま投票できるレース | null。next: open 以外で一番早い締切前のレース（open がなければ「投票の始まりを待っている」レース。待ち画面の「次のレースは 21:00、投票は 20:57 から」）。
+     current: open || next。live: 締切後〜発表前。last: 一番新しい発表済み。upcoming: この先 5 レースの時刻（作る前の時刻表の分も。openAt つき） */
   function stateFor(p) {
     const t = p.t, store = p.store, st = p.stores.find((s) => s.id === store);
     if (!st) throw err(404, 'no_store', '店舗が見つかりません');
-    const list = p.races.filter((r) => visibleTo(r, store)).sort((a, b) => a.at - b.at), open = openRaceFor(list, store, t);
+    const T = tuningOf(p.tuning);
+    const list = p.races.filter((r) => visibleTo(r, store)).sort((a, b) => a.at - b.at), cur = currentRaceFor(list, store, t), open = cur && t >= voteWindow(cur).openAt ? cur : null;
     const live = list.filter((r) => (r.status === 'closing' || r.status === 'closed' || r.status === 'decided') && t < r.revealAt).pop() || null;
     const last = list.filter((r) => r.status === 'done').pop() || null;
-    const next = open ? list.find((r) => r.status === 'upcoming' && r.at > open.at) || null : null;
-    const upcoming = (p.upcoming || list.filter((r) => r.status === 'upcoming').map((r) => ({ id: r.id, at: r.at, time: fmtTime(r.at), storeId: r.storeId || null }))).filter((e) => e.at > t && (!e.storeId || e.storeId === store)).slice(0, 5);
+    const next = list.find((r) => r.status === 'upcoming' && r.closeAt > t && (!open || r.id !== open.id)) || null;
+    const up0 = p.upcoming || list.filter((r) => r.status === 'upcoming').map((r) => ({ id: r.id, at: r.at, time: fmtTime(r.at), storeId: r.storeId || null, openAt: voteWindow(r).openAt }));
+    const upcoming = up0.filter((e) => e.at > t && (!e.storeId || e.storeId === store)).slice(0, 5).map((e) => Object.assign({}, e, { openAt: e.openAt != null ? e.openAt : e.at - T.closeLeadSec * 1000 - T.voteSec * 1000 }));
     const ss = st.settings || {}, res = p.results || {};
-    const pr = (r) => { const o = publicRace(r, { role: p.role, store, storeSettings: ss, openId: open && open.id, result: r && res[r.id] }); if (o) o.horseLook = horseLookFor(p.tuning, r); return o; }; // 馬の見た目はレースごとに決まる（全店同じ）
-    return {
-      now: t, day: bizDay(t, (p.tuning || {}).dayStartHour), store: { id: st.id, name: st.name, nextSeq: st.nextSeq || 0, reloadSeq: st.reloadSeq || 0 },
+    const pr = (r) => { const o = publicRace(r, { role: p.role, store, storeSettings: ss, openId: open && open.id, result: r && res[r.id] }); if (o) o.horseLook = horseLookFor(p.tuning, r); return o; };
+    const out = {
+      now: t, day: bizDay(t, T.dayStartHour), store: { id: st.id, name: st.name, nextSeq: st.nextSeq || 0, reloadSeq: st.reloadSeq || 0 },
       stores: p.stores.map((s) => ({ id: s.id, name: s.name })), settings: settingsFor(p.tuning, ss, t),
-      open: pr(open), live: pr(live), last: pr(last), next: pr(next), upcoming,
+      open: pr(open), next: pr(next), live: pr(live), last: pr(last), upcoming,
     };
+    out.current = out.open || out.next;
+    return out;
   }
 
-  /* ---------- 投票券 ---------- */
-  function cleanTicket(b) {
-    const bill = String(b.bill == null ? '' : b.bill).trim(), nick = String(b.nick || '').trim(), count = Number(b.count);
-    if (!/^[0-9A-Za-z-]{1,12}$/.test(bill)) throw err(400, 'bad_bill', '会計番号を入れてください（英数字 12 文字まで）');
-    if (!nick || Array.from(nick).length > 8) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); // オーナー決定: 言葉の禁止はしない
-    if (!Number.isInteger(count) || count < 1 || count > 9999) throw err(400, 'bad_count', '枚数は 1〜9999 です');
-    return { bill, nick, count };
+  /* ---------- 票（v4） ----------
+     1 票 ＝ レース × 店 × 会計番号（2 桁）。id は voteId（レース id ~ 店 ~ 会計番号）。
+     持ち主: 最初に投票したスマホ。模擬クラウドは秘密のキー（key。スマホがそのレースの間だけ覚える）、Firestore 版は匿名ログインの uid（owner）。 */
+  const BILL_RE = /^(0[1-9]|[1-9][0-9])$/;
+  function cleanBill(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!/^\d{1,2}$/.test(s) || Number(s) < 1 || Number(s) > 99) throw err(400, 'bad_bill', '会計番号は 2 けた（01〜99）で入れてください');
+    return s.padStart(2, '0');
   }
-  function cleanPicks(b, count) {
-    let picks = Array.isArray(b.picks) ? b.picks : (b.horse != null ? [{ horse: b.horse, count }] : []);
-    const merged = {};
-    picks.forEach((p) => { const h = Number(p.horse), c = Number(p.count); if (!Number.isInteger(h) || h < 0 || h > 5 || !Number.isInteger(c) || c < 0) throw err(400, 'bad_pick', '馬と枚数をえらんでください'); if (c > 0) merged[h] = (merged[h] || 0) + c; });
-    picks = Object.keys(merged).map((h) => ({ horse: Number(h), count: merged[h] }));
-    const total = picks.reduce((a, p) => a + p.count, 0);
-    if (!picks.length || total !== count) throw err(400, 'count_mismatch', '投票券 ' + count + ' 枚をぜんぶ使ってください（いま ' + total + ' 枚）');
-    const map = { h0: 0, h1: 0, h2: 0, h3: 0, h4: 0, h5: 0 }; picks.forEach((p) => (map['h' + p.horse] = p.count));
-    return { picks, pickMap: map };
+  function cleanNick(v) { const nick = String(v == null ? '' : v).trim(); if (!nick || Array.from(nick).length > 8) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); return nick; }
+  function cleanPair(b, n) {
+    n = n || 6; const num = (v) => (typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v.trim())) ? Number(v) : NaN), a = num(b.first), c = num(b.second);
+    if (!Number.isInteger(a) || !Number.isInteger(c) || a < 0 || c < 0 || a >= n || c >= n) throw err(400, 'bad_pick', '1 着と 2 着の馬をえらんでください');
+    if (a === c) throw err(400, 'bad_pick', '1 着と 2 着は別の馬にしてください');
+    return { first: a, second: c };
   }
-  const picksFromMap = (m) => [0, 1, 2, 3, 4, 5].filter((h) => m && m['h' + h] > 0).map((h) => ({ horse: h, count: m['h' + h] }));
-  // QR の文字列・id・6 桁の番号
-  function parseCode(code, kind) {
-    const raw = String(code || '').trim(), m = /^derby:(auth|pay):(.+)$/.exec(raw), id = m ? m[2] : raw;
-    if (/^\d{6}$/.test(id)) return { short: id };
-    if (m && m[1] !== kind) throw err(400, 'wrong_code', kind === 'auth' ? 'これは受け取り用の QR です' : 'これは認証用の QR です');
-    return { id };
+  function cleanVote(b, n) { b = b || {}; return Object.assign({ bill: cleanBill(b.bill), nick: cleanNick(b.nick) }, cleanPair(b, n)); }
+  const voteId = (raceId, store, bill) => String(raceId) + '~' + String(store) + '~' + String(bill);
+  function parseVoteId(vid) { const m = /^(.+)~([a-z0-9_-]{1,32})~(\d{2})$/.exec(String(vid || '')); return m ? { raceId: m[1], storeId: m[2], bill: m[3] } : null; }
+  const comboOf = (v) => (v && v.first != null && v.second != null ? v.first + '-' + v.second : null);
+  // 投票した組み合わせの数（参加人数と人気）: { total, byStore, combos }
+  function countVotes(votes) {
+    const p = { total: 0, byStore: {}, combos: {} };
+    (votes || []).forEach((v) => { if (!v || v.first == null) return; p.total++; p.byStore[v.storeId] = (p.byStore[v.storeId] || 0) + 1; const k = comboOf(v); p.combos[k] = (p.combos[k] || 0) + 1; });
+    return p;
   }
-  function ticketView(tk, race, payout) {
-    const out = { tid: tk.tid, short: tk.short || null, test: !!tk.test, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, count: tk.count, status: tk.status, createdAt: tk.createdAt, authAt: tk.authAt || null, raceId: tk.raceId || null, authRaceId: tk.authRaceId || null, rate: tk.authAt || tk.rate != null ? rateOf(tk) : null, bounty: tk.authAt || tk.rate != null ? ticketBounty(tk) : null, novote: !!tk.novote, picks: tk.picks || picksFromMap(tk.pickMap), votedAt: tk.votedAt || null, result: null };
-    if (tk.novote) { /* 投票がなかった認証済みの券（返却）: 締切で作った返却の受け取り。レースの発表を待たずに出す（結果は入れない） */
-      const p = payout, live = p && p.status !== 'void';
-      out.result = { raceId: tk.raceId || tk.authRaceId || null, winner: null, win: false, refunded: false, novote: true, amount: 0, bounty: live ? payoutBounty(p) : 0, payout: live ? { pid: p.pid, short: p.short || null, kind: 'refund', novote: true, bounty: payoutBounty(p), code: 'derby:pay:' + p.pid, status: p.status, paidAt: p.paidAt || null } : null };
-      return out;
-    }
-    if (race && race.status === 'done' && (race.result || race.refunded)) { // 結果が決まらないまま返還したレース（result なし）も返還の QR を出す（QA 2026-10-14）
-      const p = payout, live = p && p.status !== 'void';
-      out.result = { raceId: race.id, winner: race.result ? race.result.winner : null, win: !!(live && p.kind !== 'refund'), refunded: !!race.refunded, amount: live && p.kind !== 'refund' ? p.amount : 0, bounty: live ? payoutBounty(p) : 0, payout: live ? { pid: p.pid, short: p.short || null, kind: p.kind || 'win', bounty: payoutBounty(p), code: 'derby:pay:' + p.pid, status: p.status, paidAt: p.paidAt || null } : null };
+  // QR の文字列（derby:pay:<pid>）・id
+  function parseCode(code) { const raw = String(code || '').trim(), m = /^derby:(auth|pay):(.+)$/.exec(raw); if (m && m[1] !== 'pay') throw err(400, 'wrong_code', 'これは受け取りの QR ではありません'); return { id: m ? m[2] : raw }; }
+  /* 持ち主に見せる票（スマホ）。race: レース（公開部分でよい）、payout: その票の当たり（なければ null）。
+     result は発表のあと（done）だけ: { combo（レースの 1 着-2 着）, first, second, odds（確定倍率）, win, amount（当選額。テストでも計算した額）, test（テストなので受け取りなし）, payout } */
+  function voteView(v, race, payout) {
+    if (!v) return null;
+    const out = { vid: v.vid, raceId: v.raceId, storeId: v.storeId, bill: v.bill, nick: v.nick, first: v.first, second: v.second, combo: comboOf(v), votedAt: v.votedAt || null, updatedAt: v.updatedAt || null, test: !!v.test, result: null };
+    if (race && race.status === 'done' && race.result) {
+      const R = race.result, combo = R.combo || (R.order ? R.order[0] + '-' + R.order[1] : null), win = combo === out.combo && !race.refunded;
+      const odds = R.finalExacta && combo ? Number(R.finalExacta[combo]) : null, p = payout && payout.status !== 'void' ? payout : null;
+      out.result = { raceId: race.id, combo, first: R.first != null ? R.first : R.winner, second: R.second != null ? R.second : (R.order ? R.order[1] : null), odds, win, refunded: !!race.refunded,
+        amount: win ? (p ? p.amount : odds ? payFor(odds) : 0) : 0, test: !!(v.test || race.test),
+        payout: win && p ? { pid: p.pid, code: 'derby:pay:' + p.pid, status: p.status, paidAt: p.paidAt || null, paidVia: p.paidVia || null, expireAt: p.expireAt || null } : null };
     }
     return out;
   }
-  const payoutView = (p, storeName, revealed) => ({ pid: p.pid, short: p.short || null, test: !!p.test, kind: p.kind || 'win', novote: !!p.novote, code: 'derby:pay:' + p.pid, tid: p.tid, raceId: p.raceId, storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, bill: p.bill, nick: p.nick, horse: p.horse, amount: p.kind === 'refund' ? 0 : p.amount, bounty: payoutBounty(p), count: p.count != null ? p.count : null, rate: p.kind === 'refund' ? rateOf(p) : null, status: p.status, createdAt: p.createdAt, paidAt: p.paidAt || null, paidBy: p.paidBy || null, revealed: !!revealed || !!p.novote });
+  // 1 票の当選額（outcome.js と同じ: 100pt × 倍率 の 100pt 切り上げ）。core.js は Outcome を持たないので写し
+  function payFor(odds) { const t = Math.max(10, Math.round(Number(odds) * 10)); return Math.ceil(t * 10 / STAKE - 1e-9) * STAKE; }
+  /* 当たりの見せ方（スタッフの「今日の当たり一覧」・管理）。paidVia: 'staff'（スタッフのスマホ）| 'self'（お客さんのスマホのスライド） */
+  const payoutView = (p, storeName, revealed) => ({ pid: p.pid, code: 'derby:pay:' + p.pid, vid: p.vid || null, test: !!p.test, kind: 'win', raceId: p.raceId, raceAt: p.raceAt || null, storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, bill: p.bill, nick: p.nick,
+    first: p.first != null ? p.first : null, second: p.second != null ? p.second : null, combo: p.combo || null, odds: p.odds != null ? p.odds : null, amount: p.amount, status: p.status, createdAt: p.createdAt, paidAt: p.paidAt || null, paidBy: p.paidBy || null, paidVia: p.paidVia || null, expireAt: p.expireAt || null, revealed: !!revealed });
+  // スタッフの一覧の並び: まだ渡していない（unpaid）を上（新しい順）、渡した（paid）は下（渡した時刻の新しい順）、期限切れ・取り消しは最後
+  function sortWins(list) {
+    const rank = (p) => (p.status === 'unpaid' ? 0 : p.status === 'paid' ? 1 : 2);
+    return list.slice().sort((a, b) => rank(a) - rank(b) || (a.status === 'paid' ? (b.paidAt || 0) - (a.paidAt || 0) : (b.raceAt || b.createdAt || 0) - (a.raceAt || a.createdAt || 0)) || (a.bill < b.bill ? -1 : 1));
+  }
 
   /* ---------- 結果の決定 ---------- */
   function effectiveCap(tuning, usedToday) {
     const perRace = Math.max(0, Math.floor(tuning.payoutCap || 0)), perDay = Math.max(0, Math.floor(tuning.payoutCapDay || 0));
     if (!perDay) return perRace;
-    const left = Math.max(1, perDay - (usedToday || 0));
+    const left = Math.max(1, perDay - (usedToday || 0)); // 1 日の上限を使い切ったら 1（＝どの当たりも超える → 当たりなし）
     return perRace ? Math.min(perRace, left) : left;
   }
-  /* race（公開部分）, secret（payoutTarget, scope, winProb）, tickets（このレースの voted の券）→ 結果・払い戻し（id は呼ぶ側で付ける） */
-  function decideRace(Engine, Outcome, race, secret, tickets, tuning, salt, t, usedToday) {
+  /* race（公開部分）, secret（payoutTarget, scope, comboProb）, votes（このレースの票）→ 結果・当たり（id は呼ぶ側で付ける）。
+     テストのレース・テストの店の票: 本物の票があるときは決め方に入れない。当たりは作らない（winners には test つきで出す。スマホは「テストなので受け取りはありません」） */
+  function decideRace(Engine, Outcome, race, secret, votes, tuning, salt, t, usedToday) {
     const T = tuningOf(tuning);
-    const voted = tickets.filter((tk) => tk.status === 'voted').sort((a, b) => (a.tid < b.tid ? -1 : 1)); // 順番で結果が変わらないように
-    const stakes = [];
-    // テストモードの店の票は、本物の票があるときは結果の決定に入れない（テストの大きな賭けで本物のお客さんの結果がゆがまないように。QA 2026-10-14）。
-    // テストの票しかないときは入れる（テストだけでも設定額に合わせる動きを確かめられる）
-    const isT = (tk) => !!tk.test || !!race.test; // テストのレース（race.test）の券は全部テスト扱い（2026-10-19）
-    const real = voted.filter((tk) => !isT(tk)), basis = real.length ? real : voted;
-    basis.forEach((tk) => (tk.picks || picksFromMap(tk.pickMap)).forEach((p) => stakes.push({ horse: p.horse, count: p.count, group: tk.storeId })));
-    const t0 = Date.now(), cap = effectiveCap(T, usedToday);
-    const er = engineRace(race);
-    const res = Outcome.resolve(Engine, er, { odds: race.odds, winProb: secret.winProb, stakes, target: secret.payoutTarget, scope: secret.scope, up: T.shiftUp, down: T.shiftDown, bandBelow: T.bandBelow, bandAbove: T.bandAbove, cap, seed: Outcome.hash(salt, race.id, 'decide') });
+    const list = (votes || []).filter((v) => v && v.first != null && v.second != null).sort((a, b) => (a.vid < b.vid ? -1 : 1)); // 順番で結果が変わらないように
+    const isT = (v) => !!v.test || !!race.test;
+    const real = list.filter((v) => !isT(v)), basis = real.length ? real : list;
+    const t0 = Date.now(), cap = real.length ? effectiveCap(T, usedToday) : 0, er = engineRace(race); // テストの票だけのときは払わないので上限は見ない
+    const res = Outcome.resolveExacta(Engine, er, { exacta: race.exacta, comboProb: secret.comboProb, n: (race.horses || []).length || 6, votes: basis.map((v) => ({ first: v.first, second: v.second, group: v.storeId })), target: secret.payoutTarget, scope: secret.scope, up: T.shiftUp, down: T.shiftDown, bandBelow: T.bandBelow, bandAbove: T.bandAbove, cap, seed: Outcome.hash(salt, race.id, 'decide') });
     const run = Engine.replayRun(er, res.seed, { order: res.order });
-    // 確定演出: 勝ち馬が決まったあと、seed（salt・レース id）から決める（どの決める係でも同じ）。result.cues で保存し、テレビへは publicRace が out.cues として合言葉のあるテレビにだけ渡す
-    const cues = cuesFor(Outcome, salt, race.id, res.winner, T, (race.horses || []).length || 6);
-    const result = { winner: res.winner, order: res.order, finalOdds: res.finalOdds, seed: res.seed, finishTimes: run.finishTimes.map((x) => Math.round(x * 1000) / 1000), winTime: Math.round(run.winTime * 1000) / 1000, natural: res.natural, cues };
-    const decision = { target: res.target, scope: res.scope, payout: res.payout, perGroup: res.perGroup, reason: res.reason, band: res.band || null, tries: res.tries, ms: Date.now() - t0, cap, cues, cands: res.cands.map((c) => ({ horse: c.horse, bet: c.bet, odds: c.odds, payout: c.payout, dist: c.dist, inBand: !!c.inBand })) }; /* reason: band（当たりの幅の中から抽選）| target（一番近い馬）| cap_conflict | nobody */
-    // 遅れて決めた（決める係・サーバーが止まっていた）: ゲートが開く時刻（runAt）を、決めた時刻 + RUN_LEAD_MS まで後ろへずらす（全店のテレビは
-    // レースの runAt にしたがうので、どの店も同じだけずれて、レースを最初から全部流せる）。ずれが LATE_CAP_MS を超えたら、ずらさずすぐ発表。
-    // 以前は 5 秒遅れただけで「すぐ発表」になり、全店のテレビがレースの映像をまるごと飛ばしていた（QA3 2026-10-14）
-    let runAt = race.runAt, revealAt, photo = false, shift = Math.max(0, t + RUN_LEAD_MS - race.runAt), late = false;
+    const cues = cuesFor(Outcome, salt, race.id, res.first, T, (race.horses || []).length || 6);
+    const result = { winner: res.first, second: res.second, combo: res.combo, comboOdds: res.comboOdds, order: res.order, finalExacta: res.finalExacta, finalOdds: race.odds, seed: res.seed, finishTimes: run.finishTimes.map((x) => Math.round(x * 1000) / 1000), winTime: Math.round(run.winTime * 1000) / 1000, natural: res.natural, cues };
+    const decision = { target: res.target, scope: res.scope, payout: res.payout, perGroup: res.perGroup, reason: res.reason, band: res.band || null, tries: res.tries, swapsNeeded: res.swapsNeeded, swaps: run.swaps || null, noWinner: res.noWinner, ms: Date.now() - t0, cap, cues, combo: res.combo, comboOdds: res.comboOdds,
+      cands: res.cands.map((c) => ({ combo: c.combo, votes: c.votes, odds: c.odds, payout: c.payout, dist: c.dist, inBand: !!c.inBand })) };
+    let runAt = race.runAt, revealAt, shift = Math.max(0, t + RUN_LEAD_MS - race.runAt), late = false;
     if (shift > LATE_CAP_MS) { shift = 0; late = true; } else runAt = race.runAt + shift;
-    { const ft = run.finishTimes.slice().sort((a, b) => a - b); photo = ft.length > 1 && ft[1] - ft[0] <= 0.05; revealAt = runAt + Math.ceil(run.winTime * 1000) + ((race.postSec != null ? race.postSec : T.postSec) + (photo ? (T.photoExtraSec || 0) : 0)) * 1000; }
-    if (late) { revealAt = t; photo = false; }
+    // 写真判定: 1 着争い（photo）と 2 着争い（photo2。2026-10-20「2 着争いが接戦のときも写真判定とスロー」）。どちらも 0.05 秒以内。発表はそれぞれ photoExtraSec ずつ遅らせる
+    const ft = result.finishTimes.slice().sort((a, b) => a - b); // テレビ（Race3D.photoOf）と同じ値（ミリ秒に丸めた result.finishTimes）で判定
+    let photo = ft.length > 1 && ft[1] - ft[0] <= 0.05, photo2 = ft.length > 2 && ft[2] - ft[1] <= 0.05;
+    revealAt = runAt + Math.ceil(run.winTime * 1000) + ((race.postSec != null ? race.postSec : T.postSec) + (photo ? (T.photoExtraSec || 0) : 0) + (photo2 ? (T.photoExtraSec || 0) : 0)) * 1000;
+    if (late) { revealAt = t; photo = false; photo2 = false; }
     const endAt = revealAt + (race.resultSec != null ? race.resultSec : T.resultSec) * 1000;
-    const w = res.winner, fo = res.finalOdds[w], payouts = [];
+    const odds = res.finalExacta[res.combo], amount = payFor(odds), payouts = [], winners = [];
     let paid = 0;
-    voted.forEach((tk) => {
-      const raw = (tk.picks || picksFromMap(tk.pickMap)).filter((p) => p.horse === w).reduce((a, p) => a + Outcome.stakePayout(p.count, fo), 0);
-      const amount = Outcome.roundPay ? Outcome.roundPay(raw) : raw; // 渡す額（10 の倍数に切り上げ。2026-10-20 オーナー決定。stakePayout が 1 件ごとに切り上げ済みなので、ここは念のため）
-      if (amount > 0) { payouts.push({ kind: 'win', tid: tk.tid, owner: tk.owner || null, raceId: race.id, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: w, amount, status: 'unpaid', test: isT(tk) }); paid += amount; }
+    list.forEach((v) => {
+      if (comboOf(v) !== res.combo) return;
+      const test = isT(v);
+      winners.push(Object.assign({ storeId: v.storeId, bill: v.bill, nick: v.nick, amount, combo: res.combo }, test ? { test: true } : {}));
+      if (test) return; // テストの当たりは払わない（当たりを作らない）
+      payouts.push({ kind: 'win', vid: v.vid, owner: v.owner || null, raceId: race.id, raceAt: race.at, storeId: v.storeId, bill: v.bill, nick: v.nick, first: res.first, second: res.second, combo: res.combo, odds, amount, status: 'unpaid' });
+      paid += amount;
     });
-    decision.paid = paid;
-    decision.bounty = voted.reduce((a, tk) => a + ticketBounty(tk), 0); // 賭けたリングバウンティ（返還するときの目安。認証したときの割合）
-    decision.paidReal = payouts.filter((p) => !p.test).reduce((a, p) => a + p.amount, 0); // 1 日の上限に数える分（テストモードの店の当たりは数えない）
-    const participants = { total: voted.length, byStore: {}, medals: 0 };
-    voted.forEach((tk) => { participants.byStore[tk.storeId] = (participants.byStore[tk.storeId] || 0) + 1; participants.medals += tk.count; });
+    winners.sort((a, b) => b.amount - a.amount || (a.storeId < b.storeId ? -1 : a.storeId > b.storeId ? 1 : a.bill < b.bill ? -1 : 1));
+    decision.paid = paid; decision.paidReal = paid; decision.winners = winners.length; decision.votes = real.length; decision.testVotes = list.length - real.length;
+    const participants = countVotes(list);
     decision.runShift = shift; decision.lateReveal = late;
-    return { result, decision, cues, runAt, revealAt, endAt, photo, payouts, participants, runShift: shift, lateReveal: late };
+    return { result, decision, cues, runAt, revealAt, endAt, photo, photo2, payouts, winners, participants, runShift: shift, lateReveal: late };
   }
-  // 当たった人の一覧（テレビの結果画面。金額の大きい順）
+  // 当たった人の一覧（テレビの結果画面「上野 12番 たろう 1,300pt」。全店。金額の大きい順。最大 300 件）。storeName で店名を付ける
+  function winnersView(winners, storeName) { return (winners || []).slice(0, 300).map((w) => Object.assign({}, w, { storeName: storeName ? storeName(w.storeId) : w.storeId })); }
+  // 当たり（payouts）から一覧を作る（以前の形の呼び方。取り消し済みは除く）
   function winnersFrom(payouts, storeName) {
-    return payouts.filter((p) => p.kind !== 'refund' && p.status !== 'void').sort((a, b) => b.amount - a.amount || (a.createdAt || 0) - (b.createdAt || 0)).slice(0, 300)
-      .map((p) => Object.assign({ storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, nick: p.nick, amount: p.amount, horse: p.horse }, p.test ? { test: true } : {}));
+    return winnersView((payouts || []).filter((p) => p.status !== 'void').sort((a, b) => b.amount - a.amount || (a.createdAt || 0) - (b.createdAt || 0)).map((p) => Object.assign({ storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null }, p.test ? { test: true } : {})), storeName);
   }
-  // 返還: 取り消す当たり・作る返還（id は呼ぶ側）
-  function refundPlan(tickets, payouts, race) {
-    const paidBy = {}, voids = [];
-    payouts.forEach((p) => { if (p.kind === 'refund') return; if (p.status === 'unpaid') voids.push(p); else if (p.status === 'paid') paidBy[p.tid] = (paidBy[p.tid] || 0) + p.amount; });
-    const refunds = [];
-    /* 返還はリングバウンティで: 投票した券ごとに、認証したときのリングバウンティ（枚数 × そのときの割合）をそのまま全部返す。
-       受け取り済みの当選額は差し引かない・取り戻さない（2026-10-17 オーナー決定「当選額はそのまま」）。paidBy は記録用（decision.paid） */
-    tickets.filter((tk) => tk.status === 'voted').forEach((tk) => { const rate = rateOf(tk), back = ticketBounty(tk); if (back > 0) refunds.push({ kind: 'refund', tid: tk.tid, owner: tk.owner || null, raceId: tk.raceId, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: null, amount: 0, bounty: back, count: tk.count, rate, status: 'unpaid', test: !!tk.test || !!(race && race.test) }); });
-    return { voids, refunds, paidBy, bounty: refunds.reduce((a, r) => a + r.bounty, 0) };
+  // 取り消し（成立しなかったレース。管理の「返還」の v4 版）: まだ渡していない当たりは void。渡した当たりはそのまま（参加無料なので返すものはない）
+  function voidPlan(payouts) { const voids = [], kept = []; (payouts || []).forEach((p) => { if (p.status === 'unpaid') voids.push(p); else if (p.status === 'paid') kept.push(p); }); return { voids, kept, voided: voids.reduce((a, p) => a + p.amount, 0) }; }
+  /* 集計の 1 行（営業日・店ごと）: races（テストを除くレース数）・votes（票の数＝参加人数）・players（会計番号の数）・target（当選額の目標）・paid（当選額）・
+     claimed（渡した額）・expired（期限切れ）・unclaimed（まだ渡していない額）・payRate（当選額 ÷ 目標） */
+  function statRow(x, claimed) {
+    x = x || {}; const n = (k) => Number(x[k]) || 0;
+    const row = { races: n('races'), votes: n('votes'), players: x.bills ? Object.keys(x.bills).length : n('players'), target: n('target'), paid: n('paid'), claimed: claimed != null ? claimed : n('claimed'), expired: n('expired') };
+    row.unclaimed = Math.max(0, row.paid - row.claimed - row.expired);
+    row.payRate = row.target ? Math.round(row.paid / row.target * 1000) / 1000 : 0;
+    return row;
   }
-  /* 返却（2026-10-16 オーナー決定）: このレースに認証されたのに投票締切までに投票しなかった券は無効にして、認証した枚数をそのまま返す。
-     返還（kind 'refund'）と同じ受け取り（novote: true）。結果の決定（賭けの枚数）には入れない・参加人数にも数えない（参加は投票した人） */
-  function novotePlan(race, tickets) {
-    return (tickets || []).filter((tk) => tk.status === 'authorized' && tk.authRaceId === race.id).sort((a, b) => (a.tid < b.tid ? -1 : 1))
-      .map((tk) => ({ kind: 'refund', novote: true, tid: tk.tid, owner: tk.owner || null, raceId: race.id, storeId: tk.storeId, bill: tk.bill, nick: tk.nick, horse: null, amount: 0, bounty: ticketBounty(tk), count: tk.count, rate: rateOf(tk), status: 'unpaid', test: !!tk.test || !!race.test })); /* 返却 = 認証したときのリングバウンティ（枚数 × そのときの割合） */
+  // 1 レースの目標（集計用）: 全店の合計なら目標そのまま、店ごとなら目標 × 票のあった店の数
+  const raceTargetSum = (target, scope, byStore) => (scope === 'store' ? (Number(target) || 0) * Math.max(1, Object.keys(byStore || {}).length) : Number(target) || 0);
+
+  /* ---------- 投票が始まったら、テレビのゲームを DERBY に（2026-10-20 オーナー決定） ----------
+     「レースの時刻にテレビが SLOT なら自動で DERBY にする（投票が始まる時刻。SLOT で遊んでいる途中なら終わってから）。レースのあとも DERBY のまま」。
+     races: レースの一覧、stores: [{ id, settings }]、t: 今。返り値 [{ raceId, stores: [SLOT から DERBY に変える店] }]（まだ印 tvAutoAt のないレースだけ）。
+     決める係（模擬クラウドはサーバー、Firestore 版は進行役のテレビ）が、店の settings.tvGame と derbySwitch/tv を 'derby' にして、レースに tvAutoAt を書く。
+     1 レースにつき 1 回だけ（投票の途中でスタッフが SLOT にしたら、そのレースの間はそのまま。次のレースの投票の始まりでまた DERBY）。
+     SLOT で遊んでいる途中かどうかは、casa SLOT のテレビ（js/tvswitch.js）が見て、終わってから移る（回転中・CREDIT 残り・設定画面の間は移らない） */
+  function tvAutoPlan(races, stores, t) {
+    const out = [];
+    (races || []).forEach((r) => {
+      if (!r || r.tvAutoAt || r.status !== 'upcoming' || !(t >= voteWindow(r).openAt && t < r.closeAt)) return;
+      out.push({ raceId: r.id, stores: (stores || []).filter((s) => s && s.id && visibleTo(r, s.id) && tvGameOf(s.settings) !== 'derby').map((s) => s.id) });
+    });
+    return out;
   }
 
-  /* ---------- スタッフの「この店だけテストレース」（2026-10-19） ----------
-     スタッフは derbyTestReq/<店舗>（Firestore）か POST /api/staff/testrace（模擬クラウド）で「お願い」を書くだけ。レースを作るのは決める係（進行役のテレビ・サーバー）。
-     レース: その店だけ（storeId）・test: true（券・当たり・返却は全部テスト扱い）・startIn 秒後に発走・払い戻しの合計は管理画面の「テストのレースを作る」と同じ既定値。
-     作れないとき（busy）: その店に見えるレースの「受付の始まり〜結果画面の終わり」が、テストのレースの「今〜終わり」と重なる（時刻表のまだ作っていない分も） */
-  /* 2026-10-19 その 2（オーナー「すぐテストレースを走らせるボタン」）: スタッフの画面から押すのは quickSec（60 秒）＝ルールの下限（firestore.rules の startIn 60〜600）。
-     受付の 2 段は testStages: 押した時刻から受付を始める（参加受付 30 秒 → 投票 30 秒 → 発走）。startIn が 120 秒なら今までと同じ（参加受付 90・投票 30） */
-  /* 2026-10-19 その 3（オーナー「テストレースを押したら、店のテレビが SLOT でも DERBY に切り替えて、すぐ始まるように」。終わったあとに SLOT へ戻すことはしない）:
-     switchSec: 店のテレビを切り替えたとき、ほかの店の進行役のテレビがすぐ作るときの発走まで（テレビの切り替え 1〜3 秒＋Fire TV の読み込み 10〜20 秒を見込んで、
-     切り替わってから 60 秒以上空ける。受付は 30 秒あとから＝testStages の waitSec）。
-     進行役のテレビ自身の店が SLOT のとき: そのテレビが DERBY に戻って決める係になってから作る＝作った時刻から quickSec（60 秒）。戻るのを待つのは deciderWaitSec まで */
-  /* 2026-10-20 その 4（スロット係「テレビがスロットのゲーム中なら待ってほしい」）: casa SLOT のテレビは回転中・CREDIT 残り・設定画面の間は移らない（js/tvswitch.js）。
-     そのため、店のテレビを切り替えたお願い（switchSec）は、進行役のテレビが「その店の Fire TV が casa DERBY に来た」（derbyTvs/<uid> の連絡の時刻がお願いより後）のを
-     確かめてから作る（来た時刻から quickSec）。待つのは tvWaitSec（5 分）まで。過ぎたら err 'tv_wait'（スタッフに理由を出す）。
-     進行役のテレビ自身の店のとき（そのテレビが戻ってから作る）も同じ 5 分（deciderWaitSec）。tvGraceSec: 押してからこの秒数は「切り替えています…」、そのあと「ゲーム中です」 */
-  /* 2026-10-20 その 5（オーナー「テストレースでも投票できるように」）: 参加受付 30 秒では、お客さんが QR を読んで入力し、スタッフが認証するのに間に合わない。
-     スタッフの画面から押すテストレースは quickSec 90 秒（参加受付 60 秒 → 投票 30 秒）。テレビを切り替えたときは switchSec 120 秒（切り替わるまで 30 秒あけてから同じ 60＋30）。
-     決まりの範囲（60〜600 秒）の中。前の版の画面からの 60 秒・90 秒のお願いも今までどおり作れる（90 は切り替えの印ではなくなる＝待たずに作る） */
-  /* 2026-10-20 その 6（本番 b137 17:41 の上野のテストレースで参加受付が 45 秒しかなかった）: 本番の投票の秒数が 45 秒だったため、
-     「投票は全体の秒数か発走までの半分」「参加受付は残り」の決め方では 90 秒のうち参加受付が 45 秒になった。
-     → 参加受付は必ず exchangeSec（60 秒）取る。投票はその店で実際に効く秒数（店の設定 voteSec があればそれ＝ルールの exchangeCloseMs と同じ）。
-       足りなければ発走を後ろへずらす（testStages の startIn。決まりの上限 600 秒まで）。お願いの startIn（90／120）の意味は今までどおり */
-  const TEST_RACE = { startIn: 120, quickSec: 90, switchSec: 120, minSec: 60, maxSec: 600, exchangeSec: 60, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 300, tvWaitSec: 300, tvGraceSec: 20, tvSeenDays: 14 };
-  /* その 4: 店の Fire TV が casa DERBY に来たか。tvs: [{ store, kind, at（ミリ秒） }]（derbyTvs の名乗り。テレビは開いたときと 5 分ごとに書く）。
-     null ＝待たない（その店の Fire TV の名乗りが 14 日以内に無い＝分からない。今までどおりすぐ作る）／'arrived' ＝お願いのあとに名乗った／'waiting' ＝まだ。
-     ブラウザのテレビ（kind 'browser'）は見ない（casa SLOT を映さず、ずっと casa DERBY のままのことがあるため） */
+  /* ---------- スタッフの「この店だけテストレース」 ----------
+     v4: 投票は 60 秒（TEST_RACE.voteSec）。押した時刻から startIn 秒後に発走（60〜600。決まりの範囲）。投票の始まりは発走の 60 秒前（startIn が 60 なら押してすぐ）。
+     店のテレビが SLOT のときは、切り替えのお願い（switchSec 120 秒）＝テレビが来るのを待ってから作る（来た時刻から quickSec）。当たりは払わない・集計に入れない */
+  const TEST_RACE = { startIn: 120, quickSec: 60, switchSec: 120, minSec: 60, maxSec: 600, voteSec: 60, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 300, tvWaitSec: 300, tvGraceSec: 20, tvSeenDays: 14 };
   function testTvWait(tvs, store, reqAt, t) {
     const mine = (tvs || []).filter((x) => x && x.store === store && x.kind === 'casatv' && Number(x.at) > t - TEST_RACE.tvSeenDays * DAY);
     if (!mine.length) return null;
     return mine.some((x) => Number(x.at) >= reqAt) ? 'arrived' : 'waiting';
   }
-  const testRaceId = (store, reqAtMs) => 'x-' + Math.round(reqAtMs).toString(36) + 'test-' + store; // お願いの時刻から決まる（何度やっても同じレース＝二重に作らない）
+  const testRaceId = (store, reqAtMs) => 'x-' + Math.round(reqAtMs).toString(36) + 'test-' + store;
   const testStartIn = (v) => Math.max(TEST_RACE.minSec, Math.min(TEST_RACE.maxSec, Math.round(Number(v) || TEST_RACE.startIn)));
-  /* テストのレースの 2 段: 投票は全体の秒数（30）か発走までの半分の短いほう。参加受付は「押した時刻〜投票の始まり」（全体の秒数より長くしない）。
-     受付の始まり（openAt）が押した時刻より前にならない＝テレビは押した直後から受付の画面（待ち時間なし・途中から始まらない） */
-  /* waitSec（その 3）: 受付の前に空ける秒数（店のテレビを DERBY に切り替えたとき、テレビが切り替わって読み込むまで受付を始めない） */
-  /* その 6: storeSettings（その店の設定）の投票の秒数の上書きも見る。返り値の startIn ＝実際の発走までの秒数（お願いの秒数より長くなることがある）。
-     参加受付は TEST_RACE.exchangeSec（60 秒）以上・全体の参加受付の秒数（90）まで（お願いの秒数に余りがあるとき） */
-  function testVoteSec(T, ss) {
-    const s = ss || {};
-    if (secOf(s.voteSec) != null) return secOf(s.voteSec);
-    if (secOf(s.exchangeSec) == null && secOf(s.betSec) != null) return 30; // 以前の betSec だけの店（stagesFor・ルールと同じ）
-    return T.voteSec;
-  }
-  function testStages(startIn, tuning, waitSec, storeSettings) {
-    const T = tuningOf(tuning), lead = Math.max(0, Number(T.closeLeadSec) || 0) + Math.max(0, Number(waitSec) || 0);
-    const vo = Math.max(0, testVoteSec(T, storeSettings)), EX = TEST_RACE.exchangeSec;
-    const sec = Math.min(TEST_RACE.maxSec, Math.max(testStartIn(startIn), Math.ceil(lead + EX + vo)));
-    const ex = Math.max(10, Math.min(Math.max(EX, T.exchangeSec), sec - lead - vo));
-    return { exchangeSec: ex, voteSec: vo, startIn: sec };
+  // テストのレースの時間: { voteSec: 60（発走までが短ければその秒数）, startIn }。closeLeadSec のぶん発走を後ろへ
+  function testStages(startIn, tuning) {
+    const T = tuningOf(tuning), lead = Math.max(0, Number(T.closeLeadSec) || 0), sec = Math.min(TEST_RACE.maxSec, Math.max(testStartIn(startIn), Math.ceil(lead + 10)));
+    return { voteSec: Math.min(TEST_RACE.voteSec, Math.max(10, sec - lead)), startIn: sec };
   }
   function raceSpan(r, T) {
-    const start = r.openAt != null ? r.openAt : r.at - (T.exchangeSec + T.voteSec) * 1000;
+    const start = r.openAt != null ? r.openAt : r.at - T.voteSec * 1000;
     const end = r.endAt || (r.revealAt ? r.revealAt + T.resultSec * 1000 : (r.runAt || r.at) + 60000 + (T.postSec + T.resultSec) * 1000);
     return [start, end];
   }
@@ -529,42 +511,37 @@
     const gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec, end = t + (sec + gate + 60 + T.postSec + T.resultSec) * 1000;
     const hit = (s, e) => s < end && e > t;
     for (const r of races || []) { if (!visibleTo(r, store) || r.status === 'void') continue; const [s, e] = raceSpan(r, T); if (hit(s, e)) return { reason: 'busy', raceId: r.id, at: r.at }; }
-    const sg = stageSecs(T), have = new Set((races || []).map((r) => r.id));
+    const have = new Set((races || []).map((r) => r.id));
     for (const e of scheduleAround(t, rules || [])) {
       if (have.has(e.id) || (e.storeId && e.storeId !== store)) continue;
-      const s = e.at - (sg.exchangeSec + sg.voteSec) * 1000, en = e.at + (gate + 60 + T.postSec + T.resultSec) * 1000;
+      const s = e.at - T.voteSec * 1000, en = e.at + (gate + 60 + T.postSec + T.resultSec) * 1000;
       if (hit(s, en)) return { reason: 'busy', at: e.at };
     }
     return null;
   }
 
-  /* テレビのゲームの切り替え（2026-10-17）: 店の設定 settings.tvGame（'slot' | 'derby'、既定 'slot'）。
-     Firestore 版は店舗の保存と同じ書き込みで derbySwitch/tv（誰でも読める 1 件）にも写す。casa SLOT のテレビはこれを見て casa DERBY へ移る */
+  /* テレビのゲームの切り替え: 店の設定 settings.tvGame（'slot' | 'derby'、既定 'slot'）。Firestore 版は derbySwitch/tv（誰でも読める 1 件）にも写す */
   const TV_GAMES = ['slot', 'derby'];
   const tvGameOf = (settings) => (settings && settings.tvGame === 'derby' ? 'derby' : 'slot');
   function tvSwitchDoc(stores) { const o = {}; (stores || []).forEach((s) => { if (s && s.id) o[s.id] = tvGameOf(s.settings); }); return o; }
-  /* テレビの画質（2026-10-19）: 店の設定 settings.tvQuality。'' ＝標準（空・'sharp' も標準）・'auto' ＝なめらか優先（重いと自動で細かさを下げる）・'max' ＝きれい優先。
-     いつもの状態（stateFor の settings.tvQuality）に入れて配る: テレビ（v2/tvswitch.js）とスタッフのスマホ（v2/staffswitch.js）は、これで今の値を知る（読み取りは増えない）。
-     スタッフが書ける値もこの 3 つだけ（v2/firestore.rules の tvQualityOnly） */
+  /* テレビの画質: '' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先 */
   const TV_QUALITIES = ['auto', '', 'max'];
   function tvQualityOf(settings) { const q = settings && settings.tvQuality; return q === 'auto' || q === 'max' ? q : ''; }
-  /* テレビ用アカウントのパスワード（管理画面がブラウザの中だけで作る）: 英数字（見まちがえやすい 0 O o 1 l I は使わない）。
-     rand(n) は 0〜255 の数を n 個返す関数（ブラウザは crypto.getRandomValues）。かたよりが出ないよう、256 を割り切れない分は捨てて引き直す */
   const PW_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
   function genTvPassword(rand, len) {
     len = len || 20; const lim = 256 - (256 % PW_CHARS.length); let s = '';
     while (s.length < len) { const b = rand(len * 2); for (let i = 0; i < b.length && s.length < len; i++) if (b[i] < lim) s += PW_CHARS[b[i] % PW_CHARS.length]; }
     return s;
   }
-  // 決まった id（同じレース・同じ券ならいつも同じ。決める係がやり直しても二重にならない）
-  function pidFor(Outcome, salt, raceId, tid, kind) { return 'p' + Outcome.hash(salt, raceId, tid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', tid, raceId, salt).toString(36); }
-  function shortFor(Outcome, salt, id, k) { return String(100000 + (Outcome.hash(salt, id, 'short', k || 0) % 900000)); }
+  // 決まった id（同じレース・同じ票ならいつも同じ。決める係がやり直しても二重にならない）
+  function pidFor(Outcome, salt, raceId, vid, kind) { return 'p' + Outcome.hash(salt, raceId, vid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', vid, raceId, salt).toString(36); }
 
-  return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, MONEY_PER_TICKET, roundAmount, BOUNTY_DEFAULT, BOUNTY_MAX, rateOf, bountyRate, ticketBounty, payoutBounty, isBountyLog, logBounty, sumBill, statBounty, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
-    ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
-    tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, openRaceFor, publicRace, stateFor,
-    cleanTicket, cleanPicks, picksFromMap, parseCode, ticketView, payoutView, effectiveCap, decideRace, winnersFrom, refundPlan, novotePlan, pidFor, shortFor,
-    STAGE_DEFAULT, stageSecs, stagesFor, exchangeOpen, manualStages,
+  return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
+    err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
+    ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
+    tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, voteWindow, votingOpen, manualStages,
+    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, comboOf, countVotes, parseCode, voteView, payFor, payoutView, sortWins,
+    effectiveCap, decideRace, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, PW_CHARS, genTvPassword };
 });
