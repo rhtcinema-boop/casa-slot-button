@@ -1105,7 +1105,7 @@ window.Race = (function () {
     }
   };
   function tvText(c, txt, x, y, size, col, align, weight) {
-    c.font = (weight || 'bold') + ' ' + Math.round(size) + 'px "Helvetica Neue", Arial, sans-serif'; c.textAlign = align || 'left'; c.textBaseline = 'middle';
+    c.font = (weight || 'bold') + ' ' + Math.round(size) + 'px "Noto Sans JP","Hiragino Sans",sans-serif'; c.textAlign = align || 'left'; c.textBaseline = 'middle';
     c.lineJoin = 'round'; c.lineWidth = Math.max(2, size * 0.2); c.strokeStyle = 'rgba(0,0,0,.55)'; c.strokeText(txt, x, y); c.fillStyle = col || '#fff'; c.fillText(txt, x, y);
   }
   const fmtClock = (t, tenth) => { if (tenth) t = Math.round(t * 10) / 10; const m = Math.floor(t / 60), s = t - m * 60; return tenth ? (m ? m + '.' + (s < 10 ? '0' : '') : '') + s.toFixed(1) : (m ? m + '.' + (s < 10 ? '0' : '') : '') + Math.floor(s); };
@@ -1135,7 +1135,7 @@ window.Race = (function () {
       const MARU = '"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif';
       c.fillStyle = 'rgba(0,0,0,.6)'; roundRect(c, 20, H - 144, 520, 124, 8); c.fill();
       c.fillStyle = h.color; roundRect(c, 20, H - 144, 80, 124, 8); c.fill();
-      c.fillStyle = h.ink; c.font = 'bold 54px "Helvetica Neue", Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(h.no), 60, H - 82);
+      c.fillStyle = h.ink; c.font = '900 54px "Noto Sans JP","Hiragino Sans",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(h.no), 60, H - 82);
       c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = 'bold 34px ' + MARU; c.fillText(h.name, 116, H - 114);
       c.font = '22px ' + MARU; c.fillStyle = '#ffd54f'; c.fillText(inf.line1 || '', 116, H - 74);
       c.fillStyle = '#ddd'; c.fillText(inf.line2 || '', 116, H - 42);
@@ -1146,7 +1146,7 @@ window.Race = (function () {
     if (!this.band) { this.band = c.createLinearGradient(0, H - 92, 0, H); this.band.addColorStop(0, 'rgba(0,0,0,0)'); this.band.addColorStop(1, 'rgba(0,0,0,.42)'); }
     c.fillStyle = this.band; c.fillRect(0, H - 92, W, 92);
     // 左上: ラベル（SLOW / REPLAY / PHOTO FINISH）
-    if (this.label) { c.font = 'bold 20px sans-serif'; const w = c.measureText(this.label).width + 30; c.fillStyle = this.label === 'REPLAY' || this.label === 'PHOTO FINISH' ? 'rgba(220,40,40,.85)' : 'rgba(0,0,0,.6)'; roundRect(c, 14, 12, w, 34, 8); c.fill(); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(this.label, 14 + w / 2, 29); }
+    if (this.label) { c.font = '900 20px "Noto Sans JP","Hiragino Sans",sans-serif'; const w = c.measureText(this.label).width + 30; c.fillStyle = this.label === 'REPLAY' || this.label === 'PHOTO FINISH' ? 'rgba(220,40,40,.85)' : 'rgba(0,0,0,.6)'; roundRect(c, 14, 12, w, 34, 8); c.fill(); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(this.label, 14 + w / 2, 29); }
     // 左下: ロゴ・レース名・競馬場
     const bugH = 40, bug = stationLogo(bugH * (this.k || 1));
     if (bug) { const bugW = bugH * bug.width / bug.height, a0 = c.globalAlpha; c.globalAlpha = a0 * 0.9; c.drawImage(bug, 12, H - 34 - bugH, bugW, bugH); c.globalAlpha = a0; }
@@ -1194,7 +1194,7 @@ window.Race = (function () {
   function drawChibi(c, x, y, s, h, ph, o) { Horse.draw(c, x, y, s * 38, h, ph < 0 ? -1 : ph / 6.283, { shadow: !o || o.shadow !== false }); }
   function badge(c, x, y, r, h) {
     c.fillStyle = h.color; c.beginPath(); c.arc(x, y, r, 0, 6.28); c.fill(); c.strokeStyle = '#000'; c.lineWidth = 1; c.stroke();
-    c.fillStyle = h.ink; c.font = 'bold ' + Math.round(r * 1.3) + 'px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(h.no, x, y + 0.5);
+    c.fillStyle = h.ink; c.font = '900 ' + Math.round(r * 1.3) + 'px "Noto Sans JP","Hiragino Sans",sans-serif'; /* 2026-10-21 Noto Sans JP に統一（数字は 900） */ c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(h.no, x, y + 0.5);
   }
   function roundRect(c, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
