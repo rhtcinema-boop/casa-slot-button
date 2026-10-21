@@ -237,7 +237,10 @@ R3D.Director = (function () {
          カメラの x はゴールの xStop（m 手前）で「なめらかに止まる」（kStop m の幅でゆっくり減速。残り約 15m までは真横のまま、
          ゴールの瞬間は真横から約 8 度だけ前向き）。柱が先頭に重なるのはゴールの 2〜3m 先になる */
   const SWING = { R0: 480, R1: 100, a0: 30, d0: 56, d1: 30, y0: 13, y1: 8, rRef: C.RI + 4.5, bias: 0.6, ahead: 1.2, rk: 1.5, tight: 22, focusK: 0.3, tw: 30, fovK: 2,
-    sA: 0.27, sB: 0.29, s1: 0.38, limX: 0.86, limY: 0.8, xStop: C.LS / 2 - 5, kStop: 4, fmin: 2, fmax: 50 };
+    sA: 0.27, sB: 0.29, s1: 0.33, limX: 0.8, limY: 0.76, xStop: C.LS / 2 - 10, kStop: 4, fmin: 2, fmax: 50 };
+  // v4（2 連単。2026-10-21 仕様書「最後の直線は上位 3 頭が入るように少し引く」）: 寄りきった大きさ s1 0.38 → 0.33（先頭が画面の高さの約 3 割）、
+  // 上位 3 頭を入れる枠を画面の端から 10%（横 limX 0.86 → 0.8）・12%（縦 0.8 → 0.76）内側に。1 着争いと 2 着争い（2・3 番手）が両方、端に寄らずに見える。
+  // 止まる所 xStop もゴールの 5m 手前 → 10m 手前に: 5m だと、1 着より遅れてゴールする 2 着争いの鼻先が、外ラチのゴール板の脇の旗（RO+1）の後ろに入った（v4race の写真）
   // E: ゴール線の 3m 先・外ラチの 24m 外（手前の観客の帯 RO+4〜14 の頭越し・奥の観客の帯より前）・高さ 9m（視線は手前の観客の頭と決勝審判の小屋のガラスの間を抜ける）。真上だと小屋の柱が先頭のすぐ前に重なる
   // v2 講評 1 回目の TOP1（2026-10-14）: ゴール線の 3m 先・外ラチの 24m 外・高さ 9m → 8m 手前・20m 外・高さ 8m へ。線の先にいると、手前（外）のゴール板の柱が、ちょうどゴールする先頭の鼻先の前に重なっていた。
   // 手前に置くと、外の柱は馬の奥行きで線の 1.5m（外の進路）〜4m（真ん中の進路）先に重なる（5m 手前では外の進路で 0.9m 先＝2 着の頭に重なった）。内のゴール板は先頭がゴールする直前に馬のすぐ奥を通る（研究 E の絵）。決勝審判の小屋はいまはスタンドの中なので邪魔にならない
@@ -276,6 +279,11 @@ R3D.Director = (function () {
     L_WINNER: shot(Object.assign({}, ASHOTS.A_WINNER, { track: { ds: 'win', r: 'lane', off: 'win', y: 'win', w: 2.6 }, s0: 0.56, s1: 0.6, aimY: 0.6, desc: '勝ち馬: 低い斜め前から画面の真ん中に大きく（立ち上がっても頭が切れない。講評 r2 の 7）' })),
     L_PADDOCK: shot(Object.assign({}, ASHOTS.A_PADDOCK, { s0: 0.7, s1: 0.74 })),
   };
+  /* v4（2 連単。2026-10-21 オーナー「1着 → 2着 → 2頭いっしょ」）: 勝ち馬のアップのあとに 2 着のアップと 2 頭の絵。
+     どちらも勝ち馬のアップと同じ低い斜め前の動くカメラ（置き場所は pickWin）。主役は統合側が渡す ctx.winFocus（2 着）・ctx.winPair（[1 着, 2 着]）。
+     2 頭の絵は 2 頭の間を主役にして、2 頭の鼻先・尾が全部入るように引く（少し小さめ） */
+  LSHOTS.L_WIN2 = shot(Object.assign({}, LSHOTS.L_WINNER, { desc: '2 着: 勝ち馬のアップと同じ低い斜め前から 2 着を大きく（勝ち馬のすぐ後ろ・隣で速歩）' }));
+  LSHOTS.L_WINPAIR = shot(Object.assign({}, LSHOTS.L_WINNER, { s0: 0.44, s1: 0.47, margin: 3.5, aimY: 0.1, desc: '1 着と 2 着: 並んで速歩する 2 頭を低い斜め前からいっしょに（下に組み合わせの帯）' }));
   /* ゲートイン（枠入り。ctx.phase === 'gatein'）: 統合側の台本 ctx.gateIn.cue（wide → close → front）で切り替える。front は L_GATE（体勢完了・発走もそのまま）。
      gi: { ds: ゲートの位置からの m（− が後ろ）, r: 'out' 外ラチ | 'in' 内ラチ | 'mid' ゲートの真ん中 | 'focus' 主役の枠, off: そこからの m（+ が外）, y }
      v2 講評 92→95 の 2: 前は「後ろ斜めの高い所（34m 後ろ・高さ 8m）→ 内の低い後ろから → 真後ろの高い所」で、ゲートの裏と柵ばかり・馬は後ろ姿だった */
@@ -330,7 +338,7 @@ R3D.Director = (function () {
     // ゲートイン: wide → close → front。front は体勢完了（gate）・発走と同じカメラ（切らない）。確定演出 gateLate のとき（ctx.gateIn.side）の横は GI_LATE_*（遅れる馬を追う）
     gatein: (phT, ctx) => ({ wide: 'GI_WIDE', close: ctx.gateIn && ctx.gateIn.side === 'in' ? 'GI_LATE_IN' : ctx.gateIn && ctx.gateIn.side === 'out' ? 'GI_LATE_OUT' : 'GI_CLOSE', front: 'L_GATE', back: 'L_GATE' })[ctx.gateIn && ctx.gateIn.cue] || 'GI_WIDE',
     replay: (phT, ctx) => (ctx && ctx.replayStage === 'head' ? 'L_RHEAD' : 'L_RGOAL'),   // 固定のゴールの真横（接戦は 2 回）→ 真正面のスロー                       // ゴール直後のスローのアップ（低い正面寄り。約 2 秒）
-    winner: (phT, ctx) => (ctx && ctx.winStage === 'back' ? 'L_WINFRONT' : 'L_WINNER'),   // 勝ち馬を後ろから追う → 喜ぶ勝ち馬のアップ
+    winner: (phT, ctx) => (ctx && ctx.winStage === 'back' ? 'L_WINFRONT' : ctx && ctx.winStage === 'second' ? 'L_WIN2' : ctx && ctx.winStage === 'both' ? 'L_WINPAIR' : 'L_WINNER'),   // 勝ち馬を後ろから追う → 喜ぶ勝ち馬のアップ → 2 着のアップ → 2 頭（v4）
     paddock: () => 'L_PADDOCK',
     pre: (idx) => ['CLOSE', 'A_CLOSE', 'A_PRE'][idx % 3],
     boostShot: 'L_BOOST',
@@ -520,6 +528,12 @@ R3D.Director = (function () {
       pts[0] = h.x + h.hx * bb * 1.1; pts[1] = h.z + h.hz * bb * 1.1; pts[2] = 0; pts[3] = hh;
       pts[4] = h.x - h.hx * bb; pts[5] = h.z - h.hz * bb; pts[6] = 0; pts[7] = hh;
       return 2;
+    }
+    // v4: 2 頭の絵（1 着・2 着の鼻先・尾 × 足元・頭）
+    function gatherPair(H) {
+      let m = 0;
+      for (const h of [H[pairA], H[pairB]]) { const hh = hgtOf(h), bb = bodyOf(h); pts[m++] = h.x + h.hx * bb * 1.1; pts[m++] = h.z + h.hz * bb * 1.1; pts[m++] = 0; pts[m++] = hh; pts[m++] = h.x - h.hx * bb; pts[m++] = h.z - h.hz * bb; pts[m++] = 0; pts[m++] = hh; }
+      return m >> 2;
     }
     // コース全体（外ラチの少し外を 8 点）
     function gatherCourse() {
@@ -727,12 +741,22 @@ R3D.Director = (function () {
       dioRig.x = dio[0]; dioRig.y = dio[4]; dioRig.z = dio[2] + back; dioRig.minW = dio[6];
     }
     function radiusOf(h) { return Math.abs(h.x) <= C.LS / 2 ? Math.abs(h.z) : Math.hypot(h.x - Math.sign(h.x) * C.LS / 2, h.z); }
+    /* v4（2 連単）: 勝ち馬の場面の主役。subject 'winner' のショットは ctx.winFocus（2 着のアップ）があればその馬、ctx.winPair（[1 着, 2 着]）があれば 2 頭の間（pairH）
+       を主役にする（流儀を問わず。live は L_WIN2・L_WINPAIR で絵の大きさも変える） */
+    const pairH = { x: 0, z: 0, hx: 1, hz: 0, s: 0, height: HORSE_H, body: BODY, type: '' }; let pairA = -1, pairB = -1;
+    function winIdx(ctx, n) { const f = ctx.winFocus; if (f >= 0 && f < n) return f | 0; return ctx.winnerIdx >= 0 && ctx.winnerIdx < n ? ctx.winnerIdx : order[0]; }
+    function pairOf(ctx, H, n) {
+      const p = ctx.winPair; if (!p || p.length < 2) return null; const a = p[0] | 0, b = p[1] | 0; if (a === b || a < 0 || b < 0 || a >= n || b >= n) return null;
+      pairA = a; pairB = b; const A = H[a], B = H[b]; pairH.x = (A.x + B.x) / 2; pairH.z = (A.z + B.z) / 2;
+      const hx = (A.hx || 0) + (B.hx || 0), hz = (A.hz || 0) + (B.hz || 0), l = Math.hypot(hx, hz) || 1; pairH.hx = hx / l; pairH.hz = hz / l;
+      pairH.s = ((A.s || 0) + (B.s || 0)) / 2; pairH.height = Math.max(hgtOf(A), hgtOf(B)); pairH.body = Math.max(bodyOf(A), bodyOf(B)); return pairH;
+    }
     /* 勝ち馬のアップ: 止まった勝ち馬の前のどこに置くか。後ろから来て追い越していく負けた馬が、カメラと勝ち馬の間を
        横切らない所を選ぶ（この先 1.8 秒の動きを、いまの向きと速さ（少なくとも 7m/秒）で先読みして数える）。
        どこも横切られるなら、見下ろし約 38 度の高さから（勝ち馬の 2m 手前を通る馬でも騎手の頭の上を視線が越す） */
     const winCam = { ds: 12, off: 2.5, y: 1.8 };
     const WIN_DS = [7, 10, 13], WIN_OFF = [2.2, -2.2, 1.0, -1.0, 3.8, -3.8, 0, 0];
-    function pickWin(h, H, n) {
+    function pickWin(h, H, n, skipA, skipB) {   // skipA/skipB: 2 頭の絵の 1 着・2 着（主役の 2 頭は横切りに数えない）
       const r = radiusOf(h), sW = ctxS0 + (h.s || 0);
       // 横の候補に「内ラチの内側」と「ほかの馬より外」を足す（そちら側からは誰も間を通れない）
       let rMax = r; for (let i = 0; i < n; i++) { const o = H[i]; if (o !== h && Math.abs((o.s || 0) - (h.s || 0)) < 30) rMax = Math.max(rMax, radiusOf(o)); }
@@ -743,7 +767,7 @@ R3D.Director = (function () {
         if (r + off > C.RO - 0.8 || r + off < C.RI + 0.8) continue;   // 低いカメラはコースの中だけ（ラチの外・内からだとラチの横木が勝ち馬の前を横切る）
         let cost = Math.abs(ang - 22) * 0.025 + (off < 0 ? 0.2 : 0) + Math.abs(ds - 10) * 0.06;   // 斜め前（約 20 度）・外寄り・10m を好む
         for (let i = 0; i < n; i++) {
-          const o = H[i]; if (o === h) continue;
+          const o = H[i]; if (o === h || i === skipA || i === skipB) continue;
           const v = Math.max(0, vel[i] || 0), stopAt = 2.5;   // 手前に来る負けた馬は統合側（race3d.js の winnerClear）がこのカットの間は映さないので、横切りはすぐそばの分だけ数える（数えすぎると高い所から見下ろす絵になる）
           for (let k = 0; k <= 6; k++) {
             const tt = k * 0.3, dd = Math.min(v * tt, stopAt), ox = o.x + o.hx * dd, oz = o.z + o.hz * dd;
@@ -758,6 +782,10 @@ R3D.Director = (function () {
             const dl = Math.hypot(h.x + ex * u - ox, h.z + ez * u - oz);
             if (dl < 1.1) cost += 3 + 4 * u;                                              // 勝ち馬の前を横切る（カメラに近いほど大きく隠す）
           }
+        }
+        if (skipA >= 0 && skipB >= 0) {   // 2 頭の絵: カメラから見て 2 頭が重ならない向き（2 頭への向きの差が 12 度より小さいと奥の馬が手前の馬に隠れる）
+          const A = H[skipA], B = H[skipB], sep = Math.abs(Math.atan2(A.x - p.x, A.z - p.z) - Math.atan2(B.x - p.x, B.z - p.z)) * R2D, sp = Math.min(sep, 360 - sep);
+          if (sp < 12) cost += (12 - sp) * 0.4;
         }
         if (cost < best) { best = cost; bd = ds; bo = off; }
       }
@@ -786,7 +814,7 @@ R3D.Director = (function () {
     function placeTrack(sh, ctx, H, n, subjH, dt, snap) {
       const tr = sh.track, S0 = ctx.startS != null ? ctx.startS : C.startS(ctx.dist || 1000);
       let base0, v;
-      if (sh.subject === 'winner' || sh.subject === 'horse' || sh.subject === 'boost') { base0 = subjH.s || 0; v = subjH === H[order[0]] ? vel[order[0]] : vel[Math.max(0, H.indexOf(subjH))]; trk[2] = 0; }
+      if (sh.subject === 'winner' || sh.subject === 'horse' || sh.subject === 'boost') { base0 = subjH.s || 0; v = subjH === pairH ? (vel[pairA] + vel[pairB]) / 2 : subjH === H[order[0]] ? vel[order[0]] : vel[Math.max(0, H.indexOf(subjH))]; trk[2] = 0; }
       else {
         // ref: 'head' 先頭から / 'tail' 集団の最後尾から / それ以外は集団の平均から。
         // 先頭からの「遅れ」をなめらかにして使う（集団の顔ぶれが変わってもカメラが跳ばない）
@@ -809,14 +837,16 @@ R3D.Director = (function () {
     function rigFor(sh, ctx, H, n) {
       if (sh.rig === 'DIO') { placeDio(sh, ctx, H, n, 0, true); return dioRig; }
       if (sh.rig === 'TRACK') {
-        const sj = sh.subject === 'winner' ? H[ctx.winnerIdx >= 0 && ctx.winnerIdx < n ? ctx.winnerIdx : order[0]] : sh.subject === 'horse' ? H[clamp(ctx.paddockIdx | 0, 0, n - 1)] : sh.subject === 'boost' ? H[clamp(boostI, 0, n - 1)] : H[order[0]];
+        const pr = sh.subject === 'winner' ? pairOf(ctx, H, n) : null;
+        const sj = pr || (sh.subject === 'winner' ? H[winIdx(ctx, n)] : sh.subject === 'horse' ? H[clamp(ctx.paddockIdx | 0, 0, n - 1)] : sh.subject === 'boost' ? H[clamp(boostI, 0, n - 1)] : H[order[0]]);
         if (sh.track.off === 'auto') boostOff = sideFor(sj, H, n, sh.track.ds);
-        if (sh.track.off === 'win') pickWin(sj, H, n);
+        if (sh.track.off === 'win') pickWin(sj, H, n, pr ? pairA : ctx.winFocus >= 0 && ctx.winnerIdx >= 0 ? ctx.winnerIdx : -1, pr ? pairB : -1);   // 2 着のアップ: 勝ち馬はそばなら統合側が映さないので横切りに数えない
         placeTrack(sh, ctx, H, n, sj, 0, true); return trackRig;
       }
       if (sh.rig === 'STAND') return bestStand(ctx, H, n, sh);
       if (sh.rig === 'SWING') return swingRig;   // 置き場所は毎コマ swingPose で決める
-      if (sh.fixAim && sh.fixAim.r === 'lead') { const a = H[order[0]], b = H[order[Math.min(1, n - 1)]]; fixR = clamp((radiusOf(a) + radiusOf(b)) / 2, C.RI + 1.2, C.RO - 1.2); }
+      // fixAim の進路: ふつうは上位 2 頭の進路の間。写真判定の区間（ctx.photoPair＝統合側が渡す小窓の馬。v4 の 2 着争いなら 2・3 着）はその馬たちの進路の間
+      if (sh.fixAim && sh.fixAim.r === 'lead') { const pp = ctx.photoPair && ctx.photoPair.length >= 2 && ctx.photoPair.every((i) => i >= 0 && i < n) ? ctx.photoPair : null, a = H[pp ? pp[0] : order[0]], b = H[pp ? pp[pp.length - 1] : order[Math.min(1, n - 1)]]; fixR = clamp((radiusOf(a) + radiusOf(b)) / 2, C.RI + 1.2, C.RO - 1.2); }
       if (sh.rig === 'RHD') {
         // ゴールの 28m 先（直線をそのまま延ばした所。コースはすぐ 1 コーナーに曲がるので、その外の芝）・上位 2 頭の進路から外へ 7.5m・高さ 2m。
         // 斜め約 15 度から、ゴールへ向かってくる上位の馬の顔と体の横が両方見える。外のゴール板は画面の外（反対側 20 度以上）
@@ -987,13 +1017,14 @@ R3D.Director = (function () {
       else {
       // --- 被写体 ---
       let np;
-      const wI = ctx.winnerIdx >= 0 && ctx.winnerIdx < n ? ctx.winnerIdx : order[0];
+      const wI = winIdx(ctx, n), pr = sh.subject === 'winner' ? pairOf(ctx, H, n) : null;
       const fI = clamp(ctx.gateIn ? ctx.gateIn.focus | 0 : 0, 0, n - 1);
-      const one = sh.subject === 'winner' ? H[wI] : sh.subject === 'horse' ? H[clamp(idx, 0, n - 1)] : sh.subject === 'gifocus' ? H[fI] : null;
+      const one = pr ? null : sh.subject === 'winner' ? H[wI] : sh.subject === 'horse' ? H[clamp(idx, 0, n - 1)] : sh.subject === 'gifocus' ? H[fI] : null;
       if (sh.subject === 'course') np = gatherCourse();
       else if (sh.subject === 'gifocus') np = gatherFocus(one);
       else if (sh.subject === 'giwide') np = gatherGateBox(ctx, n);
       else if (sh.subject === 'gate' && (ph === 'gate' || ph === 'prerace' || (ctx.gone || 0) < 2)) np = gatherGate(ctx, n);
+      else if (pr) np = gatherPair(H);
       else if (one) np = gatherOne(one);
       else if (sh.tele && sizeNow(sh) < 0.2) np = gatherGroup(H, n, 18, 30, 0);   // 引きの間は馬群全体
       else if (curRig === dioRig && dioLow) np = gatherGroup(H, n, 3, 6, 0);
@@ -1001,13 +1032,13 @@ R3D.Director = (function () {
       // （前は最後の低い真横で、先頭がゴールの 25m 手前から内のゴール板（柱と円板の上まで）も画面に入れていた。ゴールの 25〜8m 手前でゴール板まで引いて先頭が小さくなるのでやめた（v2 講評 1 回目の TOP1）。
       //  カメラをゴール線の 8m 手前に置いたので、内のゴール板の柱と赤い帯は先頭がゴールする直前に自然に画面の右から入り、馬のすぐ奥を通る）
       // 先頭の横向きの動き（空きの向き）
-      const subjH = one || (sh.subject === 'boost' ? H[clamp(boostI, 0, n - 1)] : L);
+      const subjH = one || pr || (sh.subject === 'boost' ? H[clamp(boostI, 0, n - 1)] : L);
       // 動くカメラ: 集団（または主役）の s から決まった距離だけ前／後ろ、決まった半径・高さ
       if (curRig === trackRig) placeTrack(sh, ctx, H, n, subjH, dt, out.cut || !tPrev);
       else if (curRig === dioRig) placeDio(sh, ctx, H, n, dt, out.cut || !tPrev);
       const P = curRig;
       const curFov = out.cut || !tPrev ? 30 : Math.exp(st[4]);
-      const grp = !one && sh.subject !== 'course' && !(sh.subject === 'gate' && (ph === 'gate' || ph === 'prerace' || (ctx.gone || 0) < 2)) && !(curRig === dioRig && dioLow);
+      const grp = !one && !pr && sh.subject !== 'course' && !(sh.subject === 'gate' && (ph === 'gate' || ph === 'prerace' || (ctx.gone || 0) < 2)) && !(curRig === dioRig && dioLow);
       fitFrame(P, np, sh, curFov, subjH, H, n, grp, ctx);
       if (out.cut || !tPrev) fitFrame(P, np, sh, clamp(aim.fov, curRig.fmin, curRig.fmax), subjH, H, n, grp, ctx);   // カットの直後は画角が決まってから空きを計り直す
       if (sh.minFov) aim.fov = Math.max(aim.fov, sh.minFov);   // minFov: 縦の画角をこれより狭くしない（度。ゲートインの全景で空を入れる）
@@ -1101,7 +1132,7 @@ R3D.Director = (function () {
       // --- 字幕 ---
       let label = '';
       if (ph === 'replay') label = 'REPLAY';
-      else if (ph === 'winner') label = '1着 ' + ((ctx.winnerIdx >= 0 ? ctx.winnerIdx : order[0]) + 1) + '番';
+      else if (ph === 'winner') label = ctx.winFocus >= 0 ? '2着 ' + (ctx.winFocus + 1) + '番' : '1着 ' + ((ctx.winnerIdx >= 0 ? ctx.winnerIdx : order[0]) + 1) + '番' + (ctx.winPair ? ' → 2着 ' + (ctx.winPair[1] + 1) + '番' : '');
       else if (ph === 'race') {
         const dist = ctx.dist || 1000;
         if (!finishSeen && (L.s || 0) >= dist && n > 1) {
