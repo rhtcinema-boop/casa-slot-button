@@ -14,13 +14,20 @@
      通知が届いている間は、念のための読み取り（REST）を 5 分ごとに減らす。通知が使えないときは今までどおり 30 秒ごと。端末の中の古い写し（fromCache）は使わない。
      スタッフのスマホ（js/phoneswitch.js）も SlotTvSwitch.watch で同じ通知を使う。
    - テスト用: localhost のときだけ ?tvgameUrl=<URL> で読む先を差し替えられる（sessionStorage に覚える）。
-     ?fbSdk=<にせの SDK の場所> のときだけ通知も使う（localhost では本物の casa-derby にはつながない） */
+     ?fbSdk=<にせの SDK の場所> のときだけ通知も使う（localhost では本物の casa-derby にはつながない）
+   - v4（2026-10-21、casa DERBY の定時開催）: casa SLOT を映している間も、DERBY の時刻表（derbySchedule/public。ログインなしで読める）と
+     derby/v2/next-open.js の DerbyNextOpen.next(schedule, now) で次のレースの投票の始まり（openAt）〜発走（at）を求め、その間に入ったら DERBY へ移る
+     （待機中はすぐ、遊んでいる途中は終わってから）。同じレースで 1 回だけ（localStorage casa.tvAutoAt に発走の時刻を覚える。そのあとスタッフが
+     SLOT に戻したら、そのレースの間は SLOT のまま）。「このテレビだけ SLOT に固定」のテレビは移らない。テストの店（DERBY の店舗の対応が無い）は対象外。
+     次の投票の始まりの時刻に合わせて確かめ直す。時刻表は 5 分ごとに読み直す。localhost では ?schedUrl=<URL> で読む先を差し替えられる */
 (function () {
   'use strict';
   const DOC = 'https://firestore.googleapis.com/v1/projects/casa-derby/databases/(default)/documents/derbySwitch/tv?key=AIzaSyDuElvskkcKBs4XisXjTe7-mSxjq3KuswA';
   const DERBY_CFG = { apiKey: 'AIzaSyDuElvskkcKBs4XisXjTe7-mSxjq3KuswA', authDomain: 'casa-derby.firebaseapp.com', projectId: 'casa-derby' }, APP = 'casaDerbySwitch';
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // js/cloud.js と同じ版
   const MAP = [[/渋谷/, 'shibuya'], [/上野/, 'ueno'], [/札幌/, 'sapporo']];
+  const SCHED = 'https://firestore.googleapis.com/v1/projects/casa-derby/databases/(default)/documents/derbySchedule/public?key=AIzaSyDuElvskkcKBs4XisXjTe7-mSxjq3KuswA';
+  const SCHED_MS = 5 * 60000, AUTO_KEY = 'casa.tvAutoAt';
   const QS = location.search, UA_TV = /casaTV/.test(navigator.userAgent || '');
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   const S = (st) => ({ get(k) { try { return st().getItem(k); } catch (e) { return null; } }, set(k, v) { try { if (v == null) st().removeItem(k); else st().setItem(k, v); } catch (e) { /* noop */ } } });
@@ -29,8 +36,9 @@
   const qp = (k) => { const m = new RegExp('[?&]' + k + '=([^&#]*)').exec(QS); try { return m ? decodeURIComponent(m[1]) : null; } catch (e) { return null; } };
   if (qp('tvswitch') === '1') ls.set('casa.tvswitch', '1'); else if (qp('tvswitch') === '0') ls.set('casa.tvswitch', null);
   if (qp('derbystore') != null) ls.set('casa.derbyStore', /^[a-z0-9_-]{1,32}$/.test(qp('derbystore')) ? qp('derbystore') : null);
-  let stub = null, sdkStub = null;
+  let stub = null, sdkStub = null, schedStub = null;
   if (LOCAL) {
+    schedStub = qp('schedUrl'); if (schedStub) ss.set('casa.schedUrl', schedStub); else schedStub = ss.get('casa.schedUrl');
     stub = qp('tvgameUrl'); if (stub) ss.set('casa.tvgameUrl', stub); else stub = ss.get('casa.tvgameUrl');
     sdkStub = qp('fbSdk'); if (sdkStub) ss.set('casa.fbSdk', sdkStub); else sdkStub = ss.get('casa.fbSdk');
   }
@@ -97,6 +105,51 @@
       return o;
     } catch (e) { state.err = 'net'; return null; } finally { if (t) clearTimeout(t); }
   }
+  /* ---------- v4: 時刻表から次の投票の始まり ---------- */
+  const sched = { doc: null, at: 0, err: '', lib: null, libP: null };
+  function plain(v) { // Firestore の REST の値 → ふつうの値
+    if (!v || typeof v !== 'object') return null;
+    if ('stringValue' in v) return v.stringValue;
+    if ('integerValue' in v) return Number(v.integerValue);
+    if ('doubleValue' in v) return Number(v.doubleValue);
+    if ('booleanValue' in v) return !!v.booleanValue;
+    if ('timestampValue' in v) return Date.parse(v.timestampValue);
+    if ('nullValue' in v) return null;
+    if ('arrayValue' in v) return ((v.arrayValue && v.arrayValue.values) || []).map(plain);
+    if ('mapValue' in v) { const o = {}, fs = (v.mapValue && v.mapValue.fields) || {}; Object.keys(fs).forEach((k) => { o[k] = plain(fs[k]); }); return o; }
+    return null;
+  }
+  function nextLib() { // derby/v2/next-open.js（DERBY 側の計算をそのまま使う）。無い（古い版）ときは null
+    if (window.DerbyNextOpen) return Promise.resolve(window.DerbyNextOpen);
+    if (!sched.libP) sched.libP = loadScript('derby/v2/next-open.js?t=' + Math.floor(Date.now() / 3600000)).then(() => window.DerbyNextOpen || null, () => { sched.libP = null; return null; });
+    return sched.libP;
+  }
+  async function readSched() {
+    if (navigator.onLine === false) return sched.doc;
+    const c = typeof AbortController === 'function' ? new AbortController() : null, t = c && setTimeout(() => c.abort(), 8000);
+    try {
+      const r = await fetch(schedStub || SCHED, Object.assign({ cache: 'no-store', credentials: 'omit' }, c ? { signal: c.signal } : {}));
+      if (r.status === 404) { sched.doc = null; sched.err = ''; }
+      else if (!r.ok) sched.err = 'http ' + r.status;
+      else { const j = await r.json(); sched.doc = plain({ mapValue: { fields: (j && j.fields) || {} } }); sched.err = ''; }
+      sched.at = Date.now();
+    } catch (e) { sched.err = 'net'; } finally { if (t) clearTimeout(t); }
+    return sched.doc;
+  }
+  /* 今が投票の始まり〜発走の間なら { at, openAt }。次の始まりまでの時間は state.nextOpenIn（ms）に */
+  async function voteWindow(storeId) {
+    state.nextOpen = null; state.nextOpenIn = 0;
+    const lib = await nextLib();
+    if (!lib || typeof lib.next !== 'function') return null;
+    if (!sched.doc || Date.now() - sched.at > SCHED_MS) await readSched();
+    if (!sched.doc) return null;
+    let nx = null; try { nx = lib.next(sched.doc, Date.now(), storeId || undefined); } catch (e) { sched.err = 'next'; return null; }
+    if (!nx || !(nx.at > 0) || !(nx.openAt > 0)) return null;
+    const now = Date.now();
+    state.nextOpen = nx;
+    if (now < nx.openAt) { state.nextOpenIn = nx.openAt - now; return null; }
+    return now < nx.at ? nx : null;
+  }
   async function readGame(id) { const d = await readDoc(); return d ? gameOf(d, id) : null; }
   function looping() { let log = []; try { log = JSON.parse(ss.get('casa.tvswitchLog') || '[]'); } catch (e) { log = []; } const now = Date.now(); return log.filter((x) => now - x < LOOP_MS).length >= LOOP_N; }
   function mark() { let log = []; try { log = JSON.parse(ss.get('casa.tvswitchLog') || '[]'); } catch (e) { log = []; } log.push(Date.now()); ss.set('casa.tvswitchLog', JSON.stringify(log.slice(-LOOP_N * 2))); }
@@ -111,20 +164,31 @@
     let g;
     if (live.on && navigator.onLine !== false && Date.now() - lastRest < SAFE_MS) { g = gameOf(live.doc, id); state.err = ''; state.via = 'live'; } // 通知で届いた値（読み取りなし）
     else { g = await readGame(id); lastRest = Date.now(); state.via = 'rest'; }
-    const loc = local(), wait = live.on ? SAFE_MS : POLL_MS;
+    const loc = local();
+    let wait = live.on ? SAFE_MS : POLL_MS;
     state.at = Date.now(); state.local = loc;
     if (g) state.last = g;
-    if ((loc || g) !== 'derby') return later(wait);
+    let auto = null; // v4: 投票の始まりで DERBY へ（固定のテレビ・このレースでもう動いたときは動かない）
+    if ((loc || g) !== 'derby' && loc !== 'slot') {
+      const w = await voteWindow(id); // その店だけの時刻表の決まりも入れる
+      if (w && ls.get(AUTO_KEY) !== String(w.at)) auto = w;
+      if (!w && state.nextOpenIn > 0) wait = Math.min(wait, state.nextOpenIn + 500); // 次の投票の始まりちょうどに確かめ直す
+      else if (w) wait = Math.min(wait, BUSY_MS * 10);
+    }
+    state.auto = auto;
+    if ((loc || g) !== 'derby' && !auto) return later(wait);
     if (looping()) { state.err = 'loop'; return later(wait); }
     if (!idle()) return later(BUSY_MS);
     if (!(await derbyReady())) { state.err = 'no derby files'; return later(wait); }
     if (!idle()) return later(BUSY_MS);
+    if (auto && (Date.now() >= auto.at)) return later(wait); // 遊んでいる間に発走を過ぎた（次のレースを待つ）
     state.leaving = true; mark();
-    try { if (typeof Store !== 'undefined' && Store.log) Store.transact(() => Store.log('TV_GAME', { to: 'derby', store: id, local: !!loc })); } catch (e) { /* 記録できなくても移る */ }
+    if (auto) ls.set(AUTO_KEY, String(auto.at)); // このレースでは 1 回だけ
+    try { if (typeof Store !== 'undefined' && Store.log) Store.transact(() => Store.log('TV_GAME', { to: 'derby', store: id, local: !!loc, auto: auto ? auto.at : undefined })); } catch (e) { /* 記録できなくても移る */ }
     location.replace('derby/index.html?store=' + encodeURIComponent(id) + '&via=slot');
   }
   /* 設定画面から: v = 'slot' | 'derby' | null（店の設定どおり）。すぐ確かめ直す（設定画面を閉じて待機中になってから移る） */
   function setLocal(v) { ls.set(LKEY, v === 'slot' || v === 'derby' ? v : null); state.local = local(); if (active() && !state.leaving) later(300); }
-  window.SlotTvSwitch = { check, state, active, derbyId, local, setLocal, watch, live, readDoc, gameOf, MAP };
+  window.SlotTvSwitch = { check, state, active, derbyId, local, setLocal, watch, live, readDoc, gameOf, MAP, sched, voteWindow, readSched };
   if (active()) { watch(() => { if (active() && !state.leaving) later(200); }); later(FIRST_MS); }
 })();
