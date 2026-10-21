@@ -37,13 +37,23 @@
     return 'over';
   }
 
-  // 受付の 2 段（2026-10-16）: 'exchange'（参加受付＝券・認証もできる）| 'vote'（参加受付は締切・認証済みの人だけ投票）| null（受付中でない）
+  // v4（2026-10-21）: 投票の場面 'wait'（投票の始まり openAt の前＝待ち画面）| 'vote'（投票できる）| null（締切のあと・レースなし）
   function stage(race, t) {
     if (!race) return null;
     t = t == null ? serverNow() : t;
     if (t >= race.closeAt) return null;
-    return t < (race.exchangeCloseAt != null ? race.exchangeCloseAt : race.closeAt) ? 'exchange' : 'vote';
+    return t < (race.openAt != null ? race.openAt : race.closeAt) ? 'wait' : 'vote';
   }
+  /* スマホがそのレースの票の持ち主であることだけを覚える（2026-10-20「会計番号・ニックネームは覚えさせない。選び直しのため、そのレースの票の持ち主であることだけはスマホの中に持つ」）。
+     localStorage 'casa.derby.vote.<レース id>' = { vid, key, at }。会計番号は vid の中に入るが、次のレースの入力には使わない（画面が毎回入れてもらう）。
+     2 日より古いものは消す。Firestore 版の key は 'uid'（持ち主は匿名ログインの uid でルールが確かめる）。 */
+  const VKEY = 'casa.derby.vote.';
+  const myVotes = {
+    get(raceId) { try { const v = JSON.parse(localStorage.getItem(VKEY + raceId) || 'null'); return v && v.vid && v.key ? v : null; } catch (e) { return null; } },
+    set(raceId, vid, key) { try { localStorage.setItem(VKEY + raceId, JSON.stringify({ vid, key, at: Date.now() })); } catch (e) { /* noop */ } },
+    clear(raceId) { try { localStorage.removeItem(VKEY + raceId); } catch (e) { /* noop */ } },
+    prune(ms) { try { const lim = Date.now() - (ms || 2 * 86400000); for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.indexOf(VKEY) === 0) { let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch (e) { v = null; } if (!v || !(v.at > lim)) localStorage.removeItem(k); } } } catch (e) { /* noop */ } },
+  };
 
   /* ---------- Firestore 版（v2/config.js に Firebase の設定があるとき） ---------- */
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); }); }
@@ -54,7 +64,7 @@
     return (race, seed, sims) => new Promise((res, rej) => {
       try {
         if (!w) {
-          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js', location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai}});};';
+          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js', location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai,exacta:o.exacta,exactaProb:o.exactaProb}});};';
           w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
           w.onmessage = (e) => { const f = pend[e.data.id]; if (f) { delete pend[e.data.id]; f(e.data.o); } };
         }
@@ -86,8 +96,8 @@
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
       get offset() { return impl ? impl.offset : 0; }, get synced() { return impl ? impl.synced : false; },
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
-      createTicket: call('createTicket'), getTicket: call('getTicket'), cancelTicket: call('cancelTicket'), vote: call('vote'),
-      staffLogin: call('staffLogin'), staffTicket: call('staffTicket'), auth: call('auth'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
+      vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'),
+      staffLogin: call('staffLogin'), release: call('release'), wins: call('wins'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
       testRace: call('testRace'), testRaceStatus: call('testRaceStatus'), // この店だけテストレース（2026-10-19）
       // 進行役のテレビ（2026-10-19）: cb({ on, code, asking, decider, account })。返り値で止める
       onPair(cb) { let un = null, closed = false; getImpl().then((i) => { if (!closed && i.pair) un = i.pair.on(cb); }).catch(() => {}); return () => { closed = true; if (un) un(); }; },
@@ -158,17 +168,21 @@
       stores: () => get('/api/stores'),
       state: (s) => get('/api/state?' + qs({ store: s || store, role, tv, tvid })),
       race: (id) => get('/api/race?' + qs({ id, role, store, tv, tvid })),
-      // スマホ
-      createTicket: (o) => post('/api/ticket', Object.assign({ store }, o)),
-      getTicket: (tid, key) => get('/api/ticket?' + qs({ tid, key })),
-      cancelTicket: (tid, key) => post('/api/ticket/cancel', { tid, key }),
-      // raceId（省略可）: 画面に出していたレース。締切で次のレースに切り替わっていたら 409 closed（別のレースの同じ番号の馬に入らないように）
-      vote: (tid, key, picks, raceId) => post('/api/vote', Object.assign(Array.isArray(picks) ? { tid, key, picks } : { tid, key, horse: picks }, raceId ? { raceId } : {})),
+      /* スマホ（v4）: 投票（初めて・選び直し）。o = { raceId（画面に出していたレース。省略可＝いまのレース）, bill（2 けた）, nick, first, second, key（選び直しのときだけ。省略すると myVotes から） }
+         → { vote, key, race }。キーは myVotes に覚える。409: bill_taken（ほかのスマホがその番号で投票済み）・not_open（投票の前）・closed（締切のあと） */
+      vote: async (o) => {
+        o = o || {}; const mine = o.raceId ? myVotes.get(o.raceId) : null, bill = o.bill != null ? String(o.bill).trim().padStart(2, '0') : '';
+        const key = o.key || (mine && mine.vid && mine.vid.slice(-2) === bill ? mine.key : undefined);
+        const r = await post('/api/vote', { store, raceId: o.raceId, bill: o.bill, nick: o.nick, first: o.first, second: o.second, key });
+        if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key);
+        return r;
+      },
+      myVote: (vid, key) => get('/api/vote?' + qs({ vid, key })), // → { vote, race }（票が消えていたら 404 no_vote）
+      claimSelf: (vid, key) => post('/api/vote/claim', { vid, key }), // お客さんのスマホのスライドで「受け取った」→ { payout, vote }
       // スタッフ
       staffLogin: (pin) => post('/api/staff/login', { store, pin }),
-      staffTicket: (pin, code) => post('/api/staff/ticket', { store, pin, code }),
-      // rate（省略可）: スタッフの画面に出していた交換の割合。サーバーの割合と違えば 409 rate_changed（受け取る枚数をまちがえないように）
-      auth: (pin, code, count, rate) => post('/api/auth', { store, pin, code, count, rate }),
+      release: (pin, bill, raceId) => post('/api/staff/release', { store, pin, bill, raceId }), // 番号を空ける → { ok, released, vid, raceId, bill }
+      wins: (pin, o) => post('/api/staff/wins', Object.assign({ store, pin }, o || {})), // 今日の当たり一覧 → { date, wins: [payoutView] }
       staffPayout: (pin, code) => post('/api/staff/payout', { store, pin, code }),
       claim: (pin, code) => post('/api/payout/claim', { store, pin, code }),
       next: (pin) => post('/api/next', { store, pin }),
@@ -205,18 +219,18 @@
           setDecider: (id) => post('/api/admin/decider', { id: id || null }, h),
         };
       },
-      /* リアルタイム: handlers = { state, race, ticket, payout, next, reload, hello, open, error }。o = { tid, key }（スマホの自分の券）
+      /* リアルタイム: handlers = { state, race, vote, payout, next, reload, hello, open, error }。o = { vid, key }（スマホの自分の票。vote は { vote } か消えたとき { vote: null, released: true }）
          返り値の関数を呼ぶと止まる。切れたら自動で再接続し、つながるたびに時刻を合わせ直す。 */
       subscribe(handlers, o) {
         handlers = handlers || {}; o = o || {};
         if (typeof EventSource === 'undefined') throw new Error('EventSource がありません');
-        const url = base + '/api/stream?' + qs({ store, role, tv, tvid, tid: o.tid, key: o.key });
+        const url = base + '/api/stream?' + qs({ store, role, tv, tvid, vid: o.vid, key: o.key });
         let es = null, closed = false, retry = null;
         const on = (name) => (ev) => { let d = null; try { d = JSON.parse(ev.data); } catch (e) { return; } if (handlers[name]) handlers[name](d); };
         function connect() {
           if (closed) return;
           es = new EventSource(url);
-          ['hello', 'state', 'race', 'ticket', 'payout', 'next', 'reload'].forEach((n) => es.addEventListener(n, on(n)));
+          ['hello', 'state', 'race', 'vote', 'payout', 'next', 'reload'].forEach((n) => es.addEventListener(n, on(n)));
           es.addEventListener('pair', (ev) => { let d = null; try { d = JSON.parse(ev.data); } catch (e) { return; } pairSet(d); if (handlers.pair) handlers.pair(d); }); // 進行役のテレビ（2026-10-19）
           es.onopen = () => { syncClock(3).catch(() => {}); if (handlers.open) handlers.open(); };
           es.onerror = (e) => {
@@ -253,5 +267,5 @@
     } catch (e) { /* なし */ }
   })();
 
-  return { create, serverNow, parseCode, phase, stage, get offset() { return offset; } };
+  return { create, serverNow, parseCode, phase, stage, myVotes, get offset() { return offset; } };
 });
