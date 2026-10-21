@@ -5,7 +5,7 @@
    オレンジ = 気をつける（保存していない・テストモード）／赤い文字 = エラー／青 = 確定・情報。casa SLOT マスター（deploy/MASTER_SIMPLE_NOTES.md）と同じ決まり */
 :root { --bg: #0b0b0d; --panel: #16161a; --panel2: #111115; --line: #2a2a31; --gold: #e9c25e; --gold2: #a57c26; --text: #f3ead0; --sub: #a89f89; --dim: #8d8574; --ok: #4cd97b; --ng: #ff9d8c; --warn: #ffb347; --sel: #d9dce3; --selText: #15151a; --on: #1f6e4a; --off: #3a3a42; --info: #7cc4ff; }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif; -webkit-text-size-adjust: 100%; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 500 16px/1.5 "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; -webkit-text-size-adjust: 100%; }
 body { overflow-x: hidden; }
 header { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #0b0b0dee; border-bottom: 1px solid var(--line); backdrop-filter: blur(6px); }
 header h1 { margin: 0; font-size: 18px; letter-spacing: .08em; color: var(--gold); white-space: nowrap; }
@@ -365,9 +365,6 @@ details.fold > summary small { flex-basis: 100%; padding-left: 22px; margin-top:
   .rfwarn { font-size: 14px; }
 }
 .opsnote { margin: 12px 2px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); color: var(--text); font-size: 15px; font-weight: 600; }
-/* 2026-10-19: リングバウンティの交換（設定タブのいちばん上） */
-#bountyPanel .bpnow { margin: 0 0 10px; font-size: 18px; }
-#bountyPanel .bpnow b { font-size: 22px; color: var(--gold); }
 
 /* テレビの画質（2026-10-19）: 「テレビを切り替える」の各店の行の 2 段目（画質 なめらか優先 | 標準 | きれい優先）と、店舗の編集の 3 択 */
 .tvrow { grid-template-areas: "nm seg rl" "q q q"; }
@@ -390,3 +387,44 @@ h3 .qsub { font-size: 13px; font-weight: 400; color: var(--sub); margin-left: 6p
 /* 2026-10-20 オーナー決定: 金額の単位「pt」（数字のすぐ後ろ・数字より少し小さく） */
 .pt { font-size: .72em; font-weight: 700; margin-left: 1px; opacity: .85; letter-spacing: 0; }
 .stat b small.pt, .summary .stat b small.pt, td small.pt, .rfnums b small.pt { display: inline; margin: 0 0 0 1px; font-size: .62em; color: inherit; font-weight: 700; }
+
+/* v4（2026-10-21・v2/V4_UI_ADMIN_NOTES.md）: タブ 今日／時刻表／テレビ／調整／集計 */
+/* 今日のいちばん上: 店のテレビの今のゲーム（DERBY は銀の札＝今の値）。切り替えは「テレビ」タブ */
+.tvstrip { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin: 0 0 10px; }
+.tvstrip .lb { color: var(--sub); font-size: 13px; font-weight: 700; margin-right: 2px; }
+.tvstrip .chip { margin: 0; font-size: 13px; padding: 3px 10px; }
+.tvstrip .btn { margin-left: auto; }
+/* 勝ち（1着→2着）・テストのレース */
+td .combo { font-size: 15px; white-space: nowrap; }
+tr.testrace td { background: rgba(255, 179, 71, .05); }
+td .vfrom { white-space: nowrap; }
+/* 勝ち馬の決まり方（オーナー用） */
+.explain { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); font-size: 14px; line-height: 1.7; }
+.explain .exh { display: block; color: var(--gold); font-size: 15px; margin-bottom: 4px; }
+.explain .exl { margin: 0; padding-left: 1.4em; color: var(--text); }
+.explain .exl li { margin: 4px 0; }
+.explain .exl b { color: var(--gold); }
+details.fold > .in.explain { margin: 0 0 6px; }
+.memo-reason { color: var(--info) !important; }
+/* 調整: 変えられない値（決まり）の行・大きなずらし幅の注意 */
+.row.fixed .fixv { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.row.fixed .fixv b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.row.fixed .fixv small { color: var(--dim); font-size: 11px; }
+.bigwarn { margin: -4px 0 8px; padding: 6px 10px; border: 1px solid rgba(255, 179, 71, .5); border-radius: 10px; background: rgba(255, 179, 71, .08); font-weight: 700; }
+.capnote { padding: 8px 10px; border-left: 3px solid var(--gold2); background: #121109; border-radius: 0 10px 10px 0; }
+/* 時刻表: 全店同じ（店舗の選択はなくした）。以前の形の予定の案内 */
+.tpl-cond.v4 { grid-template-columns: 150px minmax(0, 1fr); }
+@media (max-width: 1180px) { .tpl-cond.v4 { grid-template-columns: 150px minmax(0, 1fr); } }
+@media (max-width: 640px) { .tpl-cond.v4 { grid-template-columns: 1fr; } }
+.legacy { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; padding: 8px 10px; border: 1px solid rgba(255, 179, 71, .5); border-radius: 10px; color: var(--warn); font-size: 13px; }
+.legacy span { flex: 1 1 220px; }
+@media (max-width: 640px) {
+  .tvstrip .btn { margin-left: 0; }
+  .row.fixed .fixv { flex-direction: row; align-items: baseline; gap: 6px; margin-left: auto; }
+}
+@media (max-width: 640px) {
+  table.cards tr.testrace, table.cards tr.voided { background: rgba(255, 179, 71, .06); border-radius: 10px; }
+  table.cards tr.voided { background: rgba(255, 157, 140, .06); }
+  table.cards tr.rfopen { background: rgba(255, 157, 140, .06); border-radius: 10px; }
+  table.cards tr.testrace td, table.cards tr.voided td, table.cards tr.rfopen td { background: none; }
+}
