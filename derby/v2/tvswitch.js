@@ -146,6 +146,52 @@
     } catch (e) { qState.err = 'read'; /* 読めないときは今のまま */ }
   }
   if (STORE && QWATCH) setTimeout(function loopQ() { checkQuality().finally(() => setTimeout(loopQ, Q_EVERY)); }, 8000);
+  /* ---------- 投票の始まりで DERBY に（v4・2026-10-21） ----------
+     オーナー決定「レースの時刻にテレビが SLOT なら自動で DERBY にする（投票が始まる時刻）。レースのあとも DERBY のまま。いつでも SLOT に切り替えられる」。
+     店のテレビのゲームを DERBY にするのは決める係（模擬クラウドはサーバー・Firestore 版は進行役のテレビ。Core.tvAutoPlan）。ただし決める係が動いていない・
+     書けなかったときに、DERBY を映しているテレビが「投票の時間なのに店の設定が SLOT のまま」を理由に SLOT へ出ていかないよう、このテレビ自身も時刻表を見る:
+       1) 投票の始まりの LEAD_MS（60 秒）前からは、店の設定が SLOT でも出ていかない（出てもすぐ戻される）。
+       2) 店の設定の SLOT が「いちばん新しい投票の始まり」より前からのもの（＝投票が始まったのに SLOT のまま）なら出ていかない。レースのあとも（次に設定が変わるまで）DERBY のまま。
+          投票が始まったあとに SLOT に変わった（スタッフの手での切り替え）ときは、今までどおりレースが終わってから SLOT へ（手での切り替えとけんかしない）。
+          いつから SLOT かは、このテレビが見た時刻（sessionStorage casa.tvswitchSeen。読み込み直しても続く）。
+       3) このテレビが進行役（結果を決めて進める係。Firestore 版の決める係の鍵を持っている・管理画面で選ばれた）のときは、今日このあとレースがある間は
+          店の設定が SLOT でも出ていかない（進行役が SLOT に行くと、投票の始まりにテレビを DERBY にする係も、レースの結果を決める係もいなくなる）。
+          このテレビだけの設定（casa.tvGameLocal = 'slot'。長押しの画面の「casa SLOT に戻す」）は今までどおり出ていく（その場の操作なので）。
+     いつもの状態（window.DERBY.state・DERBY.now）が読めないあいだ（起動直後の 30 秒まで）は待つ。それでも読めなければ今までどおり */
+  const LEAD_MS = 60000, SEEN_KEY = 'casa.tvswitchSeen', BOOT = Date.now();
+  const sNow = () => { const d = window.DERBY; try { return d && typeof d.now === 'function' ? d.now() : Date.now(); } catch (e) { return Date.now(); } };
+  function seenGet() { try { const o = JSON.parse(ss.get(SEEN_KEY) || 'null'); return o && (o.v === 'slot' || o.v === 'derby') && o.store === STORE ? o : null; } catch (e) { return null; } }
+  function seenNote(g) { // 店の設定の値を見た（同じ値が続く間は最初に見た時刻のまま）
+    if (g !== 'slot' && g !== 'derby') return seenGet();
+    const o = seenGet();
+    if (o && o.v === g) return o;
+    const n = { v: g, since: sNow(), store: STORE, from: o ? o.v : null };
+    ss.set(SEEN_KEY, JSON.stringify(n));
+    return n;
+  }
+  const openOf = (r) => (r && Number(r.openAt)) || 0;
+  /* 時刻表から: last＝いちばん新しい「もう始まった投票の始まり」、next＝これからの投票の始まり、more＝今日このあとレースがあるか、on＝いま投票中・レース中 */
+  function timetable() {
+    const d = window.DERBY, s = d && d.state; if (!s || typeof s !== 'object') return null;
+    const t = sNow(), cand = [s.open, s.live, s.last, s.next, s.current].concat(Array.isArray(s.upcoming) ? s.upcoming : []).filter(Boolean);
+    let last = 0, next = Infinity;
+    cand.forEach((r) => { const o = openOf(r); if (!o) return; if (o <= t) last = Math.max(last, o); else next = Math.min(next, o); });
+    return { t, last, next, more: next < Infinity || !!s.open || !!s.live, on: !!s.open || !!s.live };
+  }
+  function isDecider() {
+    const d = window.DERBY, c = d && d.cloud; if (!c || c.backend !== 'firestore') return false; // 模擬クラウドはサーバーが決める（テレビは進行役でも決めない）
+    try { if (c.decider && c.decider.leader) return true; const p = c.pairState || (d.pair || null); return !!(p && p.decider); } catch (e) { return false; }
+  }
+  /* SLOT に出ていかない理由（'soon' | 'vote' | 'decider' | 'boot' | ''）。loc: このテレビだけの設定 */
+  function holdDerby(loc, seen) {
+    if (loc === 'slot') return ''; // このテレビだけの設定（その場の操作）は今までどおり
+    const tt = timetable();
+    if (!tt) return window.DERBY && Date.now() - BOOT < 30000 ? 'boot' : ''; // テレビの画面（v2/tv.js）が状態をまだ読めていない → 少し待つ。画面が無い（確認用の箱）は今までどおり
+    if (isDecider() && tt.more) return 'decider';
+    if (tt.next - tt.t < LEAD_MS) return 'soon';
+    if (tt.last && seen && seen.v === 'slot' && seen.since < tt.last) return 'vote';
+    return '';
+  }
   let timer = 0, lastRest = 0;
   const later = (ms) => { clearTimeout(timer); timer = setTimeout(check, ms); };
   async function check() {
@@ -153,13 +199,32 @@
     let g;
     if (live.on && navigator.onLine !== false && Date.now() - lastRest < SAFE_MS) { g = gameOf(live.doc, STORE); state.err = ''; state.via = 'live'; } // 通知で届いた値（読み取りなし）
     else { g = await readGame(); lastRest = Date.now(); state.via = 'rest'; }
-    const loc = local(), wait = live.on ? SAFE_MS : POLL_MS;
+    const loc = local(), wait = live.on ? SAFE_MS : POLL_MS, seen = seenNote(g);
     state.at = Date.now(); state.local = loc;
     if (g) state.last = g;
+    state.hold = '';
     if ((loc || g) !== 'slot') return later(wait); // DERBY のまま・分からないときは今のゲームのまま（このテレビの設定が先）
+    const why = holdDerby(loc, seen);
+    if (why) { // 投票の始まりの前後 2 分は 5 秒ごとに見直す（決める係が DERBY にした値を見落とさない＝そのあとの手での SLOT を「新しい SLOT」と分かる。通知が無い模擬クラウドでも）
+      state.hold = why; showHold(why);
+      const tt = timetable(), near = !!tt && (tt.next - tt.t < 2 * LEAD_MS || (tt.last > 0 && tt.t - tt.last < 120000));
+      return later(why === 'boot' ? 3000 : why === 'soon' || near ? 5000 : Math.min(wait, POLL_MS));
+    }
+    showHold('');
     if (looping()) { state.err = 'loop'; return later(wait); }
     if (busy()) return later(BUSY_MS);
     leave();
+  }
+  /* 進行役のテレビが店の設定 SLOT のまま DERBY に残っているとき: 左下に小さく（スタッフ向け。お客さんの邪魔にならない大きさ） */
+  function showHold(why) {
+    if (typeof document === 'undefined' || !document.getElementById) return;
+    let b = document.getElementById('tvHold');
+    if (why !== 'decider') { if (b) b.remove(); return; }
+    if (b || !document.body || !document.createElement) return;
+    b = document.createElement('div'); b.id = 'tvHold';
+    b.style.cssText = 'position:fixed;left:10px;bottom:8px;z-index:60;padding:6px 12px;border-radius:10px;background:rgba(0,0,0,.6);color:#fff;font:700 14px/1.3 sans-serif;pointer-events:none';
+    b.textContent = '進行役のテレビのため casa DERBY のままです（SLOT にするとレースが進みません）';
+    document.body.appendChild(b);
   }
   function leave() {
     state.leaving = true; mark();
@@ -168,7 +233,7 @@
   }
   /* 「casa SLOT に戻す」: このテレビを casa SLOT に固定して戻る（すぐ。レース中なら終わってから＝店の設定で戻るときと同じ） */
   function backToSlot() { if (!home() || state.leaving) return; ls.set(LKEY, 'slot'); state.local = 'slot'; clearTimeout(timer); if (busy()) later(BUSY_MS); else leave(); }
-  window.DerbyTvSwitch = { check, state, active, docUrl, local, backToSlot, watch, live, readDoc, gameOf, quality: qState, checkQuality };
+  window.DerbyTvSwitch = { check, state, active, docUrl, local, backToSlot, watch, live, readDoc, gameOf, quality: qState, checkQuality, holdDerby, timetable, seen: seenGet, LEAD_MS };
   if (active()) { watch(() => { if (active() && !state.leaving) later(200); }); later(FIRST_MS); }
 
   /* ---------- Fire TV のアプリのリモコン（window.TV が無いときだけ） ---------- */
@@ -186,7 +251,7 @@
       '<div style="font-size:16px;color:#a89f89;margin-bottom:12px">テレビ用のパスワードで決めるときだけ、下に入れてください。' + (has ? '（このテレビには登録済みです。入れ直すときだけ）' : '') + '空のまま決定で閉じます。</div>' +
       '<input id="tvkeyIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;font-size:24px;padding:10px;border-radius:10px;border:1px solid #2a2a31;background:#0b0b0d;color:#fff">' +
       (home() && STORE ? '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #2a2a31"><button id="tvkeySlot" type="button" style="font:700 22px/1 sans-serif;padding:14px 22px;border-radius:12px;border:2px solid #a57c26;background:#232329;color:#f3ead0">casa SLOT に戻す</button>' +
-        '<div style="font-size:15px;color:#a89f89;margin-top:8px">' + (local() === 'derby' ? 'このテレビは casa DERBY に固定されています。' : '') + 'このテレビだけ casa SLOT に固定して戻ります（下・上で選んで決定）。店の設定どおりに戻すのは casa SLOT の設定画面「このテレビのゲーム」で。</div></div>' : '') + '</div>';
+        '<div style="font-size:15px;color:#a89f89;margin-top:8px">' + (local() === 'derby' ? 'このテレビは casa DERBY に固定されています。' : '') + 'このテレビだけ casa SLOT に固定して戻ります（下・上で選んで決定）。店の設定どおりに戻すのは casa SLOT の設定画面「このテレビのゲーム」で。' + (isDecider() ? '<br><b style="color:#ffb4a8">このテレビは進行役です。casa SLOT にすると、戻るまでレースが進みません（投票の始まりに自動で DERBY に戻りません）。</b>' : '') + '</div></div>' : '') + '</div>';
     // 2026-10-19: 画質の確認用に 1 行（3D の細かさ・1 秒のコマ数・画面の大きさ・版）。お客さんには見えない（この画面はスタッフ・オーナーだけ）
     const dg = document.createElement('div'); dg.id = 'tvDiag'; dg.style.cssText = 'margin-top:14px;font-size:15px;color:#8f8a7c';
     const r3 = window.R3D && window.R3D.inst, pf = r3 && r3.perf, tvv = ((document.querySelector('script[src*="v2/tv.js?v="]') || {}).src || '').split('v=')[1] || '';
