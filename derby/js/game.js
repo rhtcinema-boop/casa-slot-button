@@ -314,9 +314,17 @@
     if (ph === 'photo') { show('rankPanel', false); show('tagPhoto', true); return; }
     if (ph === 'winback') { stageEl.classList.add('bc-clean'); ['rankPanel', 'tagReplay', 'tagPhoto', 'winCard', 'gainBadge'].forEach((id) => show(id, false)); return; } // ゴール後に勝ち馬を後ろから追う間: 何も出さない
     if (ph === 'replay') { stageEl.classList.add('bc-clean'); show('rankPanel', false); show('tagReplay', true); show('tagPhoto', !!info.photo); show('winCard', false); show('gainBadge', false); return; }
+    // v4（2026-10-21）: 勝ち馬のアップのあとに 2 着のアップ（'winner2'。カードを銀の「2着」に）→ 2 頭の絵（'winboth'。カードをしまい、映像の下の組み合わせの帯だけ）。「獲得 ○枚」はそのまま
+    if (ph === 'winner2') {
+      const h2 = race && race.horses[info.second], card = $('winCard'), tag = card && card.querySelector('.w1 b');
+      if (h2 && card) { card.classList.add('second'); if (tag) tag.textContent = '2着'; $('wcNo').textContent = h2.no; $('wcNo').style.background = h2.color; $('wcNo').style.color = h2.ink; $('wcName').textContent = h2.name; $('wcOdds').textContent = odds ? '単勝 ' + odds.tansho[info.second].toFixed(1) + ' 倍' : ''; show('winCard', true); const nm = $('wcName'); nm.classList.remove('pop'); setTimeout(() => nm.classList.add('pop'), 400); }
+      return;
+    }
+    if (ph === 'winboth') { show('winCard', false); return; }
     if (ph === 'winner') {
       stageEl.classList.add('bc-clean'); show('rankPanel', false); show('tagReplay', false); show('tagPhoto', false);
       const w = info.winner, h = race && race.horses[w];
+      { const card = $('winCard'), tag = card && card.querySelector('.w1 b'); if (card) card.classList.remove('second'); if (tag) tag.textContent = '1着'; }
       if (h) {
         $('wcNo').textContent = h.no; $('wcNo').style.background = h.color; $('wcNo').style.color = h.ink; $('wcName').textContent = h.name;
         $('wcOdds').textContent = odds ? '単勝 ' + odds.tansho[w].toFixed(1) + ' 倍' : '';
