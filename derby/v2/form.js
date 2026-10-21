@@ -13,7 +13,7 @@
      ゆらぎ ±1.8 着ほど。6 頭立てで 1〜6 着がほぼ同じ割合・平均はおよそ 3.5 着（1 つのレースで「1-1-1」の馬が何頭も並ぶような、ありえない成績にならないように）。勝ち馬の決め方（裏の調整）・そのレースの結果とは関係しない
      （オッズも同じ能力から作っているので、オッズと食い違いにくい）。past[0] が前走（いちばん新しい）。
 
-   オッズの倍率: 0.1 刻みの倍率をいつも小数 1 桁で（1.1〜999.9。例 2.4 → "2.4"、15 → "15.0"）。当選額（チップ × 倍率）は今までどおり額で出す。 */
+   オッズの倍率: 0.1 刻みの倍率をいつも小数 1 桁で（v4 の 2 連単は 1.0〜999.9。例 2.4 → "2.4"、15 → "15.0"）。当選額は payFor（100pt × 倍率 の 100pt 切り上げ）。 */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.DerbyForm = factory();
@@ -39,7 +39,9 @@
     const wins = past.filter((p) => p === 1).length, places = past.filter((p) => p <= 2).length;
     return { past, recent: past.slice(0, 3), mark: wins >= 2 ? '◎' : places >= 2 ? '○' : places >= 1 ? '▲' : '' };
   }
+  /* 当選額（v4・2026-10-21）: 1 票 100pt × 倍率 を 100pt 単位に切り上げ（v2/outcome.js の payFor と同じ。例 12.4 倍 → 1,300pt）。確認画面の「当たれば 1,300pt」に使う */
+  function payFor(o) { const t = Math.max(10, Math.round(Number(o) * 10)); return Number.isFinite(t) ? Math.ceil(t / 10 - 1e-9) * 100 : 0; }
   // オッズの倍率（数字だけ）。0・なしは "—"
   function odds(o) { const v = Number(o); return v > 0 ? (Math.round(v * 10) / 10).toFixed(1) : '—'; }
-  return { TYPES, typeOf, hash, rng, dayKey, formOf, odds, N };
+  return { TYPES, typeOf, hash, rng, dayKey, formOf, odds, payFor, N };
 });
