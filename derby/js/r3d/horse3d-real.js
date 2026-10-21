@@ -864,7 +864,7 @@ R3D.HorseReal = (function () {
       const num = String(h.no || 1);
       [[-1, x0 + W * 0.21], [1, x0 + W * 0.79]].forEach(([sd, x]) => {
         c.save(); c.translate(x, y0 + H * 0.52); c.rotate(sd > 0 ? -PI / 2 : PI / 2);
-        c.textAlign = "center"; c.textBaseline = "middle"; c.font = "900 " + (num.length > 1 ? 74 : 100) + "px \"Arial Rounded MT Bold\", \"Arial Black\", \"Helvetica Neue\", Arial, sans-serif";
+        c.textAlign = "center"; c.textBaseline = "middle"; c.font = "900 " + (num.length > 1 ? 74 : 100) + "px \"Noto Sans JP\", \"Hiragino Sans\", sans-serif"; // 2026-10-21 Noto Sans JP に統一
         if (lum > 230) { c.fillStyle = "#222"; c.fillText(num, 0, 4); }
         else { if (lum > 150) { c.lineWidth = 9; c.strokeStyle = "#3a2a10"; c.lineJoin = "round"; c.strokeText(num, 0, 4); } c.fillStyle = "#fff"; c.fillText(num, 0, 4); }
         c.restore();
@@ -933,7 +933,7 @@ R3D.HorseReal = (function () {
     c.beginPath(); c.arc(m, m, N * 0.455, 0, TAU); c.fillStyle = gold ? '#ffd457' : '#ffffff'; c.fill();                       // 白いふち
     c.beginPath(); c.arc(m, m, N * 0.39, 0, TAU); c.fillStyle = col; c.fill();                              // 枠色の地
     c.lineWidth = N * 0.012; c.strokeStyle = 'rgba(0,0,0,.35)'; c.stroke();
-    c.font = '900 ' + Math.round(N * (num.length > 1 ? 0.5 : 0.74)) + 'px "Arial Black", "Helvetica Neue", Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = '900 ' + Math.round(N * (num.length > 1 ? 0.5 : 0.74)) + 'px "Noto Sans JP", "Hiragino Sans", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     const dark = parseInt(ink.slice(1), 16) < 0x808080;
     c.lineJoin = 'round'; c.lineWidth = N * 0.05; c.strokeStyle = dark ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.55)'; c.strokeText(num, m, m + N * 0.03);
     c.fillStyle = ink; c.fillText(num, m, m + N * 0.03);
@@ -1722,6 +1722,8 @@ R3D.HorseReal = (function () {
       flashEye(dur, elapsed) { if (!glint) glint = makeGlint(); glintDur = Math.max(0.1, +dur || 0.45); glintT = Math.max(0, +elapsed || 0); updateGlint(0); },
       get eyeFlash() { return glintT >= 0 ? glintT / glintDur : null; },   // 確認用: 光っている途中なら 0〜1
       // 足元の輪を太く明るく（自分の賭けた馬など）
+      // 2026-10-21: 文字（Noto Sans JP）が読めたあとに、ゼッケンと足元の札の馬番を描き直す（js/race3d.js の setRace が呼ぶ）
+      refreshText() { const old = tMat.map; tMat.map = atlasTexture(h); tMat.needsUpdate = true; if (old && old !== clothTex) old.dispose(); const bg = ring && ring.userData.badges; if (bg && bg.userData.cv) { drawBadge(bg.userData.cv, h, ringGold); bg.userData.tex.needsUpdate = true; } },
       setRingHighlight(on) { if (!ring) return; ringStrong = !!on; drawRing(ring.userData.cv, h, ringStrong, ringGold); ring.userData.tex.needsUpdate = true; },
       get ringGlow() { return ringGold; },   // 確認用: 確定演出 eye で足元の輪・札が光っている間 true
       setRingVisible(on) { if (ring) ring.visible = ring.userData.badges.visible = !!on; },
@@ -1731,7 +1733,7 @@ R3D.HorseReal = (function () {
       set onStep(fn) { onStep = typeof fn === "function" ? fn : null; }, get onStep() { return onStep; },
       set dustBoost(k) { dustK = Math.max(0.5, Math.min(2.5, +k || 1)); }, get dustBoost() { return dustK; },   // 土煙の強さ（1 = ふつう。統合側が直線の先頭 2 頭を 1.7 に）
       dispose() {
-        clothTex.dispose(); tMat.dispose(); auraMat.dispose(); ghostMat.dispose(); skeleton.dispose(); if (glint) glint.mat.dispose();
+        clothTex.dispose(); if (tMat.map && tMat.map !== clothTex) tMat.map.dispose(); tMat.dispose(); auraMat.dispose(); ghostMat.dispose(); skeleton.dispose(); if (glint) glint.mat.dispose();
         if (glint && glint.rglow) glint.rglow.material.dispose();
         if (ring) { ring.userData.tex.dispose(); ring.userData.mat.dispose(); ring.userData.badges.userData.tex.dispose(); ring.userData.badges.userData.mats.forEach((m) => m.dispose()); }
         if (dustSys) { dustSys.free(dustSlot); dustSys = null; dustSlot = -1; }
