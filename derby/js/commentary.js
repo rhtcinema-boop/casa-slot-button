@@ -87,7 +87,7 @@ window.Commentary = (function () {
     let end = now;
     // つなぎの言葉（「○番と」「前は」「○番に」「1番人気の」など）で終わらないよう、その次の部品までは言う
     let keep = -1; L.items.forEach((it, k) => { if (it.t0 <= now + 0.005) keep = k; });
-    while (keep >= 0 && keep + 1 < L.items.length && /:(to\.|maewa|ni\.|fav|mid2|split|timeis|winner|yuuri|lead_is)/.test(L.items[keep].id)) keep++;
+    while (keep >= 0 && keep + 1 < L.items.length && /:(to\.|maewa|ni\.|fav|mid2|split|timeis|winner|yuuri|lead_is|second\.)/.test(L.items[keep].id)) keep++;
     L.items.forEach((it, k) => {
       if (k <= keep) { if (it.t1 > end) end = it.t1; }
       else if (!it.dead) { it.dead = true; try { it.src.stop(it.t0); } catch (e) {} it.g.gain.setValueAtTime(0, it.t0); it.t1 = it.t0; }
@@ -615,6 +615,11 @@ window.Commentary = (function () {
     if (tier === 'x') {
       const close = d.gapM[1] < BASHIN * 0.9, three = d.gapM[1] + d.gapM[2] < BASHIN * 1.2;
       const a = o[0], b = o[1], c = o[2];
+      // v4（2 連単。2026-10-21）: 2 着争い（2・3 番手が 1 馬身以内・先頭とは 0.9 馬身以上）を 1 レースに 1 回まで。録音済みの部品をつなぐ「2番手に○番 △番が迫る！」（新しい声の部品は作らない）
+      if (!this.said2nd && c != null && !close && d.gapM[2] < BASHIN && this.flags.rem200 && d.remain > 110 && !st.fin[b] && !st.fin[c]) { // 「残り200」を言ったあと・「残り100」の前（割り込まれて途中で切れにくい所）
+        const L = this.line(4, 'x', 'second2').add('second.' + (b + 1)).add('chase.' + (c + 1));
+        if (L.parts.length === 2 && !(L.dur > toGoal - 0.08 && toGoal < 3)) { this.said2nd = 1; return L; }
+      }
       const cands = [];
       if (close) {
         cands.push(() => { const L = this.line(4, 'x', 'ka').add('ka.' + (a + 1)).add('ka.' + (b + 1)); if (three) L.add('ka.' + (c + 1)); return L; });
