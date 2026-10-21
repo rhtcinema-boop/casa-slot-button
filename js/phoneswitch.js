@@ -21,7 +21,7 @@
    - 2026-10-19 その 2（オーナー「すぐテストレースを走らせるみたいなボタン」）: シートに「テストレースを今すぐ走らせる」。
      casa DERBY のスタッフ画面の「この店だけテストレース」と同じお願い（derbyTestReq/<店舗ID> = { at: サーバーの時刻, by: 自分, startIn: 60 }。ルールは今のまま）を、
      上と同じ casa DERBY のスタッフ PIN で書く。進行役のテレビが 1 分後（参加受付 30 秒 → 投票 30 秒）のその店だけのレースを作る。
-     2026-10-20 その 5（オーナー「テストレースでも投票できるように」）: 1 分半後（参加受付 1 分 → 投票 30 秒）。テレビを切り替えるときは 120 秒（core.js の TEST_RACE）
+     2026-10-20 その 5（オーナー「テストレースでも投票できるように」）: 1 分後（投票 1 分）。テレビを切り替えるときは 120 秒（core.js の TEST_RACE）
      押せないときの理由: 進行役のテレビ（derbyLock/decider の期限）・受付中・レース中・もうすぐ次のレース（derbyLive/<店舗ID> のレース）・準備中・発走まで
    - 2026-10-19 その 3（オーナー「テストレース開始ボタンがあれば、すぐ始まるように」）: 店のテレビが casa SLOT なら、テストレースを押すと
      同じ書き込みで店のテレビを casa DERBY にする（店の設定と derbySwitch/tv。スタッフとして自分の店だけ＝今の決まりのまま）。発走は 90 秒後（テレビの切り替えと読み込みを見込む）。
@@ -37,7 +37,7 @@
   if (!T || !window.BillPage) return;
   const KEY = 'AIzaSyDuElvskkcKBs4XisXjTe7-mSxjq3KuswA', DB = 'projects/casa-derby/databases/(default)/documents';
   const STAFF_KEY = 'casa.derby.staff.v1', AUTO_KEY = 'casa.phoneSwitch', LOG_KEY = 'casa.phoneSwitchLog', MAN_KEY = 'casa.phoneSwitchManual';
-  const TEST_SEC = 90; // テストレース: 押してから発走まで（casa DERBY の core.js TEST_RACE.quickSec と同じ。その 5: 60 → 90 秒＝参加受付 1 分・投票 30 秒）
+  const TEST_SEC = 60; // テストレース: 押してから発走まで（casa DERBY の core.js TEST_RACE.quickSec と同じ。v4: 90 → 60 秒＝押してすぐ投票 1 分）
   const QUIET_MS = 6000, RETRY_MS = 2000, POLL_MS = 30000, LOOP_N = 6, LOOP_MS = 10 * 60000;
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   let stub = null;
@@ -189,7 +189,7 @@
     else if (state.open && r && r.raceId && !tr.races.some((x) => x.id === r.raceId)) loadTest.h = setTimeout(() => loadTest(false), 1500); // できたレースを店のレースの一覧に
   }
   function clash(n, sec) { // 押すと、店のレース（受付の始まり〜結果画面の終わり）とぶつかる？（core.js の testRaceBusy と同じ考え方。時刻表のレースは進行役が 15 分先まで作ってある）
-    const P = tr.pub || {}, gate = P.scenes && P.scenes.gate === false ? 0 : num(P.gateSec, 8), post = num(P.postSec, 28), res = num(P.resultSec, 300), ex = num(P.exchangeSec, 90), vo = num(P.voteSec, 30);
+    const P = tr.pub || {}, gate = P.scenes && P.scenes.gate === false ? 0 : num(P.gateSec, 8), post = num(P.postSec, 28), res = num(P.resultSec, 300), ex = num(P.exchangeSec, 0), vo = num(P.voteSec, 180); // v4: 交換の時間はなし・投票は初期 180 秒（レースの openAt があればそれを使う）
     const end = n + ((sec || TEST_SEC) + gate + 60 + post + res) * 1000;
     for (const r of tr.races || []) {
       if (!r || r.status === 'void') continue;
@@ -215,8 +215,8 @@
     return [note || tr.msg, false];
   }
   function trHint() {
-    if (state.game !== 'slot') return '押すと 1 分半後に発走します（参加受付 1 分 → 投票 30 秒）';
-    return '押すとテレビを casa DERBY に切り替えて、' + (wake() ? '進行役のテレビが戻ってから 1 分半後' : 'テレビが切り替わってから 1 分半後') + 'に発走します（スロットのゲーム中は、終わるまで待ちます）';
+    if (state.game !== 'slot') return '押すと 1 分後に発走します（投票 1 分）';
+    return '押すとテレビを casa DERBY に切り替えて、' + (wake() ? '進行役のテレビが戻ってから 1 分後' : 'テレビが切り替わってから 1 分後') + 'に発走します（スロットのゲーム中は、終わるまで待ちます）';
   }
   const pad2 = (x) => ('0' + x).slice(-2);
   const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + pad2(s % 60); };
@@ -228,8 +228,8 @@
     const pin = sv && sv.store === id ? sv.pin : (inp ? inp.value.trim() : '');
     if (!pin) { tr.msg = 'casa DERBY のスタッフ PIN を入れてください（上の欄）。'; return paint(); }
     const switching = state.game === 'slot', wk = wake();
-    if (!window.confirm(switching ? (s ? s.name : '') + ' のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (wk ? '進行役のテレビが戻ってから 1 分半後' : 'テレビが切り替わってから 1 分半後') + 'に発走）。\n集計には入りません。'
-      : (s ? s.name : '') + ' のテレビだけで、1 分半後にテストのレースが走ります（参加受付 1 分 → 投票 30 秒 → 発走）。\nお客さんも参加・投票できます（集計には入りません）。')) return;
+    if (!window.confirm(switching ? (s ? s.name : '') + ' のテレビを casa DERBY に切り替えて、テストのレースを走らせます（' + (wk ? '進行役のテレビが戻ってから 1 分後' : 'テレビが切り替わってから 1 分後') + 'に発走）。\n集計には入りません。'
+      : (s ? s.name : '') + ' のテレビだけで、1 分後にテストのレースが走ります（投票 1 分 → 発走）。\nお客さんも参加・投票できます（集計には入りません）。')) return;
     state.busy = true; tr.msg = ''; paint();
     try {
       const ss = await asStaff(id, pin);
