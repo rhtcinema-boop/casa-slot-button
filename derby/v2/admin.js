@@ -1,7 +1,9 @@
-/* casa DERBY v2 管理画面（店舗・時刻表・今日のレース・裏の調整・集計・運用）
-   casa SLOT のマスター画面（master.html / js/master.js）と同じ作り・言葉づかい。あとで master に「casa DERBY」として合流させる前提。
-   通信はすべて DerbyCloud（v2/client.js）経由。API は v2/API.md。足りない API は v2/API_REQUESTS.md の「管理画面から」に書いてある。
-   方針: 時刻表は「エラーがあったら保存できない」（casa SLOT の配当表と同じ）。 */
+/* casa DERBY 管理画面（v4・2026-10-21）: 今日／時刻表／テレビ／調整／集計
+   元の仕様: 仕様書_v4_大改修.md。中身（core）の関数と項目は v2/V4_CORE_NOTES.md の 8 章。画面のメモは v2/V4_UI_ADMIN_NOTES.md。
+   v4 で変わったこと: 参加無料・1 人 1 票（会計番号）・2 連単だけ。リングバウンティの交換の割合・参加受付の秒数・賭けたチップ・当選額の割合・返却はなくした。
+   投票の秒数（初期 180 秒・全店同じ）・元の額 100pt（決まり）・倍率のずらし幅（上限なし。1.0 倍より下げない）・払い出しの上限・当たりの幅・時刻表（走り出す時刻・全店同じ・当選額の目標）。
+   通信はすべて DerbyCloud（v2/client.js）経由（模擬クラウドも Firestore も同じ関数）。
+   方針: 時刻表は「エラーがあったら保存できない」（casa SLOT の配当表と同じ）。見た目と言葉は 2026-10-19 のシンプル化（deploy/ADMIN_SIMPLE_NOTES.md）のまま。 */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -10,27 +12,21 @@
   const pad = (n) => ('0' + n).slice(-2);
   const main = $('main');
   const WD = ['日', '月', '火', '水', '木', '金', '土'];
-  const RUN_SEC = 60; // 走り（約 58 秒）に少し余裕を足した長さ。最短間隔の計算に使う
-  /* 払い戻しは「額」（2026-10-16 オーナー決定。1 枚 = 100・単位なし）。投票は枚のまま。払い戻しの合計・上限は額で入れる（保存のとき 100 単位に丸める＝core.js の roundAmount） */
-  const PAY_MAX = 99999900, YEN = 100;
-  /* casa DERBY CHIPS（2026-10-17 オーナー「リングバウンティ20枚で casa DERBY 100チップ入る感じ」）: 中の投票券の枚数（bet・betTotal・auth・exchanged）は 1 枚 = 100 チップとして見せる */
-  /* 金額の単位「pt」（2026-10-20 オーナー決定。以前は単位なし）: チップ・当選額・目標などは数字のすぐ後ろに「pt」。ptN / chipN＝画面（小さな pt）、ptT / chipT＝確認の窓・お知らせ・文字だけの所。
-     リングバウンティは「枚」のまま。当選額は 10 の位で切り上げた額（決めるときに切り上げ済み。集計・明細・CSV も同じ額） */
+  const RUN_SEC = 60; // 走り（約 58 秒）に少し余裕を足した長さ。最短間隔の計算に使う（v2/core.js の minGapSec と同じ）
+  /* 当選額の目標・上限は pt（100pt 単位に丸めて保存＝core.js の roundAmount）。当選額 ＝ 100pt × 2 連単の倍率を 100pt 単位に切り上げ */
+  const PAY_MAX = 99999900, STAKE = 100, TEST_VOTE_SEC = 60;
   const ptN = (v) => fmtN(v) + '<small class="pt">pt</small>', ptT = (v) => fmtN(v) + 'pt';
-  const chipN = (v) => ptN((Number(v) || 0) * 100), chipT = (v) => ptT((Number(v) || 0) * 100);
-  // 記録 1 行のリングバウンティ（core.js の logBounty と同じ。以前の記録: 認証は枚数＝1 対 1、返却・返還は額 ÷ 100）
-  const isBLog = (l) => l.type === 'auth' || l.type === 'return' || l.type === 'refund' || ((l.type === 'paid' || l.type === 'expired') && l.kind === 'refund');
-  const logB = (l) => (!isBLog(l) ? 0 : l.bounty != null ? Number(l.bounty) || 0 : l.type === 'auth' ? Number(l.count) || 0 : Math.round((Number(l.count) || 0) / 100));
-  const per1 = (o) => (o ? (Math.round(Number(o) * 10) / 10).toFixed(1) + '倍' : ''); // オッズは倍率（2026-10-19 オーナー「オッズ表記は倍率にしよう」。以前は 100あたりの額）
-  const STATUS = { upcoming: ['予定', 'st-upcoming'], open: ['受付中', 'st-open'], vote: ['投票中', 'st-open'], closed: ['締切', 'st-closed'], decided: ['レース中', 'st-decided'], done: ['確定', 'st-done'], void: ['取り消し済み', 'st-void'] };
-  const MODES = [['auto', 'ずっと自動で始める'], ['bet', '誰かが賭けたら始める'], ['staff', 'スタッフが始める']];
+  const per1 = (o) => (o ? (Math.round(Number(o) * 10) / 10).toFixed(1) + '倍' : '');
+  const payFor = (o) => Math.ceil(Math.round(Number(o) * 10) / 10 - 1e-9) * STAKE; // 12.4 倍 → 1,300pt（core.js の payFor と同じ）
+  const STATUS = { upcoming: ['予定', 'st-upcoming'], vote: ['投票中', 'st-open'], closed: ['締切', 'st-closed'], decided: ['レース中', 'st-decided'], done: ['確定', 'st-done'], void: ['取り消し済み', 'st-void'] };
+  const MODES = [['auto', 'ずっと自動で始める'], ['bet', '誰かが投票したら始める'], ['staff', 'スタッフが始める']];
   const modeName = (m) => (MODES.find((x) => x[0] === m) || MODES[0])[1];
-  /* 確定演出（2026-10-16 オーナー決定。店舗には見せない）: 演出名 → [表示名, どう見えるか]。割合の初期値は v2/core.js の DEFAULT_CUES と同じ */
+  /* 確定演出（店舗には見せない。v4 でも「1 着の馬だけ教える」）: 演出名 → [表示名, どう見えるか]。割合の初期値は v2/core.js の DEFAULT_CUES と同じ */
   const CUES = [['fruit', '木の実の色', 'コース脇の木の実が、その馬の枠の色になる'], ['crowd', '観客の服の色', '観客の服がその馬の枠の色に寄る'], ['sign', '看板の絵柄', '向こう正面の看板にその馬の枠の色が出る'], ['cloud', '雲の形', 'その馬の番号の形をした雲が浮かぶ'], ['gateLate', 'ゲートインで遅れた馬', 'その馬だけゲートに入るのをためらう'], ['eye', '最終コーナーで目が光る', '最終コーナーでその馬の目が光る']];
   const DEF_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
-  const cueName = (k) => { const c = CUES.find((x) => x[0] === k); return c ? c[1] : k; };
-  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, exchangeSec: 90, voteSec: 30, betSec: 120, resultSec: 300, gateSec: 8, postSec: 28, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, bountyPerTicket: 20 };
-  const TUNE_PRESETS = [['steady', '堅め', { volatility: 0.7, shiftUp: 0.05, shiftDown: 0.05 }, '人気の馬が勝ちやすい・倍率のずらしは小さめ'], ['normal', 'ふつう', { volatility: 1.0, shiftUp: 0.1, shiftDown: 0.1 }, '今の作り'], ['wild', '荒れやすい', { volatility: 1.5, shiftUp: 0.15, shiftDown: 0.15 }, '人気薄も勝つ・倍率のずらしは大きめ']];
+  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES };
+  const TUNE_PRESETS = [['steady', '堅め', { volatility: 0.7, shiftUp: 0.05, shiftDown: 0.05 }, '人気の組み合わせが来やすい・倍率のずらしは小さめ'], ['normal', 'ふつう', { volatility: 1.0, shiftUp: 0.1, shiftDown: 0.1 }, '今の作り'], ['wild', '荒れやすい', { volatility: 1.5, shiftUp: 0.15, shiftDown: 0.15 }, '人気薄も来る・倍率のずらしは大きめ']];
+  const BIG_SHIFT = 50; // ずらし幅がこれ（%）より大きいと「見た倍率と大きく変わります」
 
   /* ---------- 時刻（サーバー時刻・日本時間） ---------- */
   let C = null, A = null;
@@ -41,19 +37,19 @@
   const hms = (ms) => iso(ms).slice(11, 19);
   const hm = (ms) => iso(ms).slice(11, 16);
   const todayStr = () => ymd(now());
-  // 営業日の「今日」（区切りは裏の調整の dayStartHour 時、初期 5 時）: レース一覧・集計・運用はこちら（サーバーの集計・記録が営業日なので）。時刻表は暦の日付のまま
+  // 営業日の「今日」（区切りは dayStartHour 時、初期 5 時）: レース一覧・集計はこちら。時刻表は暦の日付のまま
   const bizToday = () => ymd(now() - ((cfg && cfg.tuning && cfg.tuning.dayStartHour != null ? Number(cfg.tuning.dayStartHour) : 5) * 3600e3));
   const addDays = (d, n) => ymd(Date.parse(d + 'T00:00:00Z') + n * 864e5);
   const wdOf = (d) => new Date(d + 'T00:00:00Z').getUTCDay();
   const fmtDay = (d) => (+d.slice(5, 7)) + '/' + (+d.slice(8, 10)) + '(' + WD[wdOf(d)] + ')';
   const toMin = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim()); if (!m) return NaN; const h = +m[1], mi = +m[2]; return h < 24 && mi < 60 ? h * 60 + mi : NaN; };
-  const fromMin = (m) => pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60);
+  const fromMin = (m) => pad(Math.floor(((m % 1440) + 1440) % 1440 / 60)) + ':' + pad(((m % 60) + 60) % 60);
   const secTxt = (s) => (s >= 60 ? Math.floor(s / 60) + '分' + (s % 60 ? (s % 60) + '秒' : '') : s + '秒');
   const isDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && !isNaN(Date.parse(d + 'T00:00:00Z'));
 
   let toastTimer = 0;
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2800); }
-  const errText = (e) => (e && e.code === 'not_supported' ? 'サーバーがまだこの操作に対応していません（API_REQUESTS.md で依頼中）' : (e && (e.body && e.body.message || e.message)) || '通信できませんでした');
+  const errText = (e) => (e && e.code === 'not_supported' ? 'サーバーがまだこの操作に対応していません' : (e && (e.body && e.body.message || e.message)) || '通信できませんでした');
 
   /* ---------- 通信（DerbyCloud の admin） ---------- */
   async function api(name) {
@@ -66,26 +62,25 @@
   /* ---------- 状態 ---------- */
   const PW_KEY = 'casa.derby.admin.pw';
   let cfg = null; // { stores, rules, tuning }
-  let tab = 'races'; // 最初に開くのは「今日」（2026-10-19 シンプル化。deploy/ADMIN_SIMPLE_NOTES.md）
-  let editStore = null; // 店舗の編集中のコピー
+  let tab = 'races'; // 最初に開くのは「今日」
+  let editStore = null; // 店舗の編集中のコピー（「テレビ」タブの中）
   let tt = null; // 時刻表の編集中のコピー { tpls }
   let ttDirty = false, ttOrig = new Set(); // ttOrig: 読み込んだ時点の「テンプレートid|時刻」（過去の時刻を新しく足したかの判定用）
   let tunDirty = false;
-  let pvDate = '', pvStore = '', pvSrc = 'local', pvServer = null;
+  let pvDate = '', pvSrc = 'local', pvServer = null;
   let raceDate = '', racesData = null, racesErr = '', racesTimer = 0;
   let stFrom = '', stTo = '', stStore = '', statsData = null, statsErr = '';
   let logBill = '', logsData = null, logsErr = '';
   let raceAll = false, refundOpen = null; // 今日のレース: 全部を表示するか／その場で開いているレース取消（レース id）
-  let pairData = null, pairErr = '', pairSeq = 0; // 進行役のテレビ（2026-10-19）: api('tvs') の答え { tvs, decider, lock, now }
-  let memoOn = false, connOpen = false, editFrom = null; // memoOn: 今日のレースの内部メモ（1 着の選び方・演出。最初は隠す）／connOpen: テレビの「接続の設定」を開いているか／editFrom: 店舗の編集をどのタブから開いたか
+  let pairData = null, pairErr = '', pairSeq = 0; // 進行役のテレビ: api('tvs') の答え { tvs, decider, lock, now }
+  let memoOn = false, connOpen = false; // memoOn: 勝ち馬の決まり方（オーナー用。最初は隠す）／connOpen: リンクの畳みを開いているか
   const tplOpen = new Set(); // 時刻表: 開いているテンプレート（id）
-  const tplAll = new Set(); // 時刻表: 行を全部見せているテンプレート（id）。ふだんは最初の 10 行だけ（2026-10-19 改善 3）
+  const tplAll = new Set(); // 時刻表: 行を全部見せているテンプレート（id）。ふだんは最初の 10 行だけ
   const ROWS_SHOWN = 10;
   let uid = 0; const nk = () => 'k' + (++uid);
 
   function normCfg(c) {
     const T = Object.assign({}, DEF_TUNING, (c && c.tuning) || {});
-    if (c && c.tuning && c.tuning.shiftWidth != null) { if (c.tuning.shiftUp == null) T.shiftUp = c.tuning.shiftWidth; if (c.tuning.shiftDown == null) T.shiftDown = c.tuning.shiftWidth; } /* 以前のデータ（±1 つ）は上げ・下げの両方に */
     T.scenes = Object.assign({}, DEF_TUNING.scenes, (c && c.tuning && c.tuning.scenes) || {});
     { const src = (c && c.tuning && c.tuning.cues) || {}, cz = {}; CUES.forEach(([k]) => { cz[k] = Object.assign({}, DEF_CUES[k], src[k] || {}); }); T.cues = cz; } /* 演出: 足りない演出は初期値 */
     return {
@@ -93,7 +88,6 @@
       rules: ((c && c.timetable && c.timetable.rules) || []).map((r) => Object.assign({}, r)),
       tuning: T,
       tvKey: (c && c.tvKey) || null, // テレビの合言葉（模擬クラウドだけ。テレビの URL の tvkey=）
-      capDayOk: !!(c && c.tuning && 'payoutCapDay' in c.tuning), // 1 日の上限はサーバーが対応したら保存される（API_REQUESTS.md）
     };
   }
   const storeName = (id) => { if (!id) return '全店'; const s = cfg.stores.find((x) => x.id === id); return s ? s.name : id + '（削除済み）'; };
@@ -113,7 +107,7 @@
     showLogin('');
   }
   function showLogin(msg) {
-    main.innerHTML = viewLogin(msg); main.classList.add('loginv'); // 2026-10-20 オーナー「画面の真ん中に大きく表示」: ログインの間だけ画面の真ん中に大きく（ログインできたら外す）
+    main.innerHTML = viewLogin(msg); main.classList.add('loginv'); // ログインの間だけ画面の真ん中に大きく
     $('pw').focus();
     $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('dologin').click(); });
     $('dologin').addEventListener('click', async () => {
@@ -137,31 +131,31 @@
   async function reloadCfg() { cfg = normCfg(await api('config')); }
   function tick() { $('clock').textContent = fmtDay(todayStr()) + ' ' + hms(now()).slice(0, 5); main.querySelectorAll('[data-until]').forEach((el) => { el.textContent = leftTxt(+el.dataset.until - now()); }); }
 
-  const leaveOk = () => !((ttDirty && tab === 'timetable') || (tunDirty && tab === 'tuning') || (editStore && tab === 'stores')) || confirm('保存していない変更があります。破棄して移動しますか？');
+  const leaveOk = () => !((ttDirty && tab === 'timetable') || (tunDirty && tab === 'tuning') || (editStore && tab === 'tv')) || confirm('保存していない変更があります。破棄して移動しますか？');
   window.addEventListener('beforeunload', (e) => { if (ttDirty || tunDirty) { e.preventDefault(); e.returnValue = ''; } });
-  // タブの印: 「詳細の調整」（tuning）は「設定」タブの中の画面なので、設定タブを光らせる
-  const markTab = () => document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x.dataset.tab === (tab === 'tuning' ? 'ops' : tab)));
+  const markTab = () => document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x.dataset.tab === tab));
   function switchTab(name) {
-    if (name === tab) { if (!editStore) { if (tab === 'races') { racesData = null; pairData = null; } render(); } return; } // いまのタブを押したら読み直す
+    if (name === tab) { if (!editStore) { if (tab === 'races') racesData = null; if (tab === 'tv') pairData = null; render(); } return; } // いまのタブを押したら読み直す
     if (!leaveOk()) return;
     if (tab === 'timetable' && ttDirty) { tt = null; ttDirty = false; }
     if (tab === 'tuning') tunDirty = false;
     if (tab === 'races') { memoOn = false; refundOpen = null; } // 勝ち馬の決まり方・レース取消はほかの画面へ移ったら閉じ直す
-    editStore = null; editFrom = null; connOpen = false; // 畳みは別の画面に移ったら閉じた状態から（casa SLOT マスターと同じ）
+    editStore = null; connOpen = false; // 畳みは別の画面に移ったら閉じた状態から
+    if (name === 'tv') pairData = null; // 進行役のテレビは開くたびに読み直す
     tab = name; markTab(); window.scrollTo(0, 0);
     render();
+    if (name === 'races' && racesData) loadRaces(true); // 今日に戻ったら、前に読んだ一覧を出したまま読み直す（10 秒を待たない）
   }
   $('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) switchTab(b.dataset.tab); });
 
   function render() {
     clearInterval(racesTimer);
     main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats');
-    if (tab === 'stores') { main.innerHTML = editStore ? viewStoreEdit() : viewStores(); if (editStore) validateStore(); }
+    if (tab === 'tv') { main.innerHTML = editStore ? viewStoreEdit() : viewTvPanel() + viewStores(); if (editStore) validateStore(); else if (!pairData && pairOk()) loadPair(); }
     else if (tab === 'timetable') { if (!tt) loadTT(); main.innerHTML = viewTT(); paintTT(); }
-    else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); if (!pairData && pairOk()) loadPair(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
+    else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
     else if (tab === 'tuning') { main.innerHTML = viewTuning(); validateTuning(); }
     else if (tab === 'stats') { if (!stFrom) { stTo = bizToday(); stFrom = addDays(stTo, -6); } main.innerHTML = viewStats(); if (!statsData && !statsErr) loadStats(); }
-    else if (tab === 'ops') { main.innerHTML = viewOps(); validateBp(); }
   }
   const keepScroll = (fn) => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
 
@@ -173,6 +167,8 @@
       '<input class="pv" type="number" inputmode="decimal" id="n-' + key + '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + step + '"><i>' + unit + '</i>' +
       '<button type="button" data-act="st" data-d="1" aria-label="増やす">▶</button></div></div>';
   }
+  // 変えられない値（決まり）の 1 行
+  const fixedRow = (label, hint, val, id) => '<div class="row fixed"' + (id ? ' id="' + id + '"' : '') + '><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="fixv"><b>' + val + '</b><small>決まり</small></div></div>';
   const numOf = (key) => { const el = $('n-' + key); return el ? Number(el.value) : NaN; };
   function numOk(key) { const el = $('n-' + key); if (!el) return true; const st = el.closest('.stepper'), v = Number(el.value), mn = +st.dataset.min, mx = +st.dataset.max, sp = +st.dataset.step; const ok = el.value !== '' && isFinite(v) && v >= mn && v <= mx && Math.abs(Math.round(v / sp) * sp - v) < 1e-9; el.classList.toggle('bad', !ok); return ok; }
   function stepBy(b) {
@@ -193,66 +189,55 @@
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = name;
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
+  // 馬の番号（0 始まりの添字 → 「3番」）と 2 連単の組み合わせ（'2-4' → 「3→5」）
+  const noOf = (r, h) => (r && r.horses && r.horses[h] && r.horses[h].no) || h + 1;
+  const comboTxt = (k, r) => { const m = /^(\d+)-(\d+)$/.exec(String(k || '')); return m ? noOf(r, +m[1]) + '→' + noOf(r, +m[2]) : ''; };
 
   /* ======================================================================
-     店舗
+     テレビ（テレビの切り替え・画質・進行役・リンク）と店舗（名前・暗証番号・結果の時間など）
      ====================================================================== */
-  /* 受付の 2 段（2026-10-16）: 参加受付（引き換え）と投票の秒数。以前の betSec（1 つ）だけなら 参加受付 = max(betSec − 30, 10)・投票 = 30（v2/core.js の stageSecs と同じ） */
-  function stagesOf(st, T) {
-    const n = (v) => (typeof v === 'number' && isFinite(v) ? v : null), base = { exchangeSec: n(T.exchangeSec) != null ? T.exchangeSec : 90, voteSec: n(T.voteSec) != null ? T.voteSec : 30 };
-    let ex = n(st.exchangeSec), vo = n(st.voteSec);
-    if (ex == null && vo == null && n(st.betSec) != null) { ex = Math.max(st.betSec - 30, 10); vo = 30; }
-    return { exchangeSec: ex != null ? ex : base.exchangeSec, voteSec: vo != null ? vo : base.voteSec };
-  }
   function sset(s) {
     const st = (s && s.settings) || {}, T = cfg.tuning;
-    const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d), sg = stagesOf(st, T);
+    const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
     return {
-      exchangeSec: sg.exchangeSec, voteSec: sg.voteSec, betSec: sg.exchangeSec + sg.voteSec, resultSec: n(st.resultSec, T.resultSec || 300),
+      resultSec: n(st.resultSec, T.resultSec || 300),
       scenes: Object.assign({ paddock: true, gate: true, replay: true }, st.scenes || {}),
       sceneSec: Object.assign({ paddock: 30, gate: T.gateSec, replay: T.postSec }, st.sceneSec || {}),
       modes: Array.isArray(st.modes) ? st.modes.map((m) => ({ k: nk(), from: m.from || '', to: m.to || '', mode: m.mode || 'auto' })) : [],
       modeDefault: st.modeDefault || 'auto',
       test: !!st.test,
-      tvGame: st.tvGame === 'derby' ? 'derby' : 'slot', /* テレビのゲーム（2026-10-17）: casa SLOT のテレビがこれを見て切り替わる */
-      tvQuality: qOf(st), /* テレビの画質（2026-10-19）: '' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先（casa DERBY のテレビが 1 分ほどで読み込み直す） */
+      tvGame: st.tvGame === 'derby' ? 'derby' : 'slot', /* テレビのゲーム: casa SLOT のテレビがこれを見て切り替わる */
+      tvQuality: qOf(st), /* テレビの画質: '' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先 */
     };
   }
-  function modeNow(s) {
-    const S = sset(s), m = toMin(hm(now()));
-    const b = S.modes.find((x) => { const f = toMin(x.from), t = toMin(x.to); return f < t ? m >= f && m < t : (m >= f || m < t); });
-    return modeName(b ? b.mode : S.modeDefault);
-  }
   const gameName = (g) => (g === 'derby' ? 'casa DERBY' : 'casa SLOT');
-  /* テレビの画質（2026-10-19）: 3 択。並びは なめらか優先 → 標準 → きれい優先（スタッフのスマホと同じ言葉） */
   const QUALS = [['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ。細かさはそのまま'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
   const qOf = (st) => (st && (st.tvQuality === 'auto' || st.tvQuality === 'max') ? st.tvQuality : '');
   const qName = (q) => (q === 'auto' ? 'なめらか優先' : q === 'max' ? 'きれい優先' : '標準');
   function viewStores() {
     const S = cfg.stores;
-    return '<div class="panel"><h3>店舗の設定を変える<span class="sp"></span><button class="btn sm ghost" data-act="cfg-reload">最新の情報にする</button></h3>' +
+    return '<div class="panel" id="storePanel"><h3>店舗（名前・暗証番号）<span class="sp"></span><button class="btn sm ghost" data-act="cfg-reload">最新の情報にする</button></h3>' +
       (S.length ? '<div class="list">' + S.map((s) => {
         const x = sset(s);
         return '<div class="item"><div class="name">' + esc(s.name) + (x.test ? ' <span class="chip test">テストモード</span>' : '') + ' <span class="chip' + (x.tvGame === 'derby' ? ' on' : '') + '">テレビ: ' + gameName(x.tvGame) + '</span>' + (x.tvQuality ? ' <span class="chip">画質: ' + qName(x.tvQuality) + '</span>' : '') +
-          '<small>参加受付 ' + x.exchangeSec + '秒・投票 ' + x.voteSec + '秒・結果 ' + x.resultSec + '秒・暗証番号 ' + esc(s.pin) + '</small></div>' +
+          '<small>暗証番号 ' + esc(s.pin) + '・結果を見せる時間 ' + x.resultSec + '秒</small></div>' +
           '<button class="btn sm ghost" data-act="store-edit" data-id="' + esc(s.id) + '">変える</button></div>';
       }).join('') + '</div>' : '<div class="empty">まだ店舗がありません</div>') +
-      '<div class="acts l"><button class="btn ghost" data-act="store-new">＋ 店舗を追加</button></div>' +
-      '<p class="hint">テレビの切り替えとリンクは「今日」にあります。</p></div>';
+      '<div class="acts l"><button class="btn ghost" data-act="store-new">＋ 店舗を追加</button></div></div>';
   }
-  /* 今日: 店のテレビ（店ごとに ゲームの切り替え・再読み込み・設定）。テレビ関係のめったに使わないもの（リンク・合言葉・テレビ用アカウント）は下の「接続の設定」に畳む */
-  /* 2026-10-19 改善 2（ChatGPT と壁打ち）: 見出しは「やりたいこと」の言葉。1 店 1 行（店名・SLOT|DERBY・読み込み直す）。全店舗の読み込み直しもここ（前は「設定」） */
+  /* テレビ: 店ごとに 1 行（店名 › ・SLOT|DERBY・読み込み直す・画質）＋全店舗の読み込み直し＋進行役のテレビ＋畳んだリンク */
   function viewTvPanel() {
     const S = cfg.stores;
     const link = (label, href) => '<div class="lnk"><b>' + esc(label) + ' <button type="button" class="btn xs ghost" data-act="copy" data-copy="' + esc(new URL(href, location.href).href) + '">コピー</button></b><a href="' + esc(href) + '" target="_blank">' + esc(href) + '</a></div>';
     return '<div class="panel" id="tvPanel"><h3>テレビを切り替える</h3>' +
+      '<p class="hint">ふだんは DERBY のまま。SLOT にしていても、<b>投票が始まると自動で DERBY</b> になります（遊んでいる途中なら終わってから）。</p>' +
       (S.length ? S.map((s) => {
         const g = sset(s).tvGame;
         return '<div class="tvrow" data-store="' + esc(s.id) + '"><button type="button" class="nm" data-act="store-edit" data-id="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'の設定を開く" title="店舗の設定を開く">' + esc(s.name) + '<i aria-hidden="true">›</i>' + (sset(s).test ? '<span class="chip test">テスト</span>' : '') + '<span class="vh">テレビ: ' + gameName(g) + '</span></button>' +
           '<div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビに映すゲーム">' + ['slot', 'derby'].map((v) => '<button type="button" data-act="tvgame-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (g === v ? 'on' : '') + '" aria-pressed="' + (g === v) + '">' + (v === 'derby' ? 'DERBY' : 'SLOT') + '</button>').join('') + '</div>' +
           '<button class="btn sm ghost" data-act="tv-reload" data-store="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'のテレビを読み込み直す">読み込み直す</button>' +
           '<div class="tvq"><span>画質</span><div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="tvq-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (sset(s).tvQuality === v ? 'on' : '') + '" aria-pressed="' + (sset(s).tvQuality === v) + '">' + nm + '</button>').join('') + '</div></div></div>';
-      }).join('') : '<div class="empty">まだ店舗がありません（「店舗」で追加）</div>') +
+      }).join('') : '<div class="empty">まだ店舗がありません（下の「＋ 店舗を追加」）</div>') +
       (S.length ? '<p class="hint tvqhint">画質は casa DERBY を映しているときのもの。なめらか優先＝重いときは自動で少し粗く／きれい優先＝動きがカクカクすることがあります。1 分ほどで反映（レース中は終わってから）。</p>' : '') +
       (S.length > 1 ? '<div class="acts l tvall"><button class="btn sm ghost" data-act="tv-reload" data-store="">全店舗のテレビを読み込み直す</button></div>' : '') +
       viewPair() +
@@ -263,7 +248,7 @@
       '<div class="acts l">' + (isFs() ? '<button class="btn sm ghost" data-act="tvacct-new">テレビ用アカウントを作る</button>' : '') + (cfg.tvKey ? '<button class="btn sm ghost" data-act="tvkey-new">テレビのリンクを作り直す（漏れたとき）</button>' : '') + '</div>' +
       '</div></details></div>';
   }
-  /* ---------- 進行役のテレビ（2026-10-19）: パスワードを打たずに、ここで 1 タップ ----------
+  /* ---------- 進行役のテレビ: パスワードを打たずに、ここで 1 タップ ----------
      名乗っているテレビ（7 日以内に連絡）の一覧と「進行役にする」。押すとそのテレビの上の帯に 4 けたの数字が出る → この画面の数字と同じなら OK。
      進行役は 1 台だけ（前のテレビは外れる）。Web デモでは出さない（デモのテレビはデモの決める係で動く） */
   const pairOk = () => !(window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo) && !!A && typeof A.tvs === 'function';
@@ -278,7 +263,7 @@
   }
   function viewPair() {
     if (!pairOk()) return '';
-    const P = pairData, head = '<div class="phd"><b>進行役のテレビ</b><small>結果を決めて進める役</small><span class="sp"></span><button type="button" class="btn xs ghost" data-act="pair-reload">最新にする</button></div>';
+    const P = pairData, head = '<div class="phd"><b>進行役のテレビ</b><small>結果を決めて進める役（1 台）</small><span class="sp"></span><button type="button" class="btn xs ghost" data-act="pair-reload">最新にする</button></div>';
     if (!P) return '<div class="pair" id="pairBox">' + head + '<div class="hint">' + (pairErr ? esc(pairErr) : '読み込み中…') + '</div></div>';
     const t = P.now || now(), tvs = P.tvs || [], lab = tvLabels(tvs), d = P.decider, STALE = 12 * 60000;
     const dName = d ? lab[d.id] || storeName(d.store) + 'のテレビ' : '';
@@ -290,13 +275,14 @@
       return '<div class="prow' + (me ? ' me' : '') + '" data-tv="' + esc(x.id) + '"><span class="nm">' + esc(lab[x.id]) + '<small' + (old ? ' class="old"' : '') + '>' + kindName(x.kind) + '・' + agoTxt(t - x.at) + '</small></span>' +
         (me ? '<span class="chip on">進行役</span>' : '<button type="button" class="btn sm ghost" data-act="pair-set" data-id="' + esc(x.id) + '">進行役にする</button>') + '</div>';
     }).join('');
-    return '<div class="pair" id="pairBox">' + head + nowLine + (rows ? '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') + '</div>';
+    return '<div class="pair" id="pairBox">' + head + nowLine + (rows ? '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') +
+      '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。</p></div>';
   }
   async function loadPair() {
     const my = ++pairSeq;
     try { const r = await api('tvs'); if (my !== pairSeq) return; pairData = r || { tvs: [] }; pairErr = ''; }
     catch (e) { if (my !== pairSeq) return; pairErr = errText(e); pairData = null; }
-    if (tab === 'races' && !editStore) { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); }
+    if (tab === 'tv' && !editStore) { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); }
   }
   // 「進行役にする」: テレビに数字を出してもらい（tvAsk）、同じ数字なら OK → 進行役に（setDecider）。やめる・閉じるとテレビの数字も消す
   async function pairStart(btn) {
@@ -326,30 +312,30 @@
     try { await api('setDecider', null); toast('進行役をやめました'); } catch (e) { toast('失敗しました: ' + errText(e)); }
     pairData = null; loadPair();
   }
-  /* テレビのゲームの切り替え（今日の「店のテレビ」から）: 書き込みは店舗の編集の「保存」とまったく同じ（saveStore。tvGame だけ変えて保存） */
+  /* テレビのゲームの切り替え: 書き込みは店舗の編集の「保存」とまったく同じ（saveStore。tvGame だけ変えて保存） */
   async function quickTvGame(b) {
     const s = cfg.stores.find((x) => x.id === b.dataset.id), v = b.dataset.v === 'derby' ? 'derby' : 'slot';
     if (!s || sset(s).tvGame === v) return;
     if (!/^\d{4,8}$/.test(s.pin)) { toast('この店舗の暗証番号を直してから切り替えてください（店名を押すと開きます）'); return; }
-    if (!confirm(s.name + 'のテレビを ' + gameName(v) + ' に切り替えます。\n反映まで約 30 秒かかります（遊んでいる途中・レース中は終わってから）。')) return;
+    if (!confirm(s.name + 'のテレビを ' + gameName(v) + ' に切り替えます。\n反映まで約 30 秒かかります（遊んでいる途中・レース中は終わってから）。' + (v === 'slot' ? '\n次のレースの投票が始まると、自動で casa DERBY に戻ります。' : ''))) return;
     main.querySelectorAll('[data-act="tvgame-set"][data-id="' + s.id + '"]').forEach((x) => { x.disabled = true; });
-    editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s) }; editStore.x.tvGame = v;
+    editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s), quick: true }; editStore.x.tvGame = v;
     try { await saveStore(); toast(s.name + 'のテレビを ' + gameName(v) + ' にしました（30 秒ほどで切り替わります）'); }
-    finally { if (tab !== 'stores') editStore = null; if (tab === 'races') keepScroll(() => { main.innerHTML = viewRaces(); }); }
+    finally { editStore = null; keepScroll(render); }
   }
-  /* テレビの画質（今日の「テレビを切り替える」の各店の「画質」から。2026-10-19）: 書き込みは店舗の編集の「保存」と同じ（saveStore。tvQuality だけ変えて保存） */
+  /* テレビの画質: 書き込みは店舗の編集の「保存」と同じ（saveStore。tvQuality だけ変えて保存） */
   async function quickTvQuality(b) {
     const s = cfg.stores.find((x) => x.id === b.dataset.id), v = b.dataset.v === 'auto' || b.dataset.v === 'max' ? b.dataset.v : '';
     if (!s || sset(s).tvQuality === v) return;
     if (!/^\d{4,8}$/.test(s.pin)) { toast('この店舗の暗証番号を直してから変えてください（店名を押すと開きます）'); return; }
     if (!confirm(s.name + 'のテレビの画質を「' + qName(v) + '」にします。\n1 分ほどでテレビに反映されます（レース中は終わってから）。' + (v === 'max' ? '\nきれい優先は動きがカクカクすることがあります。' : ''))) return;
     main.querySelectorAll('[data-act="tvq-set"][data-id="' + s.id + '"]').forEach((x) => { x.disabled = true; });
-    editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s) }; editStore.x.tvQuality = v;
+    editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s), quick: true }; editStore.x.tvQuality = v;
     try { await saveStore(); toast(s.name + 'のテレビの画質を「' + qName(v) + '」にしました（1 分ほどで反映。レース中は終わってから）'); }
-    finally { if (tab !== 'stores') editStore = null; if (tab === 'races') keepScroll(() => { main.innerHTML = viewRaces(); }); }
+    finally { editStore = null; keepScroll(render); }
   }
   const isFs = () => !!(C && C.backend === 'firestore'); /* Firestore 版（本番）。模擬クラウドでは出さないもの用 */
-  /* テレビ用アカウントを作る（Firestore 版だけ・2026-10-17）: パスワードはこのブラウザの中で作り（crypto.getRandomValues）、Firebase に登録したら
+  /* テレビ用アカウントを作る（Firestore 版だけ）: パスワードはこのブラウザの中で作り（crypto.getRandomValues）、Firebase に登録したら
      1 回だけ画面に出す。保存・送信・記録はしない（閉じたら変数ごと捨てる） */
   async function createTvAccount(btn) {
     if (!isFs()) return;
@@ -387,8 +373,8 @@
       '<div class="panel"><h3>テレビに映すゲーム</h3>' +
       '<div class="seg big" id="stvseg" role="group" aria-label="テレビに映すゲーム">' + ['slot', 'derby'].map((v) => '<button type="button" data-act="sg-tv" data-v="' + v + '" class="' + (x.tvGame === v ? 'on' : '') + '" aria-pressed="' + (x.tvGame === v) + '">' + gameName(v) + '</button>').join('') + '</div>' +
       '<select id="stvgame" class="vh" aria-hidden="true" tabindex="-1"><option value="slot"' + (x.tvGame !== 'derby' ? ' selected' : '') + '>casa SLOT</option><option value="derby"' + (x.tvGame === 'derby' ? ' selected' : '') + '>casa DERBY</option></select>' +
-      '<p class="hint" style="margin-bottom:0">保存すると約 30 秒で切り替わります。</p></div>' +
-      /* テレビの画質（2026-10-19）。見えるのは 3 択のボタン、保存される値は下の select（#stvq） */
+      '<p class="hint" style="margin-bottom:0">保存すると約 30 秒で切り替わります。投票が始まると自動で casa DERBY になります。</p></div>' +
+      /* テレビの画質。見えるのは 3 択のボタン、保存される値は下の select（#stvq） */
       '<div class="panel"><h3>テレビの画質 <small class="qsub">casa DERBY を映しているとき</small></h3>' +
       '<div class="seg big q3" id="stvqseg" role="group" aria-label="テレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="sg-q" data-v="' + v + '" class="' + (x.tvQuality === v ? 'on' : '') + '" aria-pressed="' + (x.tvQuality === v) + '">' + nm + '</button>').join('') + '</div>' +
       '<select id="stvq" class="vh" aria-hidden="true" tabindex="-1">' + QUALS.map(([v, nm]) => '<option value="' + v + '"' + (x.tvQuality === v ? ' selected' : '') + '>' + nm + '</option>').join('') + '</select>' +
@@ -396,18 +382,16 @@
       '<p class="hint" style="margin-bottom:0">保存すると 1 分ほどでテレビに反映されます（レース中は終わってから）。</p></div>' +
       '<div class="panel"><h3>名前と暗証番号</h3>' +
       '<div class="grid2"><label class="f"><span>店舗名</span><input type="text" id="sname" value="' + esc(s.name) + '" maxlength="20"></label>' +
-      (s.isNew ? '<label class="f"><span>店舗ID（英小文字・数字。あとから変えられません）</span><input type="text" id="sid" value="' + esc(s.id) + '" maxlength="20" placeholder="例: ikebukuro" autocapitalize="off"></label>'
-        : '') +
+      (s.isNew ? '<label class="f"><span>店舗ID（英小文字・数字。あとから変えられません）</span><input type="text" id="sid" value="' + esc(s.id) + '" maxlength="20" placeholder="例: ikebukuro" autocapitalize="off"></label>' : '') +
       '<label class="f"><span>スタッフ画面の暗証番号（数字 4〜8 桁）</span><input type="text" id="spin" value="' + esc(s.pin) + '" inputmode="numeric" maxlength="8" autocomplete="off"></label></div>' +
       '</div>' +
       '<div class="panel"><h3>時間</h3>' +
-      stepRow('参加受付の時間', 'リングバウンティと交換できる時間', 'exchangeSec', x.exchangeSec, '秒', 10, 1800, 5) +
-      stepRow('投票の時間', '参加受付が終わってから', 'voteSec', x.voteSec, '秒', 10, 600, 5) +
-      stepRow('結果を見せる時間', '', 'resultSec', x.resultSec, '秒', 10, 1800, 10) +
+      stepRow('結果を見せる時間', 'テレビに結果と当たった人を出しておく長さ', 'resultSec', x.resultSec, '秒', 10, 1800, 10) +
+      '<p class="hint" style="margin-bottom:0">投票の時間は全店同じです（「調整」で変えます）。</p>' +
       '</div>' +
       '<div class="panel"><details class="fold" id="sother" style="border-top:0;margin:0"' + (other ? ' open' : '') + '><summary>テレビの画面・始め方・テスト <small>' + esc('テスト ' + (x.test ? 'ON' : 'OFF') + '・画面 ' + ['paddock', 'gate', 'replay'].filter((k) => x.scenes[k]).length + '/3・' + modeName(x.modeDefault) + (x.modes.length ? '＋時間帯 ' + x.modes.length : '')) + '</small></summary><div class="in">' +
-      '<h4 class="sumh">テレビに出す画面</h4><p class="hint">長さを変えても発走の時刻は変わりません。</p>' +
-      scene('paddock', 'パドック', '受付中の馬の紹介') + scene('gate', 'ゲートイン', '発走の前') + scene('replay', 'リプレイ', 'ゴールのあと') +
+      '<h4 class="sumh">テレビに出す画面</h4><p class="hint">長さを変えても走り出す時刻は変わりません。</p>' +
+      scene('paddock', 'パドック', '投票中の馬の紹介') + scene('gate', 'ゲートイン', '走り出す前') + scene('replay', 'リプレイ', 'ゴールのあと') +
       '<h4 class="sumh">レースの始め方</h4><p class="hint">時間帯ごとに変えられます（例 22:00〜02:00）。</p>' +
       '<div class="tbl"><table class="tt-rows"><tr><th>開始</th><th>終了</th><th>始め方</th><th></th><th></th></tr>' +
       x.modes.map((m) => '<tr data-mk="' + m.k + '"><td><input type="time" data-mf="from" value="' + esc(m.from) + '"></td><td><input type="time" data-mf="to" value="' + esc(m.to) + '"></td><td><select data-mf="mode">' + MODES.map((o) => '<option value="' + o[0] + '"' + (m.mode === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></td><td class="msg"></td><td class="ops"><button type="button" class="icon del" data-act="mode-del" data-k="' + m.k + '" aria-label="この時間帯を消す">×</button></td></tr>').join('') +
@@ -421,16 +405,17 @@
       '<div class="savebar"><div class="msg" id="smsg"></div>' +
       '<button class="btn ghost" data-act="store-cancel">戻る</button><button class="btn" data-act="store-save" id="ssave">保存</button></div>';
   }
-  // テレビのゲームの 2 択ボタンを select（#stvgame）に合わせて塗り直す
+  // テレビのゲーム・画質の選択ボタンを select に合わせて塗り直す
   function paintQSeg() { const sel = $('stvq'); if (!sel) return; main.querySelectorAll('[data-act="sg-q"]').forEach((b) => { const on = b.dataset.v === sel.value; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
   function paintTvSeg() { const sel = $('stvgame'); if (!sel) return; main.querySelectorAll('[data-act="sg-tv"]').forEach((b) => { const on = b.dataset.v === sel.value; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
-  // 画面の入力を editStore に読み込む（行の追加・削除で作り直す前と、保存の前）
+  // 画面の入力を editStore に読み込む（行の追加・削除で作り直す前と、保存の前）。「テレビ」の 1 タップの切り替え（quick）は画面に欄がないので読まない
   function captureStore() {
     const s = editStore, x = s.x;
+    if (s.quick) return;
     if ($('sname')) s.name = $('sname').value;
     if ($('sid')) s.id = $('sid').value.trim();
     if ($('spin')) s.pin = $('spin').value.trim();
-    ['exchangeSec', 'voteSec', 'resultSec'].forEach((k) => { if ($('n-' + k)) x[k] = Number($('n-' + k).value); });
+    if ($('n-resultSec')) x.resultSec = Number($('n-resultSec').value);
     ['paddock', 'gate', 'replay'].forEach((k) => { if ($('sc-' + k)) x.scenes[k] = $('sc-' + k).checked; if ($('n-ss-' + k)) x.sceneSec[k] = Number($('n-ss-' + k).value); });
     main.querySelectorAll('[data-mk]').forEach((tr) => { const m = x.modes.find((y) => y.k === tr.dataset.mk); if (!m) return; tr.querySelectorAll('[data-mf]').forEach((el) => { m[el.dataset.mf] = el.value; }); });
     if ($('smodedef')) x.modeDefault = $('smodedef').value;
@@ -439,7 +424,9 @@
     if ($('stvq')) x.tvQuality = qOf({ tvQuality: $('stvq').value });
   }
   function validateStore() {
-    if (!editStore || !$('smsg')) return [];
+    if (!editStore) return [];
+    if (editStore.quick) return /^\d{4,8}$/.test(editStore.pin) ? [] : ['暗証番号は数字 4〜8 桁にしてください'];
+    if (!$('smsg')) return [];
     captureStore();
     const s = editStore, x = s.x, errs = [];
     const mark = (el, bad) => { if (el) el.classList.toggle('bad', !!bad); };
@@ -450,7 +437,7 @@
       if (bad) errs.push('店舗ID は英小文字・数字・ - _ の 2〜20 文字にしてください'); else if (dup) errs.push('その店舗ID はもう使われています');
     }
     mark($('spin'), !/^\d{4,8}$/.test(s.pin)); if (!/^\d{4,8}$/.test(s.pin)) errs.push('暗証番号は数字 4〜8 桁にしてください');
-    ['exchangeSec', 'voteSec', 'resultSec', 'ss-paddock', 'ss-gate', 'ss-replay'].forEach((k) => { if (!numOk(k)) errs.push('数字の範囲を確かめてください（赤い欄）'); });
+    ['resultSec', 'ss-paddock', 'ss-gate', 'ss-replay'].forEach((k) => { if (!numOk(k)) errs.push('数字の範囲を確かめてください（赤い欄）'); });
     // 回し方の時間帯: 時刻の形・開始≠終了・重なり
     const spans = [];
     x.modes.forEach((m) => {
@@ -476,17 +463,19 @@
   async function saveStore() {
     if (validateStore().length) return;
     const s = editStore, x = s.x;
-    const settings = Object.assign({}, s.orig || {}, {
-      exchangeSec: x.exchangeSec, voteSec: x.voteSec, betSec: x.exchangeSec + x.voteSec, resultSec: x.resultSec, /* betSec は合計（古い画面用） */
+    /* 「テレビ」の 1 タップの切り替え（quick）は、テレビのゲーム・画質だけを変える（ほかの設定は今のまま。初期値を書き足さない） */
+    const settings = s.quick ? Object.assign({}, s.orig || {}, { tvGame: x.tvGame }) : Object.assign({}, s.orig || {}, {
+      resultSec: x.resultSec,
       scenes: Object.assign({}, x.scenes), sceneSec: Object.assign({}, x.sceneSec),
       modes: x.modes.map((m) => ({ from: m.from, to: m.to, mode: m.mode })), modeDefault: x.modeDefault, test: x.test, tvGame: x.tvGame,
     });
+    if (!s.quick) ['exchangeSec', 'voteSec', 'betSec'].forEach((k) => { delete settings[k]; }); // v4: 店ごとの参加受付・投票の秒数はなくした（投票の時間は全店同じ＝調整）
     if (x.tvQuality !== qOf(s.orig)) settings.tvQuality = x.tvQuality; // 変えたときだけ書く（前の値 'sharp' などはそのまま）
     const one = { id: s.id, name: s.name.trim(), pin: s.pin, settings };
     // 店舗の保存は「一覧を丸ごと置き換え」なので、保存の直前にサーバーの最新を読み直して、この店舗だけ差し替える
     // （別のタブ・別の人が足した店舗や変えた設定を、古い画面の内容で消さない）
     await reloadCfg();
-    { // テレビのゲーム・画質は、スタッフのスマホなど別の画面からも変わる。この画面で変えていなければ、サーバーの今の値のまま（2026-10-19）
+    { // テレビのゲーム・画質は、スタッフのスマホ・投票の始まり（自動で DERBY）など別の所からも変わる。この画面で変えていなければ、サーバーの今の値のまま
       const cur = !s.isNew && cfg.stores.find((y) => y.id === s.id), cs = (cur && cur.settings) || null, os = s.orig || {};
       const keep = (k) => { if (Object.prototype.hasOwnProperty.call(cs, k)) settings[k] = cs[k]; else delete settings[k]; };
       if (cs && x.tvGame === (os.tvGame === 'derby' ? 'derby' : 'slot')) keep('tvGame');
@@ -498,10 +487,9 @@
     if (s.isNew) list.push(one);
     await api('saveStores', list);
     await reloadCfg();
-    editStore = null; toast('保存しました'); backFromEdit(); render();
+    const quick = s.quick;
+    editStore = null; if (!quick) { toast('保存しました'); render(); }
   }
-  // 店舗の編集を閉じたら、開いたタブ（今日など）へ戻る
-  function backFromEdit() { if (editFrom && editFrom !== tab) { tab = editFrom; markTab(); } editFrom = null; }
   async function deleteStore() {
     const s = editStore;
     const used = cfg.rules.filter((r) => r.storeId === s.id).length;
@@ -509,13 +497,14 @@
     await reloadCfg(); // ほかの画面での変更を消さない
     if (cfg.stores.length <= 1) { toast('最後の 1 店舗は削除できません'); return; }
     await api('saveStores', cfg.stores.filter((y) => y.id !== s.id).map((y) => ({ id: y.id, name: y.name, pin: y.pin, settings: y.settings })));
-    await reloadCfg(); editStore = null; editFrom = null; toast('削除しました'); render();
+    await reloadCfg(); editStore = null; toast('削除しました'); render();
   }
 
   /* ======================================================================
-     時刻表
-     テンプレート（毎日・曜日・日付）× 行（出走時刻・払い戻し合計）。
-     サーバーの Rule は 1 つに payout が 1 つなので、保存のときに「同じ払い戻し額の行」ごとに Rule に分ける（tpl で元のテンプレートに戻す）。
+     時刻表（v4: 時刻 ＝ レースが走り出す時刻・全店同じ・行ごとに当選額の目標）
+     テンプレート（毎日・曜日・日付）× 行（走り出す時刻・当選額の目標）。
+     サーバーの Rule は 1 つに payout が 1 つなので、保存のときに「同じ目標の行」ごとに Rule に分ける（tpl で元のテンプレートに戻す）。
+     以前の「店舗だけ」「目標は店舗ごと」の予定は、そのまま残して「全店にそろえる」を出す（新しく作る予定は全店）。
      ====================================================================== */
   function ruleRows(r) {
     const out = [];
@@ -543,7 +532,8 @@
   }
   const sortRows = (t) => t.rows.sort((a, b) => { const x = toMin(a.t), y = toMin(b.t); return (isNaN(x) ? 1e9 : x) - (isNaN(y) ? 1e9 : y); });
   const tplName = (t) => t.name || (t.kind === 'daily' ? '毎日' : t.kind === 'weekday' ? '曜日: ' + (t.weekdays.length ? t.weekdays.slice().sort().map((d) => WD[d]).join('') : 'まだ選んでいない') : '日付: ' + (t.date ? fmtDay(t.date) : 'まだ選んでいない'));
-  // 閉じた札の 1 行: いつ・店舗・件数・時間帯・払い戻し
+  const legacyTpl = (t) => !!t.storeId || t.scope === 'store'; // 以前の形（店舗だけ・目標は店舗ごと）
+  // 閉じた札の 1 行: いつ・件数・時間帯・目標
   function tplSummary(t) {
     const kind = tplName(Object.assign({}, t, { name: '' })), ts = t.rows.map((r) => r.t).filter((x) => !isNaN(toMin(x))).sort(), ps = t.rows.map((r) => Number(r.p)).filter((p) => p > 0);
     const lo = ps.length ? Math.min.apply(null, ps) : 0, hi = ps.length ? Math.max.apply(null, ps) : 0;
@@ -554,7 +544,7 @@
     tpls.forEach((t) => {
       const groups = new Map();
       t.rows.forEach((r) => { const p = Number(r.p); if (!groups.has(p)) groups.set(p, []); groups.get(p).push(r.t); });
-      const base = { tpl: t.id, name: t.name || '', enabled: t.enabled, kind: t.kind, weekdays: t.kind === 'weekday' ? t.weekdays.slice().sort() : [], date: t.kind === 'date' ? t.date : '', scope: t.storeId ? 'store' : t.scope, storeId: t.storeId || null };
+      const base = { tpl: t.id, name: t.name || '', enabled: t.enabled, kind: t.kind, weekdays: t.kind === 'weekday' ? t.weekdays.slice().sort() : [], date: t.kind === 'date' ? t.date : '', scope: t.storeId ? 'store' : t.scope === 'store' ? 'store' : 'all', storeId: t.storeId || null };
       let i = 0;
       groups.forEach((times, p) => { rules.push(Object.assign({ id: i ? t.id + '~' + i : t.id, times: times.slice().sort(), payout: p, races: times.slice().sort().map((x) => ({ time: x, payout: p })) }, base)); i++; });
     });
@@ -579,12 +569,11 @@
     });
     return out.sort((a, b) => a.m - b.m || (a.group ? 1 : -1));
   }
+  /* レースとレースの間の目安（v2/core.js の minGapSec と同じ式）: 投票 ＋ ゲートイン ＋ 走り（約 60 秒）＋ ゴール後 ＋ 写真判定の余裕（2 回分） */
   function minGapSec() {
-    const T = cfg.tuning;
-    // 受付の長さ = 参加受付 + 投票（2026-10-16）。全体の初期値と、いちばん長い店のほう
-    const all = [stagesOf(T, T)].concat(cfg.stores.map((s) => sset(s))).map((x) => ({ ex: x.exchangeSec, vo: x.voteSec, sum: x.exchangeSec + x.voteSec }));
-    const top = all.reduce((a, x) => (x.sum > a.sum ? x : a), all[0]), bet = top.sum;
-    return { sec: bet + (T.gateSec || 0) + RUN_SEC + (T.postSec || 0), bet, ex: top.ex, vo: top.vo, gate: T.gateSec || 0, post: T.postSec || 0 };
+    const T = cfg.tuning, gate = T.scenes && T.scenes.gate === false ? 0 : Number(T.gateSec) || 0, photo = 2 * (Number(T.photoExtraSec) || 0);
+    const vote = Number(T.voteSec) || 0, post = Number(T.postSec) || 0;
+    return { sec: vote + gate + RUN_SEC + post + photo, vote, gate, post, photo };
   }
   function validateTT() {
     const rowErr = new Map(), rowWarn = new Map(), tplErr = new Map(), list = [];
@@ -596,7 +585,7 @@
     tt.tpls.forEach((t) => {
       if (t.kind === 'weekday' && !t.weekdays.length) addT(t, '曜日を選んでください');
       if (t.kind === 'date') { if (!isDate(t.date)) addT(t, '日付を入れてください'); else if (t.date < today) addT(t, '過去の日付です'); }
-      if (t.storeId && storeIds.indexOf(t.storeId) < 0) addT(t, '店舗がありません（削除された店舗）');
+      if (t.storeId && storeIds.indexOf(t.storeId) < 0) addT(t, '店舗がありません（削除された店舗）。「全店にそろえる」を押してください');
       const seen = new Map();
       t.rows.forEach((r) => {
         const m = toMin(r.t);
@@ -631,15 +620,13 @@
     return { rowErr, rowWarn, tplErr, list, n };
   }
   function viewTT() {
-    const g = minGapSec();
-    const stores = cfg.stores;
+    const g = minGapSec(), voteMin = secTxt(g.vote);
     const tplHtml = (t, i) => {
-      const scopeSel = '<select data-tf="storeId">' + '<option value="">全店（同時）</option>' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (t.storeId === s.id ? ' selected' : '') + '>' + esc(s.name) + 'だけ</option>').join('') + (t.storeId && !stores.some((s) => s.id === t.storeId) ? '<option value="' + esc(t.storeId) + '" selected>' + esc(t.storeId) + '（削除済み）</option>' : '') + '</select>';
       const cond = t.kind === 'weekday' ? '<div class="wdays">' + [1, 2, 3, 4, 5, 6, 0].map((d) => '<label class="' + (t.weekdays.indexOf(d) >= 0 ? 'on' : '') + '"><input type="checkbox" data-wd="' + d + '"' + (t.weekdays.indexOf(d) >= 0 ? ' checked' : '') + '>' + WD[d] + '</label>').join('') + '</div>'
         : t.kind === 'date' ? '<input type="date" data-tf="date" value="' + esc(t.date) + '">' : '<div class="hint" style="margin:0;padding-top:18px">曜日・日付の予定がない日に使います</div>';
       const open = tplOpen.has(t.id);
       return '<div class="tpl' + (t.enabled ? '' : ' off') + (open ? ' open' : '') + '" data-tk="' + t.k + '">' +
-        /* 閉じた札: 名前・いつ・件数・時間帯・払い戻し・要確認。押すと開く */
+        /* 閉じた札: 名前・いつ・件数・時間帯・目標・要確認。押すと開く */
         '<div class="tpl-top"><button type="button" class="open-btn" data-act="tpl-open" aria-expanded="' + open + '"><b data-tname>' + esc(tplName(t)) + '</b><span class="sum" data-sum>' + esc(tplSummary(t)) + '</span><span class="chip ng" data-terrn hidden></span><span class="ol"></span></button>' +
         '<button type="button" class="btn xs onoff' + (t.enabled ? ' on' : '') + '" data-act="tpl-on" title="押すと切り替え">' + (t.enabled ? 'ON 使用中' : 'OFF 停止中') + '</button></div>' +
         '<div class="tpl-body">' +
@@ -647,20 +634,19 @@
         '<span class="chip info" data-cnt>' + t.rows.length + ' レース</span>' +
         '<button type="button" class="icon" data-act="tpl-up" aria-label="上へ"' + (i ? '' : ' disabled') + '>↑</button><button type="button" class="icon" data-act="tpl-down" aria-label="下へ"' + (i < tt.tpls.length - 1 ? '' : ' disabled') + '>↓</button>' +
         '<button type="button" class="btn xs ghost" data-act="tpl-dup">コピー</button><button type="button" class="icon del" data-act="tpl-del" aria-label="この予定を消す">×</button></div>' +
-        '<div class="tpl-cond"><label class="f"><span>いつ</span><select data-tf="kind"><option value="daily"' + (t.kind === 'daily' ? ' selected' : '') + '>毎日</option><option value="weekday"' + (t.kind === 'weekday' ? ' selected' : '') + '>曜日を選ぶ</option><option value="date"' + (t.kind === 'date' ? ' selected' : '') + '>日付を選ぶ</option></select></label>' +
-        '<div class="f">' + (t.kind === 'daily' ? '' : '<span class="hint" style="display:block;margin:0 0 4px">' + (t.kind === 'weekday' ? '曜日' : '日付') + '</span>') + cond + '</div>' +
-        '<label class="f"><span>走る店舗</span>' + scopeSel + '</label>' +
-        '<label class="f"><span>当選額の目標は</span><select data-tf="scope"' + (t.storeId ? ' disabled' : '') + '><option value="all"' + (t.scope !== 'store' || t.storeId ? ' selected' : '') + '>全店で 1 つ</option><option value="store"' + (t.scope === 'store' && !t.storeId ? ' selected' : '') + '>店舗ごとに 1 つずつ</option></select></label></div>' +
+        (legacyTpl(t) ? '<div class="legacy"><span>以前の形の予定です（' + esc(t.storeId ? storeName(t.storeId) + 'だけ' : '当選額の目標が店舗ごと') + '）。v4 の時刻表は全店同じです。</span><button type="button" class="btn xs ghost" data-act="tpl-allstores">全店にそろえる</button></div>' : '') +
+        '<div class="tpl-cond v4"><label class="f"><span>いつ</span><select data-tf="kind"><option value="daily"' + (t.kind === 'daily' ? ' selected' : '') + '>毎日</option><option value="weekday"' + (t.kind === 'weekday' ? ' selected' : '') + '>曜日を選ぶ</option><option value="date"' + (t.kind === 'date' ? ' selected' : '') + '>日付を選ぶ</option></select></label>' +
+        '<div class="f">' + (t.kind === 'daily' ? '' : '<span class="hint" style="display:block;margin:0 0 4px">' + (t.kind === 'weekday' ? '曜日' : '日付') + '</span>') + cond + '</div></div>' +
         '<div class="err" data-terr></div>' +
         '<div class="bulk"><b class="bt">まとめて作る</b>' +
         '<label class="f"><span>開始</span><input type="time" data-bf="from" value="19:00"></label><span class="t">〜</span>' +
         '<label class="f"><span>終了</span><input type="time" data-bf="to" value="23:00"></label>' +
-        '<label class="f"><span>何分おき</span><input type="number" data-bf="every" value="5" min="1" max="180"></label>' +
-        '<label class="f"><span>当選額の目標（pt）</span><input type="number" data-bf="pay" value="30000" min="1" max="' + PAY_MAX + '" step="100"></label>' +
+        '<label class="f"><span>何分おき</span><input type="number" data-bf="every" value="10" min="1" max="180"></label>' +
+        '<label class="f"><span>当選額の目標（pt）</span><input type="number" data-bf="pay" value="3000" min="1" max="' + PAY_MAX + '" step="100"></label>' +
         '<button type="button" class="btn sm ghost" data-act="bulk">まとめて作る</button></div>' +
         (t.rows.length > ROWS_SHOWN ? '<div class="acts l rowsbar"><label class="find"><span>時刻で探す</span><input type="time" data-find aria-label="この時刻のレースへ移る"></label><small class="hint" style="margin:0">' + t.rows.length + ' レースのうち、入れた時刻の行へ移ります</small></div>' : '') +
-        '<div class="tbl"><table class="tt-rows"><tr><th>#</th><th>発走</th><th>当選額の目標（pt）</th><th></th><th></th></tr>' +
-        (t.rows.length ? t.rows.map((r, j) => '<tr data-rk="' + r.k + '"' + (j >= ROWS_SHOWN && !tplAll.has(t.id) ? ' class="more"' : '') + '><td class="no">' + (j + 1) + '</td><td><input type="time" data-rf="t" value="' + esc(r.t) + '" aria-label="出走時刻"></td>' +
+        '<div class="tbl"><table class="tt-rows"><tr><th>#</th><th>走り出す時刻</th><th>当選額の目標（pt）</th><th></th><th></th></tr>' +
+        (t.rows.length ? t.rows.map((r, j) => '<tr data-rk="' + r.k + '"' + (j >= ROWS_SHOWN && !tplAll.has(t.id) ? ' class="more"' : '') + '><td class="no">' + (j + 1) + '</td><td><input type="time" data-rf="t" value="' + esc(r.t) + '" aria-label="走り出す時刻"></td>' +
           '<td><input type="number" class="pay" data-rf="p" value="' + esc(r.p) + '" min="1" max="' + PAY_MAX + '" step="1" inputmode="numeric" aria-label="当選額の目標"></td><td class="msg"></td>' +
           '<td class="ops"><button type="button" class="icon" data-act="row-dup" aria-label="この行をコピー" title="この行をコピー（次の時刻に）">⧉</button><button type="button" class="icon del" data-act="row-del" aria-label="この行を消す" title="この行を消す">×</button></td></tr>').join('')
           : '<tr><td colspan="5" class="empty">まだレースがありません。上の「まとめて作る」で入れてください</td></tr>') +
@@ -670,16 +656,16 @@
         '</div></div>';
     };
     const side = '<div class="side"><div class="panel"><h3>この日の予定</h3>' +
-      '<div class="grid2" style="grid-template-columns:1fr 1fr"><label class="f"><span>日付</span><input type="date" id="pvdate" value="' + esc(pvDate || todayStr()) + '"></label>' +
-      '<label class="f"><span>店舗</span><select id="pvstore"><option value="">全店（同時）</option>' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (pvStore === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></label></div>' +
+      '<label class="f"><span>日付</span><input type="date" id="pvdate" value="' + esc(pvDate || todayStr()) + '"></label>' +
       '<div class="seg pvseg"><button type="button" class="' + (pvSrc === 'local' ? 'on' : '') + '" aria-pressed="' + (pvSrc === 'local') + '" data-act="pv-local">変更後</button><button type="button" class="' + (pvSrc === 'server' ? 'on' : '') + '" aria-pressed="' + (pvSrc === 'server') + '" data-act="pv-server">保存済み</button></div>' +
       '<div id="pvbox"></div></div></div>';
     return '<div class="panel"><h3>時刻表を変える</h3>' +
-      '<p class="hint" style="margin-bottom:0">予定を押すと開きます。レースとレースの間は <b>' + secTxt(g.sec) + ' 以上</b>あけてください。</p>' +
+      '<p class="hint" style="margin-bottom:0">時刻は<b>レースが走り出す時刻</b>（投票はその ' + voteMin + '前から）。<b>全店同じ</b>時刻表です。レースとレースの間は <b>' + secTxt(g.sec) + ' 以上</b>あけてください。</p>' +
       '<details class="fold"><summary>くわしく</summary><div class="in">' +
-      '<p class="hint">最短間隔 ' + secTxt(g.sec) + ' ＝ 参加受付 ' + g.ex + ' 秒＋投票 ' + g.vo + ' 秒＋ゲートイン ' + g.gate + ' 秒＋レース約 ' + RUN_SEC + ' 秒＋ゴール後 ' + g.post + ' 秒。</p>' +
-      '<p class="hint">当選額の目標＝そのレースで当たる額の合計の目安（チップ × オッズ）。100 単位に丸めて保存します。</p>' +
-      '<p class="hint">その日に<b>日付の予定があればそれだけ → なければ曜日 → なければ毎日</b>を使います。全店の予定と店舗だけの予定は別々に選ばれ、両方走ります。同じ時刻は下の予定が使われます。</p>' +
+      '<p class="hint">' + voteExample(g.vote) + ' 21:00 に締め切って走り出します。</p>' +
+      '<p class="hint">最短間隔 ' + secTxt(g.sec) + ' ＝ 投票 ' + g.vote + ' 秒＋ゲートイン ' + g.gate + ' 秒＋レース約 ' + RUN_SEC + ' 秒＋ゴール後 ' + g.post + ' 秒＋写真判定の余裕 ' + g.photo + ' 秒。投票の時間は「調整」で変えます。</p>' +
+      '<p class="hint">当選額の目標＝そのレースで当たった人に渡す額の合計の目安（当たった人数 × 100pt × 倍率）。100 単位に丸めて保存します。勝ち馬はこの目標に近づくように決まります（「調整」の「勝ち馬の決まり方」）。</p>' +
+      '<p class="hint">その日に<b>日付の予定があればそれだけ → なければ曜日 → なければ毎日</b>を使います。同じ時刻は下の予定が使われます。</p>' +
       '<p class="hint">近すぎる・重なる・過去の時刻・おかしな値があると保存できません。保存すると、まだ作られていないこれからのレースに反映されます。</p>' +
       '</div></details></div>' +
       '<div class="tt-layout"><div>' + (tt.tpls.length ? tt.tpls.map(tplHtml).join('') : '<div class="panel"><div class="empty">まだ予定がありません。下のボタンで作ってください。</div></div>') +
@@ -720,27 +706,28 @@
     $('ttsave').disabled = n > 0 || !ttDirty;
     paintPreview();
   }
+  // この日の予定（右の枠）: 走り出す時刻・投票の始まり・目標
   function paintPreview() {
     const box = $('pvbox'); if (!box) return;
-    const d = pvDate || todayStr();
+    const d = pvDate || todayStr(), vs = (Number(cfg.tuning.voteSec) || 0) + (Number(cfg.tuning.closeLeadSec) || 0);
     let items;
     if (pvSrc === 'server') {
       if (!pvServer) { box.innerHTML = '<div class="empty">読み込み中…</div>'; return; }
       if (pvServer.err) { box.innerHTML = '<div class="err">' + esc(pvServer.err) + '</div>'; return; }
-      items = pvServer.races.map((r) => ({ t: r.time || hm(r.at), p: r.payout, store: r.storeId, name: r.scope === 'store' && !r.storeId ? '店舗ごと' : '' }));
+      items = pvServer.races.map((r) => ({ t: r.time || hm(r.at), p: r.payout, store: r.storeId, open: r.openAt != null ? hm(r.openAt) : r.at ? hm(r.at - vs * 1000) : '' }));
     } else {
       if (!isDate(d)) { box.innerHTML = '<div class="empty">日付を入れてください</div>'; return; }
-      items = daySchedule(tt.tpls, d, pvStore || null).map((x) => ({ t: x.t, p: x.p, store: x.group, name: tplName(x.tpl), scope: x.tpl.scope }));
+      items = daySchedule(tt.tpls, d, null).map((x) => ({ t: x.t, p: x.p, store: x.group, name: tplName(x.tpl), open: fromMin(x.m - Math.ceil(vs / 60)) }));
     }
     const isToday = d === todayStr(), nm = toMin(hm(now()));
     const total = items.reduce((a, x) => a + (Number(x.p) || 0), 0);
     box.innerHTML = '<div class="summary" style="grid-template-columns:1fr 1fr"><div class="stat"><small>レース数</small><b>' + items.length + '</b></div><div class="stat"><small>当選額の目標の合計</small><b>' + ptN(total) + '</b></div></div>' +
-      (items.length ? '<div class="pv-list"><table><tr><th>時刻</th><th>店舗</th><th class="n">目標</th><th>予定</th></tr>' + items.map((x) => '<tr class="' + (isToday && toMin(x.t) < nm ? 'past' : '') + '"><td>' + esc(x.t) + '</td><td>' + esc(storeName(x.store)) + (!x.store && x.scope === 'store' ? '<small class="hint"> 店ごと</small>' : '') + '</td><td class="n">' + ptN(x.p) + '</td><td><small class="hint">' + esc(x.name || '') + '</small></td></tr>').join('') + '</table></div>'
+      (items.length ? '<div class="pv-list"><table><tr><th>走り出す</th><th>投票</th><th class="n">目標</th><th>予定</th></tr>' + items.map((x) => '<tr class="' + (isToday && toMin(x.t) < nm ? 'past' : '') + '"><td><b>' + esc(x.t) + '</b>' + (x.store ? '<small class="hint"> ' + esc(storeName(x.store)) + 'だけ</small>' : '') + '</td><td><small class="hint">' + esc(x.open || '') + '〜</small></td><td class="n">' + ptN(x.p) + '</td><td><small class="hint">' + esc(x.name || '') + '</small></td></tr>').join('') + '</table></div>'
         : '<div class="empty">この日はレースがありません</div>');
   }
   async function loadServerPreview() {
     pvServer = null; paintPreview();
-    try { const r = await api('preview', pvDate || todayStr(), pvStore || undefined); pvServer = { races: (r && r.races) || [] }; }
+    try { const r = await api('preview', pvDate || todayStr()); pvServer = { races: ((r && r.races) || []).filter((x) => !x.storeId) }; }
     catch (e) { pvServer = { err: errText(e), races: [] }; }
     paintPreview();
   }
@@ -782,175 +769,210 @@
   }
 
   /* ======================================================================
-     今日のレース（実際のレース一覧）
+     今日のレース（v4: 参加＝票の数・当選額と目標・勝ち（1着→2着 倍率）・テストレースの印）
      ====================================================================== */
   async function loadRaces(quiet) {
     const sig = () => JSON.stringify([racesData, racesErr, (racesData || []).map((r) => statusOf(r) + (r.endAt && r.endAt < now() ? 'p' : ''))]), before = sig();
-    // 読んでいる間に日付を変えたら、古い日付の答えで上書きしない（10 秒ごとの読み直しが「前の日」の画面に今日のレースを出していた。コードレビュー 2026-10-14）
+    // 読んでいる間に日付を変えたら、古い日付の答えで上書きしない
     const d = raceDate, my = (loadRaces.seq = (loadRaces.seq || 0) + 1);
     try { const r = await api('races', d); if (my !== loadRaces.seq || d !== raceDate) return; racesData = (r && r.races) || []; racesErr = ''; }
     catch (e) { if (my !== loadRaces.seq || d !== raceDate) return; racesErr = errText(e); if (!quiet) racesData = []; }
     if (quiet && sig() === before) return; // 10 秒ごとの読み直しで何も変わっていなければ描き直さない（日付の入力・ボタンを押している途中を消さない）
     if (tab === 'races') keepScroll(() => { main.innerHTML = viewRaces(); });
   }
-  // 管理用の一覧は店舗を指定しないので、受付中かどうかは時刻で判定する
-  const statusOf = (r) => { if (r.refunded || r.status === 'void') return 'void'; const t = now(); if (r.status === 'upcoming' && r.openAt <= t && t < r.closeAt) return r.exchangeCloseAt != null && t >= r.exchangeCloseAt ? 'vote' : 'open'; return r.status; };
-  /* 1 着の選び方（decision.reason。v2/outcome.js） */
-  function reasonTxt(d) {
-    if (!d || !d.reason) return '';
-    const n = d.band && d.band.horses ? d.band.horses.length : 0;
-    const t = { band: '幅の中から抽選' + (n ? '（候補 ' + n + ' 頭）' : ''), target: 'いちばん近い馬', cap_conflict: '上限超え（当たり優先）', nobody: '賭けなし' }[d.reason] || d.reason;
-    return '<small class="hint" style="display:block;margin:0">' + esc(t) + '</small>';
+  // 管理用の一覧は店舗を指定しないので、投票中かどうかは時刻で判定する（openAt〜closeAt）
+  const statusOf = (r) => { if (r.refunded || r.status === 'void') return 'void'; const t = now(); if ((r.status === 'upcoming' || r.status === 'open') && r.openAt <= t && t < r.closeAt) return 'vote'; if ((r.status === 'upcoming' || r.status === 'open') && t >= r.closeAt) return 'closed'; /* 締切の時刻を過ぎて、サーバーが締めるまでの数秒 */ return r.status === 'open' ? 'vote' : r.status; };
+  const votesOf = (r) => Number(r.votes != null ? r.votes : r.participants && r.participants.total) || 0;
+  const finished = (r) => !r.refunded && (r.status === 'decided' || r.status === 'done');
+  /* 勝ち馬の決まり方（decision.reason。v2/outcome.js）を 1 行で */
+  const REASONS = { band: '目標の幅に入る組み合わせから抽選', target: '幅に入る組み合わせがなく、目標にいちばん近い組み合わせ（必ず誰かは当てる）', cap_nowin: '上限を超えるので当たりなし（票のない組み合わせ）', cap_conflict: '全部の組み合わせが上限超え。いちばん少ない組み合わせ', nobody: '投票なし（自然の結果）' };
+  function reasonTxt(r) {
+    const d = r.decision; if (!d || !d.reason) return '';
+    const n = d.band && Array.isArray(d.band.combos) ? d.band.combos.length : 0;
+    const t = (REASONS[d.reason] || d.reason) + (d.reason === 'band' && n ? '（候補 ' + n + ' 組）' : '') + (d.target ? '・目標 ' + ptT(d.target) : '') + (d.reason !== 'nobody' ? '・当選額 ' + ptT(d.paid != null ? d.paid : d.payout) : '') + (d.cap ? '・上限 ' + ptT(d.cap) : '');
+    return '<small class="hint memo-reason" style="display:block;margin:0">' + esc(t) + '</small>';
   }
-  function horseTxt(r, h) { if (h == null || !r.horses || !r.horses[h]) return '—'; const x = r.horses[h]; return (x.no || h + 1) + ' ' + x.name; }
-  /* 2026-10-19 改善 2: 今日のレース = 「いまのレース」のカード → 数字 4 つ → これから（3 件）→ 終わったレース（新しい順に 5 件。残りは「ほか○件」で開く）。
-     レース取消（返還）は行の下にその場で開く（設定の画面へ移らない）。ChatGPT と壁打ちして決めた（deploy/ADMIN_SIMPLE_NOTES.md） */
   const leftTxt = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return s >= 60 ? Math.floor(s / 60) + '分' + pad(s % 60) + '秒' : s + '秒'; };
   function nowCard(list, isToday) {
     if (!isToday) return '';
-    const t = now(), cur = list.find((r) => statusOf(r) === 'open' || statusOf(r) === 'vote'), next = list.find((r) => r.status === 'upcoming' && r.openAt > t && r !== cur);
-    const live = list.find((r) => r.status === 'closed' || r.status === 'decided');
+    const t = now(), cur = list.find((r) => statusOf(r) === 'vote'), next = list.find((r) => r.status === 'upcoming' && r.openAt > t && r !== cur);
+    const live = list.find((r) => !r.refunded && (r.status === 'closed' || r.status === 'decided'));
+    const tag = (r) => (r.test ? ' <span class="chip test">テスト</span>' : '');
     if (cur) {
-      const vote = statusOf(cur) === 'vote', until = vote ? cur.closeAt : (cur.exchangeCloseAt || cur.closeAt);
-      return '<div class="nowcard"><div class="big"><b class="mono">' + hm(cur.at) + '</b> <span class="status ' + (STATUS[statusOf(cur)] || STATUS.open)[1] + '">' + (vote ? '投票中' : '受付中') + '</span></div>' +
-        '<div class="sub">' + (vote ? '投票の締切まで ' : '受付の終わりまで ') + '<b data-until="' + until + '">' + leftTxt(until - t) + '</b>・参加 ' + fmtN(cur.participants && cur.participants.total) + '人' + (next ? '・次は ' + hm(next.at) : '') + '</div></div>';
+      return '<div class="nowcard"><div class="big"><b class="mono">' + hm(cur.at) + '</b> <span class="status st-open">投票中</span>' + tag(cur) + '</div>' +
+        '<div class="sub">締切まで <b data-until="' + cur.closeAt + '">' + leftTxt(cur.closeAt - t) + '</b>・参加 <b>' + fmtN(votesOf(cur)) + '人</b>' + (next ? '・次は ' + hm(next.at) : '') + '</div></div>';
     }
-    if (live) return '<div class="nowcard"><div class="big"><b class="mono">' + hm(live.at) + '</b> <span class="status st-decided">レース中</span></div><div class="sub">参加 ' + fmtN(live.participants && live.participants.total) + '人' + (next ? '・次は ' + hm(next.at) : '') + '</div></div>';
-    if (next) return '<div class="nowcard"><div class="big">次のレース <b class="mono">' + hm(next.at) + '</b></div><div class="sub">受付が始まるまで <b data-until="' + next.openAt + '">' + leftTxt(next.openAt - t) + '</b></div></div>';
+    if (live) return '<div class="nowcard"><div class="big"><b class="mono">' + hm(live.at) + '</b> <span class="status st-decided">レース中</span>' + tag(live) + '</div><div class="sub">参加 ' + fmtN(votesOf(live)) + '人' + (next ? '・次は ' + hm(next.at) : '') + '</div></div>';
+    if (next) return '<div class="nowcard"><div class="big">次のレース <b class="mono">' + hm(next.at) + '</b>' + tag(next) + '</div><div class="sub">投票は ' + hm(next.openAt) + ' から（あと <b data-until="' + next.openAt + '">' + leftTxt(next.openAt - t) + '</b>）</div></div>';
     return '<div class="nowcard"><div class="big">今日のレースは終わりました</div></div>';
+  }
+  // 今日のいちばん上: 店のテレビの今のゲーム（切り替えは「テレビ」タブ）
+  function tvStrip() {
+    if (!cfg.stores.length) return '';
+    return '<div class="tvstrip" id="tvStrip"><span class="lb">テレビ</span>' + cfg.stores.map((s) => { const g = sset(s).tvGame; return '<span class="chip' + (g === 'derby' ? ' on' : '') + '">' + esc(s.name) + ' ' + (g === 'derby' ? 'DERBY' : 'SLOT') + '</span>'; }).join('') +
+      '<button type="button" class="btn xs ghost" data-act="go-tv">切り替え ›</button></div>';
+  }
+  // 勝ち（1着→2着 倍率）と当たった人数
+  function resultHtml(r) {
+    const res = r.result; if (!res || res.winner == null) return '';
+    const odds = res.comboOdds != null ? res.comboOdds : res.finalExacta && res.combo ? res.finalExacta[res.combo] : null;
+    const ws = (r.winners || []).filter((w) => r.test || !w.test), n = ws.length;
+    return '<b class="combo">' + noOf(r, res.winner) + '番 → ' + noOf(r, res.second) + '番</b> <span class="hint">' + per1(odds) + '</span>' +
+      (r.refunded ? ' <small class="hint">取り消し（受け取りなし）</small>' : r.status === 'done' || r.status === 'decided' ? ' <small class="hint">' + (n ? '当たり ' + n + '人' : '当たりなし') + '</small>' : '');
   }
   function viewRaces() {
     const list = racesData || [];
-    const sum = list.reduce((a, r) => { a.bet += r.betTotal || 0; a.target += r.payoutTarget || 0; if (r.status === 'done' || r.status === 'decided') { a.paid += r.paidTotal || 0; a.done++; } a.players += (r.participants && r.participants.total) || 0; return a; }, { bet: 0, paid: 0, target: 0, done: 0, players: 0 });
+    const real = list.filter((r) => !r.test && !r.refunded);
+    const sum = real.reduce((a, r) => { if (finished(r)) { a.paid += Number(r.paidTotal) || 0; a.target += Number(r.payoutTarget) || 0; a.unpaid += Number(r.unpaidTotal) || 0; a.done++; } a.votes += votesOf(r); return a; }, { paid: 0, target: 0, unpaid: 0, done: 0, votes: 0 });
     const isToday = raceDate === bizToday();
-    /* これから（受付中を含む。近い順に 3 件）と、終わったレース（新しい順）。取り消したレースはいつも見せる */
-    const coming = list.filter((r) => r.status === 'upcoming'), done = list.filter((r) => r.status !== 'upcoming').reverse();
-    const shownDone = raceAll ? done : done.filter((r, i) => i < 5 || r.refunded || r.status === 'void' || r.id === refundOpen);
+    /* これから（投票中を含む。近い順に 3 件）と、終わったレース（新しい順）。取り消したレースはいつも見せる */
+    const coming = list.filter((r) => r.status === 'upcoming' && !r.refunded), done = list.filter((r) => r.status !== 'upcoming' || r.refunded).reverse();
+    const shownDone = raceAll ? done : done.filter((r, i) => i < 5 || r.refunded || r.id === refundOpen);
     const hidden = done.length - shownDone.length + Math.max(0, coming.length - 3);
     const rows = coming.slice(0, raceAll ? coming.length : 3).concat(shownDone);
     /* 1 行（PC は表、スマホはカード。td の data-l がカードの見出し）。勝ち馬の決まり方・演出は「勝ち馬の決まり方を見る」のときだけ */
     const td = (l, html, cls) => '<td' + (cls ? ' class="' + cls + '"' : '') + (l ? ' data-l="' + l + '"' : '') + '>' + html + '</td>';
     const row = (r) => {
       const stK = statusOf(r), st = STATUS[stK] || [r.status, 'st-upcoming'];
-      const res = r.result, w = res ? res.winner : null;
       const canRefund = ['closed', 'decided', 'done'].indexOf(r.status) >= 0 && !r.refunded;
-      const paid = r.status === 'decided' || r.status === 'done' ? ptN(r.paidTotal) : '—';
-      const open = refundOpen === r.id && canRefund;
-      return '<tr class="' + (stK === 'open' || stK === 'vote' ? 'now' : r.status === 'upcoming' ? '' : 'past') + (r.refunded ? ' voided' : '') + (open ? ' rfopen' : '') + '">' +
-        td('', '<b class="mono" style="font-size:15px">' + hm(r.at) + '</b>' + (r.storeId || r.scope === 'store' ? '<small class="hint"> ' + (r.storeId ? esc(storeName(r.storeId)) + 'だけ' : '店ごと') + '</small>' : ''), 'head') +
-        td('', '<span class="status ' + st[1] + '">' + (r.refunded ? '取り消し済み' : st[0]) + '</span>' + (r.refunded ? ' <small class="hint">リングバウンティ ' + fmtN(r.refundBounty != null ? r.refundBounty : r.refundTotal) + '枚を返す</small>' : '')) +
-        (r.status === 'upcoming' && !(r.participants && r.participants.total) ? td('', '', 'n') + td('', '', 'n') + td('目標', ptN(r.payoutTarget), 'n') /* これからのレースは 0 を並べない */
-          : td('参加', fmtN(r.participants && r.participants.total) + '人', 'n') + td('チップ', chipN(r.betTotal), 'n') + td('当選額 / 目標', paid + ' / ' + ptN(r.payoutTarget), 'n')) +
-        td(res ? '1着' : '', res ? esc(horseTxt(r, w)) + ' <span class="hint">' + (res.finalOdds && res.finalOdds[w] != null ? per1(res.finalOdds[w]) : '') + '</span>' + (memoOn ? reasonTxt(r.decision) + cueTxt(r) : '') : '', 'full') +
+      const open = refundOpen === r.id && canRefund, before = r.status === 'upcoming' && stK === 'upcoming';
+      const money = r.test ? '<small class="hint">テスト（払わない）</small>' : finished(r) ? ptN(r.paidTotal) + '<span class="hint"> / ' + ptN(r.payoutTarget) + '</span>' : '<span class="hint">目標 </span>' + ptN(r.payoutTarget);
+      return '<tr class="' + (stK === 'vote' ? 'now' : r.status === 'upcoming' ? '' : 'past') + (r.refunded ? ' voided' : '') + (r.test ? ' testrace' : '') + (open ? ' rfopen' : '') + '" data-race="' + esc(r.id) + '">' +
+        td('', '<b class="mono" style="font-size:15px">' + hm(r.at) + '</b>' + (r.test ? ' <span class="chip test">テスト</span>' : '') + (r.storeId ? '<small class="hint"> ' + esc(storeName(r.storeId)) + 'だけ</small>' : '') + (before ? '<small class="hint vfrom"> 投票 ' + hm(r.openAt) + '〜</small>' : ''), 'head') +
+        td('', '<span class="status ' + st[1] + '">' + st[0] + '</span>') +
+        td(before && !votesOf(r) ? '' : '参加', before && !votesOf(r) ? '' : fmtN(votesOf(r)) + '人', 'n') +
+        td(finished(r) && !r.test ? '当選額 / 目標' : '', money, 'n') +
+        td(r.result ? '結果' : '', resultHtml(r) + (memoOn ? reasonTxt(r) + cueTxt(r) : ''), 'full') +
         td('', canRefund && !open ? '<button class="btn xs ghost" data-act="race-refund" data-id="' + esc(r.id) + '" aria-expanded="false">レース取消</button>' : '', 'right') + '</tr>' +
-        (open ? '<tr class="rfrow"><td colspan="7">' + refundBox(r) + '</td></tr>' : '');
+        (open ? '<tr class="rfrow"><td colspan="6">' + refundBox(r) + '</td></tr>' : '');
     };
-    return viewTvPanel() +
-      '<div class="panel" id="racePanel"><h3>' + (isToday ? '今日のレース' : esc(fmtDay(raceDate)) + 'のレース') + '<span class="sp"></span>' + (isToday ? '<small class="auto">自動で更新</small>' : '') + '</h3>' +
+    return '<div class="panel" id="racePanel"><h3>' + (isToday ? '今日のレース' : esc(fmtDay(raceDate)) + 'のレース') + '<span class="sp"></span>' + (isToday ? '<small class="auto">自動で更新</small>' : '') + '</h3>' +
+      (isToday ? tvStrip() : '') +
       nowCard(list, isToday) +
-      '<div class="summary"><div class="stat"><small>終わったレース</small><b>' + sum.done + ' / ' + list.length + '</b></div><div class="stat"><small>参加（のべ）</small><b>' + fmtN(sum.players) + '人</b></div><div class="stat"><small>賭けたチップ</small><b>' + chipN(sum.bet) + '</b></div><div class="stat"><small>当選額 / 目標</small><b>' + ptN(sum.paid) + '<span class="of"> / ' + ptN(sum.target) + '</span></b></div></div>' +
+      '<div class="summary" id="raceSum"><div class="stat"><small>終わったレース</small><b>' + sum.done + ' / ' + real.length + '</b></div><div class="stat"><small>参加（票の数）</small><b>' + fmtN(sum.votes) + '人</b></div>' +
+      '<div class="stat"><small>当選額 / 目標</small><b>' + ptN(sum.paid) + '<span class="of"> / ' + ptN(sum.target) + '</span></b></div><div class="stat' + (sum.unpaid ? ' ng' : '') + '"><small>まだ渡していない</small><b>' + ptN(sum.unpaid) + '</b></div></div>' +
+      (list.some((r) => r.test) ? '<p class="hint" style="margin:2px 0 6px">テストのレースは数字に入れていません（当たっても払いません）。</p>' : '') +
       (racesErr ? '<div class="err">' + esc(racesErr) + '</div>' : '') +
       (racesData == null ? '<div class="empty">読み込み中…</div>' : !list.length ? '<div class="empty">この日のレースはありません</div>' :
-        '<div class="tbl"><table class="cards rl"><tr class="hd"><th>発走</th><th>状態</th><th class="n">参加</th><th class="n">賭けたチップ</th><th class="n">当選額 / 目標</th><th>1着（オッズ）</th><th></th></tr>' +
+        '<div class="tbl"><table class="cards rl"><tr class="hd"><th>走り出す</th><th>状態</th><th class="n">参加</th><th class="n">当選額 / 目標</th><th>結果（1着 → 2着）</th><th></th></tr>' +
         rows.map(row).join('') + '</table></div>' +
         (hidden || raceAll ? '<div class="acts l"><button class="btn sm ghost" data-act="race-all">' + (raceAll ? '少なく表示' : 'ほか ' + hidden + ' 件のレースを表示') + '</button></div>' : '')) +
       '<div class="datebar"><span class="hint" style="margin:0">ほかの日:</span><button class="btn sm ghost" data-act="rq" data-n="-1" aria-label="前の日">◀ 前の日</button><input type="date" id="rdate" value="' + esc(raceDate) + '" aria-label="日付"><button class="btn sm ghost" data-act="rq" data-n="1" aria-label="次の日">次の日 ▶</button>' + (isToday ? '' : '<button class="btn sm ghost" data-act="rq" data-n="0">今日へ</button>') + '</div>' +
-      '<div class="acts l"><button class="btn link" data-act="memo" aria-pressed="' + memoOn + '">' + (memoOn ? '勝ち馬の決まり方を隠す' : '勝ち馬の決まり方を見る（オーナー用）') + '</button></div></div>';
+      '<div class="acts l"><button class="btn link" data-act="memo" aria-pressed="' + memoOn + '">' + (memoOn ? '勝ち馬の決まり方を隠す' : '勝ち馬の決まり方を見る（オーナー用）') + '</button></div>' +
+      (memoOn ? '<div class="explain" id="explainBox">' + explainHtml(cfg.tuning) + '</div>' : '') + '</div>';
   }
-  /* その場のレース取消（返還）。中身は前の「設定」の返還と同じ（発走・参加・返すリングバウンティ・取り消す当選額）。押すと確認の文 → api('refund') */
+  /* 勝ち馬（1着→2着）の決まり方（オーナー用）。今の調整の値で書く。今日の「勝ち馬の決まり方を見る」と、調整の「くわしく」で同じ文 */
+  function explainHtml(T) {
+    const pc = (v) => Math.round((Number(v) || 0) * 100) + '%', tg = 30000;
+    const lo = Math.ceil(tg * (1 - (Number(T.bandBelow) || 0)) - 1e-9), hi = Math.floor(tg * (1 + (Number(T.bandAbove) || 0)) + 1e-9);
+    const cap = (v) => (Number(v) > 0 ? ptT(v) : 'なし');
+    return '<b class="exh">勝ち馬（1着 → 2着）の決まり方</b><ol class="exl">' +
+      '<li>締切のあと、票の入った組み合わせごとに「当たったら渡す額の合計」（票の数 × 100pt × 倍率）を出します。倍率は見せていた値から<b>下げ ' + pc(T.shiftDown) + '〜上げ ' + pc(T.shiftUp) + '</b>の間で動かせます（1.0 倍より下げません）。</li>' +
+      '<li>合計が<b>当選額の目標の幅</b>（目標の −' + pc(T.bandBelow) + '〜＋' + pc(T.bandAbove) + '。目標 ' + ptT(tg) + ' なら ' + fmtN(lo) + '〜' + ptT(hi) + '）に入る組み合わせがあれば、その中から起きやすさに合わせて抽選します。</li>' +
+      '<li>幅に入るものが無ければ、目標にいちばん近い組み合わせにします＝<b>必ず誰かは当てる</b>。</li>' +
+      '<li>ただし<b>払い出しの上限</b>（1 レース ' + cap(T.payoutCap) + '・1 日 ' + cap(T.payoutCapDay) + '）を超える組み合わせは選びません。上限は「必ず誰かは当てる」より強い決まりです。票の入ったどの組み合わせも上限を超えるときは、票の入っていない組み合わせ＝<b>当たりなし</b>になります。</li>' +
+      '<li><b>誰も投票していない</b>レースは自然の結果のまま。テストの票しかないときは払わないので上限を見ません。</li>' +
+      '<li>決めた 1着 → 2着 の順にゴールするように走りを作ります（人気の倍率の表示はそのまま）。</li></ol>';
+  }
+  /* その場のレース取消（v4: まだ渡していない当たりを取り消す。渡した分はそのまま。参加無料なので返すものはない） */
   function refundBox(r) {
-    return '<div class="rfbox" id="refundPanel"><b>' + esc(fmtDay(ymd(r.at))) + ' ' + hm(r.at) + ' のレースを取り消しますか？</b><small>参加 ' + fmtN(r.participants && r.participants.total) + ' 人・チップ ' + chipN(r.betTotal) + '</small>' +
-      '<div class="rfnums"><div><small>返すリングバウンティ</small><b>' + fmtN(r.betBounty != null ? r.betBounty : r.betTotal) + '枚</b></div><div><small>取り消す当選額</small><b>' + ptN(r.paidTotal) + '</b></div></div>' +
+    return '<div class="rfbox" id="refundPanel"><b>' + esc(fmtDay(ymd(r.at))) + ' ' + hm(r.at) + ' のレースを取り消しますか？</b><small>参加 ' + fmtN(votesOf(r)) + ' 人' + (r.test ? '・テストのレース' : '') + '</small>' +
+      '<div class="rfnums"><div><small>取り消す当選額（まだ渡していない）</small><b>' + ptN(r.unpaidTotal) + '</b></div><div><small>もう渡した当選額（そのまま）</small><b>' + ptN(r.claimedTotal) + '</b></div></div>' +
       '<div class="rfwarn">元に戻せません</div>' +
-      '<div class="rfacts"><button class="btn ghost" data-act="race-refund" data-id="' + esc(r.id) + '">やめる</button><button class="btn danger" data-act="refund" data-id="' + esc(r.id) + '">取り消して返す</button></div></div>';
+      '<div class="rfacts"><button class="btn ghost" data-act="race-refund" data-id="' + esc(r.id) + '">やめる</button><button class="btn danger" data-act="refund" data-id="' + esc(r.id) + '">取り消す</button></div></div>';
   }
-
 
   /* ======================================================================
-     裏の調整（店舗マニュアルには出さない）
+     調整（v4: 投票の秒数・元の額・倍率のずらし幅（上限なし）・当たりの幅・払い出しの上限・馬の見た目・そのほか・テスト用）
      ====================================================================== */
+  const pct = (v) => Math.round((Number(v) || 0) * 100);
+  function voteExample(sec) {
+    if (!(sec > 0)) return '';
+    const m = 21 * 60 * 60 - sec, h = Math.floor(m / 3600), mi = Math.floor((m % 3600) / 60), s = m % 60;
+    return '例: 21:00 のレースは <b>' + pad(h) + ':' + pad(mi) + (s ? ':' + pad(s) : '') + '</b> から投票（' + secTxt(sec) + '）。テレビの QR はずっと出ています。';
+  }
+  /* ずらし幅の例（見せた倍率 10.0 倍のとき）。入力のたびに書き直す */
+  function shiftExample(up, down) {
+    const o = 10, lo = Math.max(1, Math.round(o * (1 - down) * 10) / 10), hi = Math.min(999.9, Math.round(o * (1 + up) * 10) / 10);
+    return '見せた倍率が 10.0 倍なら、確定は <b>' + lo.toFixed(1) + '〜' + hi.toFixed(1) + ' 倍</b>の間（当たれば ' + fmtN(payFor(lo)) + '〜' + ptT(payFor(hi)) + '）。';
+  }
+  /* 当たりの幅の例（目標 30,000pt のとき）。入力のたびに書き直す */
+  function bandExample(below, above) {
+    if (!(below > 0) && !(above > 0)) return '幅が両方 0% なので、目標にいちばん近い組み合わせが勝ちます';
+    const tg = 30000, lo = Math.ceil(tg * (1 - below) - 1e-9), hi = Math.floor(tg * (1 + above) + 1e-9);
+    return '目標 ' + ptT(tg) + ' なら <b>' + fmtN(lo) + '〜' + ptT(hi) + '</b> に入る組み合わせから、起きやすさで抽選。無ければいちばん近い組み合わせ（必ず誰かは当てる）';
+  }
   function viewTuning() {
     const T = cfg.tuning;
     const cur = TUNE_PRESETS.find((p) => Math.abs(p[2].volatility - T.volatility) < 1e-6 && Math.abs(p[2].shiftUp - T.shiftUp) < 1e-6 && Math.abs(p[2].shiftDown - T.shiftDown) < 1e-6);
-    return '<div class="backbar"><button type="button" class="btn sm ghost" data-act="go-ops">← 設定</button><h2>オーナー用の詳細設定</h2></div>' +
-      '<p class="hint">店舗には見せない設定です。これから作るレースから使われます。</p>' +
-      '<div class="panel"><h3>当たり方</h3>' +
-      '<div class="quick"><span class="hint" style="margin:0">まとめて:</span>' + TUNE_PRESETS.map((p) => '<button type="button" class="btn sm ghost" aria-pressed="' + !!(cur && cur[0] === p[0]) + '" data-act="tpreset" data-p="' + p[0] + '" title="' + esc(p[3]) + '">' + p[1] + '</button>').join('') + '</div>' +
-      stepRow('払い戻し率', '表示オッズの払い戻し率', 'payoutRate', Math.round(T.payoutRate * 100), '%', 50, 99, 1) +
-      stepRow('荒れやすさ', '1.0 がふつう。大きいほど人気薄が勝つ', 'volatility', T.volatility, '倍', 0.3, 2.5, 0.1) +
-      stepRow('確定オッズを上げる幅', '締切後、見せていたオッズより上げてよい幅', 'shiftUp', Math.round(T.shiftUp * 100), '%', 0, 30, 1) +
-      stepRow('確定オッズを下げる幅', '0% ならお客さんが損をしない', 'shiftDown', Math.round(T.shiftDown * 100), '%', 0, 30, 1) +
-      stepRow('当たりの幅（目標より少ない側）', '払い戻しの合計が目標より何%少なくてもよいか', 'bandBelow', Math.round(T.bandBelow * 100), '%', 0, 50, 1) +
-      stepRow('当たりの幅（目標より多い側）', '払い戻しの合計が目標より何%多くてもよいか', 'bandAbove', Math.round(T.bandAbove * 100), '%', 0, 50, 1) +
+    const up = pct(T.shiftUp), down = pct(T.shiftDown);
+    return '<div class="panel" id="votePanel"><h3>投票と当選額</h3>' +
+      stepRow('投票の時間', '走り出す時刻の何秒前から投票できるか。全店同じ', 'voteSec', T.voteSec, '秒', 10, 3600, 10) +
+      '<p class="hint" id="voteEx">' + voteExample(T.voteSec) + '</p>' +
+      fixedRow('テストレースの投票', 'スタッフのスマホの「テストレース」。当たっても払いません', TEST_VOTE_SEC + '秒', 'fixTest') +
+      fixedRow('元の額', '当選額 ＝ 100pt × 2 連単の倍率（100pt 単位に切り上げ。12.4 倍 → 1,300pt）', STAKE + 'pt', 'fixStake') +
+      '</div>' +
+      '<div class="panel" id="oddsPanel"><h3>倍率と当たりの決め方 <small class="qsub">オーナー用・店舗には見せない</small></h3>' +
+      stepRow('確定の倍率を上げる幅', '締切のあと、見せていた倍率より上げてよい幅。上限なし', 'shiftUp', up, '%', 0, 1000000, 1) +
+      '<div class="warnmsg bigwarn" id="warnUp"' + (up > BIG_SHIFT ? '' : ' hidden') + '>見た倍率と大きく変わります（上げ ' + up + '%）</div>' +
+      stepRow('確定の倍率を下げる幅', '0〜100%。倍率は 1.0 倍より下げません（当たった人は最低 100pt）', 'shiftDown', down, '%', 0, 100, 1) +
+      '<div class="warnmsg bigwarn" id="warnDown"' + (down > BIG_SHIFT ? '' : ' hidden') + '>見た倍率と大きく変わります（下げ ' + down + '%）</div>' +
+      '<p class="hint" id="shiftEx">' + shiftExample(T.shiftUp, T.shiftDown) + '</p>' +
+      stepRow('当たりの幅（目標より少ない側）', '当選額の合計が目標より何%少なくてもよいか', 'bandBelow', pct(T.bandBelow), '%', 0, 50, 1) +
+      stepRow('当たりの幅（目標より多い側）', '当選額の合計が目標より何%多くてもよいか', 'bandAbove', pct(T.bandAbove), '%', 0, 50, 1) +
       '<p class="hint" id="bandEx">' + bandExample(T.bandBelow, T.bandAbove) + '</p>' +
-      stepRow('払い出しの上限（1 レース）', '0 = なし。当選額の合計（額）。必ず当たりのほうを優先', 'payoutCap', T.payoutCap || 0, 'pt', 0, 99999900, 1000) +
-      stepRow('払い出しの上限（1 日）', '0 = なし。全店の当選額の合計（額）' + (cfg.capDayOk ? '' : '（<b style="color:var(--warn)">サーバー側の対応待ち。まだ保存されません</b>）'), 'payoutCapDay', T.payoutCapDay || 0, 'pt', 0, 999999900, 10000) +
+      stepRow('払い出しの上限（1 レース）', '0 = なし。1 レースの当選額の合計', 'payoutCap', T.payoutCap || 0, 'pt', 0, 99999900, 100) +
+      stepRow('払い出しの上限（1 日）', '0 = なし。全店の 1 日の当選額の合計', 'payoutCapDay', T.payoutCapDay || 0, 'pt', 0, 999999900, 100) +
+      '<p class="hint capnote">上限は「必ず誰かは当てる」より<b>強い</b>決まりです。上限を超える組み合わせしかないときは<b>当たりなし</b>になります。</p>' +
+      '<details class="fold" id="explainFold"><summary>勝ち馬の決まり方（くわしく）</summary><div class="in explain">' + explainHtml(T) + '</div></details>' +
       '</div>' +
+      viewHorseLook(T) +
+      '<div class="panel"><details class="fold" id="moreTune" style="border-top:0;margin:0"><summary>そのほかの調整 <small>倍率の作り方・演出・テレビの時間</small></summary><div class="in">' +
+      '<h4 class="sumh">倍率の作り方</h4>' +
+      '<div class="quick"><span class="hint" style="margin:0">まとめて:</span>' + TUNE_PRESETS.map((p) => '<button type="button" class="btn sm ghost" aria-pressed="' + !!(cur && cur[0] === p[0]) + '" data-act="tpreset" data-p="' + p[0] + '" title="' + esc(p[3]) + '">' + p[1] + '</button>').join('') + '</div>' +
+      stepRow('払い戻し率', '見せる倍率の払い戻し率', 'payoutRate', pct(T.payoutRate), '%', 50, 99, 1) +
+      stepRow('荒れやすさ', '1.0 がふつう。大きいほど人気薄が来る', 'volatility', T.volatility, '倍', 0.3, 2.5, 0.1) +
       viewCues(T) +
-      '<div class="panel"><h3>時間</h3><p class="hint">上の 3 つは<b>店舗を追加したときの初期値</b>。ゲートインとゴール後は全店共通です。</p>' +
-      stepRow('参加受付の時間（初期値）', 'リングバウンティと交換できる時間', 'exchangeSec', T.exchangeSec != null ? T.exchangeSec : 90, '秒', 10, 1800, 5) +
-      stepRow('投票の時間（初期値）', '参加受付が終わってから', 'voteSec', T.voteSec != null ? T.voteSec : 30, '秒', 10, 600, 5) +
-      stepRow('結果を見せる時間（初期値）', '', 'resultSec', T.resultSec || 300, '秒', 10, 1800, 10) +
-      stepRow('ゲートイン', '発走時刻からゲートが開くまで', 'gateSec', T.gateSec, '秒', 0, 60, 1) +
+      '<h4 class="sumh">テレビの時間</h4>' +
+      stepRow('結果を見せる時間（初期値）', '店舗を追加したときの初期値（店ごとに変えられます）', 'resultSec', T.resultSec || 300, '秒', 10, 1800, 10) +
+      stepRow('ゲートイン', '走り出す時刻からゲートが開くまで', 'gateSec', T.gateSec, '秒', 0, 60, 1) +
       stepRow('ゴール後', 'リプレイ・写真判定・勝ち馬（結果発表まで）', 'postSec', T.postSec, '秒', 0, 120, 1) +
-      '</div>' +
+      '</div></details></div>' +
+      '<details class="panel" id="testPanel"><summary>テスト用（本番では使わない）</summary>' +
+      '<p class="hint">時刻表とは別に、今すぐテストレースを作ります。投票 ' + TEST_VOTE_SEC + ' 秒・当たっても払わない・集計に入れない。</p>' +
+      '<div class="range"><label class="f"><span>何秒後に走り出す</span><input type="number" id="trin" value="120" min="10" max="3600"></label><label class="f"><span>当選額の目標（pt）</span><input type="number" id="trpay" value="3000" min="1" max="' + PAY_MAX + '"></label>' +
+      '<label class="f"><span>店舗</span><select id="trstore"><option value="">全店（同時）</option>' + cfg.stores.map((s) => '<option value="' + esc(s.id) + '">' + esc(s.name) + 'だけ</option>').join('') + '</select></label></div>' +
+      '<div class="acts"><button class="btn ghost" data-act="test-race">テストレースを作る</button></div></details>' +
       '<div class="savebar"><div class="msg" id="tumsg"></div><button type="button" class="btn ghost" data-act="tun-revert">元に戻す</button><button type="button" class="btn" data-act="tun-save" id="tusave">保存</button></div>';
   }
-  /* 確定演出（店舗には見せない）: 演出ごとに「出す割合」と「当たる割合」を 1 行に。保存は下の「保存」ボタン（ほかの詳細の調整と一緒。変えた演出だけ送る） */
+  /* 確定演出（店舗には見せない）: 演出ごとに「出す割合」と「当たる割合」を 1 行に。保存は下の「保存」ボタン（変えた演出だけ送る） */
   function stepMini(label, key, val, unit, min, max, step) {
     return '<div class="mini"><span>' + label + '</span><div class="stepper" data-k="' + key + '" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '"><button type="button" data-act="st" data-d="-1" aria-label="減らす">◀</button>' +
       '<input class="pv" type="number" inputmode="decimal" id="n-' + key + '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + step + '" aria-label="' + esc(label) + '"><i>' + unit + '</i><button type="button" data-act="st" data-d="1" aria-label="増やす">▶</button></div></div>';
   }
   function viewCues(T) {
     const cz = T.cues || DEF_CUES;
-    return '<div class="panel" id="cuesPanel"><h3>演出（店舗には見せない）</h3>' +
-      '<p class="hint"><b>出す</b>＝その演出が出る割合、<b>当たる</b>＝出たときに本当の勝ち馬を指す割合。<b>100% ＝ 確定。外れたときは別の馬を指します。複数同時に出ることがあります</b>。</p>' +
+    return '<div id="cuesPanel"><h4 class="sumh">演出（1 着の馬のヒント）</h4>' +
+      '<p class="hint"><b>出す</b>＝その演出が出る割合、<b>当たる</b>＝出たときに本当の 1 着の馬を指す割合。<b>100% ＝ 確定</b>。外れたときは別の馬を指します。</p>' +
       CUES.map(([k, name, how]) => { const c = cz[k] || DEF_CUES[k]; return '<div class="cue-row" data-cue="' + k + '"><div class="cn">' + esc(name) + '<small>' + esc(how) + '</small></div><div class="cs">' +
         stepMini('出す', 'cueShow_' + k, c.show, '%', 0, 100, 5) + stepMini('当たる', 'cueHit_' + k, c.hit, '%', 0, 100, 5) + '</div></div>'; }).join('') +
       '</div>';
   }
-  /* 今日のレースの 1 行: 出た演出と、本当の勝ち馬を指していたか（○ / ×）。cues はサーバーが結果と一緒に決めたもの（管理と合言葉のあるテレビにだけ届く） */
+  /* 今日のレースの 1 行: 出た演出と、本当の 1 着を指していたか（○ / ×）。cues はサーバーが結果と一緒に決めたもの（管理と合言葉のあるテレビにだけ届く） */
   function cueTxt(r) {
     const cz = r.cues || (r.decision && r.decision.cues); if (!cz || !r.result) return '';
     const fired = CUES.filter(([k]) => cz[k] && cz[k].horse != null);
-    const t = fired.length ? '演出: ' + fired.map(([k, name]) => { const h = cz[k].horse, no = r.horses && r.horses[h] ? r.horses[h].no || h + 1 : h + 1; return name + '→' + no + '番 ' + (h === r.result.winner ? '○' : '×'); }).join(' / ') : '演出なし';
+    const t = fired.length ? '演出: ' + fired.map(([k, name]) => { const h = cz[k].horse; return name + '→' + noOf(r, h) + '番 ' + (h === r.result.winner ? '○' : '×'); }).join(' / ') : '演出なし';
     return '<small class="hint cue-txt" style="display:block;margin:0">' + esc(t) + '</small>';
   }
-  /* リングバウンティの交換（2026-10-19 オーナー「Bounty X 枚で 100 と交換できる感じ。X はマスターからいじれるように」）:
-     「設定」タブのいちばん上。全店共通の 1 つの値（v2/core.js の bountyPerTicket。整数 1〜1000・初期 20。店ごとの設定はない）。
-     テレビの参加受付中の画面・お客さんの参加画面（チップ）・スタッフの認証の案内に「リングバウンティ ○枚 → 100」と出る。
-     保存はこの枠の「保存」だけ（詳細設定とは別）。認証したときの割合を券に残すので、変えても認証済みの券・返却・返還は前の割合のまま */
-  function viewBounty(T) {
-    const x = Number(T.bountyPerTicket) || 20;
-    return '<div class="panel" id="bountyPanel"><h3>リングバウンティの交換</h3>' +
-      '<p class="bpnow">いま <b>リングバウンティ <span id="bpNow">' + fmtN(x) + '</span>枚 → 100pt</b></p>' +
-      stepRow('リングバウンティ ○枚 → 100pt', '1〜1000 の整数。全店共通', 'bountyPerTicket', x, '枚', 1, 1000, 1) +
-      '<p class="hint">テレビ（参加受付中）・お客さんのスマホ（参加画面）・スタッフ画面にこの割合が出ます。<b>これから認証する分</b>から新しい割合です（認証済みの券・返却・返還は認証したときの割合のまま）。当たりの額（チップ × オッズ）は変わりません。</p>' +
-      '<div class="savebar"><div class="msg" id="bpmsg"></div><button type="button" class="btn" data-act="bp-save" id="bpsave" disabled>保存</button></div></div>';
-  }
-  function validateBp() {
-    if (!$('bpsave')) return 1;
-    const ok = numOk('bountyPerTicket'), v = numOf('bountyPerTicket'), dirty = ok && v !== (Number(cfg.tuning.bountyPerTicket) || 20);
-    $('bpmsg').innerHTML = !ok ? '<div class="err">1〜1000 の整数にしてください</div>' : dirty ? '<div class="warnmsg">保存すると「リングバウンティ ' + fmtN(v) + '枚 → 100pt」になります</div>' : '<div class="okmsg">保存済みです</div>';
-    $('bpsave').disabled = !ok || !dirty;
-    return ok ? 0 : 1;
-  }
-  async function saveBp() {
-    if (validateBp()) return;
-    const v = Math.round(numOf('bountyPerTicket')); if (v === (Number(cfg.tuning.bountyPerTicket) || 20)) return;
-    $('bpsave').disabled = true;
-    try { await api('saveTuning', { bountyPerTicket: v }); await reloadCfg(); toast('交換の割合を「リングバウンティ ' + fmtN(v) + '枚 → 100pt」にしました。これから認証する分から使います'); }
-    catch (e) { toast(errText(e)); }
-    keepScroll(render);
-  }
-  /* 馬の見た目（全店共通。v2/core.js の horseLook）: 押すとすぐ保存。全店のテレビが次のレースから同じ見た目にそろう（受付中・走っている途中のレースは変わらない） */
+  /* 馬の見た目（全店共通。v2/core.js の horseLook）: 押すとすぐ保存。全店のテレビが次のレースから同じ見た目にそろう */
   const HORSE_LOOKS = [['cute', 'かわいい（標準）'], ['real', '本物寄り']];
   function viewHorseLook(T) {
     const cur = T.horseLook === 'real' ? 'real' : 'cute';
-    return '<div class="panel" id="hlookPanel"><h3>馬の見た目</h3><p class="hint">全店のテレビに次のレースから反映</p><div class="quick">' +
+    return '<div class="panel" id="hlookPanel"><h3>馬の見た目</h3><p class="hint">押すとすぐ保存。全店のテレビに次のレースから反映</p><div class="quick">' +
       HORSE_LOOKS.map(([v, l]) => '<button type="button" class="btn sm ' + (cur === v ? '' : 'ghost') + '" data-act="hlook" data-v="' + v + '" aria-pressed="' + (cur === v) + '">' + l + '</button>').join('') + '</div></div>';
   }
-  async function saveHorseLook(v, b) {
+  async function saveHorseLook(v) {
     if (v !== 'cute' && v !== 'real') return;
     if ((cfg.tuning.horseLook || 'cute') === v) return;
     const btns = main.querySelectorAll('[data-act="hlook"]'); btns.forEach((x) => { x.disabled = true; });
@@ -961,18 +983,24 @@
     } catch (e) { toast(errText(e)); }
     finally { btns.forEach((x) => { if (document.contains(x)) x.disabled = false; }); }
   }
-  /* 当たりの幅の例（目標 30,000 のとき。額）。入力のたびに書き直す */
-  function bandExample(below, above) {
-    if (!(below > 0) && !(above > 0)) return '幅が両方 0% なので、目標にいちばん近い馬が勝ちます';
-    const tg = 30000, lo = Math.ceil(tg * (1 - below) - 1e-9), hi = Math.floor(tg * (1 + above) + 1e-9);
-    return '目標 ' + ptT(tg) + ' なら <b>' + fmtN(lo) + '〜' + ptT(hi) + '</b> に入る馬から、勝ちやすさで抽選。いない時はいちばん近い馬';
-  }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
-  const TUN_KEYS = ['payoutRate', 'volatility', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'exchangeSec', 'voteSec', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS); /* 交換の割合（bountyPerTicket）は 2026-10-19 から「設定」の上の枠（viewBounty。保存も別） */
+  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
   function validateTuning() {
     if (!$('tumsg')) return 1;
-    const bad = TUN_KEYS.filter((k) => !numOk(k)).length;
+    const badKeys = TUN_KEYS.filter((k) => !numOk(k)), bad = badKeys.length;
+    if ($('voteEx') && numOk('voteSec')) $('voteEx').innerHTML = voteExample(numOf('voteSec'));
     if ($('bandEx') && numOk('bandBelow') && numOk('bandAbove')) $('bandEx').innerHTML = bandExample(numOf('bandBelow') / 100, numOf('bandAbove') / 100);
+    if (numOk('shiftUp') && numOk('shiftDown')) {
+      const up = numOf('shiftUp'), down = numOf('shiftDown');
+      if ($('shiftEx')) $('shiftEx').innerHTML = shiftExample(up / 100, down / 100);
+      if ($('warnUp')) { $('warnUp').hidden = !(up > BIG_SHIFT); $('warnUp').textContent = '見た倍率と大きく変わります（上げ ' + fmtN(up) + '%）'; }
+      if ($('warnDown')) { $('warnDown').hidden = !(down > BIG_SHIFT); $('warnDown').textContent = '見た倍率と大きく変わります（下げ ' + down + '%）'; }
+    }
+    { const mt = $('moreTune'); if (mt && !mt.open && mt.querySelector('.bad')) mt.open = true; } // 畳んだ欄にエラーがあれば開く
+    { // 勝ち馬の決まり方（くわしく）も、入れている値で書き直す（範囲の外の欄は保存済みの値）
+      const ex = main.querySelector('#explainFold .explain'), T0 = cfg.tuning, v = (k, div) => (numOk(k) ? numOf(k) / (div || 1) : T0[k]);
+      if (ex) ex.innerHTML = explainHtml(Object.assign({}, T0, { shiftUp: v('shiftUp', 100), shiftDown: v('shiftDown', 100), bandBelow: v('bandBelow', 100), bandAbove: v('bandAbove', 100), payoutCap: v('payoutCap'), payoutCapDay: v('payoutCapDay') }));
+    }
     $('tumsg').innerHTML = bad ? '<div class="err">数字の範囲を確かめてください（赤い欄）</div>' : tunDirty ? '<div class="warnmsg">保存していない変更があります</div>' : '<div class="okmsg">保存済みです</div>';
     $('tusave').disabled = bad > 0 || !tunDirty;
     return bad;
@@ -980,22 +1008,27 @@
   async function saveTuning() {
     if (validateTuning()) return;
     const t = {
-      payoutRate: Math.round(numOf('payoutRate')) / 100, volatility: Math.round(numOf('volatility') * 10) / 10, shiftUp: Math.round(numOf('shiftUp')) / 100, shiftDown: Math.round(numOf('shiftDown')) / 100,
+      voteSec: Math.round(numOf('voteSec')),
+      shiftUp: Math.round(numOf('shiftUp')) / 100, shiftDown: Math.round(numOf('shiftDown')) / 100,
       bandBelow: Math.round(numOf('bandBelow')) / 100, bandAbove: Math.round(numOf('bandAbove')) / 100,
       payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')),
-      exchangeSec: Math.round(numOf('exchangeSec')), voteSec: Math.round(numOf('voteSec')), resultSec: Math.round(numOf('resultSec')), gateSec: Math.round(numOf('gateSec')), postSec: Math.round(numOf('postSec')),
+      payoutRate: Math.round(numOf('payoutRate')) / 100, volatility: Math.round(numOf('volatility') * 10) / 10,
+      resultSec: Math.round(numOf('resultSec')), gateSec: Math.round(numOf('gateSec')), postSec: Math.round(numOf('postSec')),
     };
     // 変えた項目だけ送る（ほかの画面で変えた項目を、この画面の古い値で戻さない）
     const T0 = cfg.tuning, near = (a, b) => Math.abs(Number(a || 0) - Number(b || 0)) < 1e-9;
     Object.keys(t).forEach((k) => { if (near(t[k], T0[k])) delete t[k]; });
     { const cz = {}; CUES.forEach(([k]) => { const cur = (T0.cues && T0.cues[k]) || DEF_CUES[k], sh = Math.round(numOf('cueShow_' + k)), hi = Math.round(numOf('cueHit_' + k)), d = {}; if (!near(sh, cur.show)) d.show = sh; if (!near(hi, cur.hit)) d.hit = hi; if (Object.keys(d).length) cz[k] = d; }); if (Object.keys(cz).length) t.cues = cz; } /* 演出: 変えた演出・項目だけ */
     if (!Object.keys(t).length) { tunDirty = false; toast('変更はありません'); return keepScroll(render); }
+    const big = (t.shiftUp != null && t.shiftUp * 100 > BIG_SHIFT) || (t.shiftDown != null && t.shiftDown * 100 > BIG_SHIFT);
+    if (big && !confirm('倍率のずらし幅が大きいので、お客さんが見た倍率と確定の倍率が大きく変わります。\n（上げ ' + fmtN(pct(t.shiftUp != null ? t.shiftUp : T0.shiftUp)) + '%・下げ ' + pct(t.shiftDown != null ? t.shiftDown : T0.shiftDown) + '%）\n保存しますか？')) return;
     await api('saveTuning', t);
-    await reloadCfg(); tunDirty = false; toast('保存しました'); keepScroll(render);
+    await reloadCfg(); tunDirty = false; toast('保存しました（これから作るレースから使われます）'); keepScroll(render);
   }
 
   /* ======================================================================
-     集計・会計番号の記録
+     集計（v4: 票の数（参加人数）・当選額と目標・渡した額・まだ渡していない額・期限切れ。日ごと・店舗ごと）と、会計番号で探す
+     テストのレース・テストの店は入らない（サーバーの集計に入れていない）
      ====================================================================== */
   async function loadStats() {
     statsData = null; statsErr = ''; if (tab === 'stats') keepScroll(() => { main.innerHTML = viewStats(); });
@@ -1004,31 +1037,25 @@
     catch (e) { if (my !== loadStats.seq) return; statsErr = errText(e); }
     if (tab === 'stats') keepScroll(() => { main.innerHTML = viewStats(); });
   }
-  const dayRow = (x) => { const paid = x.paid || 0, cl = x.claimed || 0; return { date: x.date, races: x.races || 0, players: x.players == null ? null : x.players, tickets: x.tickets || 0, bet: x.bet || 0, paid, claimed: cl, bountyIn: x.bountyIn || 0, exchanged: x.exchanged || 0, bountyReturned: x.bountyReturned || 0, bountyReturnedPaid: x.bountyReturnedPaid || 0, bountyRefund: x.bountyRefund || 0, bountyRefundPaid: x.bountyRefundPaid || 0, /* リングバウンティと投票券の枚数（額とは別） */ unclaimed: x.unclaimed != null ? x.unclaimed : Math.max(0, paid - cl), rate: x.bet ? paid / (x.bet * YEN) : 0 }; /* 払い戻し率 = 当選額 ÷（投票枚数 × 100） */ };
-  // 店舗を選んだときは、日ごとの店舗別（days[].byStore）からその店の数字だけを出す（参加人数は店舗別がまだないので —）
-  function statDays() {
-    if (!statsData) return [];
-    return (statsData.days || []).map((x) => {
-      if (!stStore) return dayRow(x);
-      const b = (x.byStore && x.byStore[stStore]) || {};
-      return dayRow({ date: x.date, races: x.races, players: b.players == null ? null : b.players, tickets: b.tickets, bet: b.bet, paid: b.paid, claimed: b.claimed, bountyIn: b.bountyIn, exchanged: b.exchanged, bountyReturned: b.bountyReturned, bountyReturnedPaid: b.bountyReturnedPaid, bountyRefund: b.bountyRefund, bountyRefundPaid: b.bountyRefundPaid, unclaimed: b.unclaimed /* 期限切れを引いた残り（サーバーの値。2026-10-19: 前は 当選額−渡した額 で期限切れが混ざっていた） */ });
-    });
+  const SK = ['races', 'votes', 'players', 'target', 'paid', 'claimed', 'expired', 'unclaimed'];
+  const statRow = (x) => { const o = {}; SK.forEach((k) => { o[k] = Number(x && x[k]) || 0; }); if (!(x && x.unclaimed != null)) o.unclaimed = Math.max(0, o.paid - o.claimed - o.expired); return o; };
+  const statDays = () => (statsData && statsData.days ? statsData.days.map((x) => Object.assign({ date: x.date }, statRow(x))) : []);
+  function statTotal() {
+    if (statsData && statsData.totals) return statRow(statsData.totals);
+    return statDays().reduce((a, x) => { SK.forEach((k) => { a[k] += x[k]; }); return a; }, statRow({}));
   }
-  function byStoreRows(d) {
-    if (!d || !d.days || !d.days.some((x) => x.byStore)) return null;
-    const acc = {};
-    d.days.forEach((x) => Object.keys(x.byStore || {}).forEach((k) => { const a = acc[k] = acc[k] || { storeId: k, tickets: 0, bet: 0, paid: 0, claimed: 0, unclaimed: 0, bountyIn: 0, exchanged: 0, bountyReturned: 0, bountyReturnedPaid: 0, bountyRefund: 0, bountyRefundPaid: 0, players: null }; const b = x.byStore[k]; ['tickets', 'bet', 'paid', 'claimed', 'bountyIn', 'exchanged', 'bountyReturned', 'bountyReturnedPaid', 'bountyRefund', 'bountyRefundPaid'].forEach((f) => { a[f] += b[f] || 0; }); a.unclaimed += b.unclaimed != null ? b.unclaimed : Math.max(0, (b.paid || 0) - (b.claimed || 0)); /* 期限切れを引いた残り（サーバーの値） */ if (b.players != null) a.players = (a.players || 0) + b.players; }));
-    return Object.keys(acc).filter((k) => !stStore || k === stStore).map((k) => Object.assign({ storeId: k }, dayRow(acc[k])));
+  function byStoreRows() {
+    const bs = statsData && statsData.totals && statsData.totals.byStore; if (!bs) return null;
+    const ids = Object.keys(bs).filter((k) => !stStore || k === stStore); if (!ids.length) return null;
+    const order = cfg.stores.map((s) => s.id);
+    return ids.sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999)).map((k) => Object.assign({ storeId: k }, statRow(bs[k])));
   }
-  const nOrDash = (v) => (v == null ? '—' : fmtN(v));
+  const rateTxt = (paid, target) => (target ? '目標の ' + Math.round(paid / target * 100) + '%' : '');
   function viewStats() {
     const quick = [['today', '今日'], ['yday', '昨日'], ['7', '7 日'], ['month', '今月'], ['31', '31 日']];
-    const days = statDays();
-    const tot = days.reduce((a, x) => { Object.keys(a).forEach((k) => { if (x[k] != null) a[k] = (a[k] || 0) + x[k]; }); return a; }, { races: 0, players: stStore ? null : 0, tickets: 0, bet: 0, paid: 0, claimed: 0, unclaimed: 0, bountyIn: 0, exchanged: 0, bountyReturned: 0, bountyReturnedPaid: 0, bountyRefund: 0, bountyRefundPaid: 0 });
-    const bs = byStoreRows(statsData);
-    const L = logsData;
+    const days = statDays(), tot = statTotal(), bs = byStoreRows(), L = logsData, oneStore = !!stStore;
     const qOn = (q) => { const r = quickRange(q); return r[0] === stFrom && r[1] === stTo; }; // 今選んでいる期間ボタンは銀
-    /* 日ごと・店舗別の 1 行（PC は表、スマホはカード）。スマホは主な数字（参加・当選額・まだ渡していない）を先に、残りは「くわしく」で開く（2026-10-19 改善 2） */
+    /* 日ごと・店舗別の 1 行（PC は表、スマホはカード）。スマホは主な数字（票の数・当選額・まだ渡していない）を先に、残りは「くわしく」で開く */
     const cell = (l, v, more) => '<td class="n' + (more ? ' more' : '') + '" data-l="' + l + '">' + v + '</td>';
     const unc = (v) => (v ? '<b style="color:var(--ng)">' + ptN(v) + '</b>' : '0' + '<small class="pt">pt</small>');
     const moreBtn = '<button type="button" class="btn xs ghost daymore" data-act="day-more" aria-expanded="false">くわしく</button>';
@@ -1037,74 +1064,64 @@
       '<div class="range"><label class="f"><span>開始</span><input type="date" id="stfrom" value="' + esc(stFrom) + '" max="' + esc(stTo) + '"></label><label class="f"><span>終了</span><input type="date" id="stto" value="' + esc(stTo) + '" min="' + esc(stFrom) + '"></label>' +
       '<label class="f"><span>店舗</span><select id="ststore"><option value="">全店舗</option>' + cfg.stores.map((s) => '<option value="' + esc(s.id) + '"' + (stStore === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></label></div>' +
       (statsErr ? '<div class="err">' + esc(statsErr) + '</div>' : '') +
-      /* 見出しを分ける（2026-10-17）: リングバウンティ（受け取った・返却した）と投票券の枚数、当選額と渡した額（額。1 枚 = 100）を混ぜない */
-      '<h4 class="sumh">リングバウンティとチップ</h4><div class="summary" id="statBounty"><div class="stat"><small>受け取ったリングバウンティ</small><b>' + fmtN(tot.bountyIn) + '</b></div>' +
-      '<div class="stat"><small>賭けたチップ</small><b>' + chipN(tot.bet) + '</b><small>交換した ' + chipT(tot.exchanged) + '</small></div>' +
-      '<div class="stat" id="statRet"><small>返却したリングバウンティ</small><b>' + fmtN(tot.bountyReturnedPaid + tot.bountyRefundPaid) + '</b><small>投票なし ' + fmtN(tot.bountyReturned) + (tot.bountyRefund ? '・レース取消 ' + fmtN(tot.bountyRefund) : '') + '</small></div>' +
-      '<div class="stat"><small>参加人数</small><b>' + nOrDash(tot.players) + '</b></div><div class="stat"><small>レース数</small><b>' + fmtN(tot.races) + '</b></div></div>' +
-      '<h4 class="sumh">当選額と渡した額</h4><div class="summary" id="statMoney"><div class="stat"><small>当選額</small><b>' + ptN(tot.paid) + '</b></div><div class="stat"><small>渡した当選額</small><b>' + ptN(tot.claimed) + '</b></div>' +
-      '<div class="stat ' + (tot.unclaimed ? 'ng' : '') + '"><small>まだ渡していない当選額</small><b>' + ptN(tot.unclaimed) + '</b></div>' + '<div class="stat"><small>当選額の割合</small><b>' + (tot.bet ? Math.round(tot.paid / (tot.bet * YEN) * 1000) / 10 + '%' : '—') + '</b><small>当選額 ÷ 賭けたチップ</small></div></div>' +
+      '<h4 class="sumh">票と当選額</h4><div class="summary" id="statVotes"><div class="stat"><small>票の数（参加人数）</small><b>' + fmtN(tot.votes) + '</b><small>会計番号 ' + fmtN(tot.players) + ' 個</small></div>' +
+      '<div class="stat"><small>レース数</small><b>' + fmtN(tot.races) + '</b></div>' +
+      (oneStore ? '' : '<div class="stat"><small>当選額の目標</small><b>' + ptN(tot.target) + '</b></div>') +
+      '<div class="stat"><small>当選額</small><b>' + ptN(tot.paid) + '</b>' + (oneStore ? '' : '<small>' + rateTxt(tot.paid, tot.target) + '</small>') + '</div></div>' +
+      '<h4 class="sumh">渡した額</h4><div class="summary" id="statMoney"><div class="stat"><small>渡した額</small><b>' + ptN(tot.claimed) + '</b></div>' +
+      '<div class="stat ' + (tot.unclaimed ? 'ng' : '') + '"><small>まだ渡していない額</small><b>' + ptN(tot.unclaimed) + '</b></div>' +
+      '<div class="stat"><small>期限切れ</small><b>' + ptN(tot.expired) + '</b><small>その日のうちに受け取られなかった</small></div></div>' +
       (statsData == null && !statsErr ? '<div class="empty">読み込み中…</div>' :
-        '<h4 class="sumh">日ごと</h4><div class="tbl"><table class="cards days"><tr class="hd"><th>日付</th><th class="n">参加人数</th><th class="n">当選額</th><th class="n">まだ渡していない</th><th class="n">レース</th><th class="n">受け取ったリングバウンティ</th><th class="n">賭けたチップ</th><th class="n">渡した当選額</th><th class="n">返却したリングバウンティ</th><th class="n">当選額の割合</th></tr>' +
-        (days.length ? days.map((x) => '<tr><td class="head"><b>' + fmtDay(x.date) + '</b>' + moreBtn + '</td>' + cell('参加', nOrDash(x.players)) + cell('当選額', ptN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
-          cell('レース', fmtN(x.races), 1) + cell('受け取ったリングバウンティ', fmtN(x.bountyIn), 1) + cell('賭けたチップ', chipN(x.bet), 1) + cell('渡した当選額', ptN(x.claimed), 1) + cell('返却したリングバウンティ', fmtN(x.bountyReturnedPaid + x.bountyRefundPaid), 1) + cell('当選額の割合', x.bet ? Math.round(x.rate * 1000) / 10 + '%' : '—', 1) + '</tr>').join('') : '<tr><td colspan="10" class="empty">この期間のデータはありません</td></tr>') + '</table></div>') +
-      (bs ? '<h4 class="sumh">店舗別</h4><div class="tbl"><table class="cards days"><tr class="hd"><th>店舗</th><th class="n">参加人数</th><th class="n">当選額</th><th class="n">まだ渡していない</th><th class="n">受け取ったリングバウンティ</th><th class="n">賭けたチップ</th><th class="n">渡した当選額</th><th class="n">返却したリングバウンティ</th></tr>' +
-        bs.map((x) => '<tr><td class="head"><b>' + esc(storeName(x.storeId)) + '</b>' + moreBtn + '</td>' + cell('参加', nOrDash(x.players)) + cell('当選額', ptN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
-          cell('受け取ったリングバウンティ', fmtN(x.bountyIn), 1) + cell('賭けたチップ', chipN(x.bet), 1) + cell('渡した当選額', ptN(x.claimed), 1) + cell('返却したリングバウンティ', fmtN(x.bountyReturnedPaid + x.bountyRefundPaid), 1) + '</tr>').join('') + '</table></div>' : '') +
+        '<h4 class="sumh">日ごと</h4><div class="tbl"><table class="cards days"><tr class="hd"><th>日付</th><th class="n">票の数</th><th class="n">当選額</th><th class="n">まだ渡していない</th><th class="n">レース</th>' + (oneStore ? '' : '<th class="n">目標</th>') + '<th class="n">渡した額</th><th class="n">期限切れ</th></tr>' +
+        (days.length ? days.map((x) => '<tr><td class="head"><b>' + fmtDay(x.date) + '</b>' + moreBtn + '</td>' + cell('票', fmtN(x.votes)) + cell('当選額', ptN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
+          cell('レース', fmtN(x.races), 1) + (oneStore ? '' : cell('目標', ptN(x.target), 1)) + cell('渡した額', ptN(x.claimed), 1) + cell('期限切れ', ptN(x.expired), 1) + '</tr>').join('') : '<tr><td colspan="8" class="empty">この期間のデータはありません</td></tr>') + '</table></div>') +
+      (bs ? '<h4 class="sumh">店舗ごと</h4><div class="tbl"><table class="cards days" id="statStores"><tr class="hd"><th>店舗</th><th class="n">票の数</th><th class="n">当選額</th><th class="n">まだ渡していない</th><th class="n">渡した額</th><th class="n">期限切れ</th></tr>' +
+        bs.map((x) => '<tr><td class="head"><b>' + esc(storeName(x.storeId)) + '</b>' + moreBtn + '</td>' + cell('票', fmtN(x.votes)) + cell('当選額', ptN(x.paid)) + cell('まだ渡していない', unc(x.unclaimed)) +
+          cell('渡した額', ptN(x.claimed), 1) + cell('期限切れ', ptN(x.expired), 1) + '</tr>').join('') + '</table></div>' : '') +
       '<div class="acts l"><button class="btn sm ghost" data-act="st-csv"' + (days.length ? '' : ' disabled') + '>CSV（Excel）に書き出す</button></div>' +
-      '<details class="fold"><summary>言葉の意味</summary><div class="in"><p class="hint">受け取ったリングバウンティ＝スタッフが受け取ったリングバウンティ（例 交換の割合 20 なら 100pt ＝ 20枚）。賭けたチップ＝馬に賭けたチップ（「交換した」は投票しなかった分も入ります）。当選額＝当たりの合計（チップ × オッズを 1 件ごとに 10 の位で切り上げた、実際に渡す額）。金額の単位は pt。渡した当選額＝スタッフが渡した額。まだ渡していない当選額＝当たったのに受け取りに来ていない額。返却したリングバウンティ＝投票しなかった分とレース取消（返還）で、お客さんに返したリングバウンティ。当選額の割合＝当選額 ÷ 賭けたチップ（100% で同じ額）。テストモードの店舗の分は入りません。</p></div></details></div>' +
+      '<details class="fold"><summary>言葉の意味</summary><div class="in"><p class="hint">票の数（参加人数）＝投票の数（1 人 1 レース 1 票なので参加人数と同じ）。会計番号＝その日に投票した会計番号の数。当選額の目標＝時刻表の目標の合計。当選額＝当たった人に渡す額の合計（100pt × 倍率を 100pt 単位に切り上げ）。渡した額＝お客さんのスマホのスライドかスタッフのスマホで「渡した」にした額。まだ渡していない額＝当たったのにまだ受け取っていない額（その日のうち）。期限切れ＝その日のうち（朝 5 時の区切りまで）に受け取られなかった額。テストのレースとテストモードの店舗の分は入りません。店舗ごとには目標を出しません（時刻表は全店同じ）。</p></div></details></div>' +
       '<div class="panel"><h3>会計番号で探す</h3><p class="hint">期間と店舗は上と同じ。空のまま探すと全部出ます。</p>' +
-      '<div class="range"><label class="f"><span>会計番号</span><input type="text" id="lbill" value="' + esc(logBill) + '" maxlength="12" placeholder="例: 1234" autocapitalize="off"></label><div class="quick" style="align-items:end;padding-bottom:10px"><button class="btn sm" data-act="log-search">探す</button><button class="btn sm ghost" data-act="log-csv"' + (L && L.logs.length ? '' : ' disabled') + '>CSV に書き出す</button></div></div>' +
+      '<div class="range"><label class="f"><span>会計番号（2 桁）</span><input type="text" id="lbill" value="' + esc(logBill) + '" maxlength="4" placeholder="例: 12" inputmode="numeric" autocapitalize="off"></label><div class="quick" style="align-items:end;padding-bottom:10px"><button class="btn sm" data-act="log-search">探す</button><button class="btn sm ghost" data-act="log-csv"' + (L && L.logs.length ? '' : ' disabled') + '>CSV に書き出す</button></div></div>' +
       (logsErr ? '<div class="err">' + esc(logsErr) + '</div>' : '') +
       (L ? viewLogs(L) : '') + '</div>';
   }
-  const LOG_KIND = { auth: ['認証', 'info'], win: ['当たり', 'warn'], paid: ['受け取り', 'ok'], refund: ['レース取消', 'ng'], expired: ['期限切れ', ''], return: ['返却', 'info'] };
-  const logKind = (x) => (x.type === 'paid' && x.novote ? ['返却の受取', 'ok'] : x.type === 'paid' && x.kind === 'refund' ? ['取消の受取', 'ok'] : LOG_KIND[x.type] || [x.type, '']);
-  // 会計番号ごとの集計（返還で取り消された当たりは数えない。受け取りは当たりと返還を分ける。期限切れは未受け取りから引く）。
-  // 額（当選額・受取額）とリングバウンティ（受け取った・返却・返還・返した）は別の項目（2026-10-17。混ぜない）
+  const LOG_KIND = { vote: ['投票', 'info'], release: ['番号を空けた', ''], win: ['当たり', 'warn'], paid: ['受け取り', 'ok'], expired: ['期限切れ', ''] };
+  const logKind = (x) => (x.type === 'paid' ? ['受け取り（' + (x.via === 'self' ? 'お客さんのスライド' : 'スタッフ') + '）', 'ok'] : LOG_KIND[x.type] || [x.type, '']);
+  const logAmt = (x) => (x.type === 'win' || x.type === 'paid' || x.type === 'expired' ? Number(x.amount != null ? x.amount : x.count) || 0 : null);
+  // 会計番号ごと（店＋番号）の集計（core.js の sumBill と同じ形）: 票・当選額・渡した・期限切れ
   function sumLogs(logs) {
-    const refundTid = new Set(), paidPid = new Set(), out = {};
-    const retTid = new Set(); logs.forEach((l) => { if (l.type === 'refund') refundTid.add(l.tid); if (l.type === 'paid') paidPid.add(l.pid); if (l.type === 'return') retTid.add(l.tid); });
+    const by = {};
     logs.forEach((l) => {
-      const x = out[l.bill] = out[l.bill] || { auth: 0, bounty: 0, win: 0, paid: 0, refund: 0, refundPaid: 0, expired: 0, refundExpired: 0, ret: 0, retPaid: 0, retExpired: 0 }, n = Number(l.count != null ? l.count : l.amount) || 0, b = logB(l);
-      if (l.type === 'auth') { x.auth += n; x.bounty += b; }
-      else if (l.type === 'return') x.ret += b; /* 返却（投票しなかった券）: リングバウンティ */
-      else if (l.type === 'paid' && l.novote) x.retPaid += b;
-      else if (l.type === 'expired' && l.kind === 'refund' && retTid.has(l.tid)) x.retExpired += b;
-      else if (l.type === 'win') { if (!(refundTid.has(l.tid) && !paidPid.has(l.pid))) x.win += n; }
-      else if (l.type === 'paid') { if (l.kind === 'refund') x.refundPaid += b; else x.paid += n; }
-      else if (l.type === 'refund') x.refund += b;
-      else if (l.type === 'expired') { if (l.kind === 'refund') x.refundExpired += b; else x.expired += n; }
+      const k = (l.storeId ? l.storeId + ':' : '') + l.bill, x = (by[k] = by[k] || { storeId: l.storeId || null, bill: l.bill, nick: l.nick, votes: 0, win: 0, paid: 0, expired: 0 }), n = logAmt(l) || 0;
+      if (l.type === 'win') x.win += n; else if (l.type === 'paid') x.paid += n; else if (l.type === 'expired') x.expired += n; else if (l.type === 'vote') x.votes++;
+      if (l.nick) x.nick = l.nick;
     });
-    Object.keys(out).forEach((k) => { const x = out[k]; x.unclaimed = Math.max(0, x.win - x.paid - x.expired); x.unreturned = Math.max(0, x.refund - x.refundPaid - x.refundExpired) + Math.max(0, x.ret - x.retPaid - x.retExpired); });
-    return out;
+    return by;
   }
-  // 明細の数字: 認証は「30枚・リングバウンティ 600」、返却・返還は「リングバウンティ 600」、当たり・受け取りは額
-  const logVal = (x) => (x.type === 'auth' ? 'チップ ' + chipT(x.count) + '・リングバウンティ ' + fmtN(logB(x)) + '枚' : isBLog(x) ? 'リングバウンティ ' + fmtN(logB(x)) + '枚' : ptT(x.count != null ? x.count : x.amount)); // 2026-10-20: 額は「pt」、リングバウンティは「枚」
   function viewLogs(L) {
-    const bills = Object.keys(L.byBill || {});
-    return (bills.length ? '<div class="tbl"><table class="cards"><tr class="hd"><th>会計番号</th><th class="n">チップ</th><th class="n">受け取ったリングバウンティ</th><th class="n">当選額</th><th class="n">渡した当選額</th><th class="n">まだ渡していない</th><th class="n">返却したリングバウンティ</th></tr>' +
-      bills.slice(0, 200).map((b) => { const x = L.byBill[b]; const un = x.unclaimed != null ? x.unclaimed : Math.max(0, (x.win || 0) - (x.paid || 0)); return '<tr><td class="mono head"><b>' + esc(b) + '</b></td><td class="n" data-l="チップ">' + chipN(x.auth) + '</td><td class="n" data-l="受け取ったリングバウンティ">' + fmtN(x.bounty) + '</td><td class="n" data-l="当選額">' + ptN(x.win) + '</td><td class="n" data-l="渡した当選額">' + ptN(x.paid) + '</td><td class="n" data-l="まだ渡していない">' + (un ? '<b style="color:var(--ng)">' + ptN(un) + '</b>' : '0<small class="pt">pt</small>') + '</td><td class="n" data-l="返却したリングバウンティ">' + fmtN((x.retPaid || 0) + (x.refundPaid || 0)) + ((x.ret || x.refund) ? '<small class="hint">（返却 ' + fmtN(x.ret) + (x.refund ? '・返還 ' + fmtN(x.refund) : '') + (x.unreturned ? '・まだ ' + fmtN(x.unreturned) : '') + '）</small>' : '') + '</td></tr>'; }).join('') + '</table></div>' : '') +
+    const keys = Object.keys(L.byBill || {});
+    return (keys.length ? '<div class="tbl"><table class="cards" id="billTable"><tr class="hd"><th>店舗・会計番号</th><th>ニックネーム</th><th class="n">票</th><th class="n">当選額</th><th class="n">渡した額</th><th class="n">まだ渡していない</th><th class="n">期限切れ</th></tr>' +
+      keys.slice(0, 200).map((k) => { const x = L.byBill[k], un = Math.max(0, (x.win || 0) - (x.paid || 0) - (x.expired || 0)); return '<tr><td class="head"><b>' + esc(storeName(x.storeId)) + ' ' + esc(x.bill) + '番</b></td><td data-l="ニックネーム">' + esc(x.nick || '') + '</td><td class="n" data-l="票">' + fmtN(x.votes) + '</td><td class="n" data-l="当選額">' + ptN(x.win) + '</td><td class="n" data-l="渡した額">' + ptN(x.paid) + '</td><td class="n" data-l="まだ渡していない">' + (un ? '<b style="color:var(--ng)">' + ptN(un) + '</b>' : '0<small class="pt">pt</small>') + '</td><td class="n" data-l="期限切れ">' + ptN(x.expired) + '</td></tr>'; }).join('') + '</table></div>' : '') +
       '<h3 style="margin-top:14px;font-size:14px">明細（' + fmtN(L.logs.length) + ' 件' + (L.logs.length > 500 ? '。新しい 500 件を表示' : '') + '）</h3>' +
-      (L.logs.length ? '<div class="tbl"><table class="cards"><tr class="hd"><th>日時</th><th>店舗</th><th>会計番号</th><th>ニックネーム</th><th>種類</th><th class="n">チップ・リングバウンティ・額</th><th>レース</th></tr>' +
-        L.logs.slice(0, 500).map((x) => { const k = logKind(x); return '<tr><td class="mono">' + esc(x.date ? x.date.slice(5) : ymd(x.at).slice(5)) + ' ' + hms(x.at).slice(0, 5) + '</td><td>' + esc(storeName(x.storeId)) + '</td><td class="mono">' + esc(x.bill) + '</td><td>' + esc(x.nick || '') + '</td><td><span class="chip ' + k[1] + '">' + k[0] + '</span></td><td class="n">' + esc(logVal(x)) + '</td><td class="mono"><small>' + esc(x.raceId || '') + '</small></td></tr>'; }).join('') + '</table></div>'
+      (L.logs.length ? '<div class="tbl"><table class="cards"><tr class="hd"><th>日時</th><th>店舗</th><th>会計番号</th><th>ニックネーム</th><th>種類</th><th>組み合わせ</th><th class="n">額</th></tr>' +
+        L.logs.slice(0, 500).map((x) => { const k = logKind(x), a = logAmt(x); return '<tr><td class="mono">' + esc(x.date ? x.date.slice(5) : ymd(x.at).slice(5)) + ' ' + hms(x.at).slice(0, 5) + '</td><td>' + esc(storeName(x.storeId)) + '</td><td class="mono">' + esc(x.bill) + '</td><td>' + esc(x.nick || '') + '</td><td><span class="chip ' + k[1] + '">' + esc(k[0]) + '</span></td><td class="mono">' + esc(comboTxt(x.combo)) + '</td><td class="n">' + (a == null ? '' : esc(ptT(a))) + '</td></tr>'; }).join('') + '</table></div>'
         : '<div class="empty">記録はありません</div>');
   }
-  // 会計番号の記録: 管理用の API（adminLogs）があればそれ、なければ各店舗の PIN でスタッフ用の記録を日ごとに集める
+  // 会計番号の記録: 管理用の API（logs）があればそれ、なければ各店舗の PIN でスタッフ用の記録を日ごとに集める
   async function searchLogs() {
-    logBill = ($('lbill') ? $('lbill').value : logBill).trim();
+    const raw = ($('lbill') ? $('lbill').value : logBill).trim();
+    logBill = /^\d$/.test(raw) ? '0' + raw : raw; // 会計番号は 2 桁（「7」は「07」）
     logsData = null; logsErr = '';
     keepScroll(() => { main.innerHTML = viewStats(); });
     try {
-      let logs;
-      let r = null;
+      let logs, r = null;
       if (A && typeof A.logs === 'function') { try { r = await api('logs', { from: stFrom, to: stTo, bill: logBill || undefined, store: stStore || undefined }); } catch (e) { if (e.status !== 404) throw e; } } // 404 = サーバーが古い → 下の集め方
       if (r) logs = (r.logs || []);
       else {
         const dates = []; for (let d = stFrom; d <= stTo && dates.length < 62; d = addDays(d, 1)) dates.push(d);
         const stores = cfg.stores.filter((s) => !stStore || s.id === stStore);
         const jobs = [];
-        stores.forEach((s) => { const sc = DerbyCloud.create({ store: s.id, role: 'staff' }); dates.forEach((d) => jobs.push(sc.logs(s.pin, { date: d, bill: logBill || undefined }).then((r) => (r && r.logs) || []))); });
+        stores.forEach((s) => { const sc = DerbyCloud.create({ store: s.id, role: 'staff' }); dates.forEach((d) => jobs.push(sc.logs(s.pin, { date: d, bill: logBill || undefined }).then((x) => (x && x.logs) || []))); });
         logs = [].concat.apply([], await Promise.all(jobs));
       }
       logs.sort((a, b) => b.at - a.at);
@@ -1120,28 +1137,12 @@
     return [addDays(t, -(+q - 1)), t];
   }
 
-  /* ======================================================================
-     運用
-     ====================================================================== */
-  /* 設定（2026-10-19 改善 2）: テレビの読み込み直しとレース取消は「今日」へ移した（その場で終わる）。ここは 馬の見た目・オーナー用の詳細設定・テスト用 だけ */
-  function viewOps() {
-    return '<p class="opsnote">テレビの切り替え・読み込み直しとレース取消は「今日」にあります。</p>' +
-      viewBounty(cfg.tuning) +
-      viewHorseLook(cfg.tuning) +
-      '<button type="button" class="panel rowlink" data-act="go-tuning"><span><b>オーナー用の詳細設定</b><small>店舗には見せない設定</small></span><i aria-hidden="true">›</i></button>' +
-      '<details class="panel"><summary>テスト用（本番では使わない）</summary>' +
-      '<p class="hint">時刻表とは別に、今すぐレースを作ります（テストモードの店舗で確かめる用）。</p>' +
-      '<div class="range"><label class="f"><span>何秒後に発走</span><input type="number" id="trin" value="90" min="5" max="3600"></label><label class="f"><span>当選額の目標（pt）</span><input type="number" id="trpay" value="30000" min="1" max="' + PAY_MAX + '"></label>' +
-      '<label class="f"><span>店舗</span><select id="trstore"><option value="">全店（同時）</option>' + cfg.stores.map((s) => '<option value="' + esc(s.id) + '">' + esc(s.name) + 'だけ</option>').join('') + '</select></label></div>' +
-      '<div class="acts"><button class="btn ghost" data-act="test-race">テストのレースを作る</button></div></details>';
-  }
-
   /* ---------- 入力イベント ---------- */
+  const TEST_INPUTS = ['trin', 'trpay', 'trstore'];
   main.addEventListener('input', (e) => {
     const el = e.target;
-    if (tab === 'stores' && editStore) return validateStore();
-    if (tab === 'tuning') { tunDirty = true; return validateTuning(); }
-    if (tab === 'ops' && el.id === 'n-bountyPerTicket') return validateBp();
+    if (tab === 'tv' && editStore) return validateStore();
+    if (tab === 'tuning') { if (TEST_INPUTS.indexOf(el.id) >= 0) return; tunDirty = true; return validateTuning(); }
     if (tab === 'timetable' && tt) {
       const t = tplOf(el);
       if (t && el.dataset.rf) { const r = rowOf(t, el); if (r) r[el.dataset.rf] = el.value; return ttTouched(); }
@@ -1154,13 +1155,12 @@
     if (tab === 'timetable' && tt) {
       const t = tplOf(el);
       if (t && el.dataset.wd != null) { const d = +el.dataset.wd, i = t.weekdays.indexOf(d); if (el.checked && i < 0) t.weekdays.push(d); if (!el.checked && i >= 0) t.weekdays.splice(i, 1); el.parentNode.classList.toggle('on', el.checked); return ttTouched(); }
-      if (t && (el.dataset.tf === 'kind' || el.dataset.tf === 'storeId' || el.dataset.tf === 'scope')) {
-        if (el.dataset.tf === 'kind') { t.kind = el.value; if (t.kind === 'weekday' && !t.weekdays.length) t.weekdays = [6, 0]; if (t.kind === 'date' && !t.date) t.date = addDays(todayStr(), 1); }
-        else if (el.dataset.tf === 'storeId') t.storeId = el.value || null; else t.scope = el.value;
+      if (t && el.dataset.tf === 'kind') {
+        t.kind = el.value; if (t.kind === 'weekday' && !t.weekdays.length) t.weekdays = [6, 0]; if (t.kind === 'date' && !t.date) t.date = addDays(todayStr(), 1);
         ttDirty = true; return ttRerender();
       }
       if (t && el.dataset.rf === 't') { return; }
-      if (t && el.dataset.find != null) { // 時刻で探す（2026-10-19 改善 4）: 全部の行を出して、その時刻（なければ次の時刻）の行へ移る
+      if (t && el.dataset.find != null) { // 時刻で探す: 全部の行を出して、その時刻（なければ次の時刻）の行へ移る
         const m = toMin(el.value); if (isNaN(m)) return;
         const hit = t.rows.find((r) => toMin(r.t) >= m) || t.rows[t.rows.length - 1]; if (!hit) return;
         tplAll.add(t.id); ttRerender();
@@ -1168,7 +1168,6 @@
         return;
       }
       if (el.id === 'pvdate') { pvDate = el.value; pvServer = null; if (pvSrc === 'server') loadServerPreview(); return paintPreview(); }
-      if (el.id === 'pvstore') { pvStore = el.value; pvServer = null; if (pvSrc === 'server') loadServerPreview(); return paintPreview(); }
     }
     if (el.id === 'stvgame') { paintTvSeg(); return; }
     if (el.id === 'stvq') { paintQSeg(); return; }
@@ -1179,7 +1178,7 @@
       logsData = null; return loadStats();
     }
   });
-  main.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'connFold') connOpen = e.target.open; }, true); // 10 秒ごとの描き直しで「接続の設定」が閉じないように
+  main.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'connFold') connOpen = e.target.open; }, true);
   main.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.id === 'lbill') { e.preventDefault(); searchLogs(); }
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.bf) { e.preventDefault(); const t = tplOf(e.target); if (t) bulkCreate(t, e.target.closest('[data-tk]')); }
@@ -1201,102 +1200,101 @@
     try {
       switch (act) {
         case 'st': return stepBy(b);
-        /* 店舗 */
+        /* テレビと店舗 */
+        case 'go-tv': return switchTab('tv');
         case 'cfg-reload': await reloadCfg(); render(); toast('最新の情報にしました'); return;
         case 'tvacct-new': return createTvAccount(b);
-        case 'pair-set': return pairStart(b); // 進行役のテレビ（2026-10-19）
+        case 'pair-set': return pairStart(b);
         case 'pair-stop': return pairStop();
         case 'pair-reload': pairData = null; { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); } return loadPair();
         case 'tvkey-new': if (!confirm('テレビのリンクを作り直します（リンクが漏れたときに使います）。\n今のテレビは、新しいリンクで開き直すまで結果を受け取れなくなります。')) return; await api('tvKey', {}); await reloadCfg(); render(); toast('作り直しました。各店のテレビを新しいリンクで開き直してください'); return;
-        case 'store-new': editStore = { isNew: true, id: '', name: '', pin: '', orig: {}, x: sset({ settings: {} }) }; return render();
-        case 'store-edit': { const s = cfg.stores.find((x) => x.id === b.dataset.id); if (!s) return; if (tab !== 'stores') { if (!leaveOk()) return; editFrom = tab; if (tab === 'races') memoOn = false; tab = 'stores'; markTab(); } editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s) }; window.scrollTo(0, 0); return render(); }
-        case 'store-cancel': editStore = null; backFromEdit(); window.scrollTo(0, 0); return render();
+        case 'store-new': editStore = { isNew: true, id: '', name: '', pin: '', orig: {}, x: sset({ settings: {} }) }; window.scrollTo(0, 0); return render();
+        case 'store-edit': { const s = cfg.stores.find((x) => x.id === b.dataset.id); if (!s) return; if (tab !== 'tv') { if (!leaveOk()) return; tab = 'tv'; markTab(); } editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s) }; window.scrollTo(0, 0); return render(); }
+        case 'store-cancel': editStore = null; window.scrollTo(0, 0); return render();
         case 'store-save': b.disabled = true; try { return await saveStore(); } finally { b.disabled = false; }
         case 'store-del': return await deleteStore();
         case 'mode-add': { captureStore(); const last = editStore.x.modes[editStore.x.modes.length - 1]; editStore.x.modes.push({ k: nk(), from: last ? last.to : '18:00', to: '', mode: 'bet' }); keepScroll(() => { main.innerHTML = viewStoreEdit(); }); return validateStore(); }
         case 'mode-del': { captureStore(); editStore.x.modes = editStore.x.modes.filter((m) => m.k !== b.dataset.k); keepScroll(() => { main.innerHTML = viewStoreEdit(); }); return validateStore(); }
-        /* 時刻表 */
-        case 'tpl-add': return addTpl(b.dataset.kind);
-        /* 今日 */
         case 'tvgame-set': return await quickTvGame(b);
         case 'tvq-set': return await quickTvQuality(b);
-        case 'memo': memoOn = !memoOn; return keepScroll(() => { main.innerHTML = viewRaces(); });
         case 'copy': { const v = b.dataset.copy || ''; try { await navigator.clipboard.writeText(v); b.textContent = 'コピーしました'; setTimeout(() => { if (document.contains(b)) b.textContent = 'コピー'; }, 1500); } catch (err) { toast('コピーできませんでした。リンクを長押ししてコピーしてください'); } return; }
         case 'sg-q': { const sel = $('stvq'); if (!sel) return; sel.value = b.dataset.v === 'auto' || b.dataset.v === 'max' ? b.dataset.v : ''; paintQSeg(); return validateStore(); }
         case 'sg-tv': { const sel = $('stvgame'); if (!sel) return; sel.value = b.dataset.v === 'derby' ? 'derby' : 'slot'; paintTvSeg(); return validateStore(); }
-        case 'go-tuning': return switchTab('tuning');
-        case 'bp-save': return saveBp();
-        case 'go-ops': return switchTab('ops');
+        case 'tv-reload': {
+          const sid = b.dataset.store || ''; // 店ごとのボタン／「全店舗のテレビを読み込み直す」（空＝全店舗）
+          if (!confirm((sid ? '「' + storeName(sid) + '」' : '全店舗') + 'のテレビを今すぐ読み込み直します。\nレース中でも途中から追いつきます。')) return;
+          const rr = await api('reload', sid || undefined);
+          toast((sid ? storeName(sid) : '全店舗') + 'のテレビに再読み込みを指示しました（いまつながっているテレビ ' + ((rr && rr.sent) || 0) + ' 台）'); return;
+        }
+        /* 時刻表 */
+        case 'tpl-add': return addTpl(b.dataset.kind);
         case 'tpl-open': { const t = tplOf(b), box = b.closest('[data-tk]'); if (!t) return; const op = !tplOpen.has(t.id); if (op) tplOpen.add(t.id); else tplOpen.delete(t.id); box.classList.toggle('open', op); b.setAttribute('aria-expanded', String(op)); return; }
         case 'tpl-on': { const t = tplOf(b); t.enabled = !t.enabled; ttDirty = true; return ttRerender(); }
+        case 'tpl-allstores': { const t = tplOf(b); t.storeId = null; t.scope = 'all'; ttDirty = true; return ttRerender(); }
         case 'tpl-up': case 'tpl-down': { const t = tplOf(b), i = tt.tpls.indexOf(t), j = i + (act === 'tpl-up' ? -1 : 1); if (j < 0 || j >= tt.tpls.length) return; tt.tpls.splice(i, 1); tt.tpls.splice(j, 0, t); ttDirty = true; return ttRerender(); }
         case 'tpl-dup': { const t = tplOf(b), c = JSON.parse(JSON.stringify(t)); c.k = nk(); c.id = 'tt' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36); c.name = (t.name || tplName(t)) + ' のコピー'; c.rows.forEach((r) => { r.k = nk(); }); tplOpen.add(c.id); if (c.kind === 'date') c.date = addDays(isDate(t.date) ? t.date : todayStr(), 1); tt.tpls.splice(tt.tpls.indexOf(t) + 1, 0, c); ttDirty = true; return ttRerender(); }
         case 'tpl-del': { const t = tplOf(b); if (t.rows.length && !confirm('予定「' + tplName(t) + '」（' + t.rows.length + ' レース）を消します（保存するまでは元に戻せます）。')) return; tt.tpls.splice(tt.tpls.indexOf(t), 1); ttDirty = true; return ttRerender(); }
         case 'tpl-rows': { const t = tplOf(b); if (tplAll.has(t.id)) tplAll.delete(t.id); else tplAll.add(t.id); return ttRerender(); }
-        case 'row-add': { const t = tplOf(b); tplAll.add(t.id); const last = t.rows[t.rows.length - 1], gap = Math.ceil(minGapSec().sec / 60); const m = last && !isNaN(toMin(last.t)) ? Math.min(23 * 60 + 59, toMin(last.t) + Math.max(gap, 5)) : 19 * 60; t.rows.push({ k: nk(), t: fromMin(m), p: last ? last.p : '300' }); ttDirty = true; ttRerender(); const ins = main.querySelectorAll('[data-tk="' + t.k + '"] [data-rf="t"]'); if (ins.length) ins[ins.length - 1].focus(); return; }
+        case 'row-add': { const t = tplOf(b); tplAll.add(t.id); const last = t.rows[t.rows.length - 1], gap = Math.ceil(minGapSec().sec / 60); const m = last && !isNaN(toMin(last.t)) ? Math.min(23 * 60 + 59, toMin(last.t) + Math.max(gap, 5)) : 19 * 60; t.rows.push({ k: nk(), t: fromMin(m), p: last ? last.p : '3000' }); ttDirty = true; ttRerender(); const ins = main.querySelectorAll('[data-tk="' + t.k + '"] [data-rf="t"]'); if (ins.length) ins[ins.length - 1].focus(); return; }
         case 'row-dup': { const t = tplOf(b), r = rowOf(t, b), gap = Math.ceil(minGapSec().sec / 60), m = toMin(r.t); const c = { k: nk(), t: isNaN(m) ? '' : fromMin(Math.min(23 * 60 + 59, m + Math.max(gap, 5))), p: r.p }; t.rows.splice(t.rows.indexOf(r) + 1, 0, c); ttDirty = true; return ttRerender(); }
         case 'row-del': { const t = tplOf(b), r = rowOf(t, b); t.rows.splice(t.rows.indexOf(r), 1); ttDirty = true; return ttRerender(); }
         case 'row-sort': { const t = tplOf(b); sortRows(t); return ttRerender(); }
         case 'row-clear': { const t = tplOf(b); if (!confirm('「' + tplName(t) + '」の ' + t.rows.length + ' レースを全部消します（保存するまでは元に戻せます）。')) return; t.rows = []; ttDirty = true; return ttRerender(); }
-        case 'row-payall': { const t = tplOf(b); const v = prompt('この予定の当選額の目標を全部この額にします（1〜' + ptT(PAY_MAX) + '）', t.rows[0] ? t.rows[0].p : '30000'); if (v == null) return; if (!/^\d+$/.test(v.trim()) || +v < 1 || +v > PAY_MAX) { toast('1〜' + fmtN(PAY_MAX) + ' の整数を入れてください'); return; } t.rows.forEach((r) => { r.p = v.trim(); }); ttDirty = true; return ttRerender(); }
+        case 'row-payall': { const t = tplOf(b); const v = prompt('この予定の当選額の目標を全部この額にします（1〜' + ptT(PAY_MAX) + '）', t.rows[0] ? t.rows[0].p : '3000'); if (v == null) return; if (!/^\d+$/.test(v.trim()) || +v < 1 || +v > PAY_MAX) { toast('1〜' + fmtN(PAY_MAX) + ' の整数を入れてください'); return; } t.rows.forEach((r) => { r.p = v.trim(); }); ttDirty = true; return ttRerender(); }
         case 'bulk': { const t = tplOf(b); return bulkCreate(t, b.closest('[data-tk]')); }
         case 'tt-revert': if (ttDirty && !confirm('保存していない変更を捨てて、保存済みの時刻表に戻します。')) return; loadTT(); return ttRerender();
         case 'tt-save': b.disabled = true; try { return await saveTT(); } finally { if (document.contains(b)) paintTT(); }
         case 'pv-local': pvSrc = 'local'; keepScroll(() => { main.innerHTML = viewTT(); paintTT(); }); return;
         case 'pv-server': pvSrc = 'server'; keepScroll(() => { main.innerHTML = viewTT(); paintTT(); }); return loadServerPreview();
         /* 今日のレース */
+        case 'memo': memoOn = !memoOn; return keepScroll(() => { main.innerHTML = viewRaces(); });
         case 'rq': raceDate = +b.dataset.n === 0 ? bizToday() : addDays(raceDate || bizToday(), +b.dataset.n); racesData = null; refundOpen = null; raceAll = false; return render();
         case 'races-reload': return loadRaces();
         case 'race-refund': refundOpen = refundOpen === b.dataset.id ? null : b.dataset.id; return keepScroll(() => { main.innerHTML = viewRaces(); }); // その場で開く／閉じる（画面は移らない）
         case 'race-all': raceAll = !raceAll; return keepScroll(() => { main.innerHTML = viewRaces(); });
-        /* 裏の調整 */
+        case 'refund': {
+          const r = (racesData || []).find((x) => x.id === b.dataset.id); if (!r) return;
+          if (!confirm('レース取消\n\n日時: ' + ymd(r.at).replace(/-/g, '/') + '(' + WD[wdOf(ymd(r.at))] + ') ' + hm(r.at) + ' に走ったレース' + (r.test ? '（テスト）' : '') + '\n参加: ' + fmtN(votesOf(r)) + ' 人\n取り消す当選額（まだ渡していない）: ' + ptT(r.unpaidTotal) + '\nもう渡した当選額: ' + ptT(r.claimedTotal) + '（そのまま。取り戻さない）\n\nまだ受け取っていない人は受け取れなくなります。記録には「取り消し」として残ります。\n元に戻せません。取り消しますか？')) return;
+          b.disabled = true;
+          const rf = await api('refund', r.id);
+          toast('取り消しました（取り消した当選額 ' + ptT(rf && rf.voided != null ? rf.voided : r.unpaidTotal) + '）'); refundOpen = null; return loadRaces();
+        }
+        /* 調整 */
         case 'tpreset': { const p = TUNE_PRESETS.find((x) => x[0] === b.dataset.p); $('n-volatility').value = p[2].volatility; $('n-shiftUp').value = Math.round(p[2].shiftUp * 100); $('n-shiftDown').value = Math.round(p[2].shiftDown * 100); tunDirty = true; main.querySelectorAll('[data-act="tpreset"]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); return validateTuning(); }
-        case 'hlook': return saveHorseLook(b.dataset.v, b);
+        case 'hlook': return saveHorseLook(b.dataset.v);
         case 'tun-revert': tunDirty = false; return keepScroll(render);
         case 'tun-save': b.disabled = true; try { return await saveTuning(); } finally { if (document.contains(b)) validateTuning(); }
+        case 'test-race': {
+          const inSec = Number($('trin').value), payout = Number($('trpay').value), sid = $('trstore').value || null;
+          if (!(inSec >= 10 && inSec <= 3600) || !(payout >= 1 && payout <= PAY_MAX)) { toast('数字の範囲を確かめてください（何秒後は 10〜3600）'); return; }
+          b.disabled = true; // 2 度押しで同じ時刻のレースが 2 つできないように
+          let r; try { r = await api('createRace', { inSec, voteSec: Math.min(TEST_VOTE_SEC, inSec), payout, scope: 'all', storeId: sid, test: true }); } finally { b.disabled = false; }
+          const at = (r && (r.at || (r.race && r.race.at))) || now() + inSec * 1000;
+          toast('テストレースを作りました（' + hm(at) + ' に走り出す・投票は ' + hm(at - Math.min(TEST_VOTE_SEC, inSec) * 1000) + ' から）'); racesData = null; return;
+        }
         /* 集計 */
         case 'day-more': { const tr = b.closest('tr'); const op = !tr.classList.contains('open'); tr.classList.toggle('open', op); b.setAttribute('aria-expanded', String(op)); b.textContent = op ? '閉じる' : 'くわしく'; return; }
         case 'stq': { const r = quickRange(b.dataset.q); stFrom = r[0]; stTo = r[1]; logsData = null; return loadStats(); }
         case 'st-csv': {
           const days = statDays();
-          const rows = [['日付', 'レース数', '参加人数', '受け取ったリングバウンティ', '引き換えたチップ(pt)', '賭けたチップ(pt)', '当選額(pt)', '受取額(pt)', '未受け取り(pt)', '払い戻し率', '返却するリングバウンティ（投票なし）', '返還するリングバウンティ（不成立）', '返却したリングバウンティ']].concat(days.map((x) => [x.date, x.races, x.players == null ? '' : x.players, x.bountyIn, x.exchanged * 100, x.bet * 100, x.paid, x.claimed, x.unclaimed, x.bet ? (Math.round(x.rate * 1000) / 10) + '%' : '', x.bountyReturned, x.bountyRefund, x.bountyReturnedPaid + x.bountyRefundPaid]));
-          const bs = byStoreRows(statsData); if (bs) { rows.push([]); rows.push(['店舗', '', '参加人数', '受け取ったリングバウンティ', '引き換えたチップ(pt)', '賭けたチップ(pt)', '当選額(pt)', '受取額(pt)', '未受け取り(pt)', '', '', '', '返却したリングバウンティ']); bs.forEach((x) => rows.push([storeName(x.storeId), '', x.players == null ? '' : x.players, x.bountyIn, x.exchanged * 100, x.bet * 100, x.paid, x.claimed, x.unclaimed, '', '', '', x.bountyReturnedPaid + x.bountyRefundPaid])); }
+          const rows = [['日付', 'レース数', '票の数（参加人数）', '会計番号の数', '当選額の目標(pt)', '当選額(pt)', '渡した額(pt)', 'まだ渡していない額(pt)', '期限切れ(pt)']].concat(days.map((x) => [x.date, x.races, x.votes, x.players, stStore ? '' : x.target, x.paid, x.claimed, x.unclaimed, x.expired]));
+          const bs = byStoreRows(); if (bs) { rows.push([]); rows.push(['店舗', '', '票の数（参加人数）', '会計番号の数', '', '当選額(pt)', '渡した額(pt)', 'まだ渡していない額(pt)', '期限切れ(pt)']); bs.forEach((x) => rows.push([storeName(x.storeId), '', x.votes, x.players, '', x.paid, x.claimed, x.unclaimed, x.expired])); }
           return download('casaDERBY_集計_' + (stStore ? storeName(stStore) + '_' : '') + stFrom + '_' + stTo + '.csv', rows);
         }
         case 'log-search': return await searchLogs();
         case 'log-csv': {
-          const rows = [['日時', '店舗', '会計番号', 'ニックネーム', '種類', 'チップ(pt)', 'リングバウンティ', '額（当選額・受取額）(pt)', 'レース']].concat(logsData.logs.map((x) => [ymd(x.at) + ' ' + hms(x.at), storeName(x.storeId), x.bill, x.nick || '', logKind(x)[0], x.type === 'auth' || (isBLog(x) && x.bounty != null) ? (x.count || 0) * 100 : '', isBLog(x) ? logB(x) : '', isBLog(x) ? '' : (x.count != null ? x.count : x.amount), x.raceId || '']));
+          const rows = [['日時', '店舗', '会計番号', 'ニックネーム', '種類', '組み合わせ', '額(pt)', 'レース']].concat(logsData.logs.map((x) => [ymd(x.at) + ' ' + hms(x.at), storeName(x.storeId), x.bill, x.nick || '', logKind(x)[0], comboTxt(x.combo), logAmt(x) == null ? '' : logAmt(x), x.raceId || '']));
           return download('casaDERBY_会計番号_' + (logBill || '全部') + '_' + stFrom + '_' + stTo + '.csv', rows);
-        }
-        /* 運用 */
-        case 'tv-reload': {
-          const sid = b.dataset.store || ''; // 今日の「テレビを切り替える」: 店ごとのボタン／「全店舗のテレビを読み込み直す」（空＝全店舗）
-          if (!confirm((sid ? '「' + storeName(sid) + '」' : '全店舗') + 'のテレビを今すぐ読み込み直します。\nレース中でも途中から追いつきます。')) return;
-          const rr = await api('reload', sid || undefined);
-          toast((sid ? storeName(sid) : '全店舗') + 'のテレビに再読み込みを指示しました（いまつながっているテレビ ' + ((rr && rr.sent) || 0) + ' 台）'); return;
-        }
-        case 'refund': {
-          const r = (racesData || []).find((x) => x.id === b.dataset.id); if (!r) return;
-          if (!confirm('レース取消（返還）\n\n日時: ' + ymd(r.at).replace(/-/g, '/') + '(' + WD[wdOf(ymd(r.at))] + ') ' + hm(r.at) + ' 発走\n店舗: ' + storeName(r.storeId) + '\n返すリングバウンティ: ' + fmtN(r.betBounty != null ? r.betBounty : r.betTotal) + '枚（チップ ' + chipT(r.betTotal) + '・認証したときの割合）\n取り消す当選額: ' + ptT(r.paidTotal) + '\n\nお客さんのスマホに返還用の QR が出て、スタッフが読み取ってリングバウンティを返します。すでに渡した当選額はそのまま（取り戻さない・差し引かない）、まだ渡していない当選額は取り消します。記録には「返還」として残ります。\n元に戻せません。取り消して返しますか？')) return;
-          b.disabled = true;
-          const rf = await api('refund', r.id);
-          toast('取り消しました（リングバウンティ ' + fmtN(rf && (rf.bounty != null ? rf.bounty : rf.refundTotal)) + '枚を返します）'); refundOpen = null; return loadRaces();
-        }
-        case 'test-race': {
-          const inSec = Number($('trin').value), payout = Number($('trpay').value), sid = $('trstore').value || null;
-          if (!(inSec >= 5 && inSec <= 3600) || !(payout >= 1 && payout <= PAY_MAX)) { toast('数字の範囲を確かめてください'); return; }
-          b.disabled = true; // 2 度押しで同じ時刻のレースが 2 つできないように
-          let r; try { r = await api('createRace', { inSec, payout, scope: 'all', storeId: sid }); } finally { b.disabled = false; }
-          toast('テストのレースを作りました（' + hm((r && (r.at || (r.race && r.race.at))) || now() + inSec * 1000) + ' 発走）'); racesData = null; return;
         }
       }
     } catch (err) { toast('失敗しました: ' + errText(err)); }
   });
 
+  const TAB_ALIAS = { stores: 'tv', ops: 'tuning' }; // 以前のタブの名前（テスト・メモ用）
   window.DerbyAdmin = { // テスト用の入口（tests/v2-admin.plan.js）
-    get tt() { return tt; }, get cfg() { return cfg; }, get dirty() { return ttDirty; }, get pair() { return pairData; }, loadPair,
+    get tt() { return tt; }, get cfg() { return cfg; }, get dirty() { return ttDirty; }, get tunDirty() { return tunDirty; }, get pair() { return pairData; }, get races() { return racesData; }, get stats() { return statsData; }, get tab() { return tab; }, loadPair, minGapSec: () => minGapSec().sec,
     validate: () => (tt ? validateTT() : null), templatesToRules: () => templatesToRules(tt.tpls), daySchedule: (d, s) => daySchedule(tt.tpls, d, s || null).map((x) => ({ t: x.t, p: x.p, store: x.group })),
-    go(name) { const b = document.querySelector('#tabs [data-tab="' + name + '"]'); if (b) b.click(); else if (name === 'tuning') switchTab('tuning'); return tab; }, // 詳細の調整（tuning）はタブではなく設定の中の画面
+    go(name) { name = TAB_ALIAS[name] || name; const b = document.querySelector('#tabs [data-tab="' + name + '"]'); if (b) b.click(); return tab; },
   };
   start();
 })();
