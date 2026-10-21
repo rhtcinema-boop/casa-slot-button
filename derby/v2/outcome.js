@@ -1,60 +1,72 @@
-/* casa DERBY v2 結果の決定（サーバーとブラウザの両方で動く。DOM なし）
-   DESIGN.md 3 章:
-   - 賭けのある馬ごとに「オッズを ±w の中でずらして、払い戻しを設定額（target）に一番近づけたとき」の払い戻しとずれを出す
-   - 当たりの幅（2026-10-16 オーナー決定「幅の中から抽選」）: bandBelow＝目標より少なくてよい幅、bandAbove＝多くてよい幅（初期どちらも 0.2）。
-     オッズを ±w の中のどれかにしたとき 払い戻しが target ×（1 − bandBelow）〜 target ×（1 + bandAbove）に入る馬を候補にし、
-     候補の中から元の勝率（winProb。なければオッズから）で重み付きの抽選（reason 'band'）。その馬のオッズは、幅の中で一番 target に近くなる値。
-     店ごと（scope 'store'）は「賭けのあるどの店も幅に入る」馬（how 'store_each'）。そういう馬がいなければ
-     「各店の足りない分の平均 ≦ target × bandBelow かつ 多い分の平均 ≦ target × bandAbove」の馬（how 'store_avg'。
-     合計で比べると、1 店でも幅の外ならその店だけで超えてしまい意味がないので平均。店どうしで多い・少ないが打ち消し合うことはない）
-   - 幅に入る馬がいない・幅が両方 0 のときは、一番近い馬を 1 着にする（reason 'target'。同点は元の勝率で重み付きの抽選）
-     （必ず誰かは当たる＝賭けのある馬からしか選ばない。上限を超える馬は、ほかに候補があれば選ばない）
-   - 賭けが 1 頭もいなければ通常の抽選（seed の走りの自然な 1 着）
-   - 他の馬のオッズは、見かけの払い戻し率が大きく崩れないよう ±w の中で少しだけ動かす
-   - ずらし幅は上下別々にできる（2026-10-16）: up＝見せていたオッズより上げてよい幅、down＝下げてよい幅。範囲は [オッズ ×（1 − down）, オッズ ×（1 + up）]。
-     up・down がなければ w を両方に使う（以前の ±w と同じ結果）。両方 0 なら確定オッズ＝見せていたオッズ（設定額への寄せは 1 着の選び方だけ）
-   - 1 着が winner になる走りの seed を探す（Engine.replayOrder）。見つからなければ軌跡の入れ替え（Engine.replayRun の order）で必ずその着順にする
-   オッズは 0.1 刻み。払い戻しは「額」（2026-10-16 オーナー決定: 1 枚 = 100。表示は額だけ）: 1 件 = 枚数 × オッズ × 100 ＝ 枚数 × (オッズ×10) × 10。
-   0.1 刻みなので必ず整数（切り捨てなし・誤差なし）。target・cap も額。以前は「枚数 × オッズ の小数切り捨て（枚）」だった。 */
+/* casa DERBY 結果の決定（サーバーとブラウザの両方で動く。DOM なし）: window.Outcome
+   v4（2026-10-21 オーナー決定・仕様書_v4_大改修.md）: 投票は 2 連単だけ（1 着・2 着を順番どおり。6 頭で 30 通り）。1 人 1 票＝100pt。
+   - 当選額 ＝ 100pt × 2 連単の倍率 を 100pt 単位に切り上げ（例 12.4 倍 → 1,240 → 1,300pt）。payFor・PAY_STEP。
+     倍率は 0.1 刻みなので、当選額が変わるのは倍率が 1.0 上がるごと（12.1〜13.0 倍はどれも 1,300pt）。
+   - 裏の決め方（今までの単勝の決め方を 30 通りに広げたもの）:
+     票の入った組み合わせごとに「確定倍率をずらし幅の中のどれかにしたとき」の払い戻し（票の数 × 当選額）を出し、
+     当たりの幅（目標 ×（1 − bandBelow）〜 目標 ×（1 + bandAbove））に入る組み合わせから、自然に起きやすさ（comboProb）で重み付きの抽選（reason 'band'）。
+     幅に入る組み合わせがなければ一番近いもの（reason 'target'。同点は起きやすさで抽選）。＝必ず誰かは当てる（票の入った組み合わせから選ぶ）。
+     店ごと（scope 'store'）は今までと同じ（どの店も幅に入る 'store_each' → 各店の足りない分・多い分の平均で 'store_avg'）。
+   - 払い出しの上限（1 レース・1 日の残り。cap）は「必ず誰かは当てる」より強い: 票の入ったどの組み合わせも上限を超えるなら、
+     票の入っていない組み合わせから起きやすさで抽選する（当たりなし。reason 'cap_nowin'）。30 通り全部に票があって全部超えるときだけ、一番少ないもの（'cap_conflict'）。
+   - 票が 1 つもないレースは自然の結果（seed の走りのまま。reason 'nobody'）。
+   - 締切のあとの倍率のずらし（2026-10-20 オーナー決定「上限なし」）: 上げる幅 up・下げる幅 down は管理画面で自由に（up は上限なし・down は 1 まで）。
+     ただし倍率は 1.0 倍より下げない（MIN_T）。999.9 倍より上げない（MAX_T）。ほかの組み合わせは見かけの払い戻し率がそろうよう同じ向きに少し動かす（shapeExacta）。
+   - 決めた 1 着・2 着の順でゴールする走りの seed を探す（findSeedPair: Engine.recordRun。見つからなければ一番近い seed で、隣どうしの入れ替え＝Engine.replayRun の order）。
+   キー（組み合わせ）は '1着の添字-2着の添字'（例 '2-4' ＝ 3 番 → 5 番）。js/engine.js の ekey と同じ。 */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.Outcome = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const MIN_T = 11, MAX_T = 9990; // オッズの下限・上限（0.1 倍単位: 1.1〜999.0）
+  const MIN_T = 10, MAX_T = 9999; // 倍率の下限・上限（0.1 倍単位: 1.0〜999.9）
+  const STAKE = 100;               // 1 票の元の額（pt）
+  const PAY_STEP = 100;            // 当選額は 100pt 単位に切り上げ
 
   function mulberry(seed) { let a = (seed >>> 0) || 0x9e3779b9; return function () { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   function hash() { let h = 2166136261 >>> 0; for (let k = 0; k < arguments.length; k++) { const s = String(arguments[k]); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } h ^= 0x2c; h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
-  const toT = (o) => Math.round(o * 10);
-  const UNIT = 100; // 1 枚の額
-  /* 当選額の切り上げ（2026-10-20 オーナー決定「当選額は 10 の位で切り上げて渡す」例 243 → 250・240 → 240）: 1 件（券 1 枚の当たり）ごとに 10 の倍数へ切り上げる。
-     渡す額＝集計の額＝結果の決め方（目標の幅・上限の判定）に使う額を、全部この切り上げた額にそろえる（実際に渡した額で集計が合うように）。
-     今の決まり（オッズ 0.1 刻み・1 枚 = 100）では元から 10 の倍数なので、数は変わらない（オッズの刻みや 1 枚の額を変えたときの守り） */
-  const PAY_STEP = 10;
+  const toT = (o) => Math.round(Number(o) * 10);
+  const ekey = (a, b) => a + '-' + b;
+  const parseKey = (k) => { const m = /^(\d+)-(\d+)$/.exec(String(k || '')); return m ? [Number(m[1]), Number(m[2])] : null; };
   const roundPay = (v) => { const x = Math.round((Number(v) || 0) * 1000) / 1000; return x > 0 ? Math.ceil(x / PAY_STEP) * PAY_STEP : 0; };
-  const amountT = (count, oddT) => roundPay(count * oddT * (UNIT / 10)); // 1 件の払い戻し（額。10 の倍数に切り上げ）
+  // 1 票の当選額（倍率は 0.1 倍単位の整数 oddT）: 100pt × 倍率 を 100pt 単位に切り上げ ＝ ceil(oddT / 10) × 100
+  const amountT = (oddT) => roundPay(Math.max(MIN_T, oddT) * (STAKE / 10));
+  // 倍率（小数）→ 1 票の当選額
+  function payFor(odds) { return amountT(toT(odds)); }
+  // 以前の名前（stakePayout(枚数, 倍率)）も残す: 票の数 × 1 票の当選額
+  function stakePayout(count, odds) { return Math.max(0, Math.floor(Number(count) || 0)) * payFor(odds); }
+  // 1 票あたりの額（以前の perTicket）＝ payFor
+  const perTicket = payFor;
 
-  // stakes: [{ horse, count, group? }] → 馬ごと・グループごとの一覧
-  function groupStakes(stakes, n, scope) {
-    const by = Array.from({ length: n }, () => ({})), tot = new Array(n).fill(0), groups = {};
-    (stakes || []).forEach((s) => {
-      const c = Math.floor(Number(s.count) || 0), h = s.horse;
-      if (c <= 0 || !(h >= 0 && h < n)) return;
-      const g = scope === 'store' ? String(s.group == null ? '_' : s.group) : '_';
+  // ずらし幅 { up, down }: input.up / input.down、なければ w（初期 0.1）を両方に。up は上限なし（MAX_T で止まる）・down は 1 まで（MIN_T で止まる）
+  function shiftOf(x) {
+    if (typeof x === 'number' || x == null) { const w = x == null ? 0.1 : Math.max(0, Number(x) || 0); return { up: w, down: Math.min(1, w) }; }
+    const w = x.w == null ? 0.1 : Math.max(0, Number(x.w) || 0), f = (v) => (v == null ? w : Math.max(0, Number(v) || 0));
+    return { up: f(x.up), down: Math.min(1, f(x.down)) };
+  }
+  function rangeT(o, sh) {
+    const oT = Math.min(MAX_T, Math.max(MIN_T, toT(o) || MAX_T));
+    let lo = Math.max(MIN_T, Math.ceil(oT * (1 - sh.down) - 1e-9)), hi = Math.min(MAX_T, Math.floor(oT * (1 + sh.up) + 1e-9));
+    if (lo > hi) lo = hi = oT;
+    return { oT, lo, hi };
+  }
+
+  // votes: [{ first, second, group? }] → 組み合わせごと・グループごとの票の数
+  function groupVotes(votes, n, scope) {
+    const by = {}, tot = {}, groups = {};
+    (votes || []).forEach((v) => {
+      const a = Number(v.first), b = Number(v.second);
+      if (!(Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 0 && a < n && b < n && a !== b)) return;
+      const k = ekey(a, b), g = scope === 'store' ? String(v.group == null ? '_' : v.group) : '_';
       groups[g] = 1;
-      (by[h][g] = by[h][g] || []).push(c);
-      tot[h] += c;
+      const m = (by[k] = by[k] || {}); m[g] = (m[g] || 0) + 1;
+      tot[k] = (tot[k] || 0) + 1;
     });
     return { by, tot, groups: Object.keys(groups) };
   }
-
-  // 馬 h が 1 着でオッズ oddT のときの払い戻し（グループごと・合計）
-  function payoutAt(byH, oddT) {
-    const per = {}; let total = 0;
-    Object.keys(byH).forEach((g) => { let s = 0; byH[g].forEach((c) => { s += amountT(c, oddT); }); per[g] = s; total += s; });
-    return { per, total };
-  }
+  // 組み合わせが倍率 oddT のときの払い戻し（グループごと・合計）
+  function payoutAt(byK, oddT) { const per = {}, a = amountT(oddT); let total = 0; Object.keys(byK).forEach((g) => { per[g] = byK[g] * a; total += per[g]; }); return { per, total }; }
   function objective(pay, target, scope, groups, cap) {
     let d;
     if (scope === 'store') { d = 0; groups.forEach((g) => { d += Math.abs((pay.per[g] || 0) - target); }); }
@@ -62,63 +74,63 @@
     if (cap > 0 && pay.total > cap) d += 1e12 + pay.total; // 上限超えはほかに候補があれば選ばない
     return d;
   }
-  // ずらし幅 { up, down }: input.up / input.down、なければ w（初期 0.1）を両方に
-  function shiftOf(x) {
-    if (typeof x === 'number' || x == null) { const w = x == null ? 0.1 : Math.max(0, Number(x) || 0); return { up: w, down: w }; }
-    const w = x.w == null ? 0.1 : Math.max(0, Number(x.w) || 0), f = (v) => (v == null ? w : Math.max(0, Number(v) || 0));
-    return { up: f(x.up), down: Math.min(0.99, f(x.down)) };
+  // 範囲 [lo, hi] の倍率を、当選額が変わる区切りごとに 1 つずつ（その区切りの中で元の倍率 oT に一番近い値）。当選額は 1.0 倍ごとにしか変わらないので、最大 1,000 個
+  function levelsOf(r) {
+    const out = [], L0 = Math.ceil(r.lo / 10), L1 = Math.ceil(r.hi / 10);
+    for (let L = L0; L <= L1; L++) { const a = Math.max(r.lo, (L - 1) * 10 + 1), b = Math.min(r.hi, L * 10); if (a > b) continue; out.push(Math.min(b, Math.max(a, r.oT))); }
+    return out;
   }
-  function rangeT(o, sh) {
-    const oT = Math.min(MAX_T, Math.max(MIN_T, toT(o)));
-    let lo = Math.max(MIN_T, Math.ceil(oT * (1 - sh.down) - 1e-9)), hi = Math.min(MAX_T, Math.floor(oT * (1 + sh.up) + 1e-9));
-    if (lo > hi) lo = hi = oT;
-    return { oT, lo, hi };
-  }
-
-  // 抽選の重み: 元の勝率（winProb）。なければ・0 ならオッズから（0.85 / オッズ）
-  function weightOf(input, h) { const p = input.winProb && Number(input.winProb[h]); if (p > 0 && Number.isFinite(p)) return p; return 0.85 / Math.max(1.1, Number(input.odds[h]) || 999); }
-  // list から重み付きの抽選（同じ seed ならいつも同じ）
+  // 抽選の重み: 自然に起きやすさ（comboProb）。なければ倍率から（0.85 ÷ 倍率）
+  function weightOf(input, k) { const p = input.comboProb && Number(input.comboProb[k]); if (p > 0 && Number.isFinite(p)) return p; const o = input.exacta && Number(input.exacta[k]); return 0.85 / Math.max(1, o || 999); }
   function lottery(list, input, label) {
     if (list.length === 1) return list[0];
-    const rnd = mulberry(hash(label, input.seed >>> 0)), wts = list.map((c) => Math.max(1e-6, weightOf(input, c.horse)));
+    const rnd = mulberry(hash(label, input.seed >>> 0)), wts = list.map((c) => Math.max(1e-9, weightOf(input, c.combo)));
     let x = rnd() * wts.reduce((a, b) => a + b, 0);
     for (let k = 0; k < list.length; k++) { x -= wts[k]; if (x < 0) return list[k]; }
     return list[list.length - 1];
   }
-  /* 1 着とその確定オッズを選ぶ
-     input: { odds:[6], winProb?:[6], stakes:[{horse,count,group?}], target, scope:'all'|'store', w:0.1, up?, down?, bandBelow:0.2, bandAbove:0.2, cap:0, seed }
-     返り値の reason: 'band'（幅の中から抽選）| 'target'（一番近い馬）| 'cap_conflict'（全部の馬が上限超え。必ず当たりを優先）| 'nobody'（賭けなし）
-     band: { below, above, lo, hi, horses:[幅に入った候補], how:'all'|'store_each'|'store_avg'|null }。cands の各馬に inBand */
-  function chooseWinner(input) {
-    const odds = input.odds, n = odds.length, sh = shiftOf(input), target = Math.max(0, Math.floor(input.target || 0));
+  const allKeys = (n) => { const o = []; for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) if (a !== b) o.push(ekey(a, b)); return o; };
+
+  /* 勝ちの組み合わせとその確定倍率を選ぶ
+     input: { exacta: { 'a-b': 倍率 }, comboProb?: { 'a-b': 確率 }, n?: 6, votes: [{ first, second, group? }], target, scope: 'all'|'store', w?, up?, down?, bandBelow, bandAbove, cap, seed }
+     返り値: { combo, first, second, comboOdds, payout, perGroup, dist, overCap, noWinner, reason, cands, target, scope, band }
+     reason: 'band' | 'target' | 'cap_nowin'（上限のため票のない組み合わせ＝当たりなし）| 'cap_conflict' | 'nobody'（票なし＝自然の結果。combo は null） */
+  function chooseCombo(input) {
+    const ex = input.exacta || {}, n = input.n || 6, sh = shiftOf(input), target = Math.max(0, Math.floor(input.target || 0));
     const scope = input.scope === 'store' ? 'store' : 'all', cap = Math.max(0, Math.floor(input.cap || 0));
     const bw = (v) => Math.min(0.5, Math.max(0, v == null ? 0.2 : Number(v) || 0)), below = bw(input.bandBelow), above = bw(input.bandAbove);
     const useBand = (below > 0 || above > 0) && target > 0, lo = target * (1 - below) - 1e-9, hi = target * (1 + above) + 1e-9;
-    const g = groupStakes(input.stakes, n, scope);
-    const cands = [];
+    const g = groupVotes(input.votes, n, scope), cands = [];
     const mk = (b) => b && { t: b.t, d: b.d, pay: b.pay };
-    for (let h = 0; h < n; h++) {
-      if (g.tot[h] <= 0) continue;
-      const r = rangeT(odds[h], sh);
+    Object.keys(g.tot).sort().forEach((k) => {
+      const r = rangeT(ex[k], sh);
       let best = null, each = null, sum = null;
       const better = (cur, t, d) => !cur || d < cur.d || (d === cur.d && Math.abs(t - r.oT) < Math.abs(cur.t - r.oT));
-      for (let t = r.lo; t <= r.hi; t++) {
-        const pay = payoutAt(g.by[h], t), d = objective(pay, target, scope, g.groups, cap);
+      levelsOf(r).forEach((t) => {
+        const pay = payoutAt(g.by[k], t), d = objective(pay, target, scope, g.groups, cap);
         if (better(best, t, d)) best = { t, d, pay };
-        if (!useBand) continue;
-        /* 幅の判定（オッズの範囲の全部の値で。いちばん近い値が幅の外でも、ほかの値なら入ることがある） */
-        if (scope !== 'store') { if (pay.total >= lo && pay.total <= hi && better(each, t, d)) each = { t, d, pay }; continue; }
+        if (!useBand) return;
+        if (scope !== 'store') { if (pay.total >= lo && pay.total <= hi && better(each, t, d)) each = { t, d, pay }; return; }
         let all = true, short = 0, over = 0;
         g.groups.forEach((gg) => { const v = pay.per[gg] || 0; if (v < lo || v > hi) all = false; if (v < target) short += target - v; else over += v - target; });
         if (all && better(each, t, d)) each = { t, d, pay };
         const G = g.groups.length || 1; if (short / G <= target * below + 1e-9 && over / G <= target * above + 1e-9 && better(sum, t, d)) sum = { t, d, pay };
-      }
-      cands.push({ horse: h, bet: g.tot[h], oddT: best.t, odds: best.t / 10, payout: best.pay.total, perGroup: best.pay.per, dist: best.d, overCap: cap > 0 && best.pay.total > cap, _each: mk(each), _sum: mk(sum) });
-    }
-    const band = { below, above, lo: Math.ceil(lo), hi: Math.floor(hi), horses: [], how: null };
-    if (!cands.length) return { winner: null, reason: 'nobody', cands, target, scope, band };
-    /* 幅の中の候補（上限を超える馬は、超えない馬が 1 頭でもいれば外す） */
+      });
+      const ab = parseKey(k);
+      cands.push({ combo: k, first: ab[0], second: ab[1], votes: g.tot[k], oddT: best.t, odds: best.t / 10, payout: best.pay.total, perGroup: best.pay.per, dist: best.d, overCap: cap > 0 && best.pay.total > cap, _each: mk(each), _sum: mk(sum) });
+    });
+    const band = { below, above, lo: Math.ceil(lo), hi: Math.floor(hi), combos: [], how: null };
+    if (!cands.length) return { combo: null, first: null, second: null, comboOdds: null, payout: 0, perGroup: {}, noWinner: false, reason: 'nobody', cands, target, scope, band };
     const over = (b) => cap > 0 && b.pay.total > cap, allOver = cands.every((c) => c.overCap);
+    // 上限が強い（2026-10-20 オーナー決定）: 票の入ったどの組み合わせも上限を超えるなら、票の入っていない組み合わせ（当たりなし）
+    if (allOver) {
+      const voted = new Set(cands.map((c) => c.combo)), free = allKeys(n).filter((k) => !voted.has(k)).map((k) => { const ab = parseKey(k); return { combo: k, first: ab[0], second: ab[1] }; });
+      cands.forEach((c) => { c.inBand = false; delete c._each; delete c._sum; });
+      if (free.length) {
+        const pick = lottery(free, input, 'nowin');
+        return { combo: pick.combo, first: pick.first, second: pick.second, comboOdds: Math.min(MAX_T, Math.max(MIN_T, toT(ex[pick.combo]) || MAX_T)) / 10, payout: 0, perGroup: {}, dist: target, overCap: false, noWinner: true, reason: 'cap_nowin', cands, target, scope, band };
+      }
+    }
     const pickBand = (key) => cands.filter((c) => c[key] && (allOver || !over(c[key])));
     let inB = [], key = null;
     if (useBand) {
@@ -130,7 +142,7 @@
       if (c.inBand) { const b = c[key]; Object.assign(c, { oddT: b.t, odds: b.t / 10, payout: b.pay.total, perGroup: b.pay.per, dist: b.d, overCap: over(b) }); }
       delete c._each; delete c._sum;
     });
-    band.horses = inB.map((c) => c.horse);
+    band.combos = inB.map((c) => c.combo);
     let pick, reason;
     if (inB.length) { pick = lottery(inB, input, 'band'); reason = 'band'; }
     else {
@@ -139,56 +151,65 @@
       reason = 'target';
     }
     if (pick.overCap) reason = 'cap_conflict';
-    return { winner: pick.horse, winnerOdds: pick.odds, payout: pick.payout, perGroup: pick.perGroup, dist: pick.dist, overCap: pick.overCap, reason, cands, target, scope, band };
+    return { combo: pick.combo, first: pick.first, second: pick.second, comboOdds: pick.odds, payout: pick.payout, perGroup: pick.perGroup, dist: pick.dist, overCap: pick.overCap, noWinner: false, reason, cands, target, scope, band };
   }
 
-  /* 確定オッズ: 1 着はずらした値。他の馬は見かけの払い戻し率（Σ1/オッズ）がそろうよう同じ向きに少し動かし、[1 − down, 1 + up] の中で小さなゆらぎを足す
-     w は数（±w）か { up, down }。up = down = w なら以前と同じ値になる */
-  function shapeOdds(odds, winner, winnerOdds, w, seed) {
-    const n = odds.length, rnd = mulberry(hash('odds', seed >>> 0)), sh = shiftOf(w);
-    const S = odds.reduce((a, o) => a + 1 / o, 0), ow = odds[winner], nw = winnerOdds == null ? ow : winnerOdds;
+  /* 確定倍率（30 通り）: 勝ちの組み合わせはずらした値。ほかは見かけの払い戻し率（Σ1/倍率）がそろうよう同じ向きに動かし、[1 − down, 1 + up] の中で小さなゆらぎ（最大 ±3%）を足す。
+     どれも 1.0〜999.9 倍。w は数（±w）か { up, down } */
+  function shapeExacta(exacta, combo, comboOdds, w, seed) {
+    const keys = Object.keys(exacta || {}).sort(), rnd = mulberry(hash('exodds', seed >>> 0)), sh = shiftOf(w), out = {};
+    const inv = (o) => 1 / Math.max(MIN_T / 10, Number(o) || MAX_T / 10);
+    const S = keys.reduce((a, k) => a + inv(exacta[k]), 0);
     let gmul = 1;
-    const rest = S - 1 / ow, restNew = S - 1 / nw;
-    if (rest > 1e-9 && restNew > 1e-9) gmul = rest / restNew; // 他の馬にかける倍率（1/G）
-    gmul = Math.min(1 + sh.up, Math.max(1 - sh.down, gmul));
-    return odds.map((o, i) => {
-      if (i === winner) return toT(nw) / 10;
-      const r = rangeT(o, sh), j = rnd() * 2 - 1;
-      let m = gmul * (1 + j * (j > 0 ? sh.up : sh.down) * 0.3);
+    if (combo && exacta[combo] != null) {
+      const ow = exacta[combo], nw = comboOdds == null ? ow : comboOdds, rest = S - inv(ow), restNew = S - inv(nw);
+      if (rest > 1e-9 && restNew > 1e-9) gmul = rest / restNew;
+      gmul = Math.min(1 + sh.up, Math.max(1 - sh.down, gmul));
+    }
+    keys.forEach((k) => {
+      if (k === combo) { out[k] = Math.min(MAX_T, Math.max(MIN_T, toT(comboOdds == null ? exacta[k] : comboOdds))) / 10; return; }
+      const r = rangeT(exacta[k], sh), j = rnd() * 2 - 1;
+      let m = gmul * (1 + j * Math.min(0.1, j > 0 ? sh.up : sh.down) * 0.3);
       m = Math.min(1 + sh.up, Math.max(1 - sh.down, m));
-      return Math.min(r.hi, Math.max(r.lo, Math.round(r.oT * m))) / 10;
+      out[k] = Math.min(r.hi, Math.max(r.lo, Math.round(r.oT * m))) / 10;
     });
+    return out;
   }
 
-  /* 1 着が winner になる seed を探す（winner が null なら最初の seed の自然な結果） */
-  function findSeed(Engine, race, winner, baseSeed, maxTries) {
-    maxTries = maxTries || 400;
+  /* 1 着 first・2 着 second の順でゴールする seed を探す（first が null なら最初の seed の自然な結果）。
+     maxTries 回までは「自然にその順になる」seed。なければ試した中で入れ替えが一番少ない seed を使い、着順を [first, second, 残りは自然の順] にする
+     （テレビは Engine.replayRun(race, seed, { order }) で同じ入れ替えを再現する。入れ替えはゴールの近くで、並んでいるところから。js/engine.js の forceOrder）。
+     返り値 { seed, order, natural, tries, swapsNeeded } */
+  function findSeedPair(Engine, race, first, second, baseSeed, maxTries) {
+    maxTries = maxTries || 300;
+    let best = null;
     for (let k = 0; k < maxTries; k++) {
-      const seed = hash('run', baseSeed >>> 0, k), order = Engine.replayOrder(race, seed);
-      if (winner == null || order[0] === winner) return { seed, order, natural: true, tries: k + 1 };
+      const seed = hash('run', baseSeed >>> 0, k);
+      if (first == null) { const rec = Engine.recordRun(race, seed, true); return { seed, order: rec.order, natural: true, tries: 1, swapsNeeded: 0 }; }
+      const rec = Engine.recordRun(race, seed, true), order = rec.order;
+      if (order[0] === first && order[1] === second) return { seed, order, natural: true, tries: k + 1, swapsNeeded: 0 };
+      const i1 = order.indexOf(first), i2 = order.indexOf(second), j2 = i2 < i1 ? i2 + 1 : i2, need = i1 + j2 - 1;
+      const gap = Math.abs(rec.finish[first] - rec.finish[order[0]]) + Math.abs(rec.finish[second] - rec.finish[order[1]]);
+      const score = need * 10 + gap;
+      if (!best || score < best.score) best = { seed, order, score, need };
     }
-    // 見つからない（極端な大穴）: 最初の seed の走りで、1 着の軌跡と winner の軌跡を入れ替える
-    const seed = hash('run', baseSeed >>> 0, 0), nat = Engine.replayOrder(race, seed), order = nat.slice(), j = order.indexOf(winner);
-    order[j] = order[0]; order[0] = winner;
-    return { seed, order, natural: false, tries: maxTries };
+    const rest = best.order.filter((h) => h !== first && h !== second);
+    return { seed: best.seed, order: [first, second].concat(rest), natural: false, tries: maxTries, swapsNeeded: best.need };
   }
 
   /* まとめて: 結果を決める。race は Engine のレース（horses, dist, weather, surface, tune）
-     input は chooseWinner と同じ（odds 省略時は race.odds）。返り値 { winner, order, finalOdds, seed, natural, payout, perGroup, reason, cands, tries } */
-  function resolve(Engine, race, input) {
-    input = Object.assign({ odds: race.odds, seed: 1 }, input);
-    const ch = chooseWinner(input), baseSeed = hash('race', input.seed >>> 0);
-    const fs = findSeed(Engine, race, ch.winner, baseSeed, input.maxTries);
-    const winner = fs.order[0];
-    const winnerOdds = ch.winner == null ? input.odds[winner] : ch.winnerOdds;
-    const finalOdds = shapeOdds(input.odds, winner, winnerOdds, shiftOf(input), input.seed);
-    return { winner, order: fs.order, finalOdds, seed: fs.seed, natural: fs.natural, tries: fs.tries, payout: ch.winner == null ? 0 : ch.payout, perGroup: ch.perGroup || {}, reason: ch.reason, target: ch.target, scope: ch.scope, cands: ch.cands, band: ch.band };
+     input は chooseCombo と同じ（exacta 省略時は race.exacta）。返り値 { first, second, combo, comboOdds, order, finalExacta, seed, natural, tries, payout, perGroup, reason, cands, band, target, scope, noWinner } */
+  function resolveExacta(Engine, race, input) {
+    input = Object.assign({ exacta: race.exacta, seed: 1, n: (race.horses || []).length || 6 }, input);
+    const ch = chooseCombo(input), baseSeed = hash('race', input.seed >>> 0);
+    const fs = findSeedPair(Engine, race, ch.first, ch.second, baseSeed, input.maxTries);
+    const first = fs.order[0], second = fs.order[1], combo = ekey(first, second);
+    const comboOdds = ch.combo == null ? Math.min(MAX_T, Math.max(MIN_T, toT(input.exacta[combo]) || MAX_T)) / 10 : ch.comboOdds;
+    const finalExacta = shapeExacta(input.exacta, combo, comboOdds, shiftOf(input), input.seed);
+    return { first, second, combo, comboOdds: finalExacta[combo], order: fs.order, finalExacta, seed: fs.seed, natural: fs.natural, tries: fs.tries, swapsNeeded: fs.swapsNeeded,
+      payout: ch.combo == null ? 0 : ch.payout, perGroup: ch.perGroup || {}, reason: ch.reason, target: ch.target, scope: ch.scope, cands: ch.cands, band: ch.band, noWinner: !!ch.noWinner };
   }
 
-  // 1 件ごとの払い戻し（サーバーが payouts を作るとき。10 の倍数に切り上げ済み）
-  function stakePayout(count, odds) { return amountT(Math.floor(count), toT(odds)); }
-
-  // 1 枚あたりの額（オッズの表示の代わり）: 6.1 → 610
-  function perTicket(odds) { return toT(odds) * (UNIT / 10); }
-  return { chooseWinner, weightOf, shiftOf, shapeOdds, findSeed, resolve, stakePayout, perTicket, roundPay, PAY_STEP, UNIT, hash, mulberry, MIN_T, MAX_T };
+  return { chooseCombo, shapeExacta, findSeedPair, resolveExacta, groupVotes, weightOf, shiftOf, rangeT, levelsOf, payFor, amountT, stakePayout, perTicket, roundPay, ekey, parseKey, allKeys,
+    PAY_STEP, STAKE, UNIT: STAKE, hash, mulberry, MIN_T, MAX_T, toT };
 });
