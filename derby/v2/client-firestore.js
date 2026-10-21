@@ -15,8 +15,8 @@
   'use strict';
 
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // casa SLOT と同じ版（compat）
-  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', tickets: 'derbyTickets', payouts: 'derbyPayouts', shorts: 'derbyShorts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19） */
-  const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000, SHORT_TTL = 2 * 86400000;
+  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19） */
+  const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
   /* ---------- 入れ子の配列の変換（2026-10-18 本番で発覚） ----------
@@ -181,7 +181,7 @@
 
     /* ---------- 読み込み（キャッシュつき） ---------- */
     let storesCache = null, storesAt = 0, pubCache = null, pubAt = 0;
-    const live = { races: null, subs: 0, tickets: {}, payouts: {} }; // 見張りで届いた写し（state・getTicket は読み取りなしで答える）
+    const live = { races: null, subs: 0, votes: {}, payouts: {} }; // 見張りで届いた写し（state・myVote は読み取りなしで答える）
     async function getStores(force) {
       if (!force && storesCache && (local() - storesAt < 30000 || live.subs > 0)) return storesCache; // 見張り中は変わったときに届くので読み直さない
       const q = await db.collection(COL.stores).get();
@@ -202,7 +202,7 @@
       for (const r of races) {
         if (resultCache[r.id]) { out[r.id] = resultCache[r.id]; continue; }
         if ((r.status === 'decided' || r.status === 'done') && (t >= r.runAt - 2000 || canDecide())) { /* テレビ用アカウント（ルールの isDecider）は決まった直後から読める＝確定演出（ゲートインの遅れ）をゲートインの前に渡せる */
-          try { const s = await doc(COL.results, r.id).get(); if (s.exists) { const x = s.data(); resultCache[r.id] = { winner: x.winner, order: x.order, finalOdds: x.finalOdds, seed: x.seed, finishTimes: x.finishTimes, winTime: x.winTime, natural: x.natural, cues: x.cues || null }; out[r.id] = resultCache[r.id]; } } catch (e) { /* まだ読めない */ } /* cues: 確定演出（derbyResults にだけ。derbyRaces・derbyLive には写さない） */
+          try { const s = await doc(COL.results, r.id).get(); if (s.exists) { const x = s.data(); resultCache[r.id] = { winner: x.winner, second: x.second, combo: x.combo, comboOdds: x.comboOdds, order: x.order, finalExacta: x.finalExacta, finalOdds: x.finalOdds, seed: x.seed, finishTimes: x.finishTimes, winTime: x.winTime, natural: x.natural, cues: x.cues || null }; out[r.id] = resultCache[r.id]; } } catch (e) { /* まだ読めない */ } /* cues: 確定演出（derbyResults にだけ。derbyRaces・derbyLive には写さない） */
         }
       }
       return out;
@@ -231,88 +231,81 @@
       return Core.publicRace(r, { role, store, storeSettings: st && st.settings, openId: (Core.openRaceFor(await getRaces(), store, now()) || {}).id, result: (await resultsFor([r]))[r.id] });
     }
 
-    /* ---------- スマホ ---------- */
-    async function reserveShort(storeId, kind, id, fixed) { // 6 桁の番号（その店で 2 日のあいだ重ならない）
-      for (let k = 0; k < 8; k++) {
-        const short = fixed ? Core.shortFor(Outcome, id, id, k) : String(100000 + Math.floor(Math.random() * 900000));
-        const ref = doc(COL.shorts, storeId + '_' + short);
-        const ok = await db.runTransaction(async (tx) => { const s = await tx.get(ref); if (s.exists && s.data().id !== id && s.data().createdAt > now() - SHORT_TTL) return false; tx.set(ref, { kind, id, storeId, createdAt: now() }); return true; }).catch(() => false);
-        if (ok) return short;
-      }
-      return null;
-    }
-    async function createTicket(o) {
-      await ready();
-      const sid = (o && o.store) || store, b = Core.cleanTicket(o || {});
-      const pl = role === 'phone' && !(live.subs > 0 && live.races) ? await phoneLive(sid) : null; // スマホ: 店舗も受付中のレースも「いまの状態」1 件から
-      const stores = pl ? pl.stores || [] : await getStores(), st = stores.find((x) => x.id === sid); if (!st) throw E(404, 'no_store', '店舗が見つかりません');
-      exchangeGuard(pl ? Core.openRaceFor(pl.races || [], sid, now()) : await openRace(sid), st.settings, pl ? pl.races || [] : null); // 参加受付の締切のあとは新しい券を作らない（server.js と同じ）
-      const tid = randId('t', 14);
-      try {
-        const short = await reserveShort(sid, 'auth', tid);
-        const tk = { tid, owner: uid(), storeId: sid, bill: b.bill, nick: b.nick, count: b.count, status: 'pending', createdAt: now(), short: short || null, test: !!(st.settings && st.settings.test) };
-        await doc(COL.tickets, tid).set(tk);
-        return { tid, key: tid, authCode: 'derby:auth:' + tid, ticket: Core.ticketView(tk), race: Core.publicRace(pl ? Core.openRaceFor(pl.races || [], sid, now()) : await openRace(sid), { role: 'phone', store: sid, storeSettings: st.settings, openId: null }) };
-      } catch (e) { throw mapErr(e); }
-    }
-    /* 参加受付（引き換え）の締切（2026-10-16）: 受付中のレースの exchangeCloseAt（店ごとの上書きつき）を過ぎたら新しい券・認証は断る（server.js の exchangeGuard と同じ。ルールも認証で同じ時刻を見る） */
-    function exchangeGuard(r, ss, races) {
-      if (!r) return null;
-      const g = Core.stagesFor(r, ss || {});
-      if (now() >= g.exchangeCloseAt) { const nx = (races || live.races || []).filter((x) => Core.visibleTo(x, r.storeId || store) && x.status === 'upcoming' && x.at > r.at).sort((a, b) => a.at - b.at)[0]; throw E(409, 'exchange_closed', '参加受付は締め切りました。次のレースをお待ちください', { raceId: r.id, exchangeCloseAt: g.exchangeCloseAt, voteCloseAt: r.closeAt, nextAt: nx ? nx.at : null, nextOpenAt: r.closeAt }); }
-      return g;
-    }
-    // 期限（expireAt）を過ぎた unpaid は、見回り（決める係）を待たずに「期限切れ」として見せる（受け取りは claim でも止まる。コードレビュー 2026-10-14）
+    /* ---------- スマホ（v4: 参加無料・1 票 ＝ 店＋会計番号 2 けた・2 連単） ----------
+       票は derbyVotes/<レース id>~<店>~<会計番号>（Core.voteId）。持ち主（owner）は最初に投票したスマホの匿名ログインの uid。
+       選び直しは持ち主だけ（ルール）。ほかのスマホが同じ番号で投票しようとすると読めない（ルールで拒否）→ 409 bill_taken。
+       まだ誰も使っていない番号の票は「無い」と読める（ルール: resource == null）＝ 番号が空いているかが分かる */
     const effPay = (p) => (p && p.status === 'unpaid' && p.expireAt != null && now() >= p.expireAt ? Object.assign({}, p, { status: 'expired' }) : p);
-    async function ticketBundle(tk) {
-      let r = null, p = null;
-      const rid0 = tk.raceId || tk.authRaceId; // 認証したレース（投票前）も見せる
-      if (rid0) r = (live.subs > 0 && live.races && live.races.find((x) => x.id === rid0)) || data(await doc(COL.races, rid0).get());
-      if (((r && r.status === 'done') || tk.novote) && tk.payoutId) { /* 返却（投票なし）は発表を待たない */ p = live.payouts[tk.payoutId] || null; if (!p) { try { p = data(await doc(COL.payouts, tk.payoutId).get()); } catch (e) { p = null; } } }
+    async function raceFor(id) { return (live.subs > 0 && live.races && live.races.find((x) => x.id === id)) || data(await doc(COL.races, id).get()); }
+    async function vote(o) {
+      await ready(); o = o || {};
+      const sid = (o && o.store) || store, pl = role === 'phone' && !(live.subs > 0 && live.races) ? await phoneLive(sid) : null;
+      const races = pl ? pl.races || [] : await getRaces(), stores = pl ? pl.stores || [] : await getStores(), st = stores.find((x) => x.id === sid);
+      if (!st) throw E(404, 'no_store', '店舗が見つかりません');
+      const openId = () => (Core.openRaceFor(races, sid, now()) || {}).id || null;
+      const r = o.raceId ? races.find((x) => x.id === o.raceId) || data(await doc(COL.races, String(o.raceId)).get()) : Core.currentRaceFor(races, sid, now());
+      if (!r || !Core.visibleTo(r, sid)) throw E(409, o.raceId ? 'closed' : 'no_open_race', o.raceId ? 'このレースは締め切りました' : 'いま投票できるレースがありません', { openId: openId() });
+      const c = Core.cleanVote(o, (r.horses || []).length || 6), t = now();
+      if (r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切りました', { openId: openId() });
+      const ow = Core.voteWindow(r).openAt;
+      if (t < ow) throw E(409, 'not_open', '投票はまだ始まっていません（' + Core.fmtTime(ow) + ' から）', { raceId: r.id, openAt: ow, at: r.at });
+      const vid = Core.voteId(r.id, sid, c.bill), ref = doc(COL.votes, vid);
+      let mine = null, taken = false;
+      try { mine = data(await ref.get()); } catch (e) { if (e && e.code === 'permission-denied') taken = true; else throw mapErr(e); }
+      if (taken) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill });
+      let v;
+      try {
+        if (mine) { const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t }; await ref.update(patch); v = Object.assign(mine, patch); }
+        else { v = { vid, raceId: r.id, storeId: sid, bill: c.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: !!(r.test || (st.settings && st.settings.test)) }; await ref.set(v); }
+      } catch (e) {
+        if (e && e.code === 'permission-denied') { const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill }); throw E(409, 'closed', '締め切りました', { openId: openId() }); }
+        throw mapErr(e);
+      }
+      if (live.votes[vid]) live.votes[vid] = v; // 見張り中の写しだけ直す（見張っていない票は写しを持たない＝決める係の書いた当たりの印を見落とさない）
+      return { vote: Core.voteView(v, r, null), key: 'uid', race: Core.publicRace(r, { role: 'phone', store: sid, storeSettings: st.settings, openId: r.id }) };
+    }
+    async function voteBundle(v) {
+      const r = await raceFor(v.raceId);
+      let p = null;
+      if (r && r.status === 'done' && v.payoutId) { p = live.payouts[v.payoutId] || null; if (!p) { try { p = data(await doc(COL.payouts, v.payoutId).get()); } catch (e) { p = null; } } }
       return { r, p: effPay(p) };
     }
-    async function getTicket(tid) {
+    async function myVote(vid) {
       await ready();
-      let tk = live.tickets[tid] || null; // 見張り中の券は写しで（読み取りなし）
-      if (!tk) { try { tk = data(await doc(COL.tickets, String(tid || '')).get()); } catch (e) { throw E(404, 'no_ticket', '投票券が見つかりません'); } }
-      if (!tk) throw E(404, 'no_ticket', '投票券が見つかりません');
-      const { r, p } = await ticketBundle(tk), raceDoc = r || await openRace(tk.storeId);
-      return { ticket: Core.ticketView(tk, r, p), race: Core.publicRace(raceDoc, { role: 'phone', store: tk.storeId }) };
+      let v = live.votes[vid] || null;
+      if (!v) { try { v = data(await doc(COL.votes, String(vid || '')).get()); } catch (e) { v = null; } }
+      if (!v || v.owner !== uid()) throw E(404, 'no_vote', '票が見つかりません（番号を空けられたか、別のスマホの票です）');
+      const b = await voteBundle(v);
+      return { vote: Core.voteView(v, b.r, b.p), race: Core.publicRace(b.r, { role: 'phone', store: v.storeId }) };
     }
-    async function cancelTicket(tid) {
-      await ready();
-      const ref = doc(COL.tickets, tid);
-      try {
-        const tk = await db.runTransaction(async (tx) => { const s = data(await tx.get(ref)); if (!s) throw E(404, 'no_ticket', '投票券が見つかりません'); if (s.status === 'void') return s; if (s.status !== 'pending') throw E(409, 'already_authorized', '認証済みの投票券は取り消せません'); tx.update(ref, { status: 'void' }); return Object.assign(s, { status: 'void' }); });
-        if (live.tickets[tid]) live.tickets[tid] = tk;
-        return { ticket: Core.ticketView(tk) };
-      } catch (e) { throw mapErr(e); }
+    // 受け取りの確かめ（取引の中。スタッフ・お客さんのスライド共通）
+    function claimCheck(s, rr, names) {
+      if (!s) throw E(404, 'no_payout', '当たりが見つかりません');
+      if (s.revealAt > now()) throw E(409, 'not_revealed', 'まだ結果の発表前です');
+      if (s.status === 'void') throw E(409, 'void', 'このレースは取り消しになりました');
+      if (s.status === 'expired' || (s.status === 'unpaid' && s.expireAt && now() >= s.expireAt)) throw E(409, 'expired', '受け取りの期限が切れています（営業日が変わったので無効）', { payout: Core.payoutView(s, names, true) });
+      if (s.status === 'paid') throw E(409, 'already_paid', 'もう受け取り済みです（' + Core.fmtTime(s.paidAt) + '）', { payout: Core.payoutView(s, names, true) });
+      if (rr && rr.refunded) throw E(409, 'void', 'このレースは取り消しになりました');
     }
-    async function vote(tid, key, picksIn, raceId) {
+    // お客さんのスマホのスライドで「受け取った」（持ち主だけ。ルール: owner == uid・発表のあと・期限の前・unpaid → paid・paidVia 'self'）
+    async function claimSelf(vid) {
       await ready();
-      const ref = doc(COL.tickets, tid);
+      const got = await myVote(vid), v = got.vote, race0 = got.race;
+      if (!race0 || race0.status !== 'done') throw E(409, 'not_revealed', 'まだ結果の発表前です');
+      if (v.test) throw E(409, 'test_race', 'テストなので受け取りはありません');
+      const raw = live.votes[vid] || data(await doc(COL.votes, vid).get());
+      if (!raw || !raw.payoutId) throw E(409, 'no_win', 'この票は当たりではありません');
+      const ref = doc(COL.payouts, raw.payoutId), names = storeNameOf(await getStores().catch(() => null));
       try {
-        const tk0 = live.tickets[tid] || data(await ref.get()); if (!tk0) throw E(404, 'no_ticket', '投票券が見つかりません'); // 見張り中の券は写しで（取引の中でもう一度確かめる）
-        if (tk0.status === 'voted') throw E(409, 'already_voted', 'このレースはもう投票済みです');
-        if (tk0.status === 'void' && tk0.novote) throw E(409, 'closed', '締め切りました（投票がなかったので返却します）', { novote: true });
-        if (tk0.status !== 'authorized') throw E(403, 'not_authorized', 'スタッフの認証がまだです');
-        const pk = Core.cleanPicks(Array.isArray(picksIn) ? { picks: picksIn } : { horse: picksIn }, tk0.count);
-        const r0 = tk0.authRaceId ? data(await doc(COL.races, tk0.authRaceId).get()) : await openRace(tk0.storeId); if (!r0) throw E(409, 'no_open_race', '受付中のレースがありません'); // 認証したレースにだけ投票できる（2026-10-16）
-        if (raceId && raceId !== r0.id) throw E(409, 'closed', 'このレースは締め切りました。次のレースに投票できます', { openId: r0.id }); // 見ていたレースが締め切られて次に移っていた（server.js と同じ）
-        const t = now(), openNow = tk0.authRaceId ? await openRace(tk0.storeId) : r0, cx = { openId: openNow ? openNow.id : null }; // 締め切られていたら、いま受付中のレースを知らせる
-        const tk = await db.runTransaction(async (tx) => {
-          const s = data(await tx.get(ref)), r = data(await tx.get(doc(COL.races, r0.id)));
-          if (s.status === 'voted') throw E(409, 'already_voted', 'このレースはもう投票済みです');
-          if (s.status === 'void' && s.novote) throw E(409, 'closed', '締め切りました（投票がなかったので返却します）', { novote: true });
-          if (s.status !== 'authorized') throw E(403, 'not_authorized', 'スタッフの認証がまだです');
-          if (!r || r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切りました', cx);
-          if (s.authRaceId && s.authRaceId !== r.id) throw E(409, 'closed', '締め切りました', cx);
-          const patch = { status: 'voted', raceId: r.id, picks: pk.picks, pickMap: pk.pickMap, votedAt: t };
+        const p = await db.runTransaction(async (tx) => {
+          const s = data(await tx.get(ref)), rr = s ? data(await tx.get(doc(COL.races, s.raceId))) : null;
+          claimCheck(s, rr, names);
+          const patch = { status: 'paid', paidAt: now(), paidBy: uid(), paidVia: 'self' };
           tx.update(ref, patch); return Object.assign(s, patch);
         });
-        if (live.tickets[tid]) live.tickets[tid] = tk;
-        return { ticket: Core.ticketView(tk), race: Core.publicRace(r0, { role: 'phone', store: tk.storeId, openId: r0.id }) };
-      } catch (e) { throw mapErr(e, 'closed', '締め切りました', 409); }
+        live.payouts[p.pid] = p;
+        return { payout: Core.payoutView(p, names, true), vote: Core.voteView(raw, race0, p) };
+      } catch (e) { throw mapErr(e); }
     }
 
     /* ---------- スタッフ ---------- */
@@ -324,20 +317,6 @@
       catch (e) { if (e && e.code === 'permission-denied') throw E(401, 'bad_pin', '暗証番号がちがいます'); throw mapErr(e); }
     }
     async function staffLogin(pin) { await staffEnsure(pin); const s = (await getStores()).find((x) => x.id === store); return { ok: true, id: store, name: s ? s.name : store }; }
-    async function resolveCode(code, kind) {
-      const c = Core.parseCode(code, kind);
-      if (!c.short) return c.id;
-      const s = data(await doc(COL.shorts, store + '_' + c.short).get());
-      if (!s || s.createdAt < now() - SHORT_TTL) throw E(404, kind === 'auth' ? 'no_ticket' : 'no_payout', 'この番号は見つかりません（' + c.short + '）');
-      if (s.kind !== kind) throw E(400, 'wrong_code', s.kind === 'pay' ? 'これは受け取りの番号です' : 'これは認証の番号です', { kind: s.kind });
-      return s.id;
-    }
-    async function readTicketAsStaff(code) {
-      const tid = await resolveCode(code, 'auth');
-      let tk; try { tk = data(await doc(COL.tickets, tid).get()); } catch (e) { if (e && e.code === 'permission-denied') { staffOk = null; throw E(403, 'wrong_store', 'ほかの店舗の投票券か、見つかりません'); } throw mapErr(e); }
-      if (!tk) throw E(404, 'no_ticket', '投票券が見つかりません');
-      return tk;
-    }
     async function addLog(entry, tx) {
       const t = now(), pub = await getPublic();
       const ref = entry._id ? doc(COL.logs, entry._id) : db.collection(COL.logs).doc();
@@ -345,55 +324,54 @@
       Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
       if (tx) tx.set(ref, row); else await ref.set(row);
     }
-    async function staffTicket(pin, code) { await staffEnsure(pin); return { ticket: Core.ticketView(await readTicketAsStaff(code)) }; }
-    async function authTicket(pin, code, count, rateSeen) {
-      await staffEnsure(pin);
-      const tk0 = await readTicketAsStaff(code), ref = doc(COL.tickets, tk0.tid);
-      if (tk0.storeId !== store) throw E(403, 'wrong_store', 'ほかの店舗の投票券です');
-      const stInfo = (await getStores()).find((x) => x.id === store) || {};
-      const r0 = Core.openRaceFor(await getRaces(true), store, now()); if (!r0) throw E(409, 'no_open_race', '受付中のレースがありません（次のレースの受付を待ってください）');
-      exchangeGuard(r0, stInfo.settings);
-      try {
-        const tk = await db.runTransaction(async (tx) => {
-          const s = data(await tx.get(ref));
-          if (s.status !== 'pending') throw E(409, 'already_authorized', s.status === 'void' ? 'この投票券は無効です' : 'もう認証済みです');
-          if (count != null && count !== '' && Number(count) !== s.count) throw E(400, 'count_mismatch', 'お客さんの投票額（' + (s.count * 100).toLocaleString('ja-JP') + 'pt）と違います');
-          // 参加受付の締切（サーバーの時計。ルールも request.time で同じ時刻を見る）。認証したレース authRaceId を券に残す（このレースで投票しなければ返却）
-          const rr = data(await tx.get(doc(COL.races, r0.id))); if (!rr || rr.status !== 'upcoming') throw E(409, 'exchange_closed', '参加受付は締め切りました');
-          exchangeGuard(rr, stInfo.settings);
-          // 交換の割合（リングバウンティ ○枚 ＝ 投票券 1 枚）は公開の設定から取引の中で読む（ルールも同じ値を確かめる）。スタッフの画面の割合と違えば断る
-          const pb = data(await tx.get(doc(COL.config, 'public'))), rate = Core.bountyRate(pb || {});
-          if (rateSeen != null && rateSeen !== '' && Number(rateSeen) !== rate) throw E(409, 'rate_changed', '交換の割合が変わりました（リングバウンティ ' + rate + '枚 ＝ 投票券 1 枚）。読み直してください', { rate });
-          const patch = { status: 'authorized', authAt: now(), authBy: uid(), authRaceId: rr.id, rate, bounty: s.count * rate }; // 認証したときの割合を券に残す
-          tx.update(ref, patch); const done = Object.assign(s, patch); await addLog(Object.assign({ _id: 'auth_' + s.tid }, { type: 'auth', test: s.test || rr.test || undefined, storeId: s.storeId, bill: s.bill, nick: s.nick, count: s.count, rate, bounty: patch.bounty, tid: s.tid }), tx); return done; // 記録も同じ取引で（通信が切れて「認証・受け取りはできたのに記録がない」をなくす）
-        });
-        return { ticket: Core.ticketView(tk) };
-      } catch (e) { throw mapErr(e); }
-    }
     async function readPayoutAsStaff(code) {
-      const pid = await resolveCode(code, 'pay');
-      let p; try { p = data(await doc(COL.payouts, pid).get()); } catch (e) { if (e && e.code === 'permission-denied') { staffOk = null; throw E(403, 'wrong_store', 'ほかの店舗の当たりか、見つからないか、まだ結果の発表前です'); } throw mapErr(e); }
+      const pid = Core.parseCode(code).id;
+      let p; try { p = data(await doc(COL.payouts, String(pid || '')).get()); } catch (e) { if (e && e.code === 'permission-denied') { staffOk = null; throw E(403, 'wrong_store', 'ほかの店舗の当たりか、見つからないか、まだ結果の発表前です'); } throw mapErr(e); }
       if (!p) throw E(404, 'no_payout', '当たりが見つかりません');
       return p;
     }
     async function staffPayout(pin, code) { await staffEnsure(pin); const p = effPay(await readPayoutAsStaff(code)); return { payout: Core.payoutView(p, storeNameOf(await getStores()), p.revealAt <= now()) }; }
+    // スタッフのスマホの「今日の当たり一覧」から「渡した」（ルール: その店のスタッフ・発表のあと・期限の前・unpaid → paid・paidVia 'staff'）
     async function claim(pin, code) {
       await staffEnsure(pin);
       const p0 = await readPayoutAsStaff(code), ref = doc(COL.payouts, p0.pid), names = storeNameOf(await getStores());
       if (p0.storeId !== store) throw E(403, 'wrong_store', 'ほかの店舗の当たりです（' + names(p0.storeId) + '）');
       try {
         const p = await db.runTransaction(async (tx) => {
-          const s = data(await tx.get(ref));
-          const rr = s.kind === 'refund' ? null : data(await tx.get(doc(COL.races, s.raceId))); // 返還の途中・返還済みのレースの当たりは受け取れない（返還と同時に受け取ると二重に渡っていた）
-          if (s.revealAt > now()) throw E(409, 'not_revealed', 'まだ結果の発表前です');
-          if (s.status === 'void') throw E(409, 'void', 'このレースは返還になりました（当たりは取り消し）');
-          if (s.status === 'expired' || (s.status === 'unpaid' && s.expireAt && now() >= s.expireAt)) throw E(409, 'expired', '受け取りの期限が切れています（営業日が変わったので破棄）', { payout: Core.payoutView(s, names, true) });
-          if (s.status === 'paid') throw E(409, 'already_paid', 'もう受け取り済みです（' + Core.fmtTime(s.paidAt) + '）', { payout: Core.payoutView(s, names, true) });
-          if (rr && rr.refunded) throw E(409, 'void', 'このレースは返還になりました（当たりは取り消し）'); // 受け取り済みなら already_paid を先に
-          const patch = { status: 'paid', paidAt: now(), paidBy: uid() };
-          tx.update(ref, patch); const done = Object.assign(s, patch); await addLog(Object.assign({ _id: 'paid_' + s.pid }, { type: 'paid', test: s.test || undefined, kind: s.kind || 'win', novote: s.novote || undefined, storeId: s.storeId, bill: s.bill, nick: s.nick, count: s.kind === 'refund' ? s.count || 0 : s.amount, tid: s.tid, pid: s.pid, raceId: s.raceId }, s.kind === 'refund' ? { bounty: Core.payoutBounty(s) } : {}), tx); return done; // 記録も同じ取引で（通信が切れて「認証・受け取りはできたのに記録がない」をなくす）
+          const s = data(await tx.get(ref)), rr = s ? data(await tx.get(doc(COL.races, s.raceId))) : null;
+          claimCheck(s, rr, names);
+          const patch = { status: 'paid', paidAt: now(), paidBy: uid(), paidVia: 'staff' };
+          tx.update(ref, patch); const done = Object.assign(s, patch);
+          await addLog(Object.assign({ _id: 'paid_' + s.pid }, { type: 'paid', via: 'staff', storeId: s.storeId, bill: s.bill, nick: s.nick, amount: s.amount, combo: s.combo || null, vid: s.vid || null, pid: s.pid, raceId: s.raceId }), tx);
+          return done;
         });
         return { payout: Core.payoutView(p, names, true) };
+      } catch (e) { throw mapErr(e); }
+    }
+    // 今日の当たり一覧（その店・営業日・発表済み）。まだ渡していない人が上
+    async function wins(pin, o) {
+      await staffEnsure(pin); o = o || {};
+      const pub = await getPublic(), date = o.date || Core.bizDate(now(), pub.dayStartHour), names = storeNameOf(await getStores());
+      try {
+        const q = await db.collection(COL.payouts).where('storeId', '==', store).where('revealed', '==', true).where('day', '==', date).get();
+        return { date, wins: Core.sortWins(q.docs.map((d) => Core.payoutView(effPay(d.data()), names, true))) };
+      } catch (e) { throw mapErr(e); }
+    }
+    // 番号を空ける: いまのレース（投票中か投票前）のその会計番号の票を消す（ルール: その店のスタッフ・締切の前）
+    async function release(pin, billIn, raceId) {
+      await staffEnsure(pin);
+      const bill = Core.cleanBill(billIn), t = now();
+      const r = raceId ? data(await doc(COL.races, String(raceId)).get()) : Core.currentRaceFor(await getRaces(true), store, t);
+      if (!r || !Core.visibleTo(r, store)) throw E(409, 'no_open_race', 'いま投票できるレースがありません');
+      if (r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切ったレースの票は消せません');
+      const vid = Core.voteId(r.id, store, bill), ref = doc(COL.votes, vid);
+      try {
+        const v = data(await ref.get());
+        if (!v) return { ok: true, released: false, vid, raceId: r.id, bill };
+        const b = db.batch(); b.delete(ref);
+        b.set(doc(COL.logs, 'rel_' + vid.replace(/[^A-Za-z0-9_-]/g, '_') + '_' + t), { at: t, date: Core.bizDate(t, (await getPublic()).dayStartHour), cal: Core.dateStr(t), type: 'release', storeId: store, bill, nick: v.nick, combo: Core.comboOf(v), vid, raceId: r.id });
+        await b.commit();
+        return { ok: true, released: true, vid, raceId: r.id, bill };
       } catch (e) { throw mapErr(e); }
     }
     async function next(pin) {
@@ -445,9 +423,9 @@
       return secretCache;
     }
     /* 店ごとの「いまの状態」: その店に見えるレース（30 分前より後・まだ終わっていないもの）を、スマホに見せてよい項目だけで。
-       結果（result）と当たった人（winners）は発表後（done）だけ。設定額・決定の中身は入れない。中身が変わったときだけ書く */
-    const LIVE_KEYS = ['id', 'storeId', 'at', 'openAt', 'exchangeCloseAt', 'exchangeSec', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test']; /* test: この店だけテストレースの印（2026-10-20。スマホにも同じ印が届く。模擬クラウドと同じ） */
-    function liteRace(r) { const o = {}; LIVE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; }); if (o.status === 'closing') o.status = 'closed'; if (r.status === 'done') { o.result = r.result || null; o.winners = r.winners || []; o.photo = !!r.photo; } return o; }
+       結果（result）と当たった人（winners）は発表後（done）だけ。目標額・決定の中身は入れない。中身が変わったときだけ書く */
+    const LIVE_KEYS = ['id', 'storeId', 'at', 'openAt', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'exacta', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test', 'photo', 'photo2'];
+    function liteRace(r) { const o = {}; LIVE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; }); if (o.status === 'closing') o.status = 'closed'; if (r.status === 'done') { o.result = r.result || null; o.winners = r.winners || []; o.photo = !!r.photo; o.photo2 = !!r.photo2; } return o; }
     const liveKeys = {};
     async function publishLive(races) {
       const stores = await getStores(), pub = await getPublic(), t = now(), from = t - 30 * 60000;
@@ -460,38 +438,20 @@
         await doc(COL.live, st.id).set(Object.assign({ at: t }, body)); liveKeys[st.id] = key;
       }
     }
-    async function publishWith(changed) { // 変わった 1 レースを手元の一覧に入れて書く（全部を読み直さない）
+    async function publishWith(changed) {
       try { const base = live.races || await getRaces(true); await publishLive(base.filter((x) => x.id !== changed.id).concat([changed])); } catch (e) { /* 次の見回りで直る */ }
     }
     async function writeRace(entry, sc, opt) {
       const built = Core.buildRace(Engine, Outcome, entry, sc.tuning, sc.salt, now(), opt);
       const r = built.race;
       const b = db.batch();
-      b.set(doc(COL.races, r.id), Object.assign({}, r, { closeAtTs: Ts(r.closeAt), runAtTs: Ts(r.runAt), revealAtTs: Ts(r.revealAt) }));
+      b.set(doc(COL.races, r.id), Object.assign({}, r, { openAtTs: Ts(r.openAt), closeAtTs: Ts(r.closeAt), runAtTs: Ts(r.runAt), revealAtTs: Ts(r.revealAt) }));
       b.set(doc(COL.secrets, r.id), Object.assign({}, built.secret, { day: r.day }));
       await b.commit();
       await publishWith(r);
       return r;
     }
-    /* 手入力の 6 桁の番号（受け取り用）を選ぶ: 取引の中で読んで、空いている（または同じ id の・2 日より古い）番号だけを使う。
-       以前は k=0 の番号を確かめずに上書きしていたので、同じ店で番号が重なると先の当たりの番号が別の人の当たりを指していた（QA 2026-10-14）。
-       items: [{ storeId, id }]。読むだけ（書くのは呼ぶ側。Firestore の取引は「読む → 書く」の順） */
-    async function pickShorts(tx, items, salt) {
-      const used = new Set(), out = [], lim = now() - SHORT_TTL;
-      for (const it of items) {
-        let got = null;
-        for (let k = 0; k < 12 && !got; k++) {
-          const short = Core.shortFor(Outcome, salt, it.id, k), key = it.storeId + '_' + short;
-          if (used.has(key)) continue;
-          const s = data(await tx.get(doc(COL.shorts, key)));
-          if (!s || s.id === it.id || !(s.createdAt > lim)) got = short;
-        }
-        if (got) used.add(it.storeId + '_' + got);
-        out.push(got); // 見つからなければ null（QR では受け取れる）
-      }
-      return out;
-    }
-    const CHUNK = 120; // 1 回の取引で書くのは 500 件まで（Firestore の上限）。当たり 1 件 = 当たり・番号・投票券の 3 件
+    const CHUNK = 150; // 1 回の取引で書くのは 500 件まで（Firestore の上限）。当たり 1 件 = 当たり・票の 2 件
     async function decideRace(raceId, actor) {
       const ref = doc(COL.races, raceId), t = now(), key = randId('k', 12);
       const claimed = await db.runTransaction(async (tx) => {
@@ -501,71 +461,44 @@
         tx.update(ref, { status: 'closing', closingBy: actor || uid(), closingAt: t, closingKey: key }); return r;
       });
       if (!claimed) return null;
-      const r = claimed, sc = await secretConfig(), secret = data(await doc(COL.secrets, raceId).get()) || { payoutTarget: 0, scope: 'all', winProb: null };
-      const tq = await db.collection(COL.tickets).where('raceId', '==', raceId).where('status', '==', 'voted').get();
-      const tickets = tq.docs.map((d) => { const x = d.data(); return Object.assign(x, { picks: Core.picksFromMap(x.pickMap) }); });
+      const r = claimed, sc = await secretConfig(), secret = data(await doc(COL.secrets, raceId).get()) || { payoutTarget: 0, scope: 'all', comboProb: null };
+      const vq = await db.collection(COL.votes).where('raceId', '==', raceId).get();
+      const votes = vq.docs.map((d) => d.data());
       const day = r.day || Core.bizDate(r.at, sc.tuning.dayStartHour), st = data(await doc(COL.stats, day).get());
-      const d = Core.decideRace(Engine, Outcome, r, secret, tickets, sc.tuning, sc.salt, now(), (st && st.committed) || 0);
-      const exp = Core.expireAtFor(Math.max(r.at, d.revealAt), sc.tuning.dayStartHour); // 区切りをまたいで発表されるときは、発表した営業日の終わりまで
-      // 書く前に毎回「まだ自分が決めている途中か」を取引の中で確かめる。止まったと思われて別のテレビに引き継がれたあとで
-      // 遅れて書くと、受け取り済みの当たりを unpaid に戻したり、1 日の上限の数（committed）を二重に足したりしていた（QA 2026-10-14）
+      const d = Core.decideRace(Engine, Outcome, r, secret, votes, sc.tuning, sc.salt, now(), (st && st.committed) || 0);
+      const exp = Core.expireAtFor(Math.max(r.at, d.revealAt), sc.tuning.dayStartHour);
       const mine = (x) => !!x && x.status === 'closing' && x.closingKey === key;
-      const list = d.payouts.map((p) => ({ p, pid: Core.pidFor(Outcome, sc.salt, raceId, p.tid, 'win') }));
-      const CH = cap(CHUNK, 5); // 進行役のテレビは 1 回 15 件まで（当たり 1 件 = 3 件の書き込み）
-      for (let i = 0; i < list.length; i += CH) { // 当たりが多いと 1 回で書けない（500 件の上限）ので分けて書く。同じ id なので何度書いても同じ
+      const list = d.payouts.map((p) => ({ p, pid: Core.pidFor(Outcome, sc.salt, raceId, p.vid, 'win') }));
+      const CH = cap(CHUNK, 6); // 進行役のテレビは 1 回 15 件まで（当たり 1 件 = 2 件の書き込み＋確かめ）
+      for (let i = 0; i < list.length; i += CH) { // 同じ id なので何度書いても同じ
         const part = list.slice(i, i + CH);
         const okp = await db.runTransaction(async (tx) => {
           if (!mine(data(await tx.get(ref)))) return false;
-          const shorts = await pickShorts(tx, part.map((x) => ({ storeId: x.p.storeId, id: x.pid })), sc.salt);
-          part.forEach(({ p, pid }, j) => {
-            const short = shorts[j];
-            tx.set(doc(COL.payouts, pid), Object.assign({}, p, { pid, short, day, createdAt: now(), revealAt: d.revealAt, revealAtTs: Ts(d.revealAt), expireAt: exp, expireAtTs: Ts(exp) }));
-            if (short) tx.set(doc(COL.shorts, p.storeId + '_' + short), { kind: 'pay', id: pid, storeId: p.storeId, createdAt: now() });
-            tx.update(doc(COL.tickets, p.tid), { payoutId: pid });
+          part.forEach(({ p, pid }) => {
+            tx.set(doc(COL.payouts, pid), Object.assign({}, p, { pid, day, createdAt: now(), revealed: false, revealAt: d.revealAt, revealAtTs: Ts(d.revealAt), expireAt: exp, expireAtTs: Ts(exp) }));
+            tx.update(doc(COL.votes, p.vid), { payoutId: pid });
           });
           return true;
         });
         if (!okp) return null;
       }
-      /* 返却（2026-10-16）: このレースに認証されたのに投票しなかった券を無効にして、認証した枚数の返却の受け取りを作る（発表を待たずに読める＝revealAt は今）。
-         取引の中で券がまだ authorized かを確かめてから書く（やり直しても二重に作らない・集計も 1 回だけ） */
-      const uq = await db.collection(COL.tickets).where('authRaceId', '==', raceId).where('status', '==', 'authorized').get();
-      const nv = Core.novotePlan(r, uq.docs.map((d) => d.data())).map((x) => ({ x, pid: Core.pidFor(Outcome, sc.salt, raceId, x.tid, 'novote') }));
-      const tRet = now(), expRet = Core.expireAtFor(Math.max(r.at, tRet), sc.tuning.dayStartHour);
-      const NV = cap(90, 3); // 返却 1 件 = 4 件の書き込み（＋集計 1 件）
-      for (let i = 0; i < nv.length; i += NV) {
-        const part = nv.slice(i, i + NV);
-        const okn = await db.runTransaction(async (tx) => {
-          if (!mine(data(await tx.get(ref)))) return false;
-          const cur = []; for (const y of part) cur.push(data(await tx.get(doc(COL.tickets, y.x.tid))));
-          const todo = part.filter((y, j) => cur[j] && cur[j].status === 'authorized' && cur[j].authRaceId === raceId);
-          const shorts = await pickShorts(tx, todo.map((y) => ({ storeId: y.x.storeId, id: y.pid })), sc.salt);
-          const inc = { date: day, bounty: 0, tickets: 0, byStore: {} };
-          todo.forEach(({ x, pid }, j) => {
-            const short = shorts[j];
-            tx.set(doc(COL.payouts, pid), Object.assign({}, x, { pid, short, day, createdAt: tRet, revealAt: tRet, revealAtTs: Ts(tRet), expireAt: expRet, expireAtTs: Ts(expRet) }));
-            if (short) tx.set(doc(COL.shorts, x.storeId + '_' + short), { kind: 'pay', id: pid, storeId: x.storeId, createdAt: tRet });
-            tx.update(doc(COL.tickets, x.tid), { status: 'void', novote: true, raceId, payoutId: pid, voidAt: tRet });
-            tx.set(doc(COL.logs, 'ret_' + pid), { at: tRet, date: Core.bizDate(tRet, sc.tuning.dayStartHour), cal: Core.dateStr(tRet), type: 'return', test: x.test || false, storeId: x.storeId, bill: x.bill, nick: x.nick, count: x.count, rate: x.rate, bounty: x.bounty, tid: x.tid, pid, raceId });
-            if (!x.test) { inc.bounty += x.bounty; inc.tickets += x.count; const b = (inc.byStore[x.storeId] = inc.byStore[x.storeId] || { bounty: 0, tickets: 0 }); b.bounty += x.bounty; b.tickets += x.count; }
-          });
-          if (inc.tickets) { const by = {}; Object.keys(inc.byStore).forEach((k) => { by[k] = { bountyReturned: FieldValue.increment(inc.byStore[k].bounty), returnedTickets: FieldValue.increment(inc.byStore[k].tickets) }; }); tx.set(doc(COL.stats, day), { date: day, bountyReturned: FieldValue.increment(inc.bounty), returnedTickets: FieldValue.increment(inc.tickets), byStore: by }, { merge: true }); } /* 返却はリングバウンティ */
-          return true;
-        });
-        if (!okn) return null;
-      }
+      // 集計に使う本物の票（テストを除く）: 店ごとの数と会計番号（発表のときに集計へ足す。票を読み直さない）
+      const real = votes.filter((v) => !v.test && !r.test), byStore = {}, bills = {};
+      real.forEach((v) => { byStore[v.storeId] = (byStore[v.storeId] || 0) + 1; bills[v.storeId + ':' + v.bill] = true; });
+      const decision = Object.assign({}, d.decision, { winnerList: d.winners, real: { total: real.length, byStore, bills } });
       const fin = await db.runTransaction(async (tx) => {
         if (!mine(data(await tx.get(ref)))) return false;
-        tx.set(doc(COL.results, raceId), Object.assign({ raceId, runAt: d.runAt, runAtTs: Ts(d.runAt), revealAt: d.revealAt }, d.result)); // runAt: 遅れて決めたときは後ろへずれる（core.js）
-        tx.set(doc(COL.secrets, raceId), { decision: d.decision }, { merge: true });
-        tx.update(ref, { status: 'decided', runAt: d.runAt, runAtTs: Ts(d.runAt), revealAt: d.revealAt, endAt: d.endAt, revealAtTs: Ts(d.revealAt), photo: d.photo, participants: d.participants, decidedAt: now() });
-        tx.set(doc(COL.stats, day), { date: day, committed: FieldValue.increment(d.decision.paidReal != null ? d.decision.paidReal : d.decision.paid) }, { merge: true }); // テストの店の当たりは 1 日の上限に数えない
+        tx.set(doc(COL.results, raceId), Object.assign({ raceId, runAt: d.runAt, runAtTs: Ts(d.runAt), revealAt: d.revealAt }, d.result));
+        tx.set(doc(COL.secrets, raceId), { decision }, { merge: true });
+        tx.update(ref, { status: 'decided', runAt: d.runAt, runAtTs: Ts(d.runAt), revealAt: d.revealAt, endAt: d.endAt, revealAtTs: Ts(d.revealAt), photo: d.photo, photo2: d.photo2, participants: d.participants, decidedAt: now() });
+        tx.set(doc(COL.stats, day), { date: day, committed: FieldValue.increment(d.decision.paidReal || 0) }, { merge: true });
         tx.set(doc(COL.counts, 'live'), { [raceId]: FieldValue.delete() }, { merge: true });
         return true;
       });
       if (!fin) return null;
-      await publishWith(Object.assign({}, r, { status: 'decided', runAt: d.runAt, revealAt: d.revealAt, endAt: d.endAt, photo: d.photo, participants: d.participants }));
-      return Object.assign({}, r, { status: 'decided', runAt: d.runAt, revealAt: d.revealAt, endAt: d.endAt, photo: d.photo, participants: d.participants, result: d.result, decision: d.decision });
+      const patch = { status: 'decided', runAt: d.runAt, revealAt: d.revealAt, endAt: d.endAt, photo: d.photo, photo2: d.photo2, participants: d.participants };
+      await publishWith(Object.assign({}, r, patch));
+      return Object.assign({}, r, patch, { result: d.result, decision: d.decision });
     }
     async function commitChunks(writes) { // [ (b) => void ] を 400 件ずつ batch で（同じ id への書き込みなので、何度やっても同じ）。進行役のテレビは 15 件ずつ
       const n = cap(400, 15);
@@ -575,35 +508,38 @@
     async function revealRace0(raceId, force) {
       const ref = doc(COL.races, raceId), t = now();
       const r0 = data(await ref.get()); if (!r0 || r0.status !== 'decided' || (!force && r0.revealAt > t)) return null;
-      if (r0.refunded && r0.refundDone === false) return null; // 返還の途中（取り消しを書き終わってから返還の処理が発表する）
       const sc = await secretConfig(), h = sc.tuning.dayStartHour;
-      const res = data(await doc(COL.results, raceId).get());
+      const res = data(await doc(COL.results, raceId).get()), sec = data(await doc(COL.secrets, raceId).get()) || {}, dc = sec.decision || {};
       const pq = await db.collection(COL.payouts).where('raceId', '==', raceId).get(), payouts = pq.docs.map((d) => d.data());
-      const tq = await db.collection(COL.tickets).where('raceId', '==', raceId).where('status', '==', 'voted').get(), tickets = tq.docs.map((d) => d.data());
       const names = storeNameOf(await getStores(true)), day = r0.day;
       const out = await db.runTransaction(async (tx) => {
-        const r = data(await tx.get(ref)); if (!r || r.status !== 'decided' || (r.refunded && r.refundDone === false) || !!r.refunded !== !!r0.refunded) return null; // 読んだあとに返還が入った: 古い当たりの一覧で数えない（返還の処理が発表する）
-        const revealAt = Math.min(r.revealAt, t), patch = { status: 'done', revealAt, revealedAt: t, endAt: revealAt + (r.resultSec || 300) * 1000, revealAtTs: Ts(revealAt), result: res ? { winner: res.winner, order: res.order, finalOdds: res.finalOdds, seed: res.seed, finishTimes: res.finishTimes, winTime: res.winTime, natural: res.natural } : null, winners: Core.winnersFrom(payouts, names) };
+        const r = data(await tx.get(ref)); if (!r || r.status !== 'decided' || !!r.refunded !== !!r0.refunded) return null;
+        const revealAt = Math.min(r.revealAt, t);
+        const patch = { status: 'done', revealAt, revealedAt: t, endAt: revealAt + (r.resultSec || 300) * 1000, revealAtTs: Ts(revealAt),
+          result: res ? { winner: res.winner, second: res.second, combo: res.combo, comboOdds: res.comboOdds, order: res.order, finalExacta: res.finalExacta, finalOdds: res.finalOdds, seed: res.seed, finishTimes: res.finishTimes, winTime: res.winTime, natural: res.natural } : null,
+          winners: r.refunded ? [] : Core.winnersView(dc.winnerList || [], names) };
         tx.update(ref, patch);
-        const inc = { date: day, races: FieldValue.increment(r.test ? 0 : 1) }; /* テストのレース（2026-10-19）は数えない */ let nt = 0, bet = 0, paid = 0, bb = 0; const by = {}, bills = {}, z = () => ({ tickets: 0, bet: 0, paid: 0, bounty: 0 });
-        tickets.forEach((tk) => { if (tk.test || r.test) return; const kb = Core.ticketBounty(tk); nt++; bet += tk.count; bb += kb; const b = (by[tk.storeId] = by[tk.storeId] || z()); b.tickets++; b.bet += tk.count; b.bounty += kb; bills[tk.storeId + ':' + tk.bill] = true; });
-        payouts.forEach((p) => { if (p.kind === 'refund' || p.status === 'void' || p.test) return; paid += p.amount; (by[p.storeId] = by[p.storeId] || z()).paid += p.amount; });
-        inc.tickets = FieldValue.increment(nt); inc.bet = FieldValue.increment(bet); inc.paid = FieldValue.increment(paid); inc.bountyBet = FieldValue.increment(bb); inc.betRated = FieldValue.increment(bet); /* 受け取ったリングバウンティ（認証したときの割合） */
-        inc.byStore = {}; Object.keys(by).forEach((s) => { inc.byStore[s] = { tickets: FieldValue.increment(by[s].tickets), bet: FieldValue.increment(by[s].bet), paid: FieldValue.increment(by[s].paid), bountyBet: FieldValue.increment(by[s].bounty), betRated: FieldValue.increment(by[s].bet) }; });
-        inc.bills = bills;
-        tx.set(doc(COL.stats, day), inc, { merge: true });
+        if (!r.test) { // テストのレースは集計に入れない
+          const real = dc.real || { total: 0, byStore: {}, bills: {} }, inc = { date: day, races: FieldValue.increment(1), votes: FieldValue.increment(real.total || 0), target: FieldValue.increment(Core.raceTargetSum(sec.payoutTarget, sec.scope, real.byStore)), bills: real.bills || {}, byStore: {} };
+          let paid = 0; const by = {};
+          payouts.forEach((p) => { if (p.status === 'void') return; paid += p.amount; by[p.storeId] = (by[p.storeId] || 0) + p.amount; });
+          inc.paid = FieldValue.increment(paid);
+          const sids = new Set(Object.keys(real.byStore || {}).concat(Object.keys(by)));
+          sids.forEach((s) => { const bb = {}; Object.keys(real.bills || {}).forEach((k) => { if (k.indexOf(s + ':') === 0) bb[k.slice(s.length + 1)] = true; }); inc.byStore[s] = { votes: FieldValue.increment((real.byStore || {})[s] || 0), paid: FieldValue.increment(by[s] || 0), target: FieldValue.increment(sec.scope === 'store' && (real.byStore || {})[s] ? sec.payoutTarget || 0 : 0), bills: bb }; });
+          tx.set(doc(COL.stats, day), inc, { merge: true });
+        }
         return Object.assign(r, patch);
       });
       if (!out) return null;
-      // 当たりの記録と、発表の時刻・受け取りの期限の直し（1 件ずつ・何度書いても同じ。取引の 500 件の上限を超えないよう取引の外で）
+      // 当たりの記録・発表の印（スタッフの一覧は revealed で探す）・受け取りの期限の直し
       const exp = Core.expireAtFor(Math.max(r0.at, t), h), ws = [];
       payouts.forEach((p) => {
-        if (p.kind === 'refund' || p.status === 'void') return;
-        const patch = {};
+        if (p.status === 'void') return;
+        const patch = { revealed: true };
         if (force && p.revealAt > out.revealAt) Object.assign(patch, { revealAt: out.revealAt, revealAtTs: Ts(out.revealAt) });
-        if (p.status === 'unpaid' && p.expireAt != null && p.expireAt < exp) Object.assign(patch, { expireAt: exp, expireAtTs: Ts(exp) }); // 決める係が止まっていて区切りのあとに発表した
-        if (Object.keys(patch).length) ws.push((b) => b.update(doc(COL.payouts, p.pid), patch));
-        ws.push((b) => b.set(doc(COL.logs, 'win_' + p.pid), { at: t, date: Core.bizDate(t, h), cal: Core.dateStr(t), type: 'win', test: p.test || false, storeId: p.storeId, bill: p.bill, nick: p.nick, count: p.amount, tid: p.tid, pid: p.pid, raceId })); // 日付の区切りは設定どおり（以前は 5 時に固定）
+        if (p.status === 'unpaid' && p.expireAt != null && p.expireAt < exp) Object.assign(patch, { expireAt: exp, expireAtTs: Ts(exp) });
+        ws.push((b) => b.update(doc(COL.payouts, p.pid), patch));
+        ws.push((b) => b.set(doc(COL.logs, 'win_' + p.pid), { at: t, date: Core.bizDate(t, h), cal: Core.dateStr(t), type: 'win', storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null, vid: p.vid || null, pid: p.pid, raceId }));
       });
       await commitChunks(ws);
       return out;
@@ -615,84 +551,45 @@
       let n = 0;
       for (const d of q.docs) {
         const p = d.data();
-        // 期限は expireAt（発表した営業日の終わり）。テストで today を渡したときと、古いデータ（expireAt なし）は営業日でくらべる
         const due = o.today || p.expireAt == null ? p.day < today : now() >= p.expireAt;
         if ((o.pid && p.pid !== o.pid) || !due) continue;
         const ok = await db.runTransaction(async (tx) => {
           const s = data(await tx.get(doc(COL.payouts, p.pid))); if (!s || s.status !== 'unpaid') return false;
-          const rr = data(await tx.get(doc(COL.races, s.raceId))); if (rr && rr.refunded && rr.refundDone === false) return false; // 返還の途中（取り消し予定）は触らない
           tx.update(doc(COL.payouts, p.pid), { status: 'expired', expiredAt: now() });
-          const rf = s.kind === 'refund', pb = Core.payoutBounty(s);
-          if (!s.test) { const k = !rf ? 'expired' : s.novote ? 'bountyReturnedExpired' : 'bountyRefundExpired', v = rf ? pb : s.amount; tx.set(doc(COL.stats, s.day), { date: s.day, [k]: FieldValue.increment(v), byStore: { [s.storeId]: { [k]: FieldValue.increment(v) } } }, { merge: true }); } // 当たりは額・返却/返還はリングバウンティ
-          tx.set(doc(COL.logs, 'exp_' + s.pid), Object.assign({ at: now(), date: Core.bizDate(now(), sc.tuning.dayStartHour), cal: Core.dateStr(now()), type: 'expired', test: s.test || false, kind: s.kind || 'win', storeId: s.storeId, bill: s.bill, nick: s.nick, count: rf ? s.count || 0 : s.amount, tid: s.tid, pid: s.pid, raceId: s.raceId, day: s.day }, rf ? { bounty: pb } : {}));
+          tx.set(doc(COL.stats, s.day), { date: s.day, expired: FieldValue.increment(s.amount), byStore: { [s.storeId]: { expired: FieldValue.increment(s.amount) } } }, { merge: true });
+          tx.set(doc(COL.logs, 'exp_' + s.pid), { at: now(), date: Core.bizDate(now(), sc.tuning.dayStartHour), cal: Core.dateStr(now()), type: 'expired', storeId: s.storeId, bill: s.bill, nick: s.nick, amount: s.amount, combo: s.combo || null, vid: s.vid || null, pid: s.pid, raceId: s.raceId, day: s.day });
           return true;
         });
         if (ok) n++;
       }
       return n;
     }
-    /* 返還: ① 取引の中で、払い戻しの状態を読み直して「返還の印・集計」を 1 回だけ書く（このあとスタッフは当たりを受け取れない＝ルールと claim の取引がレースを見る）
-             ② 取り消し・返還の受け取りを分けて書く（何度書いても同じ id）③ 終わりの印 → 発表前なら発表。
-       以前は取引なしの 1 回の batch で、読んだあとに受け取られた当たりを void にして返還も全額出していた（二重に渡る）。当たりが多いと 500 件の上限で失敗していた。
-       ②の途中で止まったら、もう一度「返還」を押すと続きから（refundDone: false）。 */
-    async function refundRace(raceId) {
+    /* 取り消し（成立しなかったレース。管理の「返還」の v4 版。参加無料なので返すものはない）:
+       取引の中でレースに refunded の印（このあとは受け取れない＝ルールと受け取りの取引がレースを見る）・集計を直す → まだ渡していない当たりを void → 発表前なら発表 */
+    async function voidRace(raceId) {
       const ref = doc(COL.races, raceId), r = data(await ref.get());
       if (!r) throw E(404, 'no_race', 'レースが見つかりません');
-      const resume = !!r.refunded && r.refundDone === false;
-      if (r.refunded && !resume) throw E(409, 'already_refunded', 'もう返還済みです');
-      if (!['closing', 'decided', 'done'].includes(r.status)) throw E(409, 'not_closed', '締切前のレースは返還できません（投票は次のレースに回せません）');
+      if (r.refunded) throw E(409, 'already_refunded', 'もう取り消し済みです');
+      if (!['closing', 'decided', 'done'].includes(r.status)) throw E(409, 'not_closed', '締切前のレースは取り消せません');
       if (r.status === 'closing') throw E(409, 'busy', 'いま結果を決めているところです。少し待ってからもう一度');
-      const sc = await secretConfig(), t = now(), day = r.day;
-      const tickets = (await db.collection(COL.tickets).where('raceId', '==', raceId).where('status', '==', 'voted').get()).docs.map((d) => d.data());
-      const payIds = (await db.collection(COL.payouts).where('raceId', '==', raceId).get()).docs.map((d) => d.id);
-      let plan, wasDone;
-      if (!resume) {
-        const got = await db.runTransaction(async (tx) => {
-          const rr = data(await tx.get(ref));
-          if (!rr) throw E(404, 'no_race', 'レースが見つかりません');
-          if (rr.refunded) throw E(409, 'already_refunded', 'もう返還済みです');
-          if (!['decided', 'done'].includes(rr.status)) throw E(409, 'busy', 'いま結果を決めているところです。少し待ってからもう一度');
-          const pays = []; for (const id of payIds) { const p = data(await tx.get(doc(COL.payouts, id))); if (p) pays.push(p); }
-          const pl = Core.refundPlan(tickets, pays, rr), wd = rr.status === 'done';
-          let voided = 0; const byStore = {};
-          pl.voids.forEach((p) => { if (!p.test) voided += p.amount; });
-          const refundB = pl.refunds.filter((x) => !x.test).reduce((a, x) => a + x.bounty, 0); /* 返還はリングバウンティ */
-          pl.refunds.forEach((x) => { if (!x.test) { const s = (byStore[x.storeId] = byStore[x.storeId] || { refund: 0, paid: 0 }); s.refund += x.bounty; } });
-          if (wd) pl.voids.forEach((p) => { if (!p.test) (byStore[p.storeId] = byStore[p.storeId] || { refund: 0, paid: 0 }).paid -= p.amount; });
-          const inc = { date: day, bountyRefund: FieldValue.increment(refundB), committed: FieldValue.increment(-voided), byStore: {} };
-          if (wd) inc.paid = FieldValue.increment(-voided);
-          Object.keys(byStore).forEach((s) => { inc.byStore[s] = { bountyRefund: FieldValue.increment(byStore[s].refund) }; if (wd) inc.byStore[s].paid = FieldValue.increment(byStore[s].paid); });
-          tx.set(doc(COL.stats, day), inc, { merge: true });
-          tx.update(ref, { refunded: true, refundDone: false, refundWasDone: wd, refundBounty: pl.bounty, refundedAt: t, refundTickets: pl.refunds.length, winners: [] });
-          tx.set(doc(COL.secrets, raceId), { decision: { paid: Object.values(pl.paidBy).reduce((a, x) => a + x, 0), refunded: true } }, { merge: true });
-          return { pl, wd };
-        });
-        plan = got.pl; wasDone = got.wd;
-      } else { // 続き: 取り消し済み（void）は数えないので、同じ返還の一覧になる
-        const pays = (await Promise.all(payIds.map((id) => doc(COL.payouts, id).get()))).map(data).filter(Boolean);
-        plan = Core.refundPlan(tickets, pays, r); wasDone = !!r.refundWasDone;
-      }
-      const revealAt = Math.min(r.revealAt, t), exp = Core.expireAtFor(Math.max(r.at, revealAt, t), sc.tuning.dayStartHour); // 翌日に返還したときも、その営業日の終わりまで受け取れる
-      const ws = plan.voids.map((p) => (b) => b.update(doc(COL.payouts, p.pid), { status: 'void' }));
-      await commitChunks(ws);
-      const items = plan.refunds.map((x) => ({ x, pid: Core.pidFor(Outcome, sc.salt, raceId, x.tid, 'refund') }));
-      const RF = cap(100, 3);
-      for (let i = 0; i < items.length; i += RF) { // 返還 1 件 = 4 件の書き込み
-        const part = items.slice(i, i + RF);
-        await db.runTransaction(async (tx) => {
-          const shorts = await pickShorts(tx, part.map((y) => ({ storeId: y.x.storeId, id: y.pid })), sc.salt);
-          part.forEach(({ x, pid }, j) => {
-            const short = shorts[j];
-            tx.set(doc(COL.payouts, pid), Object.assign({}, x, { pid, short, day, createdAt: t, revealAt, revealAtTs: Ts(revealAt), expireAt: exp, expireAtTs: Ts(exp) }));
-            if (short) tx.set(doc(COL.shorts, x.storeId + '_' + short), { kind: 'pay', id: pid, storeId: x.storeId, createdAt: t });
-            tx.update(doc(COL.tickets, x.tid), { payoutId: pid, refunded: true });
-            tx.set(doc(COL.logs, 'ref_' + pid), { at: t, date: Core.bizDate(t, sc.tuning.dayStartHour), cal: Core.dateStr(t), type: 'refund', test: x.test || false, storeId: x.storeId, bill: x.bill, nick: x.nick, count: x.count, rate: x.rate, bounty: x.bounty, tid: x.tid, pid, raceId });
-          });
-        });
-      }
-      await ref.update({ refundDone: true });
-      if (!wasDone) await revealRace(raceId, true); else { const fresh = data(await ref.get()); if (fresh) await publishWith(fresh); }
-      return { bounty: plan.bounty, tickets: plan.refunds.length };
+      const t = now(), day = r.day, payIds = (await db.collection(COL.payouts).where('raceId', '==', raceId).get()).docs.map((d) => d.id);
+      const got = await db.runTransaction(async (tx) => {
+        const rr = data(await tx.get(ref));
+        if (!rr) throw E(404, 'no_race', 'レースが見つかりません');
+        if (rr.refunded) throw E(409, 'already_refunded', 'もう取り消し済みです');
+        if (!['decided', 'done'].includes(rr.status)) throw E(409, 'busy', 'いま結果を決めているところです。少し待ってからもう一度');
+        const pays = []; for (const id of payIds) { const p = data(await tx.get(doc(COL.payouts, id))); if (p) pays.push(p); }
+        const pl = Core.voidPlan(pays), wd = rr.status === 'done';
+        const inc = { date: day, committed: FieldValue.increment(-pl.voided), byStore: {} };
+        if (wd && !rr.test) { inc.paid = FieldValue.increment(-pl.voided); const by = {}; pl.voids.forEach((p) => { by[p.storeId] = (by[p.storeId] || 0) + p.amount; }); Object.keys(by).forEach((s) => { inc.byStore[s] = { paid: FieldValue.increment(-by[s]) }; }); }
+        tx.set(doc(COL.stats, day), inc, { merge: true });
+        tx.update(ref, { refunded: true, refundedAt: t, voided: pl.voided, winners: [] });
+        tx.set(doc(COL.secrets, raceId), { decision: { paid: pl.kept.reduce((a, p) => a + p.amount, 0), refunded: true } }, { merge: true });
+        pl.voids.forEach((p) => tx.update(doc(COL.payouts, p.pid), { status: 'void', voidAt: t }));
+        return { pl, wd };
+      });
+      if (!got.wd) await revealRace(raceId, true); else { const fresh = data(await ref.get()); if (fresh) await publishWith(fresh); }
+      return { voided: got.pl.voided };
     }
 
     /* ---------- 決める係のテレビ（方式 B） ---------- */
@@ -714,7 +611,7 @@
       return got;
     }
     async function materialize(sc, races) {
-      const t = now(), horizon = Math.max(sc.tuning.betSec * 1000 + 120000, (sc.tuning.horizonMin || 15) * 60000), have = new Set(races.map((r) => r.id));
+      const t = now(), horizon = Math.max(sc.tuning.voteSec * 1000 + 120000, (sc.tuning.horizonMin || 15) * 60000), have = new Set(races.map((r) => r.id));
       for (let e of Core.scheduleAround(t, sc.timetable.rules || [])) {
         if (e.at - t > horizon) break;
         if (e.at - sc.tuning.closeLeadSec * 1000 <= t + 1000 || have.has(e.id)) continue;
@@ -730,14 +627,13 @@
       }
       return null;
     }
-    function watchParticipants(races) { // 受付中のレースの票を見張って、参加人数をレースに書く（見張りなので読み取りは変化の分だけ）
-      const open = new Set(races.filter((r) => r.status === 'upcoming').map((r) => r.id));
+    function watchParticipants(races) { // 投票中のレースの票を見張って、参加人数と人気（組み合わせごとの票の数）を derbyCounts/live に書く（見張りなので読み取りは変化の分だけ）
+      const open = new Set(races.filter((r) => r.status === 'upcoming' && now() >= Core.voteWindow(r).openAt - 5000).map((r) => r.id));
       Object.keys(decider.ticketUnsubs).forEach((id) => { if (!open.has(id)) { decider.ticketUnsubs[id](); delete decider.ticketUnsubs[id]; clearTimeout(decider.flushT[id]); delete decider.flushT[id]; delete decider.pending[id]; delete decider.participantsAt[id]; } }); // 終わったレースの分は捨てる
       open.forEach((id) => {
         if (decider.ticketUnsubs[id]) return;
-        decider.ticketUnsubs[id] = db.collection(COL.tickets).where('raceId', '==', id).where('status', '==', 'voted').onSnapshot((q) => {
-          const p = { total: 0, byStore: {}, medals: 0 };
-          q.docs.forEach((d) => { const x = d.data(); p.total++; p.byStore[x.storeId] = (p.byStore[x.storeId] || 0) + 1; p.medals += x.count; });
+        decider.ticketUnsubs[id] = db.collection(COL.votes).where('raceId', '==', id).onSnapshot((q) => {
+          const p = Core.countVotes(q.docs.map((d) => d.data()));
           if (!decider.leader) return;
           decider.pending[id] = p; // 参加人数は derbyCounts/live に（レースのドキュメントは決まったときの最終の人数だけ）
           if (decider.flushT[id]) return; // 5 秒に 1 回にまとめる（この 1 行がコメントの中に入っていて、票が入るたびに書いていた）
@@ -758,12 +654,27 @@
       const sc = await secretConfig(), races = await getRaces(), t = now(), did = [];
       for (const r of races.filter((x) => (x.status === 'upcoming' && x.closeAt <= t) || (x.status === 'closing' && (x.closingAt || 0) < t - CLOSING_STALE_MS)).sort((a, b) => a.closeAt - b.closeAt)) { if (await decideRace(r.id, decider.me)) did.push('decide ' + r.id); }
       for (const r of races.filter((x) => x.status === 'decided' && x.revealAt <= t)) { if (await revealRace(r.id)) did.push('reveal ' + r.id); }
+      (await tvAuto(races)).forEach((x) => did.push(x)); // 投票が始まったら店のテレビを DERBY に（v4）
       (await processTestReqs(sc, races)).forEach((x) => did.push(x)); // この店だけテストレース（2026-10-19）
       const made = await materialize(sc, races); if (made) did.push('create ' + made);
       watchParticipants(races);
       if (!did.length) await publishLive(live.races || races).catch(() => {}); // 何かした回は、その場でもう書いてある（はじめに読んだ古い一覧で上書きしない）
       /* 期限切れの見回りは 15 分に 1 回と、営業日の区切り（5 時）を越えたとき */ const dayNow = Core.bizDate(t, sc.tuning.dayStartHour); if (t - decider.lastExpire > 15 * 60000 || decider.lastExpireDay !== dayNow) { decider.lastExpire = t; decider.lastExpireDay = dayNow; const n = await expirePayouts(); if (n) did.push('expire ' + n); }
       return { leader: true, did };
+    }
+    /* 投票が始まったら、そのレースが見える店のテレビのゲームを DERBY に（2026-10-20 オーナー決定。Core.tvAutoPlan。1 レース 1 回＝レースに tvAutoAt の印）。
+       店の settings.tvGame と derbySwitch/tv を同じ書き込みで（casa SLOT のテレビは derbySwitch/tv を見て、遊んでいる途中なら終わってから移る）。
+       ルール: 決める係は店の設定のうち tvGame を 'derby' にすることだけできる */
+    async function tvAuto(races) {
+      const stores = await getStores(), plan = Core.tvAutoPlan(races, stores, now()), did = [];
+      for (const x of plan) {
+        const b = db.batch();
+        x.stores.forEach((sid) => b.update(doc(COL.stores, sid), { 'settings.tvGame': 'derby' }));
+        if (x.stores.length) { const sw = {}; x.stores.forEach((sid) => { sw[sid] = 'derby'; }); b.set(doc(COL.tvSwitch, 'tv'), sw, { merge: true }); }
+        b.update(doc(COL.races, x.raceId), { tvAutoAt: now() });
+        try { await b.commit(); if (x.stores.length) { storesCache = null; did.push('tv ' + x.raceId + ' ' + x.stores.join(',')); } } catch (e) { logD([now(), 'tvauto ' + ((e && e.code) || e)]); }
+      }
+      return did;
     }
     /* ---------- この店だけテストレース（2026-10-19）: スタッフのお願い derbyTestReq/<店舗> を見て、決める係（の鍵を持つ 1 台）が作る ----------
        その 3（2026-10-19）: 店のテレビが casa SLOT のときは、スタッフが押すと同じ書き込みで店のテレビのゲームを casa DERBY にする（今のスタッフの決まり tvGameOnly のまま）。
@@ -786,14 +697,14 @@
         if (t - at > Core.TEST_RACE.tvWaitSec * 1000) { await ref.set({ err: 'tv_wait', doneAt: t }, { merge: true }); did.push('test tv_wait ' + sid); continue; } // その 4: 5 分待っても作れなかった（テレビがゲーム中のまま・進行役が戻らない）→ 理由を出してやめる
         const stRow = (await getStores()).find((s) => s.id === sid);
         if (!stRow) { await ref.set({ err: 'no_store', doneAt: t }, { merge: true }); continue; }
-        let sec = startIn, waitSec = startIn === Core.TEST_RACE.switchSec ? startIn - Core.TEST_RACE.quickSec : 0; /* その 3: テレビを切り替えたとき（90 秒）は、切り替わってから受付（30 秒あとから） */
-        if (startIn === Core.TEST_RACE.switchSec) { // その 4: 店のテレビを切り替えたお願い → その店の Fire TV が casa DERBY に来てから作る（来た時刻から 60 秒）
+        let sec = startIn;
+        if (startIn === Core.TEST_RACE.switchSec) { // その 4: 店のテレビを切り替えたお願い → その店の Fire TV が casa DERBY に来てから作る（来た時刻から quickSec）
           const w = await tvArrival(sid, at, t);
           if (w === 'waiting') { if (!q.wait) { await ref.set({ wait: 'tv', waitAt: t }, { merge: true }); did.push('test wait-tv ' + sid); } continue; }
-          if (w === 'arrived') { sec = Core.TEST_RACE.quickSec; waitSec = 0; }
+          if (w === 'arrived') sec = Core.TEST_RACE.quickSec;
         }
-        /* その 6（2026-10-20）: 参加受付は必ず 60 秒（Core.testStages）。投票はその店で効く秒数（店の設定の上書き＝ルールの exchangeCloseMs と同じ）。足りなければ発走を後ろへ */
-        const sg = Core.testStages(sec, sc.tuning, waitSec, stRow.settings); sec = sg.startIn;
+        /* v4: 投票は 60 秒（Core.testStages）。発走の 60 秒前から投票（startIn が 120 なら 60 秒待ってから） */
+        const sg = Core.testStages(sec, sc.tuning); sec = sg.startIn;
         if (Core.testRaceBusy(races, sid, t, sec, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
         const r = await writeRace({ id, at: t + sec * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, sg); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
         await ref.set({ raceId: r.id, raceAt: r.at, doneAt: t }, { merge: true });
@@ -828,9 +739,9 @@
       const switching = p.game === 'slot' && o.switchTv !== false;
       let sec = Core.testStartIn(startIn);
       if (switching && !p.wake) sec = Math.max(sec, Core.TEST_RACE.switchSec); // ほかの店の進行役がすぐ作る → テレビが切り替わって読み込む時間を足す
-      const pubT = await getPublic(), myRow = (await getStores().catch(() => [])).find((x) => x.id === store) || {};
-      const runIn = Core.testStages(sec, pubT, sec === Core.TEST_RACE.switchSec && !p.wake ? sec - Core.TEST_RACE.quickSec : 0, myRow.settings).startIn; // その 6: 実際の発走まで（参加受付 60 秒＋その店の投票の秒数）。お願いに書くのは今までどおり sec（90／120）
-      if (Core.testRaceBusy(await getRaces(true), store, now(), runIn, pubT, [])) throw E(409, 'busy', 'いまはテストのレースを作れません（受付中・レース中か、もうすぐ次のレースです）');
+      const pubT = await getPublic();
+      const runIn = Core.testStages(sec, pubT).startIn; // 実際の発走まで（投票 60 秒）
+      if (Core.testRaceBusy(await getRaces(true), store, now(), runIn, pubT, [])) throw E(409, 'busy', 'いまはテストのレースを作れません（投票中・レース中か、もうすぐ次のレースです）');
       const write = async () => {
         const b = db.batch();
         b.set(doc(COL.testReq, store), { at: FieldValue.serverTimestamp(), by: uid(), startIn: sec });
@@ -892,7 +803,7 @@
     }
     function stopDecider() { decider.running = false; clearTimeout(decider.timer); Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; }
 
-    /* ---------- リアルタイム（onSnapshot → state / race / ticket / next / reload / payout） ---------- */
+    /* ---------- リアルタイム（onSnapshot → state / race / vote / next / reload / payout） ---------- */
     function subscribe(handlers, o) {
       handlers = handlers || {}; o = o || {};
       const unsubs = [], raceHooks = []; let closed = false, races = [], stores = null, pub = null, lastStatus = {}, seq = null, rseq = null, timer = null, opened = false;
@@ -934,26 +845,36 @@
             gotRaces(d.races || []);
           }, () => startFull()));
         } else startFull();
-        if (o.tid) {
-          let lastKey = '';
-          const pushTicket = async (tk) => { if (!tk) return; const b = await ticketBundle(tk); const v = Core.ticketView(tk, b.r, b.p), k = JSON.stringify(v); if (k !== lastKey) { lastKey = k; if (handlers.ticket) handlers.ticket({ ticket: v }); } };
-          unsubs.push(() => { delete live.tickets[o.tid]; });
-          unsubs.push(doc(COL.tickets, o.tid).onSnapshot((s) => { const tk = data(s); lastTk = tk; if (tk) live.tickets[o.tid] = tk; pushTicket(tk); if (tk && tk.payoutId) watchPayout(tk); }, fail));
-          const onRaces = () => { if (lastTk && lastTk.raceId) { const r = races.find((x) => x.id === lastTk.raceId); if (r && r.status === 'done') { pushTicket(lastTk); if (lastTk.payoutId) watchPayout(lastTk); } } };
-          raceHooks.push(onRaces);
-          let payWatch = null, lastTk = null;
-          let payWatchId = null; unsubs.push(() => payWatch && payWatch());
-          const watchPayout = (tk) => { if (payWatch && payWatchId === tk.payoutId) return; const r = races.find((x) => x.id === tk.raceId); if (!tk.novote && (!r || r.status !== 'done')) return; if (payWatch) payWatch(); payWatchId = tk.payoutId; const pidW = tk.payoutId; payWatch = doc(COL.payouts, pidW).onSnapshot((ps) => { const pd = data(ps); if (pd) live.payouts[pidW] = pd; pushTicket(live.tickets[tk.tid] || tk); }, () => { payWatch = null; payWatchId = null; }); }; // 返還で payoutId が変わったら見張り直す（コードレビュー）
+        if (o.vid) { // スマホ: 自分の票（消えた＝番号を空けられたら vote: null・released: true）と、発表のあとの当たり
+          let lastKey = '', lastV = null, payWatch = null, payWatchId = null;
+          const pushVote = async (v) => {
+            if (!v) { const k = 'released'; if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote({ vote: null, released: true, vid: o.vid }); } return; }
+            const b = await voteBundle(v), view = Core.voteView(v, b.r, b.p), k = JSON.stringify(view);
+            if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote({ vote: view }); }
+          };
+          const watchPayout = (v) => {
+            if (!v || !v.payoutId || (payWatch && payWatchId === v.payoutId)) return;
+            const r = races.find((x) => x.id === v.raceId); if (!r || r.status !== 'done') return;
+            if (payWatch) payWatch(); payWatchId = v.payoutId; const pidW = v.payoutId;
+            payWatch = doc(COL.payouts, pidW).onSnapshot((ps) => { const pd = data(ps); if (pd) live.payouts[pidW] = pd; pushVote(live.votes[o.vid] || v); }, () => { payWatch = null; payWatchId = null; });
+          };
+          unsubs.push(() => { delete live.votes[o.vid]; if (payWatch) payWatch(); });
+          unsubs.push(doc(COL.votes, o.vid).onSnapshot((s) => { const v = data(s); lastV = v; if (v) live.votes[o.vid] = v; else delete live.votes[o.vid]; pushVote(v); watchPayout(v); }, fail));
+          raceHooks.push(() => { if (lastV) { const r = races.find((x) => x.id === lastV.raceId); if (r && r.status === 'done') { pushVote(lastV); watchPayout(lastV); } } });
         }
-        if (role === 'staff' && handlers.payout) {
-          const since = now(), seenPay = {}; let payLogUn = null, dayT = null; // seenPay: 新しく増えた受け取りだけ知らせる（以前は 1 件増えるたびに全部をもう一度。コードレビュー）
-          const watchDay = () => { // 営業日の区切りをまたいだら、新しい営業日で見張り直す（コードレビュー 2026-10-14）
+        if (role === 'staff' && (handlers.payout || handlers.wins)) { // スタッフ: 今日の当たり一覧（発表済み）を見張る。新しい当たり・受け取り（スタッフ・お客さんのスライドのどちらでも）が届く
+          const seen = {}; let un = null, dayT = null;
+          const watchDay = () => {
             if (closed) return; const h = (pubCache || Core.DEFAULT_TUNING).dayStartHour, today = Core.bizDate(now(), h);
-            if (payLogUn) payLogUn();
-            payLogUn = db.collection(COL.logs).where('storeId', '==', store).where('date', '==', today).where('type', '==', 'paid').onSnapshot((q) => { q.docs.map((d) => d.data()).filter((l) => l.at > since && !seenPay[l.pid] && (seenPay[l.pid] = 1)).forEach((l) => handlers.payout({ payout: { pid: l.pid, amount: l.kind === 'refund' ? 0 : l.count, bounty: Core.logBounty(l), bill: l.bill, nick: l.nick, status: 'paid', paidAt: l.at, storeId: l.storeId } })); }, () => {});
+            if (un) un();
+            un = db.collection(COL.payouts).where('storeId', '==', store).where('revealed', '==', true).where('day', '==', today).onSnapshot((q) => {
+              const names = storeNameOf(stores), list = q.docs.map((d) => Core.payoutView(effPay(d.data()), names, true));
+              list.forEach((p) => { const k = p.status + (p.paidAt || ''); if (seen[p.pid] !== undefined && seen[p.pid] !== k && p.status === 'paid' && handlers.payout) handlers.payout({ payout: p }); seen[p.pid] = k; });
+              if (handlers.wins) handlers.wins({ date: today, wins: Core.sortWins(list) });
+            }, () => {});
             dayT = setTimeout(watchDay, Math.max(1000, Math.min(2 ** 31 - 1, Core.expireAtFor(now(), h) - now() + 1000)));
           };
-          watchDay(); unsubs.push(() => { clearTimeout(dayT); if (payLogUn) payLogUn(); });
+          watchDay(); unsubs.push(() => { clearTimeout(dayT); if (un) un(); });
         }
         const iv = setInterval(emit, 1000); unsubs.push(() => clearInterval(iv)); // 時刻で変わる場面（締切・ゲート）と、テレビの結果の読み込み
       }).catch(fail);
@@ -978,6 +899,8 @@
             for (const d of up.docs) { const x = data(await doc(COL.secrets, d.id).get()); if (x && typeof x.payoutTarget === 'number') await doc(COL.secrets, d.id).set({ payoutTarget: x.payoutTarget * M }, { merge: true }); }
             await doc(COL.config, 'secret').set({ timetable: tt, tuning: tu, moneyUnit: M }, { merge: true }); secretCache = null;
           }
+          // v4: 公開の時刻表（derbySchedule/public）がまだ無ければ作る（v4 に切り替えた最初のログインで。以後は時刻表・調整の保存で書き直す）
+          try { if (!(await doc(COL.schedule, 'public').get()).exists) { const s0 = (await doc(COL.config, 'secret').get()).data() || {}; await doc(COL.schedule, 'public').set(Core.publicSchedule((s0.timetable && s0.timetable.rules) || [], s0.tuning || {}, now())); } } catch (e) { /* 書けなくてもログインは続ける */ }
         })();
         return signed;
       };
@@ -1008,15 +931,14 @@
         }),
         saveTimetable: wrap(async (rulesIn) => {
           const stores = await getStores(true), rules = Core.normalizeRules(rulesIn, stores.map((s) => s.id), storeNameOf(stores));
-          await doc(COL.config, 'secret').set({ timetable: { rules } }, { merge: true });
+          const tb = db.batch(); tb.set(doc(COL.config, 'secret'), { timetable: { rules } }, { merge: true }); tb.set(doc(COL.schedule, 'public'), Core.publicSchedule(rules, (await secretConfig()).tuning, now())); await tb.commit(); /* derbySchedule/public: 時刻だけの公開の時刻表（casa SLOT のテレビが読む） */
           const sched = Core.scheduleAround(now(), rules), keep = new Map(sched.map((e) => [e.id, e]));
           for (const r of await getRaces()) {
             if (r.status !== 'upcoming' || r.id.startsWith('x-')) continue;
             const e = keep.get(r.id);
             if (e) { await doc(COL.secrets, r.id).set({ payoutTarget: e.payout, scope: e.scope }, { merge: true }); continue; }
             if (now() >= (r.openAt || r.closeAt) - 5000) continue; // 受付中のレースは消さない（票を確かめてから消すまでの間に投票が入ると、票だけ残ってレースが消えた。模擬サーバーは 1 本で動くので起きない）
-            const t = await db.collection(COL.tickets).where('raceId', '==', r.id).limit(1).get(); if (!t.empty) continue;
-            const ta = await db.collection(COL.tickets).where('authRaceId', '==', r.id).limit(1).get(); if (!ta.empty) continue; /* 認証済み（投票前）の券があるレースも消さない */
+            const t = await db.collection(COL.votes).where('raceId', '==', r.id).limit(1).get(); if (!t.empty) continue; // 票のあるレースは消さない
             const b = db.batch(); b.delete(doc(COL.races, r.id)); b.delete(doc(COL.secrets, r.id)); await b.commit();
           }
           secretCache = null; await publishLive(await getRaces(true)).catch(() => {});
@@ -1062,7 +984,7 @@
         preview: wrap(async (date, s) => { const sc = await secretConfig(), ds = date || Core.dateStr(now()); return { date: ds, races: Core.expandDate(ds, sc.timetable.rules || []).filter((e) => !s || !e.storeId || e.storeId === s) }; }),
         saveTuning: wrap(async (t) => {
           const sc = await secretConfig(), merged = Core.mergeTuning(sc.tuning, t || {}, now());
-          const b = db.batch(); b.set(doc(COL.config, 'secret'), { tuning: merged }, { merge: true }); b.set(doc(COL.config, 'public'), Core.publicTuning(merged)); await b.commit(); pubCache = null; secretCache = null;
+          const b = db.batch(); b.set(doc(COL.config, 'secret'), { tuning: merged }, { merge: true }); b.set(doc(COL.config, 'public'), Core.publicTuning(merged)); b.set(doc(COL.schedule, 'public'), Core.publicSchedule(sc.timetable.rules || [], merged, now())); for (const x of Core.revoteRaces(await getRaces(true), merged, now())) b.set(doc(COL.races, x.id), { openAt: x.openAt, openAtTs: Ts(x.openAt), voteSec: x.voteSec }, { merge: true }); /* まだ投票が始まっていないレースも新しい投票の秒数に */ await b.commit(); pubCache = null; secretCache = null;
           await publishLive(await getRaces(true)).catch(() => {});
           return { ok: true, tuning: merged };
         }),
@@ -1072,31 +994,32 @@
           const out = [];
           for (const r of list) {
             const secret = data(await doc(COL.secrets, r.id).get()) || {}, res = r.result || data(await doc(COL.results, r.id).get());
-            const ps = (await db.collection(COL.payouts).where('raceId', '==', r.id).get()).docs.map((d) => d.data());
-            out.push(Object.assign(Core.publicRace(r, { role: 'admin', secret, result: res, winners: r.winners || Core.winnersFrom(ps, names) }), { betTotal: (r.participants || {}).medals || 0, paidTotal: (secret.decision || {}).paid || 0, betBounty: (secret.decision || {}).bounty != null ? secret.decision.bounty : (r.participants || {}).medals || 0, refundBounty: r.refundBounty != null ? r.refundBounty : Math.round((r.refundTotal || 0) / Core.MONEY_PER_TICKET), refunded: !!r.refunded, claimedTotal: ps.filter((p) => p.kind !== 'refund' && p.status === 'paid').reduce((a, p) => a + p.amount, 0) }));
+            const ps = (await db.collection(COL.payouts).where('raceId', '==', r.id).get()).docs.map((d) => d.data()), sum = (st) => ps.filter((p) => p.status === st).reduce((a, p) => a + p.amount, 0);
+            const dc = secret.decision || {};
+            out.push(Object.assign(Core.publicRace(r, { role: 'admin', secret, result: res, winners: r.winners || Core.winnersView(dc.winnerList || [], names) }), { votes: (r.participants || {}).total || 0, paidTotal: dc.paid || 0, claimedTotal: sum('paid'), unpaidTotal: sum('unpaid'), expiredTotal: sum('expired'), refunded: !!r.refunded, tvAutoAt: r.tvAutoAt || null }));
           }
           return { races: out };
         }),
-        stats: wrap(async (from, to, s) => { /* 当選額・受取額は額、リングバウンティ（受け取った・返却・返還・返した）と投票券の枚数は別（core.js の statBounty。server.js と同じ形） */
+        /* 集計（v4）: 票の数（参加人数）・会計番号の数・当選額の目標・当選額・渡した額・期限切れ・まだ渡していない額（Core.statRow。server.js と同じ形）。
+           渡した額は当たりのドキュメント（スタッフ・お客さんのスライドの両方）から数える */
+        stats: wrap(async (from, to, s) => {
           const sc = await secretConfig(); to = to || Core.bizDate(now(), sc.tuning.dayStartHour); from = from || to;
           const q = await db.collection(COL.stats).where('date', '>=', from).where('date', '<=', to).get();
-          const claimedQ = await db.collection(COL.payouts).where('day', '>=', from).where('day', '<=', to).get();
-          const claimed = {}, back = {}, add = (m, p, v) => { const c = (m[p.day] = m[p.day] || { all: 0 }); c.all += v; c[p.storeId] = (c[p.storeId] || 0) + v; };
-          claimedQ.docs.forEach((d) => { const p = d.data(); if (p.status !== 'paid' || p.test) return; if (p.kind === 'refund') { add(back, p, 0); const c = back[p.day], k = p.novote ? 'ret' : 'ref', v = Core.payoutBounty(p); c[k] = (c[k] || 0) + v; c[k + ':' + p.storeId] = (c[k + ':' + p.storeId] || 0) + v; return; } add(claimed, p, p.amount); });
-          const K = ['races', 'tickets', 'players', 'bet', 'paid', 'claimed', 'expired', 'unclaimed', 'bountyIn', 'exchanged', 'bountyReturned', 'bountyReturnedPaid', 'bountyRefund', 'bountyRefundPaid'];
+          const pq = await db.collection(COL.payouts).where('day', '>=', from).where('day', '<=', to).get();
+          const claimed = {}; pq.docs.forEach((d) => { const p = d.data(); if (p.status !== 'paid') return; const c = (claimed[p.day] = claimed[p.day] || { all: 0 }); c.all += p.amount; c[p.storeId] = (c[p.storeId] || 0) + p.amount; });
+          const K = ['races', 'votes', 'players', 'target', 'paid', 'claimed', 'expired', 'unclaimed'];
           const zero = () => { const o = {}; K.forEach((k) => (o[k] = 0)); return o; };
-          const rate = (x) => (x.bet ? Math.round(x.paid / (x.bet * Core.MONEY_PER_TICKET) * 1000) / 1000 : 0);
-          const rowOf = (x, players, cl, rp, fp) => { const bb = Core.statBounty(x); const row = { tickets: x.tickets || 0, players, bet: x.bet || 0, paid: x.paid || 0, claimed: cl || 0, expired: x.expired || 0, bountyIn: bb.bountyIn, exchanged: bb.exchanged, bountyReturned: bb.bountyReturned, bountyReturnedPaid: rp || 0, bountyRefund: bb.bountyRefund, bountyRefundPaid: fp || 0 }; row.unclaimed = Math.max(0, row.paid - row.claimed - row.expired); row.rate = rate(row); return row; };
           const tot = Object.assign(zero(), { byStore: {} }), days = [];
           q.docs.map((d) => d.data()).sort((a, b) => (a.date < b.date ? -1 : 1)).forEach((x) => {
-            const bills = Object.keys(x.bills || {}), cl = claimed[x.date] || {}, bk = back[x.date] || {}, byStore = {};
-            Object.keys(x.byStore || {}).forEach((sid) => { byStore[sid] = rowOf(x.byStore[sid], bills.filter((k) => k.startsWith(sid + ':')).length, cl[sid], bk['ret:' + sid], bk['ref:' + sid]); });
-            const src = s ? Object.assign(zero(), byStore[s] || {}, { races: x.races || 0 }) : Object.assign(rowOf(x, bills.length, cl.all, bk.ret, bk.ref), { races: x.races || 0 });
-            const row = Object.assign({ date: x.date }, src, { rate: rate(src), byStore }); days.push(row);
+            const cl = claimed[x.date] || {}, byStore = {};
+            Object.keys(x.byStore || {}).forEach((sid) => { byStore[sid] = Core.statRow(Object.assign({}, x.byStore[sid], { races: x.races || 0 }), cl[sid] || 0); });
+            const src = s ? Object.assign(zero(), byStore[s] || { races: x.races || 0 }) : Core.statRow(x, cl.all || 0);
+            const row = Object.assign({ date: x.date }, src, { byStore }); days.push(row);
             K.forEach((k) => (tot[k] += row[k] || 0));
-            Object.keys(byStore).forEach((sid) => { if (s && sid !== s) return; const a = (tot.byStore[sid] = tot.byStore[sid] || (() => { const z = zero(); delete z.races; return z; })()); Object.keys(a).forEach((k) => (a[k] += byStore[sid][k] || 0)); });
+            Object.keys(byStore).forEach((sid) => { if (s && sid !== s) return; const a = (tot.byStore[sid] = tot.byStore[sid] || zero()); K.forEach((k) => (a[k] += byStore[sid][k] || 0)); });
           });
-          tot.rate = rate(tot); Object.values(tot.byStore).forEach((b) => (b.rate = rate(b)));
+          const rate = (x) => (x.target ? Math.round(x.paid / x.target * 1000) / 1000 : 0);
+          tot.payRate = rate(tot); Object.values(tot.byStore).forEach((b) => { b.payRate = rate(b); });
           return { from, to, store: s || null, days, totals: tot };
         }),
         logs: wrap(async (o) => {
@@ -1107,7 +1030,7 @@
         }),
         createRace: wrap(async (o) => {
           o = o || {}; const sc = await secretConfig(), t = now(), sid = o.storeId || null;
-          const r = await writeRace({ id: 'x-' + t.toString(36) + randId('', 4).toLowerCase() + (sid ? '-' + sid : ''), /* 乱数つき: 同じミリ秒に 2 つ作ると前のレースを上書きしていた（RED TEAM） */ at: t + Math.max(0, Number(o.inSec) || 0) * 1000, payout: Math.max(0, Math.floor(Number(o.payout) || 0)), scope: o.scope === 'store' ? 'store' : 'all', storeId: sid }, sc, Core.manualStages(o, Number(o.inSec) || 0, sc.tuning));
+          const r = await writeRace({ id: 'x-' + t.toString(36) + randId('', 4).toLowerCase() + (sid ? '-' + sid : ''), /* 乱数つき: 同じミリ秒に 2 つ作ると前のレースを上書きしていた（RED TEAM） */ at: t + Math.max(0, Number(o.inSec) || 0) * 1000, payout: Math.max(0, Math.floor(Number(o.payout) || 0)), scope: o.scope === 'store' ? 'store' : 'all', storeId: sid, test: !!o.test }, sc, Core.manualStages(o, Number(o.inSec) || 0, sc.tuning));
           const secret = data(await doc(COL.secrets, r.id).get());
           return { race: Core.publicRace(r, { role: 'admin', secret }) };
         }),
@@ -1115,12 +1038,12 @@
           const ref = doc(COL.races, raceId), r = data(await ref.get()); if (!r) throw E(404, 'no_race', 'レースが見つかりません');
           if (r.status !== 'upcoming') throw E(409, 'already_closed', 'もう締め切っています');
           const sc = await secretConfig(), t = now(), at = t + sc.tuning.closeLeadSec * 1000, runAt = at + (r.gateSec || 0) * 1000;
-          await db.runTransaction(async (tx) => { const x = data(await tx.get(ref)); if (!x || x.status !== 'upcoming') throw E(409, 'already_closed', 'もう締め切っています'); tx.update(ref, Object.assign({ closeAt: t, at, runAt, openAt: Math.min(r.openAt, t), closeAtTs: Ts(t), runAtTs: Ts(runAt) }, x.exchangeCloseAt != null ? { exchangeCloseAt: Math.min(x.exchangeCloseAt, t) } : {})); }); // 決める係が同時に締め切っていたら時刻を書きかえない
+          await db.runTransaction(async (tx) => { const x = data(await tx.get(ref)); if (!x || x.status !== 'upcoming') throw E(409, 'already_closed', 'もう締め切っています'); const oa = Math.min(x.openAt != null ? x.openAt : t, t); tx.update(ref, { closeAt: t, at, runAt, openAt: oa, openAtTs: Ts(oa), closeAtTs: Ts(t), runAtTs: Ts(runAt) }); }); // 決める係が同時に締め切っていたら時刻を書きかえない
           const d = await decideRace(raceId, 'master'); const secret = data(await doc(COL.secrets, raceId).get());
           return { race: Core.publicRace(d || data(await ref.get()), { role: 'admin', secret, result: d && d.result }) };
         }),
         reveal: wrap(async (raceId) => { const r = await revealRace(raceId, true); if (!r) throw E(409, 'not_decided', 'まだ結果が決まっていません'); return { race: Core.publicRace(r, { role: 'admin', secret: data(await doc(COL.secrets, raceId).get()) }) }; }),
-        refund: wrap(async (raceId) => { const x = await refundRace(raceId); const r = data(await doc(COL.races, raceId).get()); return { ok: true, bounty: x.bounty, tickets: x.tickets, race: Core.publicRace(r, { role: 'admin', secret: data(await doc(COL.secrets, raceId).get()) }) }; }),
+        refund: wrap(async (raceId) => { const x = await voidRace(raceId); const r = data(await doc(COL.races, raceId).get()); return { ok: true, voided: x.voided, race: Core.publicRace(r, { role: 'admin', secret: data(await doc(COL.secrets, raceId).get()) }) }; }), // 取り消し（v4。以前の返還）
         reload: wrap(async (sid) => { const stores = await getStores(true); let n = 0; for (const s of stores) { if (sid && s.id !== sid) continue; await doc(COL.stores, s.id).update({ reloadSeq: FieldValue.increment(1) }); n++; } return { ok: true, sent: n }; }),
         expire: wrap(async (o) => { o = o || {}; if (o.pid) { const sc = await secretConfig(); return { ok: true, expired: await expirePayouts({ pid: o.pid, today: Core.bizDate(now() + 2 * 86400000, sc.tuning.dayStartHour) }) }; } return { ok: true, expired: await expirePayouts() }; }),
         setPassword: async () => { throw E(400, 'use_console', '管理パスワードは Firebase のコンソール（Authentication）で変えてください'); },
@@ -1130,13 +1053,13 @@
     return {
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
-      state, race, createTicket, getTicket, cancelTicket, vote,
-      staffLogin, staffTicket, auth: authTicket, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
+      state, race, vote, myVote, claimSelf,
+      staffLogin, release, wins, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
       admin, subscribe,
       // 進行役のテレビ（2026-10-19）: state = { on, code, asking, decider, account }・on(cb) で変わるたびに
       pair: { get state() { return pairState(); }, on: onPair, hello: pairHello, get uid() { return uid(); } },
       // 決める係（テストと確認用）
-      decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, get paired() { return pair.decider; }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, decideRace, revealRace, expirePayouts },
+      decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, get paired() { return pair.decider; }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, decideRace, revealRace, expirePayouts, voidRace },
       ready,
     };
   }
