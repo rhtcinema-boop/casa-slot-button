@@ -296,7 +296,7 @@ window.Race3D = (function () {
   function Race3D(canvas) {
     this.cv = canvas; this.ctx = canvas.getContext('2d');
     this.race = null; this.run = null; this.phase = 'idle'; this.t = 0; this.slow = 1; this.tape = []; this.dust = [];
-    this.label = ''; this.cut = 0; this.slowSaid = false; this.winnerIdx = -1;
+    this.label = ''; this.cut = 0; this.slowSaid = false; this.winnerIdx = -1; this.winSecond = -1;
     this.lite = /[?&]lite=1/.test(QS);
     this.quality = R3D.quality = R3D.quality || guessQuality();
     R3D.inst = this; // 2026-10-19: テレビの「戻る」長押しの画面に、いまの 3D の細かさ・なめらかさを出すため（v2/tvswitch.js）
@@ -374,7 +374,8 @@ window.Race3D = (function () {
   };
   Race3D.prototype.setRace = function (race) {
     this.runSeq = (this.runSeq || 0) + 1; // 走っている本番・再生・勝ち馬のアップの描画ループを止める（v2 のテレビが途中でレースを切り替えるとき）
-    this.race = race; this.run = null; this.lane = null; this.phase = 'idle'; this.t = 0; this.slow = 1; this.tape = []; this.dust = []; this.label = ''; this.slowSaid = false; this.winnerIdx = -1;
+    this.exacta = null; this.exactaResult = null; this.photoPairIdx = null; this.photoPair = ''; // v4: 2 連単の倍率（画面側がレースを入れたあとに渡し直す）・写真判定の馬は前のレースのものを残さない
+    this.race = race; this.run = null; this.lane = null; this.phase = 'idle'; this.t = 0; this.slow = 1; this.tape = []; this.dust = []; this.label = ''; this.slowSaid = false; this.winnerIdx = -1; this.winSecond = -1;
     this.startS = C.startS(race.dist);
     this.gateS = C.gateS ? C.gateS(race.dist) : this.startS; this.gateOff = this.gateS - this.startS; // ゲートの位置（1200m はゴール板の少し手前）
     // 確定演出: 発走前（このレースのために）に setCues で渡された分は残し、前のレースの分は消す（何も無ければ ?cues= の上書き）
@@ -390,6 +391,10 @@ window.Race3D = (function () {
     this.forwardCues();
     this.gateState = ''; this.boardText = null; this.setGate('closed');
     this.buildHorses(race);
+    { // 文字（Noto Sans JP）: 馬名の文字も読み込む。まだ読めていなければ、読めた時点でゼッケン・足元の札の馬番を描き直す（2026-10-21）
+      const was = fontsOk;
+      loadFonts(race.horses.map((h) => h.name || '').join('') + FONT_SAMPLE).then((ok) => { if (ok && !was && this.race === race) (this.horses3d || []).forEach((hz) => { if (hz && hz.refreshText) { try { hz.refreshText(); } catch (e) { warnOnce('Horse.refreshText', e); } } }); });
+    }
     this.makeDirector();
     this.cam.mode = ''; this.placeCamera(0, true); this.draw(0);
     this.prewarm();
@@ -616,6 +621,13 @@ window.Race3D = (function () {
       //   手前に来る馬は winnerClear でこのカットの間だけ映さない）
       // 喜ぶ勝ち馬（講評 r3 の 6）: 止めて立ち上がらせるのをやめ、首を振りながら誇らしげに速歩（約 3.6m/秒）。負けた馬も 3m/秒までゆっくり落とす（追い越していかない）
       const win = this.phase === 'winner' && this.winStage !== 'back' && i === this.winnerIdx, cel = this.phase === 'winner' && this.winStage !== 'back', floor = win ? 3.6 : cel ? 3 : this.phase === 'winner' ? 5 : 4;
+      const w0 = this.winnerIdx;
+      if (cel && i === this.winSecond && w0 >= 0 && run.finish[w0]) {
+        /* v4（2 連単）: 2 着は 1 着のアップの頭から勝ち馬のすぐ後ろ（鼻先が勝ち馬の腹のあたり＝1.4m 後ろ）へ寄ってきて、勝ち馬と同じ速さで並ぶ
+           （遅れていればキャンターで追いつき、近ければ速歩に落とす。横は進路取り updateLanes が勝ち馬の隣へよける）。2 着のアップ・2 頭の絵のため */
+        const gap = this.horseS(w0) - this.horseS(i), vt = clamp((this.vel[w0] || 3.6) + clamp((gap - 1.4) * 0.9, -2.2, 6), 1.2, 10);
+        this.vel[i] += (vt - this.vel[i]) * (1 - Math.exp(-dt / 0.6));
+      } else
       this.vel[i] = floor + (this.vel[i] - floor) * Math.exp(-dt / (win ? 0.5 : 1.6));
       this.ext[i] = Math.min(140, this.ext[i] + this.vel[i] * dt);
       this.spd[i] = this.vel[i];
@@ -641,7 +653,7 @@ window.Race3D = (function () {
       else { const p = this.horsePos(i); horses.push({ x: p.x, z: p.z, hx: p.hx, hz: p.hz, s: this.run ? Math.min(1.04, this.run.pos[i]) * race.dist + (this.ext[i] || 0) : this.horseS(i) - this.startS, lane: this.lane ? this.lane[i] : laneR(i), type, height, body }); } // 発走前の s は発走地点からの m（ゲートの後ろで待つ馬は負）
     }
     const Li = this.leaderIdx(), u = this.run ? Math.min(1, this.run.pos[Li]) : 0;
-    return { phase, t: this.t, raceT: this.run ? this.run.t : 0, dist: race.dist, startS: this.startS, horses, leader: Li, remain: race.dist * (1 - u), gone: race.dist * u, paddockIdx: this.paddockIdx(), winnerIdx: this.winnerIdx, winStage: this.phase === 'winner' ? this.winStage || '' : '', replayStage: this.phase === 'replay' ? this.replayStage || '' : '', slow: this.slow, gateOpen: !!(this.run && this.run.t > 0.05), gateS: this.gateS, gateIn: this.gi && phase === 'gatein' ? { t: this.gi.t, cue: this.gi.cue, focus: this.giPlan.sideFocus != null ? this.giPlan.sideFocus : this.giPlan.focus, side: this.giPlan.late >= 0 ? this.giPlan.side : '', late: this.giPlan.late, balkK: this.giBalkK(), order: this.giPlan.order } : null, eyeGlow: this.eyeGlowK(), eyeHorse: this.cueHorse('eye'), snap: !!snap, surface: race.surface, weather: race.weather, boost: this.phase === 'run' ? this.boostK : null }; // boost: 応援の加速の強さ（馬ごと 0..1。カメラが低い横の絵を差し込む）
+    return { phase, t: this.t, raceT: this.run ? this.run.t : 0, dist: race.dist, startS: this.startS, horses, leader: Li, remain: race.dist * (1 - u), gone: race.dist * u, paddockIdx: this.paddockIdx(), winnerIdx: this.winnerIdx, winStage: this.phase === 'winner' ? this.winStage || '' : '', winFocus: this.phase === 'winner' && this.winStage === 'second' && this.winSecond >= 0 ? this.winSecond : -1, winPair: this.phase === 'winner' && this.winStage === 'both' && this.winSecond >= 0 ? [this.winnerIdx, this.winSecond] : null, replayStage: this.phase === 'replay' ? this.replayStage || '' : '', photoPair: this.phase === 'replay' && this.replayStage === 'photo' && this.photoPairIdx ? this.photoPairIdx : null, slow: this.slow, gateOpen: !!(this.run && this.run.t > 0.05), gateS: this.gateS, gateIn: this.gi && phase === 'gatein' ? { t: this.gi.t, cue: this.gi.cue, focus: this.giPlan.sideFocus != null ? this.giPlan.sideFocus : this.giPlan.focus, side: this.giPlan.late >= 0 ? this.giPlan.side : '', late: this.giPlan.late, balkK: this.giBalkK(), order: this.giPlan.order } : null, eyeGlow: this.eyeGlowK(), eyeHorse: this.cueHorse('eye'), snap: !!snap, surface: race.surface, weather: race.weather, boost: this.phase === 'run' ? this.boostK : null }; // boost: 応援の加速の強さ（馬ごと 0..1。カメラが低い横の絵を差し込む）
   };
   Race3D.prototype.placeCamera = function (dt, snap) {
     if (!this.race) return;
@@ -707,7 +719,7 @@ window.Race3D = (function () {
     const g = this.group(whole ? n : mode === 'front' || mode === 'replay' ? 2 : 3), gp = pointAt(g.mid, RI + 3.5);
     let tgt = { x: gp.x, z: gp.z };
     if (mode.startsWith('paddock')) tgt = this.horsePos(this.paddockIdx());
-    else if (mode === 'winner') tgt = this.horsePos(this.winnerIdx >= 0 ? this.winnerIdx : Li);
+    else if (mode === 'winner') { const fo = this.winnerIdx >= 0 ? this.winFocus() : [Li], ps = fo.map((i) => this.horsePos(i)); tgt = { x: ps.reduce((a, q) => a + q.x, 0) / ps.length, z: ps.reduce((a, q) => a + q.z, 0) / ps.length }; } // v4: 2 着のアップは 2 着・2 頭の絵は 2 頭の間
     else if (mode === 'front') { const lp = lead; tgt = { x: (lp.x * 2 + gp.x) / 3, z: (lp.z * 2 + gp.z) / 3 }; }
     let P, size = 0.3, fitW = 0, sway = 0.1, ty = 1.1;
     if (mode.startsWith('paddock')) { const hp = this.horsePos(this.paddockIdx()), o = outward(hp); P = { x: hp.x + hp.hx * 10 + o.x * 5, y: 3.4, z: hp.z + hp.hz * 10 + o.z * 5 }; size = 0.58; }
@@ -726,9 +738,9 @@ window.Race3D = (function () {
     else if (mode === 'front') { P = { x: FINISH_S - LS / 2 - 14, y: 4.5, z: RI - 24 }; size = 0.32; fitW = g.span + 10; }
     else if (mode === 'replay') { const c0 = pointAt(FINISH_S - 6, RI - 3); P = { x: c0.x, y: 1.5, z: c0.z }; size = 0.62; fitW = g.span + 5; ty = 1.5; }
     else { // winner: 3D では勝ち馬がゴール後も流しているので、勝ち馬の 7m 先・内側 9m の低い位置に据えて、横を通る勝ち馬を追う（ほかの馬は勝ち馬の向こうに入りやすい）
-      const wi = this.winnerIdx >= 0 ? this.winnerIdx : Li;
-      if (snap || cam.mode !== 'winner' || this.winCamS == null) { this.winCamS = this.horseS(wi) + 7; this.winCamR = (this.lane ? this.lane[wi] : RI + 2) - 9; }
-      const c0 = pointAt(this.winCamS, this.winCamR); P = { x: c0.x, y: 1.8, z: c0.z }; size = 0.6;
+      const fo = this.winnerIdx >= 0 ? this.winFocus() : [Li], wi = fo[0], pair = fo.length > 1;
+      if (snap || cam.mode !== 'winner' || this.winCamS == null) { this.winCamS = this.horseS(wi) + (pair ? 10 : 7); this.winCamR = (this.lane ? this.lane[wi] : RI + 2) - (pair ? 12 : 9); }
+      const c0 = pointAt(this.winCamS, this.winCamR); P = { x: c0.x, y: 1.8, z: c0.z }; size = pair ? 0.42 : 0.6;
     }
     const T = { x: tgt.x + Math.sin(t * 1.3) * sway, y: ty + Math.cos(t * 0.9) * sway * 0.3, z: tgt.z + Math.cos(t * 1.1) * sway };
     if (P.z > ST) for (let k = 0; k < 4 && blocked(P, T); k++) P.x += (k % 2 ? 1 : -1) * 55 * (k + 1);
@@ -746,9 +758,32 @@ window.Race3D = (function () {
 
   /* ゴール前スロー（2026-10-16 から毎レース。前は接戦のときだけ）の速さの倍率を 1 コマ分進める。st = { slow, slowLock }。
      本番（start）と、v2 のテレビが「何秒後に何が起きるか」を先に計算する Race3D.timeline の両方で使う（同じ式で同じ時間割になる） */
+  /* 写真判定の決まり（v4・2 連単。2026-10-21）: 1 着と 2 着の差、または 2 着と 3 着の差が PHOTO_GAP 秒以内なら写真判定。
+     finish: 馬ごとのゴール時刻（0 以下＝まだ）。→ { photo, top: 1・2 着が接戦, second: 2・3 着が接戦, pair: 'top' | 'second' | 'both' | '', gap12, gap23, order: ゴールした順の馬の添字 }
+     サーバー（v2/core.js の revealAt に写真判定の秒を足す所）も同じ決まりにすること（V4_RACE_NOTES.md） */
+  const PHOTO_GAP = 0.05, PHOTO_GAP2 = 0.05;
+  function photoOf(finish) {
+    const idx = []; (finish || []).forEach((f, i) => { if (f > 0) idx.push(i); }); idx.sort((x, y) => finish[x] - finish[y]);
+    const g12 = idx.length >= 2 ? finish[idx[1]] - finish[idx[0]] : null, g23 = idx.length >= 3 ? finish[idx[2]] - finish[idx[1]] : null;
+    const top = g12 != null && g12 <= PHOTO_GAP, second = g23 != null && g23 <= PHOTO_GAP2;
+    return { photo: top || second, top, second, pair: top && second ? 'both' : top ? 'top' : second ? 'second' : '', gap12: g12, gap23: g23, order: idx };
+  }
+  const BASHIN = 2.4;   // 1 馬身（m）
   function slowStep(st, run, race, real) {
-    let a = -1, b = -1; for (let i = 0; i < run.n; i++) { const p = run.pos[i]; if (a < 0 || p > run.pos[a]) { b = a; a = i; } else if (b < 0 || p > run.pos[b]) b = i; }
+    let a = -1, b = -1, c = -1; for (let i = 0; i < run.n; i++) { const p = run.pos[i]; if (a < 0 || p > run.pos[a]) { c = b; b = a; a = i; } else if (b < 0 || p > run.pos[b]) { c = b; b = i; } else if (c < 0 || p > run.pos[c]) c = i; }
     const gap = (run.pos[a] - run.pos[b]) * race.dist;
+    /* 2 着争いのスロー（v4・2 連単）: 1 着がゴールした時点で 2 番手がゴールの手前 20m 以内・3 番手との差が 1 馬身以内なら、2 番手がゴールするまでスローを続ける
+       （位置だけで決まる＝どのテレビでも同じ。時間割の Race3D.timeline も同じ式）。いったん入ったら 1.5 馬身を超えて離れるか 2 着が入るまで */
+    if (run.done === 1 && c >= 0) {
+      const left2 = (1 - run.pos[b]) * race.dist, g23 = (run.pos[b] - run.pos[c]) * race.dist;
+      if (!st.lock2 && !st.lock2Done && left2 < 20 && g23 < BASHIN) st.lock2 = true;
+      if (st.lock2 && g23 > BASHIN * 1.5) { st.lock2 = false; st.lock2Done = true; }
+      if (st.lock2) {
+        st.slowLock = true; const u2 = clamp((23 - left2) / 11.5, 0, 1), t2 = 1 - 0.58 * u2 * u2 * (3 - 2 * u2);
+        st.slow += (t2 - st.slow) * Math.min(1, real * (t2 < st.slow ? 7 : 4));
+        return gap;
+      }
+    } else if (run.done >= 2 && st.lock2) { st.lock2 = false; st.lock2Done = true; }
     // ゴール前スロー: 先頭がゴールまで 45m を切ったら必ずスローに入り、1着がゴールした瞬間に元の速さへ戻す
     // （以前は全馬ゴールまで finishedAt が立たず、ゴール後に上位が並んで見えてスローが続いていた）
     const leadLeft = (1 - run.pos[a]) * race.dist;
@@ -763,8 +798,12 @@ window.Race3D = (function () {
     return gap;
   }
   const SIM_DT = 1 / 60;   // 追いつき・時間割の計算の 1 コマ（実時間の秒）
-  // ゴール後の流れの長さ（実時間の秒）: 0.6 秒の生の絵 → 0.65 秒止める → 再生（ゴールの横 2 秒・写真判定 約 4 秒・正面 3 秒）→ 勝ち馬（1.8＋2.8 秒）
-  const POST = { live: 0.6, hold: 0.65, goal: 2.0, photo: 0.37 / 0.15 + 1.5, head: 0.65 / 0.4, winner: 4.6 }; // head: 正面のスロー（replay の 'head' 区間 0.65 秒を 0.4 倍）
+  /* ゴール後の勝ち馬の場面（v4・2 連単。2026-10-21 オーナー「1着 → 2着 → 2頭いっしょ」）: 実時間の秒。
+     back: 減速して向かってくる勝ち馬を正面から → first: 1 着のアップ（金の「1着」）→ second: 2 着のアップ（銀の「2着」）→ both: 2 頭を並べて組み合わせの帯
+     （前は back 1.8 ＋ 勝ち馬のアップ 2.8 ＝ 4.6 秒。いまは 8.6 秒＝4 秒増）。早送りのテスト（timeScale > 2）は WIN_FAST */
+  const WIN_SEC = { back: 1.8, first: 2.4, second: 2.0, both: 2.4 }, WIN_FAST = { back: 0.9, first: 1.0, second: 0.9, both: 1.0 };
+  // ゴール後の流れの長さ（実時間の秒）: 0.6 秒の生の絵 → 0.65 秒止める → 再生（ゴールの横 2 秒・写真判定 約 4 秒・正面 3 秒）→ 勝ち馬の場面（WIN_SEC の合計 8.6 秒）
+  const POST = { live: 0.6, hold: 0.65, goal: 2.0, photo: 0.37 / 0.15 + 1.5, head: 0.65 / 0.4, winner: WIN_SEC.back + WIN_SEC.first + WIN_SEC.second + WIN_SEC.both }; // head: 正面のスロー（replay の 'head' 区間 0.65 秒を 0.4 倍）
   /* v2（全店同時）用: 決まった走り（run。Engine.replayRun などで作った、刻み方で結果が変わらないもの）を、実時間 1/60 秒ずつ
      ゴール前スローも含めて最後まで進め、レースの時間割（ゲートが開いてからの実時間の秒）を返す。渡した run は進んでしまうので、本番用とは別の run を渡すこと。
      → { finishWall: 1 着がゴールした実時間, endWall: ゴール後の生の絵が終わる実時間, postSec: そのあと勝ち馬のアップが終わるまで, totalSec, photo, order, finish } */
@@ -779,10 +818,12 @@ window.Race3D = (function () {
       if (!finW && run.finish.some((x) => x > 0)) finW = w;
       if (fin && run.t > fin + POST.live) break;
     }
-    const f = run.finish.filter((x) => x > 0).sort((x, y) => x - y), photo = f.length >= 2 && f[1] - f[0] <= 0.05;
+    const ph = photoOf(run.finish), photo = ph.photo; // v4: 2 着争いの写真判定も（区間の長さは同じ 1 回分）
     const postSec = POST.hold + POST.goal + (photo ? POST.photo : 0) + POST.head + POST.winner;
-    return { finishWall: finW, endWall: w, postSec, totalSec: w + postSec, photo, order: run.order(), finish: run.finish.slice() };
+    return { finishWall: finW, endWall: w, postSec, totalSec: w + postSec, photo, photoPair: ph.pair, order: run.order(), finish: run.finish.slice() };
   };
+  Race3D.photoOf = photoOf; // 写真判定の決まり（テレビ・確認用）。Race3D.photoOf(ゴール時刻の配列) → { photo, pair, gap12, gap23, ... }
+  Race3D.PHOTO_GAP = PHOTO_GAP; Race3D.PHOTO_GAP2 = PHOTO_GAP2;
 
   /* ---------- 本番（2D 版と同じ進行。違うのは土ぼこりの色の持ち方・見た目の流し・draw に経過時間を渡すことだけ） ----------
      opt.run: 走りを外から渡す（v2: サーバーが決めた seed で再現した決まった走り。無ければ今までどおり Engine.createRun）
@@ -796,15 +837,15 @@ window.Race3D = (function () {
     if (this.gi && !this.gi.finished) this.giFinish(); this.gi = null; // ゲートインの途中で呼ばれても（テストなど）そのまま発走
     this.cuesFresh = false; this.eyeAt = null; this.eyeFired = false; this.eyeFireAt = null; // 確定演出: 走り出したら「このレースの分」。目の光は 1 レース 1 回（再生では光らない）
     this.markBets();
-    this.onPhase = opt.onPhase || null; this.photo = false; // 段階の知らせ（game.js の中継のグラフィックス: 'photo' 'replay' 'winner'）
+    this.onPhase = opt.onPhase || null; this.photo = false; this.photoPair = ''; this.photo2_set = false; this.photoPairIdx = null; // 段階の知らせ（game.js の中継のグラフィックス: 'photo' 'replay' 'winner'）
     this.boostLog = [];
     this.boostFn = opt.boost || null; this.boostK = race.horses.map(() => 0); this.boostOn = race.horses.map(() => false); this.clearFoods();
-    this.phase = 'run'; this.t = 0; this.tape = []; this.slow = 1; this.lane = null; this.slowSaid = false; this.winnerIdx = -1; this.winnerIdx_set = false; this.saidStart = false; this.saidCorner = false; this.saidStraight = false; this.split1000 = null; this.lastCall = 0; this.callNo = 0; this.t600 = null; this.last3f = null; this.t800 = null; this.finalAt = 0;
+    this.phase = 'run'; this.t = 0; this.tape = []; this.slow = 1; this.lane = null; this.slowSaid = false; this.winnerIdx = -1; this.winSecond = -1; this.winnerIdx_set = false; this.saidStart = false; this.saidCorner = false; this.saidStraight = false; this.split1000 = null; this.lastCall = 0; this.callNo = 0; this.t600 = null; this.last3f = null; this.t800 = null; this.finalAt = 0;
     this.ext = race.horses.map(() => 0); this.vel = race.horses.map(() => 0); this.spd = race.horses.map(() => 0); this.winCamS = null;
     this.simWall = 0; this.catchUps = 0; this.holdFn = typeof opt.hold === 'function' ? opt.hold : null;
     const seq = this.runSeq = (this.runSeq || 0) + 1;
     return new Promise((resolve) => {
-      let last = performance.now(), leader = -1, leaderSince = 0, finishedAt = 0, said200 = false, quiet = false;
+      let last = performance.now(), leader = -1, leaderSince = 0, finishedAt = 0, said200 = false, said2nd = false, quiet = false;
       self.endHold = 0;
       // opt.replay: false＝リプレイなし、'short'＝ゴールの横（と写真判定）だけ。opt.winner: false＝勝ち馬のアップなし（v2 の店ごとの場面の設定）
       const startReplay = () => { const run = self.run, result = { order: run.order(), finish: run.finish.slice() }; const rp = opt.replay === false ? Promise.resolve() : self.replay(Math.min.apply(null, run.finish.filter((x) => x > 0)), { short: opt.replay === 'short' }); rp.then(() => (opt.winner === false ? null : self.winnerShot())).then(() => { self.phase = 'done'; resolve(result); }); };
@@ -843,13 +884,25 @@ window.Race3D = (function () {
           if (!kicked[i] && !run.finish[i] && ((ty === 'sashi' && run.pos[i] > 0.55) || (ty === 'oikomi' && run.pos[i] > 0.68))) { kicked[i] = 1; say((i + 1) + '番 仕掛けた！'); }
         }
         if (!said200 && remain <= 200) { said200 = true; const o2 = race.horses.map((_, i) => i).sort((p, q) => run.pos[q] - run.pos[p]); say('残り 200m！ ' + (o2[0] + 1) + '番先頭、' + (o2[1] + 1) + '番が追ってくる！'); }
-        if ((self.slow < 0.6 || slowSt.slowLock) && !self.slowSaid && gap < 2.5) { self.slowSaid = true; say('ゴール前 大接戦！'); } // スローは残り 24m からなので、接戦と決まった時（残り 45m）に言う
+        // v4（2 連単）: 2 着争いも言う。残り 150〜85m（テレビはゴール前 70m から字幕を止めるのでその前）に 1 回だけ。接戦のときだけ（離れていれば何も言わない）
+        if (said200 && !said2nd && !finishedAt && run.n >= 3) {
+          const left = (1 - leadU) * race.dist;
+          if (left <= 150 && left > 85) {
+            const o3 = race.horses.map((_, i) => i).sort((p, q) => run.pos[q] - run.pos[p]), g12 = (run.pos[o3[0]] - run.pos[o3[1]]) * race.dist, g23 = (run.pos[o3[1]] - run.pos[o3[2]]) * race.dist, N = (i) => (i + 1) + '番';
+            const line = g23 <= BASHIN * 1.25 ? (g12 >= BASHIN * 0.7 ? '2着争いは ' + N(o3[1]) + 'と ' + N(o3[2]) + '！' : N(o3[0]) + '、' + N(o3[1]) + '、' + N(o3[2]) + ' 3頭の争い！')
+              : g12 < BASHIN * 0.7 && g23 >= BASHIN * 2 ? N(o3[0]) + 'と ' + N(o3[1]) + 'の一騎打ち！' : '';
+            if (line) { said2nd = true; say(line); }
+          } else if (left <= 85) said2nd = true;
+        }
+        if ((self.slow < 0.6 || slowSt.slowLock) && !self.slowSaid && gap < 2.5 && !run.done) { self.slowSaid = true; say('ゴール前 大接戦！'); } // スローは残り 24m からなので、接戦と決まった時（残り 45m）に言う
         if (!quiet) {
           const dmax = self.dustFx.max;
           if (!finishedAt && !self.horseDust && self.dust.length < dmax) for (let i = 0; i < run.n; i++) if (Math.random() < 0.55) { const p = self.horsePos(i), sp = (run.speed[i] || 1) * race.dist / run.length; self.dust.push({ x: p.x - p.hx * 0.9, z: p.z - p.hz * 0.9, y: 0.05, vx: -p.hx * (2 + Math.random() * 3) + p.hx * sp * 0.6, vz: -p.hz * (2 + Math.random() * 3) + p.hz * sp * 0.6 + (Math.random() - 0.5), vy: 1.5 + Math.random() * 2.2, r: 0.05 + Math.random() * 0.06, a: 0.9, rgb: race.surface === 'dirt' ? DUST_RGB.dirt : (Math.random() < 0.6 ? DUST_RGB.turfA : DUST_RGB.turfB) }); }
           self.dust.forEach((d) => { d.x += (d.vx || 0) * dt; d.z += (d.vz || 0) * dt; d.vy = (d.vy || 0) - 9.8 * dt; d.y = Math.max(0, d.y + d.vy * dt); if (d.y === 0) d.a -= dt * 3; d.a -= dt * 0.8; }); self.dust = self.dust.filter((d) => d.a > 0);
         }
-        if (run.done >= 2 && !self.winnerIdx_set) { self.winnerIdx_set = true; /* 2 着の馬がゴールした時点で決める（全馬のゴールを待つと写真判定の字幕が遅れた） */ self.winnerIdx = run.order()[0]; const f = run.finish.slice().filter((x) => x > 0).sort((x, y) => x - y); if (f.length >= 2 && f[1] - f[0] <= 0.05) { self.label = 'PHOTO FINISH'; self.cut = self.onPhase ? 0 : 0.5; self.photo = true; self.emit('photo'); say('写真判定！'); } }
+        if (run.done >= 2 && !self.winnerIdx_set) { self.winnerIdx_set = true; /* 2 着の馬がゴールした時点で決める（全馬のゴールを待つと写真判定の字幕が遅れた） */ self.winnerIdx = run.order()[0]; if (photoOf(run.finish).top) { self.label = 'PHOTO FINISH'; self.cut = self.onPhase ? 0 : 0.5; self.photo = true; self.photoPair = 'top'; self.emit('photo', { pair: 'top' }); say('写真判定！'); } }
+        // v4（2 連単）: 3 着の馬がゴールした時点で 2 着争いの写真判定も（1 着争いと両方なら 'both'。字幕は 2 着のことだけ）
+        if (run.done >= 3 && !self.photo2_set) { self.photo2_set = true; if (photoOf(run.finish).second) { const both = !!self.photo; self.label = 'PHOTO FINISH'; if (!both) self.cut = self.onPhase ? 0 : 0.5; self.photo = true; self.photoPair = both ? 'both' : 'second'; self.emit('photo', { pair: self.photoPair }); say(both ? '2着も写真判定！' : '2着は写真判定！'); } }
         return !!(finishedAt && run.t > finishedAt + 0.6);
       }
       function frame(now) {
@@ -890,19 +943,26 @@ window.Race3D = (function () {
      3) ゴールの先から真正面の低い望遠: ゴール前 0.9 秒〜ゴール後 0.15 秒を 0.35 倍（約 3 秒）
      早送りのテスト（?speed=）では区間の長さも縮む。ctx.replayStage（'goal' 'photo' 'head'）でカメラが切り替わる */
   Race3D.prototype.replay = function (finishedAt, ro) {
-    const self = this, run = this.run, fin = run.finish.filter((x) => x > 0).sort((x, y) => x - y), gap = fin.length >= 2 ? fin[1] - fin[0] : 9;
+    const self = this, run = this.run, ph = photoOf(run.finish), ord = ph.order, gap = ph.gap12 != null ? ph.gap12 : 9;
     const segs = [{ st: 'goal', a: -0.7, b: 0.3, rate: 0.5 }];
-    if (gap <= 0.05) segs.push({ st: 'photo', a: -0.25, b: 0.12, rate: 0.15, freeze: 1.5 });
+    // 写真判定（v4: 2 着争いも）: 1 着争いがあれば 1 着の鼻がゴールに届いたコマで、2 着争いだけなら 2 着の鼻が届いたコマで止める（区間の長さはどちらも同じ）
+    const pairSecond = ph.pair === 'second', off = pairSecond ? gap : 0;
+    if (ph.photo) segs.push({ st: 'photo', a: off - 0.25, b: off + 0.12, rate: 0.15, freeze: 1.5 });
     // 正面のスローは短く（正面からだと馬が丸い塊に見える。ゴールの真横の再生を主役に。2026-10-14 見た目の講評）
     if (!(ro && ro.short)) segs.push({ st: 'head', a: -0.55, b: 0.1, rate: 0.4 });
     if (this.tape.filter((f) => f.t >= finishedAt - 0.7 && f.t <= finishedAt + 0.3).length < 10) return Promise.resolve();
     const live = run.pos.slice(), liveExt = this.ext.slice(), liveSpd = this.spd.slice(), liveLane = this.lane.slice(), liveLv = this.lv ? this.lv.slice() : null;
     // 1 着の鼻先がゴールに届いた時刻（馬の位置は胴の真下なので、鼻先までの長さ hdim.f の分だけ手前）。テープのコマの間を補って求める
-    const w0 = run.order()[0], tgt = 1 - (((this.hdim && this.hdim[w0] && this.hdim[w0].f) || 1.3) - 0.15) / this.race.dist; let tN = finishedAt; // hdim.f は首を伸ばしきった分を足してあるので 0.15m 引く
+    const w0 = pairSecond && ord[1] != null ? ord[1] : run.order()[0], tgt = 1 - (((this.hdim && this.hdim[w0] && this.hdim[w0].f) || 1.3) - 0.15) / this.race.dist; let tN = finishedAt + off; // hdim.f は首を伸ばしきった分を足してあるので 0.15m 引く
     for (let j = 0; j < this.tape.length - 1; j++) { const A = this.tape[j], B = this.tape[j + 1]; if (A.pos[w0] < tgt && B.pos[w0] >= tgt) { tN = A.t + (B.t - A.t) * (tgt - A.pos[w0]) / ((B.pos[w0] - A.pos[w0]) || 1); break; } }
     this.noseT = tN; this.noseIdx = w0;
-    const L = gap / 0.14; this.photoMargin = L < 0.15 ? 'ハナ' : L < 0.3 ? 'アタマ' : L < 0.45 ? 'クビ' : L < 0.625 ? '1/2 馬身' : L < 0.875 ? '3/4 馬身' : '1 馬身';
-    this.phase = 'replay'; this.label = 'REPLAY'; this.dust = []; this.photoHold = 0; this.emit('replay', { photo: !!this.photo });
+    const mgOf = (g) => { const L = g / 0.14; return L < 0.15 ? 'ハナ' : L < 0.3 ? 'アタマ' : L < 0.45 ? 'クビ' : L < 0.625 ? '1/2 馬身' : L < 0.875 ? '3/4 馬身' : '1 馬身'; };
+    // 写真判定の小窓に出す馬（着順の上から）と、それぞれ 1 つ上の着との着差: 1 着争い [1着, 2着]・2 着争い [2着, 3着]・両方 [1着, 2着, 3着]
+    this.photoPair = ph.pair; this.photoPairIdx = ph.pair === 'both' ? ord.slice(0, 3) : pairSecond ? ord.slice(1, 3) : ord.slice(0, 2);
+    this.photoRanks = ph.pair === 'both' ? [0, 1, 2] : pairSecond ? [1, 2] : [0, 1];
+    this.photoMargins = this.photoPairIdx.map((i, k) => (k ? mgOf(run.finish[i] - run.finish[this.photoPairIdx[k - 1]]) : ''));
+    this.photoMargin = mgOf(pairSecond ? ph.gap23 : gap);
+    this.phase = 'replay'; this.label = 'REPLAY'; this.dust = []; this.photoHold = 0; this.emit('replay', { photo: ph.photo, pair: ph.pair });
     return new Promise((resolve) => {
       let si = -1, tape = null, k = 0, acc = 0, last = performance.now(), hold = 0, held = false; const seq = self.runSeq;
       // 記録のコマとコマの間を補う（補わないと 0.5 倍などの再生で全馬が 1 コマおきに止まってカクつく＝動きのテストで検出）
@@ -940,18 +1000,30 @@ window.Race3D = (function () {
       requestAnimationFrame(frame);
     });
   };
-  /* 勝ち馬のアップ（講評 r2 の 7「手前に別の馬がかぶらない」）: カットの最初のコマで、カメラから見て勝ち馬より手前〜横（勝ち馬の距離 + 4m まで）にいて
-     画面に入る負けた馬を、このカットの間だけ映さない（カットの頭で決めて途中では変えない＝消える瞬間は見えない）。奥の馬は背景として残す */
+  /* 勝ち馬のアップ（講評 r2 の 7「手前に別の馬がかぶらない」）: カットの最初のコマで、カメラから見て主役より手前〜横（主役の距離 + 4m まで）にいて
+     画面に入る負けた馬を、このカットの間だけ映さない（カットの頭で決めて途中では変えない＝消える瞬間は見えない）。奥の馬は背景として残す。
+     v4（2 連単）: 主役は段階ごと（1 着のアップ＝1 着・2 着のアップ＝2 着・2 頭いっしょ＝1 着と 2 着）。2 着のアップの 1 着（相方）は、ずっと奥にいるときだけ映す */
+  Race3D.prototype.winFocus = function () {
+    const w = this.winnerIdx, s2 = this.winSecond;
+    if (this.phase !== 'winner' || !(s2 >= 0) || s2 === w) return [w];
+    return this.winStage === 'second' ? [s2] : this.winStage === 'both' ? [w, s2] : [w];
+  };
   Race3D.prototype.winnerClear = function () {
     const n = this.race.horses.length, w = this.winnerIdx; this.winHide = [];
     if (w < 0 || w >= n) return;
     this.applyCamera();
-    const cp = this.camera.position, pw = this.horsePos(w), dW = Math.hypot(pw.x - cp.x, pw.z - cp.z);
+    const foc = this.winFocus(), cp = this.camera.position, dOf = (i) => { const p = this.horsePos(i); return Math.hypot(p.x - cp.x, p.z - cp.z); };
+    let dW = 0; foc.forEach((i) => { dW = Math.max(dW, dOf(i)); });
     const inView = (q) => { const s = this.project(q.x, 1, q.z); return !!s && s.x > -200 && s.x < W + 200 && s.y > -200 && s.y < H + 300; };
+    const partner = this.winStage === 'second' && foc[0] !== w ? w : -1; // 2 着のアップのときの 1 着
     for (let i = 0; i < n; i++) {
-      if (i === w) continue;
+      if (foc.indexOf(i) >= 0) continue;
+      if (i === partner) { // 相方（1 着）: 2 着より奥（2 着の距離 + 4m より遠い）なら背景として残す。近くなら映さない（2 着は勝ち馬の 1.4m 後ろへ寄るので、前から撮るカメラでは勝ち馬が手前に大きく映って主役が分かりにくい。2 頭は次の絵で並べる）
+        if (dOf(i) < dW + 4 && inView(this.horsePos(i))) this.winHide[i] = true;
+        continue;
+      }
       // いまと、このカットの間（最大 2.8 秒）に進む先（負けた馬は 5m/秒まで落としながら流れる: advanceOverrun）のどこかで、
-      // 画面に入っていて勝ち馬より手前〜横（勝ち馬の距離 + 4m まで）なら映さない（カメラの後ろから前へ出てくる馬も）
+      // 画面に入っていて主役より手前〜横（主役の距離 + 4m まで）なら映さない（カメラの後ろから前へ出てくる馬も）
       const lr = this.lane ? this.lane[i] : laneR(i), v0 = this.vel[i] || 5, s0 = this.horseS(i);
       for (let k = 0; k <= 4; k++) {
         const tt = k * 0.7, q = k ? pointAt(s0 + 5 * tt + Math.max(0, v0 - 5) * 1.6 * (1 - Math.exp(-tt / 1.6)), lr) : this.horsePos(i);
@@ -959,26 +1031,44 @@ window.Race3D = (function () {
       }
     }
   };
+  /* v4: 2 着が勝ち馬の隣に来たら、横の間隔を 2.2m 以上に（2 頭の絵で 2 頭が重ならない・並んで見える）。いまいる側へ、ラチの内側に収まらなければ反対側へ。
+     横へ動く速さは 0.8m/秒まで（進路取りの横の速さ lv も同じだけにして、体の向きが動きに合う） */
+  Race3D.prototype.winSpread = function (dt) {
+    const w = this.winnerIdx, s2 = this.winSecond, y = this.lane; if (!y || !(s2 >= 0) || w < 0 || this.winStage === 'back') return;
+    if (Math.abs(this.horseS(w) - this.horseS(s2)) > 4) return; // まだ追いついていない
+    const want = 2.2, d = y[s2] - y[w], lo = RI + 1.4, hi = RO - 1.4; if (Math.abs(d) >= want) return;
+    let side = d >= 0 ? 1 : -1; if (y[w] + side * want > hi || y[w] + side * want < lo) side = -side;
+    const tgt = clamp(y[w] + side * want, lo, hi), mv = clamp(tgt - y[s2], -0.8 * dt, 0.8 * dt);
+    y[s2] += mv; if (this.lv) this.lv[s2] = mv / Math.max(1e-3, dt);
+  };
   Race3D.prototype.emit = function (ph, info) { if (this.onPhase) { try { this.onPhase(ph, info || {}); } catch (e) { warnOnce('onPhase', e); } } };
   Race3D.prototype.winnerShot = function () {
-    // ゴール後（ref/STRAIGHT_STUDY.md 3-2）: まず減速して向かってくる勝ち馬を正面から（1.8 秒）→ 止まって喜ぶ勝ち馬のアップ（2.8 秒。早送りのテストは 0.9 秒 → 1.6 秒）
-    const self = this, fast = (self.timeScale || 1) > 2; this.phase = 'winner'; this.winStage = 'back'; this.label = ''; this.winCamS = null; this.winHide = [];
+    /* ゴール後（ref/STRAIGHT_STUDY.md 3-2）: まず減速して向かってくる勝ち馬を正面から（back 1.8 秒）→ 止まって喜ぶ勝ち馬のアップ（first 2.4 秒）
+       → v4（2 連単。2026-10-21 オーナー）: 2 着のアップ（second 2.0 秒。2 着は勝ち馬のすぐ後ろまで寄ってきて並んで速歩）→ 2 頭を並べた絵と組み合わせの帯（both 2.4 秒。
+       v2 の hold の間はこの絵のまま発表まで続ける）。段階の知らせ: 'winback' → 'winner'（1 着）→ 'winner2'（2 着）→ 'winboth'（2 頭）。早送りのテストは WIN_FAST */
+    const self = this, fast = (self.timeScale || 1) > 2, WS = fast ? WIN_FAST : WIN_SEC; this.phase = 'winner'; this.winStage = 'back'; this.label = ''; this.winCamS = null; this.winHide = []; this.winStageAt = performance.now();
+    const o2 = self.run.order()[1], two = o2 != null && o2 !== self.winnerIdx && self.run.finish[o2] > 0;
+    this.winSecond = two ? o2 : -1;
     this.emit('winback', { winner: this.winnerIdx });
     this.placeCamera(0, true); this.winnerClear(); // 正面から: 勝ち馬より手前に来る馬は映さない
-    const celebrate = () => {
-      self.winStage = 'celebrate'; self.label = '1着 ' + (self.winnerIdx + 1) + '番';
-      self.emit('winner', { winner: self.winnerIdx, order: self.run.order() }); // 勝ち馬のカードと「獲得 ○枚」（game.js）
+    const N = (i) => (i + 1) + '番', comboLabel = '1着 ' + N(self.winnerIdx) + (two ? ' → 2着 ' + N(o2) : ''); // v4: 2 連単の組み合わせ（画面の部品を使わないときの左上の文字）
+    const stage = (st, label, ph) => {
+      self.winStage = st; self.winStageAt = performance.now(); self.label = label;
+      self.emit(ph, { winner: self.winnerIdx, second: two ? o2 : -1, order: self.run.order(), stage: st }); // 'winner' は勝ち馬のカードと「獲得 ○枚」（game.js）
       self.placeCamera(0, true); self.winnerClear();
     };
+    const T1 = WS.back, T2 = T1 + WS.first, T3 = T2 + WS.second, TE = T3 + WS.both; // 2 着がいない（まれ）ときは 1 着のアップを同じ長さだけ続ける
     return new Promise((resolve) => {
-      let last = performance.now(), back = fast ? 0.9 : 1.8, left = back + (fast ? 1.6 : 2.8); const seq = self.runSeq;
+      let last = performance.now(), el = 0; const seq = self.runSeq;
       function frame(now) {
         if (self.runSeq !== seq) return;
-        const real = Math.min(0.05, Math.max(0.001, (now - last) / 1000)); last = now; left -= real; self.t += real;
-        if (self.winStage === 'back' && (back -= real) <= 0) celebrate();
-        self.advanceOverrun(real); self.updateLanes(real); self.placeCamera(real, false); if (self.cut > 0) self.cut -= real; self.draw(real);
-        // opt.hold()（v2）: 結果発表の時刻まで勝ち馬のアップを続ける（残り秒が 0 より大きい間）
-        if (left <= 0 && !(self.holdFn && self.holdFn() > 0)) { self.label = ''; self.phase = 'run'; self.winStage = ''; self.winHide = []; resolve(); return; }
+        const real = Math.min(0.05, Math.max(0.001, (now - last) / 1000)); last = now; el += real; self.t += real;
+        if (self.winStage === 'back' && el >= T1) stage('celebrate', two ? '1着 ' + N(self.winnerIdx) : comboLabel, 'winner');
+        if (two && self.winStage === 'celebrate' && el >= T2) stage('second', '2着 ' + N(o2), 'winner2');
+        if (two && self.winStage === 'second' && el >= T3) stage('both', comboLabel, 'winboth');
+        self.advanceOverrun(real); self.updateLanes(real); self.winSpread(real); self.placeCamera(real, false); if (self.cut > 0) self.cut -= real; self.draw(real);
+        // opt.hold()（v2）: 結果発表の時刻まで最後の絵（2 頭いっしょ）を続ける（残り秒が 0 より大きい間）
+        if (el >= TE && !(self.holdFn && self.holdFn() > 0)) { self.label = ''; self.phase = 'run'; self.winStage = ''; self.winHide = []; resolve(); return; }
         requestAnimationFrame(frame);
       }
       requestAnimationFrame(frame);
@@ -1306,6 +1396,7 @@ window.Race3D = (function () {
           const rem = (1 - Math.min(1, run.pos[i])) * dist;
           st = { gait, speed: sp, lean, whip: !fin && rem < 360 && phase !== 'winner' ? clamp((360 - rem) / 120, 0, 1) : 0 };
           if (phase === 'winner' && this.winStage !== 'back' && i === this.winnerIdx) st = { gait: sp > 5 ? 'canter' : 'trot', speed: sp, lean: 0, whip: 0 }; // 勝ち馬は騎手を乗せたまま速歩（気分 'win' で首を振る）
+          else if (phase === 'winner' && this.winStage !== 'back' && i === this.winSecond) st = { gait: sp > 5 ? 'canter' : sp > 1.5 ? 'trot' : 'walk', speed: sp, lean: 0, whip: 0 }; // v4: 2 着も勝ち馬の隣で速歩（追いつくまではキャンター）
         }
       }
       // 向き: 進む向き＋進路を変えている分（外へ動くときは少し右へ）
@@ -1328,7 +1419,7 @@ window.Race3D = (function () {
       if ('dustBoost' in hz) { const k = dustTop && dustTop.indexOf(i) >= 0 && !run.finish[i] ? 1.7 : 1; if (hz._dk !== k) { hz._dk = k; try { hz.dustBoost = k; } catch (e) { warnOnce('Horse.dustBoost', e); } } }
       if (hz.setBoost) { const k = this.boostK ? this.boostK[i] || 0 : 0; if (hz._boost !== k) { hz._boost = k; try { hz.setBoost(k); } catch (e) { warnOnce('Horse.setBoost', e); } } }
       // ゴール後の気分（馬の部品の setMood）: 勝ち馬は首を振って喜び、ほかは少しうなだれる。リプレイ中は戻す
-      if (hz.setMood) { const m = run && phase !== 'replay' && run.finish[i] && this.winnerIdx >= 0 ? (i === this.winnerIdx ? 'win' : 'lose') : null; if (hz._mood !== m) { hz._mood = m; try { hz.setMood(m); } catch (e) { warnOnce('Horse.setMood', e); } } }
+      if (hz.setMood) { const m = run && phase !== 'replay' && run.finish[i] && this.winnerIdx >= 0 ? (i === this.winnerIdx ? 'win' : phase === 'winner' && i === this.winSecond ? null : 'lose') : null; /* v4: 2 着はアップで映すので、うなだれさせない */ if (hz._mood !== m) { hz._mood = m; try { hz.setMood(m); } catch (e) { warnOnce('Horse.setMood', e); } } }
       // 勝ち馬のアップでは騎手がムチを突き上げて喜ぶ（馬の部品の setJockeyPose）
       if (hz.setJockeyPose) { const jp = phase === 'winner' && i === this.winnerIdx ? 'celebrate' : null; if (hz._jpose !== jp) { hz._jpose = jp; try { hz.setJockeyPose(jp); } catch (e) { warnOnce('Horse.setJockeyPose', e); } } }
       // 確定演出（eye）: 最終コーナーで目が一度きらっと光る。途中から見始めて（追いつき）過ぎていたら光らせない
@@ -1571,7 +1662,24 @@ window.Race3D = (function () {
   /* ---------- テロップと画面の仕上げ（2D 版の drawHud / drawPost をそのまま。背景は透明） ---------- */
   const badge = Race2D.badge, roundRect = Race2D.roundRect;
   // テロップの文字: みんなでダービー風に、丸くて太いゴシック＋黒い太い縁取り
-  const TV_FONT = '"Hiragino Maru Gothic ProN","Hiragino Sans","Arial Rounded MT Bold","Helvetica Neue",Arial,sans-serif';
+  /* 文字（2026-10-21 オーナー: ゲーム全体を Noto Sans JP に統一。見出し・数字は 900、ふつうの文は 500〜700）。予備は端末のヒラギノ。
+     画面（index.html・tools/lab-v4race.html）が Google Fonts の Noto Sans JP を読み込む。キャンバスは読み込まれる前に描くと別の文字になるので、
+     このファイルを読んだ時点で読み込みを始め（Race3D.fontsReady）、読めたら毎コマ描き直す文字はそのまま Noto になる。
+     一度だけ描く絵（馬のゼッケン・足元の札）は、読めた時点で描き直す（setRace の refreshText）。待つのは最大 2.5 秒・失敗しても進む */
+  const NOTO = '"Noto Sans JP","Hiragino Sans",sans-serif';
+  const TV_FONT = NOTO;
+  const FONT_SAMPLE = '0123456789.,:-/ ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz 1着2着3着番位倍写真判定争いハナアタマクビ馬身残りパドックまもなく発走競馬場芝ダート晴曇雨スロー大接戦ゴール先頭' +
+    'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンァィゥェォャュョッーガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポヴ';
+  let fontsOk = false;
+  function loadFonts(text) {
+    try {
+      if (!document.fonts || !document.fonts.load) return Promise.resolve(false);
+      const t = text || FONT_SAMPLE;
+      const all = Promise.all(['500', '700', '900'].map((w) => document.fonts.load(w + ' 20px "Noto Sans JP"', t))).then(() => { const ok = document.fonts.check('900 20px "Noto Sans JP"', '1着'); if (ok) fontsOk = true; return ok; }).catch(() => false);
+      return Promise.race([all, new Promise((r) => setTimeout(() => r(false), 2500))]);
+    } catch (e) { return Promise.resolve(false); }
+  }
+  const fontsReady = loadFonts();
   function tvText(c, txt, x, y, size, col, align, weight) {
     c.font = (weight || 'bold') + ' ' + Math.round(size) + 'px ' + TV_FONT; c.textAlign = align || 'left'; c.textBaseline = 'middle';
     c.lineJoin = 'round'; c.lineWidth = Math.max(3, size * 0.26); c.strokeStyle = 'rgba(0,0,0,.75)'; c.strokeText(txt, x, y); c.fillStyle = col || '#fff'; c.fillText(txt, x, y);
@@ -1671,12 +1779,12 @@ window.Race3D = (function () {
     const race = this.race, run = this.run;
     if (this.phase === 'idle' && this.info && !this.gateShot) {
       const i = this.paddockIdx(), h = race.horses[i], inf = this.info(i) || {};
-      const MARU = '"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif';
+      const MARU = NOTO;
       c.fillStyle = 'rgba(0,0,0,.6)'; roundRect(c, 20, H - 144, 520, 124, 8); c.fill();
       c.fillStyle = h.color; roundRect(c, 20, H - 144, 80, 124, 8); c.fill();
-      c.fillStyle = h.ink; c.font = 'bold 54px "Helvetica Neue", Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(h.no), 60, H - 82);
-      c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = 'bold 34px ' + MARU; c.fillText(h.name, 116, H - 114);
-      c.font = '22px ' + MARU; c.fillStyle = '#ffd54f'; c.fillText(inf.line1 || '', 116, H - 74);
+      c.fillStyle = h.ink; c.font = '900 54px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(h.no), 60, H - 82);
+      c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = '900 34px ' + MARU; c.fillText(h.name, 116, H - 114);
+      c.font = '500 22px ' + MARU; c.fillStyle = '#ffd54f'; c.fillText(inf.line1 || '', 116, H - 74);
       c.fillStyle = '#ddd'; c.fillText(inf.line2 || '', 116, H - 42);
       c.fillStyle = 'rgba(0,0,0,.55)'; roundRect(c, W - 236, 12, 222, 40, 6); c.fill(); c.fillStyle = '#fff'; c.font = 'bold 20px ' + MARU; c.textAlign = 'center'; c.fillText((this.inPaddock() ? 'パドック  ' : 'まもなく発走  ') + (i + 1) + ' / ' + race.horses.length, W - 125, 32);
       return;
@@ -1684,7 +1792,7 @@ window.Race3D = (function () {
     if (!this.band) { this.band = c.createLinearGradient(0, H - 92, 0, H); this.band.addColorStop(0, 'rgba(0,0,0,0)'); this.band.addColorStop(1, 'rgba(0,0,0,.42)'); }
     c.fillStyle = this.band; c.fillRect(0, H - 92, W, 92);
     const dom = !!this.onPhase; // game.js が REPLAY・PHOTO FINISH・勝ち馬のカードを画面の部品で出す（講評 r2 の 2・7）。そのときはここでは描かない
-    if (this.label && !dom) { c.font = 'bold 20px sans-serif'; const w = c.measureText(this.label).width + 30; c.fillStyle = this.label === 'REPLAY' || this.label === 'PHOTO FINISH' ? 'rgba(220,40,40,.85)' : 'rgba(0,0,0,.6)'; roundRect(c, 14, 12, w, 34, 8); c.fill(); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(this.label, 14 + w / 2, 29); }
+    if (this.label && !dom) { c.font = '900 20px ' + NOTO; const w = c.measureText(this.label).width + 30; c.fillStyle = this.label === 'REPLAY' || this.label === 'PHOTO FINISH' ? 'rgba(220,40,40,.85)' : 'rgba(0,0,0,.6)'; roundRect(c, 14, 12, w, 34, 8); c.fill(); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(this.label, 14 + w / 2, 29); }
     const bugH = 40, bug = hudLogo(bugH * (this.k || 1));
     if (bug) { const bugW = bugH * bug.width / bug.height, a0 = c.globalAlpha; c.globalAlpha = a0 * 0.9; c.drawImage(bug, 12, H - 34 - bugH, bugW, bugH); c.globalAlpha = a0; }
     else { c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.beginPath(); c.arc(28, H - 40, 9, 0.6, 5.7); c.stroke(); c.fillStyle = '#ffd54f'; c.beginPath(); c.arc(28, H - 40, 3.2, 0, 6.283); c.fill();
@@ -1695,7 +1803,7 @@ window.Race3D = (function () {
     const fa = final ? Math.max(0, 1 - (nowMs - this.finalAt) / 800) : 1;
     tvText(c, 'casa競馬場  ' + (race.surface === 'dirt' ? 'ダート' : '芝') + race.dist + 'm  ' + { sunny: '晴', cloudy: '曇', rain: '雨' }[race.weather], 18, H - 17, 14, '#eeeeee', 'left');
     // 再生・勝ち馬のアップ: 止まった勝ちタイムの時計だけ（ref/STRAIGHT_STUDY.md 2-4）。接戦の 2 回目の再生で止めている間はゴールの縦の線と着差
-    if (run && dom && (this.phase === 'replay' || this.phase === 'winner')) { const f1 = run.finish.filter((x) => x > 0); if (f1.length) this.clockBox(c, Math.min.apply(null, f1), true, []); if (this.phase === 'replay' && this.photoHold > 0) this.photoLine(c); }
+    if (run && dom && (this.phase === 'replay' || this.phase === 'winner')) { const f1 = run.finish.filter((x) => x > 0); if (f1.length) this.clockBox(c, Math.min.apply(null, f1), true, []); if (this.phase === 'replay' && this.photoHold > 0) this.photoLine(c); this.comboBar(c); }
     if (!run || this.phase === 'winner' || this.phase === 'replay') return;
     const fin = run.finish.filter((x) => x > 0), done = fin.length > 0;
     const L_ = this.leaderIdx(), remain = Math.max(0, Math.round((1 - Math.min(1, run.pos[L_])) * race.dist / 10) * 10);
@@ -1709,11 +1817,12 @@ window.Race3D = (function () {
     const order = race.horses.map((_, i) => i).sort((p, q) => run.pos[q] - run.pos[p]);
     /* ordBig（v2 の店内モニターだけ。2026-10-20 オーナー「画面中央にもっと大きく。横だけずらせばいい」）: 通過順の丸を 1.8 倍にして、横だけ画面のまん中に置く（縦の位置は同じ）。
        幅は左下のロゴ・コース名（〜x250）と右下のコース図・距離（x814〜）に重ならないよう、丸の中心どうしで 380 まで（矢印と丸の半分を足しても x270〜730 に入る） */
-    const OB = this.ordBig ? 1.8 : 1, cap = this.ordBig ? 380 : 420, nn = order.length - 1;
+    /* v4（2 連単。2026-10-21）: 1 位・2 位の丸を目立たせる（1 位 1.2 倍・金の縁、2 位 1.1 倍・銀の縁、上に「1位」「2位」の札）。2 位と 3 位の間は少し空けて、上の 2 頭がひと組に見えるように */
+    const OB = this.ordBig ? 1.8 : 1, nn = order.length - 1, EMK = [1.2, 1.1], xo = (k) => (k >= 1 ? 3 * OB : 0) + (k >= 2 ? 7 * OB : 0), cap = (this.ordBig ? 380 : 420) - xo(nn);
     const ex = [0]; for (let k = 1; k < order.length; k++) ex.push(ex[k - 1] + Math.min(40, Math.max(0, (run.pos[order[k - 1]] - run.pos[order[k]]) * race.dist) * 4) * OB);
     const stp = nn > 0 ? Math.min(25 * OB, cap / nn) : 0;
     const esc = Math.min(1, Math.max(0, cap - stp * nn) / (ex[ex.length - 1] || 1));
-    const x0 = this.ordBig ? W / 2 - (stp * nn + (ex[ex.length - 1] || 0) * esc) / 2 : 240;
+    const x0 = this.ordBig ? W / 2 - (stp * nn + (ex[ex.length - 1] || 0) * esc + xo(nn)) / 2 : 240;
     // 本物の中継と同じく、画面の中で馬が走っている向きに先頭を置く（右へ走る画なら先頭が右端・矢印も右向き）。
     // 先頭の進む向きをカメラの右方向に投影して決める。カットが変わったらすぐ、同じカメラの中でははっきり傾いたときだけ切り替える（正面・真後ろでちらつかない）
     const lh = this.horsePos(L_); _r.setFromMatrixColumn(this.camera.matrixWorld, 0);
@@ -1726,13 +1835,37 @@ window.Race3D = (function () {
     if (dom && race.dist > 800) { const r8 = (1 - Math.min(1, run.pos[L_])) * race.dist; if (r8 <= 800 && this.t800 == null) this.t800 = run.t; if (r8 > 800) this.t800 = null; }
     if (dom && !this.no800 && this.t800 != null && run.t - this.t800 < 1.5 && run.t >= this.t800) { /* no800: v2 の店内モニターは出さない（2026-10-20 オーナー） */ c.globalAlpha = fa; c.fillStyle = 'rgba(20,36,54,.86)'; roundRect(c, 212, H - 118, 26, 76, 4); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(212, H - 118, 26, 3); c.fillStyle = '#fff'; c.font = 'bold 15px ' + CLK_FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; ['8', '0', '0', 'm'].forEach((ch, j) => c.fillText(ch, 225, H - 104 + j * 16)); }
     c.globalAlpha = fa * sa;
-    const span = stp * nn + (ex[ex.length - 1] || 0) * esc, toR = this.ordDir > 0;
-    const chipX = (k) => (toR ? x0 + span - (k * stp + ex[k] * esc) : x0 + k * stp + ex[k] * esc);
+    const span = stp * nn + (ex[ex.length - 1] || 0) * esc + xo(nn), toR = this.ordDir > 0;
+    const chipX = (k) => (toR ? x0 + span - (k * stp + ex[k] * esc + xo(k)) : x0 + k * stp + ex[k] * esc + xo(k));
+    const r0 = 11.5 * OB, aw = r0 * EMK[0] + 9.5 * OB; // 矢印は大きくした 1 位の丸の外に
     c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath();
-    if (toR) { const ax = chipX(0) + 21 * OB; c.moveTo(ax, H - 31); c.lineTo(ax - 7 * OB, H - 31 - 6 * OB); c.lineTo(ax - 7 * OB, H - 31 + 6 * OB); }
-    else { c.moveTo(x0 - 21 * OB, H - 31); c.lineTo(x0 - 14 * OB, H - 31 - 6 * OB); c.lineTo(x0 - 14 * OB, H - 31 + 6 * OB); }
+    if (toR) { const ax = chipX(0) + aw; c.moveTo(ax, H - 31); c.lineTo(ax - 7 * OB, H - 31 - 6 * OB); c.lineTo(ax - 7 * OB, H - 31 + 6 * OB); }
+    else { const ax = x0 - aw; c.moveTo(ax, H - 31); c.lineTo(ax + 7 * OB, H - 31 - 6 * OB); c.lineTo(ax + 7 * OB, H - 31 + 6 * OB); }
     c.fill();
-    for (let k = order.length - 1; k >= 0; k--) badge(c, chipX(k), H - 31, 11.5 * OB, race.horses[order[k]]);
+    /* 2026-10-21 オーナー「本物の中継は丸そのものが動く。今は丸の場所はそのままで数字だけ変わって見える」:
+       丸を馬ごとの駒にして、順位が変わったら前の場所から新しい場所へ横にすべらせる（約 0.3 秒）。動いている丸は少し浮かせて、
+       相手の丸の上を通り越すように見せる。大きさ（1 位・2 位）も同じ速さで変える。カットが変わって向きが入れ替わったら、すべらせずにその場に置く */
+    const dtO = this.ordT ? Math.min(0.1, Math.max(0, (nowMs - this.ordT) / 1000)) : 0; this.ordT = nowMs;
+    if (!this.ordX || this.ordRace !== race || this.ordSnap !== key + ':' + toR) { this.ordX = []; this.ordS = []; this.ordSnap = key + ':' + toR; this.ordRace = race; }
+    const fol = 1 - Math.exp(-dtO * 11), slots = [];
+    order.forEach((hi, k) => {
+      const tx = chipX(k), ts = EMK[k] || 1;
+      if (this.ordX[hi] == null) { this.ordX[hi] = tx; this.ordS[hi] = ts; }
+      const mv = tx - this.ordX[hi]; this.ordX[hi] += mv * fol; this.ordS[hi] += (ts - this.ordS[hi]) * fol;
+      slots.push({ hi, k, x: this.ordX[hi], s: this.ordS[hi], lift: Math.min(7 * OB, Math.abs(mv) * 0.35) });
+    });
+    // 描く順: 後ろの順位から。動いている丸はいちばん上に
+    slots.sort((a, b) => (a.lift > 1 ? 1 : 0) - (b.lift > 1 ? 1 : 0) || b.k - a.k);
+    for (const sl of slots) {
+      const { k, x } = sl, r = r0 * sl.s, y = H - 31 - sl.lift;
+      if (k < 2) { c.fillStyle = RANK_COL[k]; c.beginPath(); c.arc(x, y, r + 2.2 * OB, 0, 6.2832); c.fill(); }
+      badge(c, x, y, r, race.horses[sl.hi]);
+      if (k < 2) { // 上の札「1位」「2位」（その馬の丸についていく）
+        const fs2 = Math.round(7.5 * OB), pw = fs2 * 2.3, ph = fs2 + 4 * OB / 1.8 + 2, py = y - r - 2.2 * OB - ph - 1.5 * OB;
+        c.fillStyle = RANK_COL[k]; roundRect(c, x - pw / 2, py, pw, ph, ph / 2); c.fill();
+        c.fillStyle = '#142436'; c.font = '900 ' + fs2 + 'px ' + CLK_JP; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText((k + 1) + '位', x, py + ph / 2 + 0.5);
+      }
+    }
     c.globalAlpha = fa;
     const mx = W - 92, my = H - 40, sx = 0.17;
     c.lineCap = 'round'; c.lineJoin = 'round';
@@ -1754,20 +1887,23 @@ window.Race3D = (function () {
      photoLine（描く）と renderInset（足元の札を隠した絵を先に撮る）が同じものを使う */
   const PH_SW = 74, PH_SH = 40;
   Race3D.prototype.photoCrops = function () {
-    const run = this.run; if (!run) return null; const ord = run.order(), w = ord[0], lr = this.lane ? this.lane[w] : laneR(w), q = pointAt(FINISH_S, lr), a = this.project(q.x, 0, q.z); if (!a) return null;
-    // 上位 2 頭の鼻先（画面の点）: 馬の部品の頭の位置から少し前（無ければ体の大きさから）
+    const run = this.run; if (!run) return null; const ord = run.order();
+    // 小窓に出す馬（v4: 2 着争いなら 2 着・3 着、両方なら 1〜3 着。replay で決める）。無ければ今までどおり上位 2 頭
+    const pick = this.photoPairIdx && this.photoPairIdx.length >= 2 ? this.photoPairIdx : [ord[0], ord[1]], ranks = this.photoRanks && this.photoRanks.length === pick.length ? this.photoRanks : pick.map((_, k) => k);
+    const w = pick[0], lr = this.lane ? this.lane[w] : laneR(w), q = pointAt(FINISH_S, lr), a = this.project(q.x, 0, q.z); if (!a) return null;
+    // 鼻先（画面の点）: 馬の部品の頭の位置から少し前（無ければ体の大きさから）
     const nose = (i) => { const hz = this.horses3d[i]; try { if (hz && hz.getNosePosition) { hz.object3d.updateMatrixWorld(true); hz.getNosePosition(_v2); return this.project(_v2.x, _v2.y, _v2.z); } if (hz && hz.getHeadPosition) { hz.object3d.updateMatrixWorld(true); hz.getHeadPosition(_v2); const o = hz.object3d, yw = o.rotation.y; return this.project(_v2.x + Math.cos(yw) * 0.25, _v2.y - 0.1, _v2.z - Math.sin(yw) * 0.25); } } catch (e) { }
       const d = this.hdim && this.hdim[i], hh = (hz && hz.size && hz.size.height) || 2.45, p = pointAt(this.horseS(i) + ((d && d.f) || 1.3), this.lane ? this.lane[i] : laneR(i)); return this.project(p.x, hh * 0.62, p.z); };
     const sw = PH_SW, sh = PH_SH, items = [];
-    [w, ord[1]].forEach((i, r) => {
+    pick.forEach((i, r) => {
       if (i == null) return; const n = nose(i); if (!n) return;
       const both = Math.abs(n.x - a.x) <= sw * 0.7, cx = both ? (n.x + a.x) / 2 : n.x;
       const sx = clamp(cx - sw / 2, 0, W - sw), sy = clamp(n.y - sh / 2, 0, H - sh), lineIn = a.x >= sx + 2 && a.x <= sx + sw - 2;
-      items.push({ i, r, n, sx, sy, lineIn });
+      items.push({ i, r, rank: ranks[r], n, sx, sy, lineIn });
     });
-    return { a, w, ord, items };
+    return { a, w, ord, items, pair: this.photoPair || 'top' };
   };
-  /* 写真判定の小窓の元の絵: 足元の輪・馬番の札・土煙を隠して 1 回描き、上位 2 頭の鼻先のまわりだけ小さなキャンバスに写して元に戻す（2026-10-14: 2 着の窓が
+  /* 写真判定の小窓の元の絵: 足元の輪・馬番の札・土煙を隠して 1 回描き、写す馬の鼻先のまわりだけ小さなキャンバスに写して元に戻す（2026-10-14: 2 着の窓が
      ほかの馬の大きな「3」の札で隠れた）。写真判定で止めている間だけ（1 コマに描く回数が 1 回増える） */
   Race3D.prototype.renderInset = function () {
     this.inset = null;
@@ -1777,61 +1913,195 @@ window.Race3D = (function () {
     off(this.scene.getObjectByName('horseDust'));
     try {
       try { this.look.render(this.renderer, this.scene, this.camera); } catch (e) { this.renderer.render(this.scene, this.camera); }
-      const k = this.k || 1, cw = Math.max(1, Math.round(PH_SW * k)), ch = Math.max(1, Math.round(PH_SH * k));
-      const cv = this.insetCv || (this.insetCv = document.createElement('canvas')); if (cv.width !== cw || cv.height !== ch * 2) { cv.width = cw; cv.height = ch * 2; }
-      const g = cv.getContext('2d'); g.clearRect(0, 0, cw, ch * 2);
+      const k = this.k || 1, cw = Math.max(1, Math.round(PH_SW * k)), ch = Math.max(1, Math.round(PH_SH * k)), rows = Math.max(2, pc.items.length);
+      const cv = this.insetCv || (this.insetCv = document.createElement('canvas')); if (cv.width !== cw || cv.height !== ch * rows) { cv.width = cw; cv.height = ch * rows; }
+      const g = cv.getContext('2d'); g.clearRect(0, 0, cw, ch * rows);
       pc.items.forEach((it) => g.drawImage(this.glcv, it.sx * k, it.sy * k, PH_SW * k, PH_SH * k, 0, it.r * ch, cw, ch));
       this.inset = { cv, ch, crops: pc };
     } finally { hide.forEach((o) => { o.visible = true; }); }
   };
+  /* 写真判定の小窓（v4・2026-10-21）: 見出しに「どの着の争いか」（1着争い／2着争い／1〜3着）と着差。窓は 2 つ（3 頭なら 3 つ・少し小さく）。
+     各窓の上に「n着」の札（1 着＝金・2 着＝銀・3 着＝銅）と馬名、2 つ目からは 1 つ上の着との差（ハナ・アタマ…）を窓の下に */
+  const RANK_COL = ['#f2b705', '#c9d3de', '#c8834a'];
   Race3D.prototype.photoLine = function (c) {
-    const pc = (this.inset && this.inset.crops) || this.photoCrops(); if (!pc) return; const run = this.run, w = pc.w, ord = pc.ord, a = pc.a;
+    const pc = (this.inset && this.inset.crops) || this.photoCrops(); if (!pc) return; const run = this.run, a = pc.a, items = pc.items, n3 = items.length >= 3;
     const RED = '#ff2b2b';
     c.save(); c.strokeStyle = RED; c.lineWidth = 2; c.shadowColor = 'rgba(0,0,0,.55)'; c.shadowBlur = 3; c.beginPath(); c.moveTo(a.x, 0); c.lineTo(a.x, H); c.stroke(); c.restore();
-    const k = this.k || 1, sw = PH_SW, sh = PH_SH, iw = sw * 2.6, ih = sh * 2.6, ix = W - 14 - iw;
-    c.fillStyle = 'rgba(20,36,54,.92)'; roundRect(c, ix - 4, 62, iw + 8, 30 + (ih + 28) * 2, 5); c.fill();
-    c.fillStyle = '#fff'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.font = 'bold 17px ' + CLK_JP; c.fillText('写真判定', ix + 4, 77);
-    c.textAlign = 'right'; c.fillStyle = '#ffd54f'; c.fillText('着差 ' + (this.photoMargin || 'ハナ'), ix + iw - 4, 77);
-    pc.items.forEach((it) => {
-      // 切り出しはその馬の鼻先のまわり（2 着が 0.7m 以上離れると、決勝線の所を切っても芝と線しか映らなかった）。
-      // 鼻先と決勝線が 1 枚に入るなら両方が入るように間を、入らなければ鼻先を真ん中にして、線の代わりに「差 0.7m（アタマ）」の札
-      const i = it.i, r = it.r, sx = it.sx, sy = it.sy, lineIn = it.lineIn, iy = 92 + r * (ih + 28) + 22, h = this.race.horses[i];
-      badge(c, ix + 12, iy - 12, 9, h); c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = 'bold 15px ' + CLK_JP; c.fillText((r + 1) + '着  ' + h.name, ix + 26, iy - 12);
+    const k = this.k || 1, sw = PH_SW, sh = PH_SH, zoom = n3 ? 1.9 : 2.6, iw = sw * zoom, ih = sh * zoom, gapY = 26, ix = W - 14 - iw, y0 = 62;
+    const boxH = 34 + items.length * (ih + gapY) + 4;
+    c.fillStyle = 'rgba(20,36,54,.92)'; roundRect(c, ix - 4, y0, iw + 8, boxH, 5); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(ix - 4, y0, iw + 8, 3);
+    const ttl = pc.pair === 'second' ? '2着争い' : pc.pair === 'both' ? '1〜3着' : '1着争い';
+    c.textBaseline = 'middle'; c.textAlign = 'left'; c.fillStyle = '#fff'; c.font = '900 16px ' + CLK_JP; c.fillText('写真判定', ix + 2, y0 + 18);
+    const tw = c.measureText('写真判定').width; c.font = 'bold 14px ' + CLK_JP; const pw = c.measureText(ttl).width + 12;
+    c.fillStyle = pc.pair === 'second' ? '#c9d3de' : '#f2b705'; roundRect(c, ix + tw + 8, y0 + 8, pw, 21, 4); c.fill(); c.fillStyle = '#142436'; c.fillText(ttl, ix + tw + 14, y0 + 19);
+    items.forEach((it) => {
+      // 切り出しはその馬の鼻先のまわり。鼻先と決勝線が 1 枚に入るなら両方が入るように間を、入らなければ鼻先を真ん中にして、線の代わりに「差 0.7m（アタマ）」の札
+      const i = it.i, r = it.r, rank = it.rank != null ? it.rank : r, sx = it.sx, sy = it.sy, lineIn = it.lineIn, iy = y0 + 34 + r * (ih + gapY) + 20, h = this.race.horses[i];
+      const rc = RANK_COL[rank] || '#fff';
+      c.fillStyle = rc; roundRect(c, ix, iy - 20, 34, 17, 3); c.fill(); c.fillStyle = '#142436'; c.textAlign = 'center'; c.font = '900 12px ' + CLK_JP; c.fillText((rank + 1) + '着', ix + 17, iy - 11);
+      badge(c, ix + 48, iy - 11.5, 8.5, h); c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = 'bold 14px ' + CLK_JP; c.fillText(h.name, ix + 61, iy - 11);
       try {
         c.save(); c.beginPath(); c.rect(ix, iy, iw, ih); c.clip(); c.imageSmoothingEnabled = true;
         const ins = this.inset; // 足元の札を隠して撮った絵（renderInset）。無ければいまの画面から
         if (ins && ins.crops === pc) c.drawImage(ins.cv, 0, r * ins.ch, ins.cv.width, ins.ch, ix, iy, iw, ih); else c.drawImage(this.glcv, sx * k, sy * k, sw * k, sh * k, ix, iy, iw, ih);
         if (lineIn) { const lx = ix + (a.x - sx) * (iw / sw); c.strokeStyle = RED; c.lineWidth = 2; c.beginPath(); c.moveTo(lx, iy); c.lineTo(lx, iy + ih); c.stroke(); }
-        else if (r > 0) { // 決勝線が窓の外: 1 着との差を札で
-          const gm = Math.max(0, (run.pos[w] - run.pos[i]) * this.race.dist), txt = '差 ' + gm.toFixed(1) + 'm（' + (this.photoMargin || 'ハナ') + '）';
-          c.font = 'bold 13px ' + CLK_JP; const tw = c.measureText(txt).width + 14; c.fillStyle = 'rgba(20,36,54,.88)'; roundRect(c, ix + 6, iy + ih - 26, tw, 20, 4); c.fill();
-          c.fillStyle = '#ffd54f'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(txt, ix + 13, iy + ih - 16);
+        if (r > 0) { // 1 つ上の着との差: 決勝線が窓の外なら距離（m）も
+          const up = items[r - 1] ? items[r - 1].i : pc.w, mg = (this.photoMargins && this.photoMargins[r]) || this.photoMargin || 'ハナ';
+          const gm = Math.max(0, (run.pos[up] - run.pos[i]) * this.race.dist), txt = lineIn ? (rank) + '着と ' + mg + '差' : '差 ' + gm.toFixed(1) + 'm（' + mg + '）';
+          c.font = 'bold 13px ' + CLK_JP; const tw2 = c.measureText(txt).width + 14; c.fillStyle = 'rgba(20,36,54,.88)'; roundRect(c, ix + 6, iy + ih - 25, tw2, 20, 4); c.fill();
+          c.fillStyle = '#ffd54f'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(txt, ix + 13, iy + ih - 15);
         }
         c.restore();
       } catch (e) { c.restore(); }
-      c.strokeStyle = '#f2b705'; c.lineWidth = 1.5; c.strokeRect(ix, iy, iw, ih);
+      c.strokeStyle = rc; c.lineWidth = 2; c.strokeRect(ix, iy, iw, ih);
       c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 1; c.strokeRect(sx, sy, sw, sh);   // 拡大している所
     });
   };
+  /* v4（2 連単）: 再生・勝ち馬のアップの下のまん中に「1着 [3] → 2着 [5]  12.4倍」の帯（2026-10-21。仕様書 v4「結果の画面とリプレイは組み合わせで見せる」）。
+     倍率は exactaOddsOf（無ければ倍率なしで組み合わせだけ）。通過順の丸と同じ所（下の帯の上・字幕の下 y428〜466）に、再生が始まって 0.4 秒で出す */
+  Race3D.prototype.comboBar = function (c) {
+    const run = this.run; if (!run) return; const ord = run.order(), a = ord[0], b = ord[1]; if (a == null || b == null || !(run.finish[a] > 0) || !(run.finish[b] > 0)) return;
+    const now = performance.now(); if (!this.comboAt || this.comboRun !== run) { this.comboAt = now; this.comboRun = run; }
+    const al = clamp((now - this.comboAt) / 400, 0, 1); if (al <= 0) return;
+    const hs = this.race.horses, odds = this.exactaOddsOf(a, b), oddsTxt = odds > 0 ? (Math.round(odds * 10) / 10).toFixed(1) : '';
+    const cy = H - 34, bh = 38, r = 13.5, pad = 14;
+    c.save(); c.globalAlpha *= al; c.textBaseline = 'middle';
+    // v4（2026-10-21）: 勝ち馬の場面の最後（1 着と 2 着を並べた絵）では帯を 1.4 倍に大きくして少し上げる（0.45 秒でなめらかに。幅は通過順の丸と同じ x270〜730 に収まる）
+    if (this.phase === 'winner' && this.winStage === 'both') {
+      const u = clamp((now - (this.winStageAt || now)) / 450, 0, 1), e = u * u * (3 - 2 * u), sc = 1 + 0.4 * e, ty = cy - 10 * e;
+      c.translate(W / 2, ty); c.scale(sc, sc); c.translate(-W / 2, -cy);
+    }
+    c.font = '900 17px ' + CLK_JP; const wL = c.measureText('1着').width, wB = c.measureText('番').width;
+    c.font = '900 26px ' + CLK_FONT; const wO = oddsTxt ? c.measureText(oddsTxt).width : 0; c.font = 'bold 15px ' + CLK_JP; const wX = oddsTxt ? c.measureText('倍').width : 0;
+    const part = wL + 6 + r * 2 + 3 + wB, arrowW = 30, bw = pad * 2 + part * 2 + arrowW + (oddsTxt ? 22 + wO + 2 + wX : 0), x0 = W / 2 - bw / 2;
+    c.fillStyle = 'rgba(20,36,54,.9)'; roundRect(c, x0, cy - bh / 2, bw, bh, 6); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(x0, cy - bh / 2, 4, bh); this.comboBox = { bw, bh }; // 確認用（帯の幅。tests/v4win.plan.js）
+    if (this.phase === 'winner' && this.winStage === 'both') { c.strokeStyle = 'rgba(242,183,5,.85)'; c.lineWidth = 1.5; roundRect(c, x0, cy - bh / 2, bw, bh, 6); c.stroke(); } // 2 頭の絵: 金の縁で「当たりの組み合わせ」
+    let x = x0 + pad;
+    const one = (rank, i) => {
+      c.font = '900 17px ' + CLK_JP; c.textAlign = 'left'; c.fillStyle = RANK_COL[rank]; c.fillText((rank + 1) + '着', x, cy + 1); x += wL + 6;
+      c.fillStyle = RANK_COL[rank]; c.beginPath(); c.arc(x + r, cy, r + 2, 0, 6.2832); c.fill(); badge(c, x + r, cy, r, hs[i]); x += r * 2 + 3;
+      c.font = '900 17px ' + CLK_JP; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('番', x, cy + 1); x += wB;
+    };
+    one(0, a);
+    c.fillStyle = '#fff'; c.beginPath(); c.moveTo(x + 9, cy - 7); c.lineTo(x + 21, cy); c.lineTo(x + 9, cy + 7); c.closePath(); c.fill(); x += arrowW;
+    one(1, b);
+    if (oddsTxt) { x += 22; c.textAlign = 'left'; c.font = '900 26px ' + CLK_FONT; c.fillStyle = '#ffe14d'; c.fillText(oddsTxt, x, cy + 1.5); x += wO + 2; c.font = 'bold 15px ' + CLK_JP; c.fillStyle = '#c9d6ee'; c.fillText('倍', x, cy + 4); }
+    c.restore();
+  };
+  /* 2 連単の倍率: exactaResult（結果が決まったあと画面側が渡す { first, second, odds }）→ exacta（人気上位の一覧）の中から。無ければ 0 */
+  Race3D.prototype.exactaOddsOf = function (a, b) {
+    const r = this.exactaResult; if (r && Number(r.first) === a && Number(r.second) === b && Number(r.odds) > 0) return Number(r.odds);
+    const L = Exacta.norm(this.exacta, this.race ? this.race.horses.length : 0); for (const e of L) if (e.first === a && e.second === b && e.odds > 0) return e.odds;
+    return 0;
+  };
   // 右上の時計の札（紺 #142436・左に黄色の線）。rows: [見出し, 値, 値の色]（null は飛ばす）
-  const CLK_FONT = '"Avenir Next Condensed","Arial Narrow","Helvetica Neue",Arial,sans-serif', CLK_JP = '"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif';
+  const CLK_FONT = NOTO, CLK_JP = NOTO;
   const fmtRace = (t, tenth) => { t = Math.max(0, tenth ? Math.round(t * 10) / 10 : Math.floor(t * 10) / 10); const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); };
   Race3D.prototype.clockBox = function (c, t, done, rows) {
     const bw = 176, bx = W - 14 - bw; let y = 10;
     const panel = (h) => { c.fillStyle = 'rgba(20,36,54,.86)'; roundRect(c, bx, y, bw, h, 4); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(bx, y, 4, h); };
     panel(40);
-    c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = 'bold 12px ' + CLK_FONT; c.fillStyle = '#9fb3d9'; c.fillText('T I M E', bx + 14, y + 21);
-    c.textAlign = 'right'; c.font = 'bold 28px ' + CLK_FONT; c.fillStyle = done ? '#ffd54f' : '#ffffff'; c.fillText(fmtRace(t, done), bx + bw - 12, y + 21.5);
+    c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = '900 12px ' + CLK_FONT; c.fillStyle = '#9fb3d9'; c.fillText('T I M E', bx + 14, y + 21);
+    c.textAlign = 'right'; c.font = '900 28px ' + CLK_FONT; c.fillStyle = done ? '#ffd54f' : '#ffffff'; c.fillText(fmtRace(t, done), bx + bw - 12, y + 21.5);
     y += 44;
     rows.forEach((r) => {
       if (!r) return; panel(28);
-      if (r[0] === 'SLOW') { c.fillStyle = '#e84141'; c.beginPath(); c.arc(bx + 17, y + 14, 4.5, 0, 6.283); c.fill(); c.textAlign = 'left'; c.font = 'bold 13px ' + CLK_FONT; c.fillStyle = '#fff'; c.fillText('S L O W   M O T I O N', bx + 30, y + 14.5); }
-      else { c.textAlign = 'left'; c.font = 'bold 13px ' + CLK_JP; c.fillStyle = '#9fb3d9'; c.fillText(r[0], bx + 14, y + 14.5); c.textAlign = 'right'; c.font = 'bold 20px ' + CLK_FONT; c.fillStyle = r[2]; c.fillText(r[1], bx + bw - 12, y + 15); }
+      if (r[0] === 'SLOW') { c.fillStyle = '#e84141'; c.beginPath(); c.arc(bx + 17, y + 14, 4.5, 0, 6.283); c.fill(); c.textAlign = 'left'; c.font = '900 13px ' + CLK_FONT; c.fillStyle = '#fff'; c.fillText('S L O W   M O T I O N', bx + 30, y + 14.5); }
+      else { c.textAlign = 'left'; c.font = 'bold 13px ' + CLK_JP; c.fillStyle = '#9fb3d9'; c.fillText(r[0], bx + 14, y + 14.5); c.textAlign = 'right'; c.font = '900 20px ' + CLK_FONT; c.fillStyle = r[2]; c.fillText(r[1], bx + bw - 12, y + 15); }
       y += 32;
     });
   };
 
+
+  /* ===================================================================================
+     2 連単の人気上位の倍率（v4・2026-10-21）: テレビの右の列（v2/tv.js の #v2odds）に「[3]→[5] 12.4倍」を 6 組まで並べる道具と、組み合わせの文字。
+     受け取る形（list）: [{ first, second, odds }, ...]
+       first / second … 1 着・2 着の馬の添字（0 始まり＝馬番 − 1。エンジン・結果の order と同じ）
+       odds           … 確定倍率（数。1.0 以上）。無い・0 以下なら「—」
+       並び順          … 人気の順（実際の票の多い順。票が同じ・0 なら倍率の低い順で補ってサーバーが並べる）。そのまま上から表示。7 組目からは捨てる
+     正しくない行（同じ馬どうし・範囲外・重複）は飛ばす。1 組も残らなければ render は false を返し、列は今まで（単勝）のまま＝呼ぶ側がいつもの描き方をする
+     倍率の表と票の数しか無いときは Race3D.Exacta.top(倍率の表 { 'a-b': 倍率 }, 票の数 { 'a-b': 票 }) で上の形の一覧にする（v2/core.js の popularCombos と同じ並べ方）
+     使い方（v2/tv.js）: Race3D.Exacta.render(列の要素 #v2odds, R.horses, list) → true なら 2 連単を描いた。raceView.exacta = list（映像の再生の帯の倍率にも使う）
+       ゴールで Race3D.Exacta.mark(列, 1 着, 2 着)（2 着がまだなら -1: 1 着が合う組を薄く光らせる）。Race3D.Exacta.combo(horses, 1 着, 2 着, 倍率) → 「1着 3番 → 2着 5番 12.4倍」
+     =================================================================================== */
+  const Exacta = (function () {
+    const fmt = (o) => (Number(o) > 0 ? (Math.round(Number(o) * 10) / 10).toFixed(1) : '—');
+    const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    function norm(list, n) {
+      if (!Array.isArray(list)) return [];
+      const out = [], seen = {};
+      for (const e of list) {
+        if (!e || typeof e !== 'object') continue;
+        const a = Number(e.first), b = Number(e.second), o = Number(e.odds);
+        if (!Number.isInteger(a) || !Number.isInteger(b) || a === b || a < 0 || b < 0 || (n && (a >= n || b >= n))) continue;
+        const k = a + '-' + b; if (seen[k]) continue; seen[k] = 1;
+        out.push({ first: a, second: b, odds: o > 0 ? o : 0 });
+        if (out.length >= 6) break;
+      }
+      return out;
+    }
+    let styled = false;
+    function style() {
+      if (styled || typeof document === 'undefined') return; styled = true;
+      const st = document.createElement('style'); st.id = 'exactaStyle';
+      st.textContent = [
+        '.v2odds.xo h5{font-size:22px;letter-spacing:.02em}',
+        '.v2odds.xo h5 small{letter-spacing:.06em;color:#ffd54f}',
+        '.v2odds.xo ol{padding:4px 6px;justify-content:space-around}',
+        '.v2odds.xo li{position:relative;flex-direction:column;justify-content:center;align-items:center;gap:4px;height:94px;padding:0 2px}',
+        '.v2odds.xo li em{position:absolute;left:3px;top:4px;font:800 13px/1 var(--font-num,sans-serif);font-style:normal;color:#9fb3d9}',
+        '.v2odds.xo li .pr{display:flex;align-items:center;gap:3px}',
+        '.v2odds.xo li .pr i{width:38px;height:38px;font-size:25px;border-radius:7px}',
+        '.v2odds.xo li .pr s{width:0;height:0;border-style:solid;border-width:7px 0 7px 10px;border-color:transparent transparent transparent #e8eef8;margin:0 1px}',
+        '.v2odds.xo li b{font-size:29px}',
+        '.v2odds.xo li.part{background:rgba(242,183,5,.16)}',
+        '.v2odds.xo.cmp li{height:78px;gap:2px}',
+        '.v2odds.xo.cmp li .pr i{width:32px;height:32px;font-size:21px}',
+        '.v2odds.xo.cmp li b{font-size:24px}',
+        '.v2odds.xo.won li:not(.win):not(.part){opacity:.45}',
+      ].join('\n');
+      document.head.appendChild(st);
+    }
+    const chip = (h) => '<i style="background:' + h.color + ';color:' + h.ink + '">' + esc(h.no) + '</i>';
+    function rows(horses, L) {
+      return L.map((e, k) => '<li data-a="' + e.first + '" data-b="' + e.second + '"><em>' + (k + 1) + '</em><span class="pr">' + chip(horses[e.first]) + '<s></s>' + chip(horses[e.second]) + '</span><b>' + fmt(e.odds) + (e.odds > 0 ? '<small>倍</small>' : '') + '</b></li>').join('');
+    }
+    // panel: 列の要素（中に h5 と ol）。描けたら true。データが無ければ 2 連単の印を外し、見出しを元に戻して false（呼ぶ側が単勝の列を描く）
+    function render(panel, horses, list) {
+      if (!panel || !horses) return false;
+      const L = norm(list, horses.length), ol = panel.querySelector('ol'), h5 = panel.querySelector('h5');
+      if (!L.length || !ol) {
+        if (panel.classList.contains('xo')) { panel.classList.remove('xo'); if (h5 && panel.dataset.h5 != null) h5.innerHTML = panel.dataset.h5; }
+        return false;
+      }
+      style();
+      if (h5 && !panel.classList.contains('xo')) panel.dataset.h5 = h5.innerHTML;
+      panel.classList.add('xo');
+      if (h5) h5.innerHTML = '<small>2連単</small>人気上位';
+      ol.innerHTML = rows(horses, L);
+      return true;
+    }
+    /* 倍率の表（{ 'a-b': 倍率 }。v2/core.js の race.exacta・result.finalExacta）と票の数（{ 'a-b': 票 }。race.participants.combos）から人気の上位 n 組:
+       票の多い順、票が同じ・0 なら倍率の低い順（v2/core.js の popularCombos と同じ決まり。サーバーが exactaTop を渡せばそちらが先） */
+    function top(oddsMap, votes, n) {
+      if (!oddsMap || typeof oddsMap !== 'object') return [];
+      const cnt = votes || {};
+      return Object.keys(oddsMap).map((k) => { const m = /^(\d+)-(\d+)$/.exec(k); return m ? { combo: k, first: +m[1], second: +m[2], odds: Number(oddsMap[k]) || 0, votes: Number(cnt[k]) || 0 } : null; }).filter(Boolean)
+        .sort((a, b) => b.votes - a.votes || (a.odds || 1e9) - (b.odds || 1e9) || (a.combo < b.combo ? -1 : 1)).slice(0, n || 6);
+    }
+    function mark(panel, first, second) {
+      if (!panel) return; const s2 = Number.isInteger(second) && second >= 0;
+      panel.querySelectorAll('li[data-a]').forEach((li) => { const a = +li.dataset.a, b = +li.dataset.b; li.classList.toggle('win', s2 && a === first && b === second); li.classList.toggle('part', !s2 && a === first); });
+    }
+    function combo(horses, first, second, odds) {
+      const no = (i) => (horses && horses[i] ? horses[i].no : i + 1);
+      return '1着 ' + no(first) + '番 → 2着 ' + no(second) + '番' + (Number(odds) > 0 ? ' ' + fmt(odds) + '倍' : '');
+    }
+    return { norm, top, render, mark, combo, fmt };
+  })();
+  Race3D.Exacta = Exacta;
   // 2D 版の静的な道具（出馬表・展開予想・ボーナス牧場が使う）
+  Race3D.fontsReady = fontsReady; Race3D.loadFonts = loadFonts; Race3D.FONT = NOTO; // 文字（Noto Sans JP）の読み込み（待つ側は Promise.race などで。最大 2.5 秒・失敗しても false で進む）
   Race3D.drawChibi = Race2D.drawChibi; Race3D.drawTenkai = Race2D.drawTenkai; Race3D.badge = Race2D.badge; Race3D.roundRect = Race2D.roundRect; Race3D.COATS = Race2D.COATS;
   Race3D.Race2D = Race2D;
   // WebGL が使えるか（three.js が読めて、WebGL のコンテキストが作れる）
