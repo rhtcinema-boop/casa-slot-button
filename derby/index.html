@@ -15,6 +15,8 @@
 <link rel="icon" href="icon-derby-180.png" sizes="180x180" type="image/png">
 <link rel="apple-touch-icon" href="icon-derby-180.png">
 <link rel="preload" href="art/logo-3d/B/title-3d-B-casaWhite.svg" as="image">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap"><!-- casa DERBY の文字（2026-10-21 オーナー: ゲーム全体を Noto Sans JP に統一。読めなければ端末の文字のまま） -->
 <link rel="stylesheet" href="css/style.css?v=k11">
 </head>
 <body>
@@ -165,7 +167,7 @@ window.addEventListener('error', function (e) {
   d.textContent = 'エラー (k3): ' + (e.message || '') + '\n' + ((e.filename || '').split('/').pop()) + ':' + (e.lineno || '');
 });
 </script>
-<script src="js/engine.js?v=k3"></script>
+<script src="js/engine.js?v=v4e1"></script>
 <script src="js/audio.js?v=k9"></script>
 <script src="js/sprites.js?v=k3"></script>
 <script src="js/horse.js?v=k3"></script>
@@ -178,18 +180,18 @@ window.addEventListener('error', function (e) {
 <!-- 本物寄りの馬（R3D.HorseReal）: 管理画面で「本物寄り」にしたときだけ js/race3d.js があとから読む（Fire TV のメモリの節約）。?horse=real なら最初から読む（確認用） -->
 <script>window.R3D_LAZY = { HorseReal: 'js/r3d/horse3d-real.js?v=r8' }; if (/[?&]horse=real\b/.test(location.search)) document.write('<script src="' + window.R3D_LAZY.HorseReal + '"><\/script>');</script>
 <script src="js/r3d/venue3d.js?v=k3g"></script>
-<script src="js/r3d/director3d.js?v=k3n"></script>
-<script src="js/race3d.js?v=k3z"></script>
+<script src="js/r3d/director3d.js?v=v4r1"></script>
+<script src="js/race3d.js?v=v4r1"></script>
 <script src="js/bonus.js?v=k3"></script>
 <script src="js/voice.js?v=k5"></script>
-<script src="js/commentary.js?v=k7"></script>
+<script src="js/commentary.js?v=v4r1"></script>
 <script src="js/hooves.js?v=h2"></script>
 <script src="js/splash3d.js?v=k7"></script>
 <!-- ?store=<店舗> なら v2 のテレビ（全店同時・スマホ投票。v2/tv.js）、無ければ今までの一人用（js/game.js） -->
 <script>
 (function () {
   // _r＝管理画面の「テレビを読み込み直す」で付く印。v2 のファイルの版に足して、古いファイル（キャッシュ）を使わない
-  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't27' + (r ? '-' + r : '');
+  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't28' + (r ? '-' + r : '');
   if (/[?&]store=[^&]/.test(location.search)) document.write('<link rel="stylesheet" href="v2/tv.css?v=' + v + '"><script src="v2/client.js?v=' + v + '"><\/script><script src="v2/qr.js?v=' + v + '"><\/script><script src="v2/form.js?v=' + v + '"><\/script><script src="v2/tv.js?v=' + v + '"><\/script><script src="v2/tvswitch.js?v=' + v + '"><\/script>');
   else document.write('<script src="js/game.js?v=k10"><\/script>');
 })();
