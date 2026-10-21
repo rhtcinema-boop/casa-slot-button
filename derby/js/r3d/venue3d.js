@@ -30,7 +30,7 @@ R3D.Venue = (function () {
   const FRAME = ['#ffffff', '#1e1e1e', '#e8322e', '#2a62d9', '#f7d21e', '#2fa84f'], INK = ['#222', '#fff', '#fff', '#fff', '#fff', '#fff'];   // 枠色（ref/minnade/STYLE.md 1-4）
   const TURF_HI = '#64a03f', TURF_MID = '#619c3d', TURF_LO = '#5e973b';   // 芝の刈り込みの帯（明・境目・暗）。画面では日なたで約 1.1 倍明るく出る
   const LEAF_BASE = '#609c4c', HEDGE = '#4f8a3e';   // 2026-10-14（講評 92→95 の 3）: 画面で #4B853C〜#67954E に出る緑（前は #64a644）   // 木の葉・植え込みの緑
-  const FONT = '"Helvetica Neue", Arial, "Hiragino Sans", sans-serif';
+  const FONT = '"Noto Sans JP", "Hiragino Sans", sans-serif'; // 2026-10-21 Noto Sans JP に統一（看板は会場を作るときに 1 回描く。読み込み前なら予備の文字）
   /* ---------- 隠れた確定演出（setCues）の色 ----------
      木の実: 白は少し明るい白（上の面が光る）、黒は濃い灰に強めのハイライト、緑は葉より明るい緑。ふだんはくすんだ茶（FRUIT_NEUTRAL）。
      服: 枠色を布らしく少し落ち着かせた色。 */
