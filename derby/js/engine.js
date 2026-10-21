@@ -153,14 +153,21 @@
   }
 
   /* ---------- 倍率（試走して確率を出す） ---------- */
+  /* 2026-10-21 v4: 2 連単（1 着・2 着を順番どおり。6 頭で 30 通り）の倍率も同じ試走から出す（exacta）。
+     30 通りは試走 1500 回でも出にくい組み合わせがあるので、数えた割合に「勝率から作った目安」（Harville: P(a 1着)×P(b 1着)/(1−P(a 1着))）を
+     EX_PRIOR 回ぶん混ぜてならす（0 回の組み合わせも 999 倍に張り付かない）。倍率 = 払い戻し率 ÷ 確率（0.1 刻みに切り捨て、1.0〜999.9）。
+     exactaProb は合計 1（結果の決め方の抽選の重み）。キーは '1着の添字-2着の添字'（ekey。例 '2-4'） */
+  const EX_PRIOR = 150, EX_MIN = 1.0, EX_MAX = 999.9;
+  function ekey(a, b) { return a + '-' + b; }
   function calcOdds(race, r, sims) {
     sims = sims || SIMS;
     const n = race.horses.length;
-    const win = new Array(n).fill(0), quin = {}, rankSum = [new Array(n).fill(0), new Array(n).fill(0), new Array(n).fill(0)];
+    const win = new Array(n).fill(0), quin = {}, ex = {}, rankSum = [new Array(n).fill(0), new Array(n).fill(0), new Array(n).fill(0)];
     for (let s = 0; s < sims; s++) {
       const res = simulate(race, r, { dt: TUNE.oddsDt, checkpoints: s < 300 }); // 刻みが粗いと馬群のまとまりの効き方が本番とずれ、払い戻し率が 90% 近くまで上がる（0.1 で約 86%）
       win[res.order[0]]++;
       const k = qkey(res.order[0], res.order[1]); quin[k] = (quin[k] || 0) + 1;
+      const e = ekey(res.order[0], res.order[1]); ex[e] = (ex[e] || 0) + 1;
       if (res.checkpoints) res.checkpoints.forEach((pos, c) => { const ord = pos.map((p, i) => [p, i]).sort((a, b) => b[0] - a[0]); ord.forEach((x, rank) => (rankSum[c][x[1]] += rank)); });
     }
     const rate = (race.tune && race.tune.payoutRate) || PAYOUT_RATE;
@@ -168,9 +175,14 @@
     const tansho = win.map((w) => toOdds(w / sims));
     const umaren = {};
     for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) umaren[qkey(a, b)] = toOdds((quin[qkey(a, b)] || 0) / sims);
+    // 2 連単: ならした確率 → 倍率
+    const pw = win.map((w) => (w + 1) / (sims + n)), exactaProb = {}, exacta = {};
+    let tot = 0;
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) { if (a === b) continue; const prior = pw[a] * pw[b] / Math.max(1e-9, 1 - pw[a]); const p = ((ex[ekey(a, b)] || 0) + EX_PRIOR * prior) / (sims + EX_PRIOR); exactaProb[ekey(a, b)] = p; tot += p; }
+    Object.keys(exactaProb).forEach((k) => { exactaProb[k] /= tot; exacta[k] = clamp(Math.floor(rate / exactaProb[k] * 10) / 10, EX_MIN, EX_MAX); });
     // 展開予想: 序盤・中盤・終盤の平均順位（小さいほど前）
     const tenkai = rankSum.map((arr) => arr.map((s) => s / 300));
-    return { tansho, umaren, winProb: win.map((w) => w / sims), tenkai };
+    return { tansho, umaren, winProb: win.map((w) => w / sims), tenkai, exacta, exactaProb };
   }
   function qkey(a, b) { return a < b ? a + '-' + b : b + '-' + a; }
   // 倍率の色: 白=10倍未満、黄=10〜99.9、赤=100以上
@@ -236,22 +248,66 @@
     return { frames, speeds, finish: run.finish.slice(), order: run.order(), length: run.length, n };
   }
   function replayOrder(race, seed) { return recordRun(race, seed, true).order; }
+  /* 着順を決めた順にする（2026-10-21 v4・2 連単: 1 着と 2 着の両方を決めるので、入れ替えが要ることが増えた）。
+     以前は「馬 i が、自然な着順で k 番目の馬の軌跡を最初から全部使う」入れ替え（逃げ馬が追込の走りをする、が起きる。opt.legacy で今も使える）。
+     いまは、ゴールの順で隣どうしの 2 頭を 1 回ずつ入れ替える（並べ替えの泡立ち）。入れ替えるのは「2 頭の位置がいちばん近い時刻」から後ろだけで、
+     その時刻から「つなぎの秒数」（1.5 秒以上・差 1.2m につき 1 秒）かけて、位置も速さも自分の走りから相手の走りへなめらかに移す（速さが飛ばない）。
+     いちばん近い時刻の選び方: スタート 5 秒後〜（吸収を終えてゴールの 0.3 秒前まで）の中で「近さ（m）＋ゴールまでの秒数 × 0.05」が最小。
+     決めた着順にならなかったとき（まれ）は以前の入れ替え。返り値 { P: 馬ごとの位置, V: 馬ごとの速さ, finish, swaps: [{ a, b, t, gapM, blend }] } または null */
+  const BLEND_MIN = 1.5; // 入れ替えのつなぎの最短の秒数
+  function forceOrder(rec, order, dist) {
+    const n = rec.n, K = rec.frames.length, dt = FIXED_DT, P = [], V = [], fin = rec.finish.slice(), swaps = [];
+    for (let i = 0; i < n; i++) { P.push(new Float64Array(K)); V.push(new Float64Array(K)); for (let k = 0; k < K; k++) { P[i][k] = rec.frames[k][i]; V[i][k] = rec.speeds[k][i]; } }
+    const cur = rec.order.slice();
+    function tailSwap(a, b) { // a（後ろ）を b（前）より先にゴールさせる
+      const first = Math.min(fin[a], fin[b]), kEnd = Math.min(K - 1, Math.floor((first - 0.4) / dt)), kStart = Math.floor(5 / dt);
+      let best = -1, bestCost = Infinity, bestW = 0;
+      for (let k = kStart; k <= kEnd; k++) {
+        const gapM = Math.abs(P[b][k] - P[a][k]) * dist, W = Math.max(BLEND_MIN, gapM / 1.2);
+        if (k * dt + W > first - 0.3) continue; // 吸収はゴールの前に終える
+        const cost = gapM + 0.05 * (first - k * dt);
+        if (cost < bestCost) { bestCost = cost; best = k; bestW = W; }
+      }
+      if (best < 0) return false;
+      const D = P[b][best] - P[a][best], L = rec.length;
+      /* 位置も速さも、自分の走りから相手の走りへ少しずつ移す（s: 0 → 1 のなめらかな曲線。始めと終わりの傾きは 0 ＝速さが飛ばない） */
+      for (let k = best; k < K; k++) {
+        const x = Math.min(1, (k - best) * dt / bestW), s = x * x * (3 - 2 * x), ds = x >= 1 ? 0 : 6 * x * (1 - x) / bestW;
+        const pA = P[a][k], pB = P[b][k], vA = V[a][k], vB = V[b][k];
+        P[a][k] = pA + s * (pB - pA); P[b][k] = pB + s * (pA - pB);
+        V[a][k] = vA + s * (vB - vA) + L * ds * (pB - pA); V[b][k] = vB + s * (vA - vB) + L * ds * (pA - pB);
+      }
+      const f = fin[a]; fin[a] = fin[b]; fin[b] = f;
+      swaps.push({ a, b, t: Math.round(best * dt * 100) / 100, gapM: Math.round(Math.abs(D) * dist * 100) / 100, blend: Math.round(bestW * 100) / 100 });
+      return true;
+    }
+    for (let p = 0; p < n; p++) {
+      let j = cur.indexOf(order[p]);
+      while (j > p) { if (!tailSwap(cur[j], cur[j - 1])) return null; const x = cur[j]; cur[j] = cur[j - 1]; cur[j - 1] = x; j--; }
+    }
+    const got = order.slice().sort((x, y) => fin[x] - fin[y]);
+    if (got.some((h, k) => h !== order[k])) return null;
+    return { P, V, finish: fin, swaps };
+  }
   function replayRun(race, seed, opt) {
     opt = opt || {};
     const rec = recordRun(race, seed), n = rec.n;
     const map = race.horses.map((_, i) => i); // map[i] = 馬 i が使う軌跡の番号（ふつうは自分の軌跡）
-    let natural = true;
-    if (opt.order && opt.order.length === n && opt.order.some((h, k) => h !== rec.order[k])) { natural = false; opt.order.forEach((h, k) => { map[h] = rec.order[k]; }); }
-    const finishT = map.map((src) => rec.finish[src]), last = rec.frames.length - 1;
+    let natural = true, forced = null;
+    if (opt.order && opt.order.length === n && opt.order.some((h, k) => h !== rec.order[k])) {
+      natural = false;
+      forced = opt.legacy ? null : forceOrder(rec, opt.order, race.dist || 1000);
+      if (!forced) opt.order.forEach((h, k) => { map[h] = rec.order[k]; }); // 以前の入れ替え（最初から全部）
+    }
+    const finishT = forced ? forced.finish.slice() : map.map((src) => rec.finish[src]), last = rec.frames.length - 1;
     const pos = new Array(n).fill(0), finish = new Array(n).fill(0), speed = new Array(n).fill(0);
-    const run = { t: 0, done: 0, pos, finish, speed, length: rec.length, n, natural, seed, duration: Math.max.apply(null, finishT), winTime: Math.min.apply(null, finishT), finishTimes: finishT.slice() };
+    const run = { t: 0, done: 0, pos, finish, speed, length: rec.length, n, natural, seed, duration: Math.max.apply(null, finishT), winTime: Math.min.apply(null, finishT), finishTimes: finishT.slice(), swaps: forced ? forced.swaps : natural ? [] : null };
     function apply() {
       const x = Math.max(0, run.t / FIXED_DT), k = Math.min(last, Math.floor(x)), f = k >= last ? 0 : x - k, k2 = Math.min(last, k + 1);
       let done = 0;
       for (let i = 0; i < n; i++) {
-        const src = map[i];
-        pos[i] = rec.frames[k][src] + (rec.frames[k2][src] - rec.frames[k][src]) * f;
-        speed[i] = rec.speeds[k2][src];
+        if (forced) { const Pi = forced.P[i]; pos[i] = Pi[k] + (Pi[k2] - Pi[k]) * f; speed[i] = forced.V[i][k2]; }
+        else { const src = map[i]; pos[i] = rec.frames[k][src] + (rec.frames[k2][src] - rec.frames[k][src]) * f; speed[i] = rec.speeds[k2][src]; }
         if (run.t >= finishT[i]) { finish[i] = finishT[i]; done++; } else finish[i] = 0;
       }
       run.done = done;
@@ -266,5 +322,5 @@
   }
 
   return { FIXED_DT, TUNE, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET,
- BALLS_MAX, TYPES, CONDS, POOL, ROULETTE, makeRace, simulate, createRun, calcOdds, qkey, oddsColor, totalBet, payout, carrotCount, spinFood, betHorses, ballsEarned, spinRoulette, profile, baseSpeed };
+ BALLS_MAX, TYPES, CONDS, POOL, ROULETTE, makeRace, simulate, createRun, calcOdds, qkey, ekey, forceOrder, EX_MIN, EX_MAX, oddsColor, totalBet, payout, carrotCount, spinFood, betHorses, ballsEarned, spinRoulette, profile, baseSpeed };
 });
