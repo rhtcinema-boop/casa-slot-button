@@ -428,3 +428,469 @@ details.fold > .in.explain { margin: 0 0 6px; }
   table.cards tr.rfopen { background: rgba(255, 157, 140, .06); border-radius: 10px; }
   table.cards tr.testrace td, table.cards tr.voided td, table.cards tr.rfopen td { background: none; }
 }
+
+/* ===== 2026-10-23 デザインの見直し（オーナー「レイアウトからはみ出てるとかある」）: 見た目はそのまま、はみ出し・切れ・ずれを直す ===== */
+/* 日本語は言葉の切れ目で折り返す（「看/板」「ま/だ」のような切れ方をなくす。対応していないブラウザは今まで通り）。長い英数字は箱の中で折り返す */
+body { word-break: auto-phrase; overflow-wrap: break-word; }
+.nw { display: inline-block; max-width: 100%; }
+/* お知らせ（下の黒い帯）: 画面の半分の幅で細長く折り返していた → 文の長さに合わせて最大 560px */
+#toast { width: max-content; max-width: min(560px, calc(100vw - 32px)); text-align: center; }
+/* 数字の欄: 桁の多い上限（99,999,900pt など）も欄からはみ出さない（--d ＝ 最大の桁数。admin.js の pvDigits） */
+.stepper input.pv { width: max(84px, calc(var(--d, 0) * 1ch + 22px)); }
+/* 大きな数字の箱: 「/ 目標」をまとめて次の行へ（「/」だけ行の終わりに残らない）。収まらない桁は箱の中で折り返す */
+.stat b { overflow-wrap: anywhere; }
+.stat .of { white-space: nowrap; display: inline-block; }
+/* 見出しの小さな説明: 折り返したときに左がずれない */
+.panel h3 .qsub { margin-left: 0; }
+/* 取消の枠の見出し: 「か？」だけが次の行に残らない */
+.rfbox > b { text-wrap: pretty; }
+/* 時刻表の札: ▸ が 1 行を取らない・ON/OFF はいつも右上 */
+.tpl-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.tpl-top .open-btn { position: relative; padding-left: 22px; }
+.tpl-top .open-btn::before { position: absolute; left: 0; top: 9px; }
+/* 「時刻で探す」の横の説明・「いつ」の横の説明: 入力欄と上下の真ん中をそろえる */
+.rowsbar .find + small { align-self: center; }
+.tpl-cond > .f > .hint[style*="padding-top"] { padding-top: 0 !important; min-height: 44px; display: flex !important; align-items: center; }
+/* この日の予定: 予定の名前は 1 行（長いと …。全部は名前の上に指を置くと出る） */
+.pv-list td.pvname { max-width: 9em; }
+.pv-list td.pvname small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 会計番号で探す（明細）: 日時・ニックネームは 1 行、種類の札は長いと札の中で折り返す（ほかの列が細くならない） */
+td.dt, td.nick { white-space: nowrap; }
+td .chip.kind { white-space: normal; text-wrap: balance; border-radius: 10px; }
+/* タブレット〜小さなノート（641〜1100px）: 今日のレースの「投票 ○:○〜」と「/ 目標」を下の行へ → 結果の列が細くなりすぎない */
+@media (min-width: 641px) and (max-width: 1100px) {
+  table.rl td .vfrom { display: block; }
+  table.rl td .tg { display: block; }
+}
+@media (max-width: 640px) {
+  /* 下の保存の帯: 長いエラーの説明は 2 行まで（帯が画面の半分を取らない） */
+  .savebar .msg { font-size: 13px; line-height: 1.35; }
+  .savebar .msg .err small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .stepper input.pv { width: max(70px, calc(var(--d, 0) * 1ch + 18px)); }
+  /* テレビ: 長い店名は 1 行目に全部、切り替えと「読み込み直す」は 2 行目 */
+  .tvrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "nm nm" "seg rl" "q q"; }
+  .tvrow .seg { justify-self: start; }
+  /* 進行役のテレビ: 「最新にする」は見出しの右 */
+  .pair .phd { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
+  .pair .phd small { grid-row: 2; }
+  .pair .phd .sp { display: none; }
+  .pair .phd .btn { grid-column: 2; grid-row: 1 / span 2; }
+  /* 演出の行: 「出す」「当たる」は左、数字は右（ほかの数字の行とそろえる） */
+  .cue-row .cs { flex: 1 1 100%; flex-direction: column; gap: 6px; }
+  .mini > span { flex: 1; }
+  /* 時刻表の行: 表の右（コピー・×）が画面の外に隠れていた → 1 行に 時刻・目標・コピー・×、エラーはその下 */
+  table.tt-rows, table.tt-rows tbody { display: block; }
+  table.tt-rows tr { display: grid; grid-template-columns: 100px 84px minmax(0, 1fr) auto; align-items: center; column-gap: 6px; border-top: 1px solid var(--line); padding: 4px 0; }
+  table.tt-rows tr > * { border-top: 0; padding: 0; }
+  table.tt-rows tr:first-child { border-top: 0; padding-bottom: 0; }
+  table.tt-rows th { white-space: normal; line-height: 1.3; }
+  table.tt-rows tr > th:empty { display: none; }
+  table.tt-rows td.ops { grid-column: 4; grid-row: 1; }
+  table.tt-rows td.msg { grid-column: 1 / -1; grid-row: 2; }
+  table.tt-rows td.msg:empty { display: none; }
+  table.tt-rows td.empty { grid-column: 1 / -1; }
+  /* 店舗の「始め方」の時間帯: 開始・終了・× の下に 始め方（全部読める幅） */
+  #sother table.tt-rows tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  #sother table.tt-rows tr:first-child th:first-child { display: block; }
+  #sother table.tt-rows tr:first-child th:nth-child(3) { display: none; }
+  #sother table.tt-rows tr[data-mk] td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; margin-top: 4px; }
+  #sother table.tt-rows tr[data-mk] td.ops { grid-column: 3; grid-row: 1; }
+  #sother table.tt-rows tr[data-mk] td.msg { grid-row: 3; }
+  #sother table.tt-rows input[type=time] { width: 100%; }
+}
+
+/* ===== 2026-10-23 デザイン見直し 1 回目（DESIGN_SYSTEM_V4.md・DESIGN_REVIEW_V4.md「D 管理画面」） =====
+   casa の紺（地 #0B101B・パネル #101D36・線 #303441）＋金。文字 #F5F3EF・補助 #B8BECA（これより暗い灰は使わない）。
+   選ばれている＝明るい紺の面＋金の枠 2px／選ばれていない＝#181B23 の面＋#AEB4C0 の文字。主な操作＝金のグラデーション／ふつう＝紺の面＋線／取り消せない＝赤。
+   大きさ・余白は PC（641px 以上）だけ変える（スマホの見た目と 2026-10-23 のはみ出し直しはそのまま）。 */
+:root {
+  --bg: #0B101B; --panel: #101D36; --panel2: #0C1729; --panel3: #142542; --line: #303441; --line2: #3A4560;
+  --gold: #FFD773; --gold2: #C9A03E; --gold3: #FFE9A8; --text: #F5F3EF; --sub: #B8BECA; --dim: #AEB4C0;
+  --ok: #35E07A; --ng: #FF8C7A; --unpaid: #E68478; --warn: #FFB347; --info: #79A9FF;
+  --sel: #22365E; --selText: #FFFFFF; --unsel: #181B23; --unselText: #AEB4C0;
+  --on: #17663F; --off: #2A3040; --btn2: #16213A; --btn2Text: #E8EAF0; --danger: #A93632; --field: #0A1222;
+}
+html { background: var(--bg); }
+body { background: radial-gradient(1400px 700px at 50% -8%, #14203A 0%, rgba(20, 32, 58, 0) 70%) no-repeat, var(--bg); min-height: 100vh; }
+header { background: rgba(11, 16, 27, .94); }
+header small { color: var(--sub); font-size: 13px; }
+.panel { border-color: var(--line); }
+.panel.sub, .tpl, .pair, .explain, .opsnote { background: var(--panel2); }
+.stat, .rfnums > div { background: var(--panel3); border-color: var(--line); }
+.mono { font-family: inherit; font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .01em; }
+/* ボタン */
+.btn { background: linear-gradient(180deg, var(--gold3), var(--gold2)); color: #1A1408; font-weight: 900; }
+.btn.ghost { background: var(--btn2); color: var(--btn2Text); border: 1px solid var(--line2); font-weight: 700; }
+.btn.ghost:hover { background: #1C2A48; }
+.btn.danger { background: var(--danger); color: #fff; font-weight: 900; }
+.btn.link { color: var(--sub); }
+.btn[aria-pressed="true"] { background: var(--sel); color: var(--selText); border: 2px solid var(--gold); font-weight: 900; }
+.btn.onoff { color: #fff; background: var(--off); border: 1px solid var(--line2); }
+.btn.onoff.on { background: var(--on); border-color: #2C9A5E; }
+.stepper button, .icon { background: var(--btn2); border-color: var(--line2); color: var(--btn2Text); }
+.icon:hover { background: #1C2A48; color: var(--text); }
+.icon.del:hover { background: var(--danger); color: #fff; }
+.stepper button:active { background: var(--gold); color: #1A1408; }
+/* 入力欄 */
+input[type=text], input[type=password], input[type=number], input[type=date], input[type=time], select { background: var(--field); border-color: var(--line2); color: var(--text); }
+input:focus, select:focus { outline: 2px solid var(--gold2); outline-offset: 1px; }
+input.bad, select.bad { border-color: var(--ng); background: #2A1214; }
+/* タブ・2 択／3 択: 選ばれている＝明るい紺＋金の枠 2px・白の太字／選ばれていない＝#181B23＋#AEB4C0 */
+nav.tabs button { background: var(--unsel); color: var(--unselText); border: 1px solid var(--line); }
+nav.tabs button:hover { color: var(--text); }
+nav.tabs button.on { background: var(--sel); color: var(--selText); border: 2px solid var(--gold); font-weight: 900; }
+.seg { background: var(--unsel); border-color: var(--line2); }
+.seg button { color: var(--unselText); }
+.seg button + button { border-left-color: var(--line2); }
+.seg button.on { background: var(--sel); color: var(--selText); box-shadow: inset 0 0 0 2px var(--gold); font-weight: 900; }
+.wdays label { background: var(--unsel); color: var(--unselText); border-color: var(--line2); }
+.wdays label.on { background: var(--sel); color: var(--selText); border: 2px solid var(--gold); }
+/* 札 */
+.chip { background: #1C2538; color: #C9CFDA; }
+.chip.on { background: var(--sel); color: var(--gold3); box-shadow: inset 0 0 0 1px var(--gold2); }
+.chip.ok { background: rgba(53, 224, 122, .14); color: var(--ok); }
+.chip.ng { background: rgba(255, 140, 122, .16); color: var(--ng); }
+.chip.info { background: rgba(121, 169, 255, .16); color: var(--info); }
+.chip.warn { background: rgba(255, 179, 71, .16); color: var(--warn); }
+.chip.test { background: rgba(121, 169, 255, .16); color: var(--info); box-shadow: inset 0 0 0 1px rgba(121, 169, 255, .55); }
+.status { font-size: 13px; padding: 3px 10px; min-width: 64px; }
+.st-upcoming { background: #1C2538; color: #C9CFDA; }
+.st-open { background: rgba(53, 224, 122, .16); color: var(--ok); }
+.st-closed, .st-decided { background: rgba(255, 179, 71, .16); color: var(--warn); }
+.st-done { background: rgba(121, 169, 255, .16); color: var(--info); }
+.st-void { background: rgba(255, 140, 122, .16); color: var(--ng); }
+/* 色の意味 */
+.stat.ng b { color: var(--unpaid); }
+.stat.ok b { color: var(--ok); }
+tr.now td { background: rgba(255, 215, 115, .07); }
+tr.testrace td { background: rgba(121, 169, 255, .05); }
+tr.voided td, tr.rfopen td { background: rgba(255, 140, 122, .06); }
+.rfbox { background: #1A1218; border-color: rgba(255, 140, 122, .5); }
+.nowcard { background: linear-gradient(180deg, #1A2A4A, #142542); border: 2px solid rgba(255, 215, 115, .55); }
+.capnote { background: rgba(255, 215, 115, .06); border-left-color: var(--gold2); }
+.bigwarn { background: rgba(255, 179, 71, .08); border-color: rgba(255, 179, 71, .5); }
+.legacy { border-color: rgba(255, 179, 71, .5); }
+.tpl.has-err { border-color: rgba(255, 140, 122, .6); }
+.tt-rows tr.hit td { background: rgba(255, 215, 115, .16); }
+.savebar { background: rgba(11, 16, 27, .97); border-top-color: var(--line2); box-shadow: 0 -10px 24px rgba(0, 0, 0, .35); }
+#toast { background: #1C2A48; border: 1px solid var(--line2); color: var(--text); }
+.onceCard { border-color: var(--gold2); }
+/* 畳み（くわしく・そのほか・テスト用）: どれも同じ「▸」（開くと下向き） */
+details.fold > summary::before, details.panel > summary::before { content: '▸'; display: inline-block; width: 14px; color: var(--gold2); transition: transform .15s; }
+details.panel > summary { list-style: none; display: flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 700; }
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel[open] > summary::before { transform: rotate(90deg); }
+details.fold > summary, details.panel > summary { color: var(--text); }
+details.fold > summary small { color: var(--sub); font-size: 13px; }
+.tpl-top .open-btn::before { color: var(--gold2); }
+/* 店のテレビの今のゲーム（文字でも分かる） */
+.tvrow .nm .tvnow { display: block; font-size: 13px; font-weight: 500; color: var(--sub); margin-top: 2px; }
+.tvrow .nm .tvnow[data-g="slot"] { color: var(--warn); }
+.tvrow .nm:hover .tvnow { text-decoration: none; }
+
+@media (min-width: 641px) {
+  /* 幅: 1 列の設定（テレビ・調整）は 1000px、表の多い画面（今日・時刻表・集計）は 1160px。タブはいつも 1160px */
+  header { padding: 10px 24px; }
+  nav.tabs { max-width: 1160px; padding: 16px 24px 0; gap: 8px; }
+  nav.tabs button { height: 48px; font-size: 16px; }
+  main { max-width: 1000px; padding: 8px 24px 96px; }
+  main.wide { max-width: 1160px; }
+  .panel { padding: 22px 24px; margin: 24px 0; border-radius: 16px; }
+  .panel h3 { font-size: 22px; font-weight: 900; margin: 0 0 14px; letter-spacing: .02em; }
+  .panel h3 .auto { font-size: 13px; color: var(--sub); }
+  .panel.sub h3 { font-size: 18px; }
+  h3 .qsub { font-size: 14px; }
+  .hint { font-size: 14px; line-height: 1.6; }
+  label.f span { font-size: 14px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
+  input[type=text], input[type=password], input[type=number], input[type=date], input[type=time], select { height: 44px; font-size: 16px; }
+  .btn { height: 44px; font-size: 15px; }
+  .btn.sm { height: 40px; font-size: 15px; padding: 0 14px; }
+  .btn.xs { height: 36px; font-size: 14px; padding: 0 12px; border-radius: 10px; }
+  .chip { font-size: 13px; padding: 3px 10px; }
+  .err, .okmsg, .warnmsg { font-size: 15px; }
+  .acts { margin-top: 16px; gap: 10px; }
+  details.fold > summary { font-size: 16px; min-height: 48px; }
+  details.panel > summary { font-size: 18px; }
+  details.fold > summary small { font-size: 13px; padding-left: 22px; }
+  .sumh { margin: 28px 0 10px; font-size: 18px; color: var(--gold); letter-spacing: .04em; font-weight: 700; }
+  .sumh:first-child { margin-top: 12px; }
+  .memo { font-size: 13px; color: var(--sub); }
+
+  /* 表（共通）: 見出し 14px・本文 15px・1 行 44px 以上・数字は右ぞろえ */
+  table { font-size: 15px; }
+  th, td { padding: 11px 10px; border-top-color: var(--line); }
+  th { font-size: 14px; color: var(--sub); font-weight: 700; }
+  td.n { font-size: 15px; }
+  td small.pt { font-size: .75em; }
+
+  /* 大きな数字の箱（今日・集計）: 数字 34px・単位 16px・見出し 14px・高さ 104px */
+  .summary { gap: 14px; margin: 16px 0 8px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .stat { min-height: 100px; padding: 14px 20px; border-radius: 14px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+  .stat small { font-size: 14px; font-weight: 700; color: var(--sub); line-height: 1.35; }
+  .stat b { font-size: 32px; font-weight: 900; line-height: 1.1; letter-spacing: .01em; }
+  .stat b small.pt, .summary .stat b small.pt { font-size: 16px; margin-left: 2px; }
+  .stat .of { font-size: 16px; font-weight: 700; color: var(--sub); margin-left: 6px; }
+  .stat .of small.pt { font-size: 13px !important; }
+  .stat b ~ small { font-weight: 500; font-size: 13px; }
+
+  /* 今日 */
+  .tvstrip { gap: 8px; margin: 0 0 16px; }
+  .tvstrip .lb { font-size: 14px; }
+  .tvstrip .chip { font-size: 14px; padding: 5px 12px; }
+  .nowcard { padding: 16px 22px; margin: 0 0 4px; border-radius: 16px; }
+  .nowcard .big { font-size: 22px; font-weight: 900; }
+  .nowcard .big .mono { font-size: 30px; font-weight: 900; }
+  .nowcard .sub { font-size: 15px; margin-top: 4px; }
+  table.rl { margin-top: 8px; }
+  table.rl td { height: 50px; padding-top: 6px; padding-bottom: 6px; }
+  table.rl td.head .mono { font-size: 17px !important; font-weight: 900; color: var(--text); }
+  table.rl tr.past td.head .mono { color: var(--text); }
+  table.rl td .combo { font-size: 16px; font-weight: 900; }
+  table.rl td.full { padding-left: 24px; }
+  table.rl th:nth-child(5) { padding-left: 24px; }
+  table.rl td.right { text-align: right; }
+  tr.past td { color: var(--text); }
+  tr.past td .hint { color: var(--sub); }
+  .datebar { margin-top: 20px; padding-top: 16px; gap: 10px; }
+  .datebar > .hint { font-size: 14px; font-weight: 700; }
+  .explain { padding: 16px 20px; font-size: 15px; }
+  .explain .exh { font-size: 17px; }
+  .rfbox { padding: 16px 20px; }
+  .rfbox > b { font-size: 17px; }
+  .rfbox > small, .rfnums small { font-size: 13px; }
+  .rfnums > div { padding: 10px 14px; }
+
+  /* 時刻表: 左の編集 ＋ 右の「この日の予定」300px・間 24px。順番（名前 → いつ → まとめて作る → 一覧 → 保存）を区切りで見せる */
+  .tt-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; }
+  .tt-layout > div > .acts.l { margin-top: 16px; }
+  .tpl { padding: 14px 20px; margin: 24px 0 0; border-radius: 16px; }
+  .tpl:first-child { margin-top: 24px; }
+  .tpl-top .open-btn { padding-left: 24px; gap: 10px; }
+  .tpl-top .open-btn::before { top: 12px; }
+  .tpl-top .open-btn b { font-size: 19px; font-weight: 900; }
+  .tpl-top .open-btn .sum { font-size: 14px; }
+  .tpl-top .ol { font-size: 14px; }
+  .tpl-body { padding-top: 16px; margin-top: 10px; }
+  .tpl-head { gap: 10px; }
+  .tpl-head input.name { height: 44px; font-size: 17px; }
+  .tpl-head .icon { width: 40px; height: 40px; }
+  .tpl-cond { gap: 12px; margin: 20px 0 4px; }
+  .tpl-cond input, .tpl-cond select { height: 44px; }
+  .tpl-cond.v4 { grid-template-columns: 180px minmax(0, 1fr); }
+  .wdays label { width: 44px; height: 44px; font-size: 15px; }
+  .bulk { gap: 12px; padding: 18px 0 6px; margin-top: 20px; }
+  .bulk .bt { font-size: 16px; font-weight: 900; color: var(--text); }
+  .bulk input { height: 44px; border-radius: 12px; }
+  .bulk input[type=time] { width: 136px; }
+  .bulk input[type=number] { width: 112px; }
+  .bulk .t { font-size: 15px; padding-bottom: 10px; }
+  .bulk .btn { height: 44px; }
+  .rowsbar { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .rowsbar .find { font-size: 14px; gap: 10px; }
+  .rowsbar .find input { width: 136px; height: 44px; }
+  .tpl .tbl { margin-top: 8px; }
+  .tt-rows th, .tt-rows td { padding: 4px 10px; height: 48px; }
+  .tt-rows tr:first-child th { height: 40px; }
+  .tt-rows input { height: 40px; font-size: 16px; }
+  .tt-rows input[type=time] { width: 140px; }
+  .tt-rows input.pay { width: 136px; }
+  .tt-rows td.no { font-size: 14px; width: 44px; }
+  .tt-rows td.msg { font-size: 13px; }
+  .tt-rows td.msg .err, .tt-rows td.msg .warnmsg { font-size: 13px; }
+  .tt-rows .icon { width: 40px; height: 40px; }
+  .side { top: 76px; }
+  .side .panel { margin-top: 24px; padding: 20px; }
+  .side .panel h3 { font-size: 20px; }
+  .side .summary { gap: 10px; margin: 12px 0 8px; }
+  .side .summary { grid-template-columns: 1fr !important; gap: 8px; }
+  .side .stat { min-height: 0; padding: 10px 16px; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .side .stat { padding: 10px 14px; }
+  .side .stat small { font-size: 13px; white-space: nowrap; }
+  .side .stat b { font-size: 22px; white-space: nowrap; }
+  .side .stat b small.pt { font-size: 14px; }
+  .pvseg { margin: 4px 0 4px; }
+  .pvseg button { height: 42px; font-size: 15px; }
+  .pv-list { max-height: max(240px, calc(100vh - 560px)); }
+  .pv-list th { padding: 8px 6px; font-size: 13px; }
+  .pv-list td { padding: 9px 6px; font-size: 15px; }
+  .pv-list td small.hint { font-size: 13px; }
+
+  /* テレビ: 店の行 90px 以上・店名 19px・SLOT/DERBY 44px */
+  .tvrow { padding: 18px 0; gap: 12px 12px; min-height: 92px; }
+  .tvrow .nm { font-size: 19px; font-weight: 900; }
+  .tvrow .nm .tvnow { font-size: 14px; }
+  .tvrow .seg button { height: 44px; min-width: 112px; font-size: 15px; }
+  .tvrow [data-act="tv-reload"] { height: 44px; }
+  .tvrow .tvq > span { font-size: 14px; font-weight: 700; }
+  .tvrow .tvq .seg button { height: 40px; min-width: 120px; font-size: 14px; }
+  .tvqhint { margin-top: 16px; }
+  .tvall { margin-top: 12px; }
+  .pair { margin-top: 24px; padding: 18px 20px; border-radius: 16px; }
+  .pair .phd b { font-size: 18px; }
+  .pair .phd small, .pair .pnow small { font-size: 14px; }
+  .pair .pnow { font-size: 16px; }
+  .pair .prow .nm { font-size: 16px; }
+  .pair .prow .nm small { font-size: 13px; }
+  .conn .lnk { font-size: 14px; padding: 12px 0; }
+  .conn .lnk b { font-size: 15px; }
+  .list .item { padding: 16px 0; gap: 12px; }
+  .list .item .name { font-size: 18px; }
+  .list .item .name small { font-size: 14px; margin-top: 2px; }
+  .onceRow small { font-size: 13px; }
+
+  /* 調整: 設定名 16px・説明 13px・数値 18px 太字・±ボタン 44px・数字の欄は全部同じ幅で右の 1 列にそろえる・1 行 72px */
+  .row { min-height: 72px; padding: 14px 0; gap: 24px; }
+  .row .lbl { font-size: 16px; font-weight: 700; line-height: 1.45; }
+  .row .lbl small { font-size: 13px; font-weight: 500; margin-top: 2px; line-height: 1.5; }
+  .row > .stepper, .row.fixed .fixv { width: 252px; justify-content: flex-end; }
+  .stepper { gap: 6px; }
+  .stepper button { width: 44px; height: 44px; font-size: 16px; border-radius: 12px; }
+  .stepper input.pv { width: max(124px, calc(var(--d, 0) * 1ch + 26px)); height: 44px; font-size: 18px; font-weight: 900; border-radius: 12px; }
+  .stepper i { font-size: 14px; min-width: 22px; color: var(--sub); }
+  .row.fixed .fixv { flex-direction: row; align-items: baseline; gap: 10px; padding-right: 2px; }
+  .row.fixed .fixv b { font-size: 18px; font-weight: 900; }
+  .row.fixed .fixv small { font-size: 13px; color: var(--sub); padding: 2px 8px; border: 1px solid var(--line2); border-radius: 6px; }
+  .row + .hint, .bigwarn + .hint { margin: -4px 0 12px; }
+  .bigwarn { margin: -2px 0 10px; font-size: 14px; }
+  .capnote { margin-top: 8px; padding: 10px 14px; }
+  .cue-row { padding: 14px 0; gap: 12px 24px; }
+  .cue-row .cn { font-size: 16px; }
+  .cue-row .cn small { font-size: 13px; font-weight: 500; }
+  .mini > span { font-size: 14px; }
+  .quick { gap: 10px; }
+  #hlookPanel .quick .btn { min-width: 160px; }
+  #testPanel .range { margin-top: 8px; }
+
+  /* 下の保存の帯: 不透明＋上に影。最後の行は main の下の余白で帯の上まで上がる */
+  .savebar { margin: 24px -24px 0; padding: 12px 24px calc(12px + env(safe-area-inset-bottom)); gap: 10px; }
+  .savebar .msg { font-size: 15px; }
+  .savebar .btn { min-width: 120px; }
+
+  /* 集計 */
+  .range { gap: 0 16px; }
+  .quick .btn.sm { min-width: 64px; }
+  #billTable td, table.cards td { font-size: 15px; }
+}
+/* PC の広い幅だけ: 今日のレースの列の幅を決める（時刻・状態・参加・当選額・結果・操作がまっすぐそろう） */
+@media (min-width: 1101px) {
+  table.rl { table-layout: fixed; }
+  table.rl th:nth-child(1) { width: 200px; }
+  table.rl th:nth-child(2) { width: 112px; }
+  table.rl th:nth-child(3) { width: 88px; }
+  table.rl th:nth-child(4) { width: 196px; }
+  table.rl th:nth-child(6) { width: 132px; }
+  table.rl td .vfrom { display: inline; }
+}
+/* タブレット（641〜1100px）: 大きな数字は 28px（4 つが横に並んでも収まる） */
+@media (min-width: 641px) and (max-width: 1100px) {
+  .stat b { font-size: 28px; }
+  .summary { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .row > .stepper, .row.fixed .fixv { width: auto; }
+}
+
+/* 時刻表の手順の番号（1 名前 → 2 いつ → 3 まとめて作る → 4 この日の予定（右の一覧）→ 5 保存）。文字は変えず、金の丸い番号だけ足す（PC だけ） */
+@media (min-width: 641px) {
+  .tpl-body { counter-reset: ttstep; }
+  .tpl-head::before, .tpl-cond > label.f:first-child > span::before, .bulk .bt::before, .tt-layout .side .panel > h3::before, .tt-layout ~ .savebar #ttsave::before {
+    counter-increment: ttstep; content: counter(ttstep); display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 24px; height: 24px; margin-right: 10px; border-radius: 999px; background: var(--gold); color: #1A1408; font-size: 15px; font-weight: 900; line-height: 1; vertical-align: 2px; letter-spacing: 0;
+  }
+  .tt-layout .side .panel > h3::before { content: '4'; counter-increment: none; margin-right: 0; }
+  .tt-layout ~ .savebar #ttsave::before { content: '5'; counter-increment: none; background: #1A1408; color: var(--gold); width: 22px; height: 22px; font-size: 14px; }
+  .tpl-cond > label.f:first-child > span { font-size: 19px; font-weight: 900; color: var(--text); margin-bottom: 10px; }
+}
+/* 単位「pt」・「決まり」: どの幅でも 12px 未満にしない（数字のすぐ後ろの小さな単位も読める大きさに） */
+.pt, .stat b small.pt, .summary .stat b small.pt, td small.pt, .rfnums b small.pt, .hint .pt, .hint small.pt { font-size: max(12px, .72em); }
+.row.fixed .fixv small { font-size: 12px; }
+@media (min-width: 641px) { td small.pt { font-size: max(12px, .75em); } .stat b small.pt, .summary .stat b small.pt { font-size: 16px; } .side .stat b small.pt { font-size: 14px; } .stat .of small.pt { font-size: 13px !important; } .row.fixed .fixv small { font-size: 13px; } }
+/* タブレット（641〜900px）: 大きな数字の箱は 2 つずつ（3＋1 に分かれない） */
+@media (min-width: 641px) and (max-width: 900px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 641px) {
+  #toast { bottom: 104px; font-size: 15px; padding: 12px 20px; } /* 保存の帯（高さ約 68px）に重ならない */
+  .sumh + .quick { margin-bottom: 8px; }
+}
+
+/* ===== 2026-10-23 デザイン見直し 2 回目（採点 87 → 90 以上へ）: PC の文字を全体に一段大きく・選ばれている＝淡い金＋金の枠 2px・時刻表の手順・テレビの行を低く・調整の数値 20px ===== */
+/* 選ばれている状態（タブ・2 択・3 択・期間・馬の見た目・曜日・テレビの札）: 淡い金の面（#E8C773 を薄く）＋金の枠 2px＋明るい金の太字。押すボタン（金のグラデーション）とは塗りの濃さで見分ける */
+:root { --sel: #2B3245; --selTint: rgba(232, 199, 115, .22); --selText: #FFE9A8; }
+nav.tabs button.on, .btn[aria-pressed="true"], .wdays label.on { background: linear-gradient(var(--selTint), var(--selTint)), var(--panel); color: var(--selText); border: 2px solid var(--gold); }
+.seg button.on { background: var(--selTint); color: var(--selText); box-shadow: inset 0 0 0 2px var(--gold); }
+.chip.on { background: var(--selTint); color: var(--selText); box-shadow: inset 0 0 0 1px var(--gold2); }
+
+@media (min-width: 641px) {
+  /* 全体: 本文 16px・説明 15px・ラベル 15px。いつも出ている小さな札・見出しも一段大きく */
+  header small { font-size: 14px; }
+  nav.tabs button { font-size: 17px; }
+  .hint { font-size: 15px; }
+  label.f span { font-size: 15px; }
+  .chip { font-size: 14px; }
+  .status { font-size: 14px; padding: 4px 12px; min-width: 72px; }
+  .btn.xs { height: 40px; font-size: 15px; }
+  details.fold > summary { font-size: 17px; }
+  details.fold > summary small { font-size: 14px; }
+  .panel h3 .auto { font-size: 14px; }
+  .stat small { font-size: 15px; }
+  .stat b ~ small { font-size: 14px; }
+
+  /* 表（今日・集計・明細）: 見出し 14px 太字・数字 16px 右ぞろえ・1 行 46px・線 #303441 */
+  table { font-size: 16px; }
+  th { font-size: 14px; font-weight: 700; }
+  td.n, #billTable td, table.cards td { font-size: 16px; }
+  table.cards.days td, #billTable td { height: 46px; padding-top: 8px; padding-bottom: 8px; }
+  table.cards.days tr.hd th, #billTable tr.hd th { padding-top: 10px; padding-bottom: 10px; }
+  table.rl td { font-size: 16px; }
+  table.rl td .hint, table.rl td small.hint { font-size: 15px; }
+  table.rl td .combo { font-size: 17px; }
+
+  /* 今日: いまのレース・テレビの札 */
+  .nowcard .sub { font-size: 16px; }
+  .tvstrip .lb { font-size: 15px; }
+  .tvstrip .chip { font-size: 15px; }
+
+  /* 時刻表: 手順ごとに区切り（間 24px）・手順の見出し 19px 太字・日付と時刻の値 17px・右の一覧の 1 行 50px */
+  .tpl-head { padding-bottom: 4px; }
+  .tpl-cond { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--line); }
+  .bulk { margin-top: 24px; padding: 20px 0 4px; row-gap: 14px; }
+  .bulk .bt { font-size: 19px; display: flex; align-items: center; }
+  .bulk .bt::before { margin-right: 10px; }
+  .rowsbar { margin-top: 24px; padding-top: 20px; }
+  input[type=date], input[type=time] { font-size: 17px; }
+  .tt-rows input { font-size: 17px; }
+  .tt-rows input.pay { font-weight: 900; }
+  .tt-rows th { font-size: 14px; }
+  .tpl .tt-rows tr:first-child th:nth-child(2) { font-size: 14px; font-weight: 700; color: var(--sub); }
+  .bulk .btn, .bulk .btn.sm { height: 44px; font-size: 16px; padding: 0 18px; }
+  .side .panel > h3 { font-size: 20px; gap: 10px; }
+  .pv-list th { font-size: 14px; padding: 8px 6px; }
+  .pv-list td { height: 50px; padding: 4px 6px; font-size: 16px; border-top-color: var(--line); }
+  .pv-list td small.hint { font-size: 14px; }
+  .tt-layout ~ .savebar #ttsave { display: inline-flex; align-items: center; gap: 8px; }
+  .tt-layout ~ .savebar #ttsave::before { margin-right: 0; }
+
+  /* テレビ: 店の行 約 110px（店名＋今のゲームは左に 2 段、右は 上 SLOT/DERBY・読み込み直す／下 画質）・店名 20px・今のゲーム 16px 太字・区切りをはっきり */
+  .tvrow { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "nm seg rl" "nm q q"; padding: 9px 0; gap: 8px 12px; min-height: 0; border-top: 1px solid var(--line2); }
+  .tvrow:first-of-type { border-top: 1px solid var(--line2); }
+  #tvPanel > .hint:first-of-type { margin-bottom: 16px; }
+  .tvrow .nm { align-self: center; font-size: 20px; line-height: 1.3; }
+  .tvrow .nm .tvnow { font-size: 16px; font-weight: 700; margin-top: 4px; }
+  .tvrow .tvq { justify-self: end; }
+  .tvrow .tvq > span { font-size: 15px; }
+  .tvrow .tvq .seg button { height: 40px; min-width: 116px; font-size: 15px; }
+  .tvrow .seg button { font-size: 16px; }
+  .tvrow + .tvqhint { border-top: 1px solid var(--line2); padding-top: 14px; }
+
+  /* 調整: 設定名 16px 太字・説明 13px #B8BECA・数値 20px 太字・欄 120px・数字と説明の間 32px・見出し 22px・項目ごとに細い線 */
+  .row { gap: 32px; }
+  .row .lbl { font-size: 16px; font-weight: 700; }
+  .row .lbl small { font-size: 13px; color: var(--sub); }
+  .row > .stepper, .row.fixed .fixv { width: 248px; }
+  .stepper input.pv { width: max(120px, calc(var(--d, 0) * .6em + 12px)); font-size: 20px; font-weight: 900; padding: 0 4px; }
+  .row.fixed .fixv b { font-size: 20px; }
+  .row + .hint, .bigwarn + .hint { margin: -2px 0 0; padding: 0 0 14px; font-size: 14px; color: var(--sub); }
+  .row + .hint b, .bigwarn + .hint b { color: var(--text); }
+  .cue-row .cn { font-size: 16px; }
+  .cue-row .mini .stepper input.pv { width: 100px; }
+  .mini > span { font-size: 15px; }
+}
+@media (min-width: 641px) and (max-width: 1100px) { .row > .stepper, .row.fixed .fixv { width: auto; } }
+@media (min-width: 641px) { .row + .hint.capnote { margin: 10px 0 4px; padding: 10px 14px; color: var(--text); } }
