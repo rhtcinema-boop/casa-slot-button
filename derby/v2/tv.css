@@ -1170,3 +1170,190 @@
 #stage.v2 .v2info .x6 li .pr i.hc { font-size: 30px; }
 /* 「おめでとう！」は紹介中の行だけ場所を取る（ほかの行で名前が「…」に切れないように） */
 .v2res .r .v2wl .row:not(.hi) .nk::after { content: none; }
+
+/* 2026-10-21 オーナー「参加無料・1人1票までを分かりやすく」: QR の下の札を 2 つに。
+   投票中（m-open）は 1 行「参加無料・1人1票まで」、待ち時間（m-wait）は 2 段（大きく「参加無料」、下に「1人1票まで」） */
+.v2qr .free .f1, .v2qr .free .f2 { display: inline; }
+#stage.v2.m-open .v2qr .free .f2::before { content: '・'; }
+#stage.v2.m-open .v2qr .free { font-size: 26px; letter-spacing: .02em; white-space: nowrap; }
+#stage.v2.m-wait .v2qr .free { text-align: center; }
+#stage.v2.m-wait .v2qr .free .f1 { display: block; }
+#stage.v2.m-wait .v2qr .free .f2 { display: block; margin-top: 8px; font-size: .55em; letter-spacing: .04em; }
+
+/* ======================================================================================================
+   2026-10-23 見直し（オーナー「デザイン全部見直して。レイアウトからはみ出てるとかある」）。
+   一番長い馬名（9 文字）・8 文字のニックネーム・当選額 100,000pt・999.9 倍・全店 888 人で、全部の場面を 1920／1280／960 で測って直した
+   ====================================================================================================== */
+/* リプレイの札: 「▶ REPLAY」の文字が赤い札の右からはみ出していた（幅 156px 固定）→ 幅は中身に合わせる */
+#stage.v2 .bc-tag.replay { width: auto; padding: 0 22px 0 18px; }
+/* 結果: 1 着・2 着の行は枠つき。右の「タイム 0:56.6」「1 1/4 馬身」が枠の線に重なって「タイム」が切れていた → 行の右に余白 */
+.v2res .ord .o { padding-right: 14px; }
+.v2res .ord::after { right: 32px; }
+/* 結果: 当たった人がいないとき「当たった人は いませんでした」が小さく暗かった → 遠くから読める大きさ */
+.v2res .r .v2wl .none { font-size: 40px; line-height: 1.45; color: #dfe7f3; padding-top: 150px; }
+/* 結果: 1 人ずつの印の「おめでとう！」で名前が切れる行は出さない（v2/tv.js が .nocg を付ける） */
+.v2res .r .v2wl .row.nocg .nk::after { content: none; }
+/* リプレイの右の列: 「2連単」が 2 行に折れて「倍」が下に落ち、いちばん下の「当たった人 全店で ○人」が枠の外に隠れていた（列の高さ 496px）
+   → 1 着・2 着の札を少し詰め、倍率は 1 行（ラベル左・数字右）、当たった人の数も詰めて全部を枠に入れる */
+.v2hlw .hlres { gap: 8px; padding: 12px 14px 8px; }
+.v2hlw .hr { padding: 6px 10px; row-gap: 4px; }
+#stage.v2 .v2hlw .hr i.hc { font-size: 26px; }
+.v2hlw .ho { flex-wrap: nowrap; align-items: baseline; gap: 8px; padding: 8px 4px 0; white-space: nowrap; }
+.v2hlw .ho small { flex: none; font-size: 24px; }
+.v2hlw .ho b { margin-left: auto; font-size: 50px; white-space: nowrap; }
+.v2hlw .ho b small.bai { font-size: 24px; }
+.v2hlw .hlcnt { gap: 4px; padding: 10px 14px 12px; }
+.v2hlw .hlcnt b { font-size: 44px; }
+/* レース中・リプレイの上の帯: 見えない（opacity 0）発走時刻・参加人数の札が場所を取ったまま → テストレースのときに店名「渋谷店（テスト）」が画面の右の外へ押し出されていた。
+   見えない札は場所も取らない。店名は長くても帯の中に収める（長い店名だけ「…」） */
+#stage.v2.m-live .top .raceinfo, #stage.v2.m-live .top .v2ppl, #stage.v2.m-hl .top .raceinfo, #stage.v2.m-hl .top .v2ppl { display: none; }
+#stage.v2.m-live .top .logo, #stage.v2.m-hl .top .logo { margin-left: auto; }
+#stage.v2 .top { min-width: 0; }
+#stage.v2 .v2store { flex: 0 1 auto; min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+/* 長押しの画面（v2/tvswitch.js。スタッフ向け）と「進行役のテレビのため…」の小さな札: 端末の文字（sans-serif）だった → ほかと同じ Noto Sans JP */
+#tvkeyBox, #tvkeyBox *, #tvHold { font-family: var(--font-ui) !important; }
+/* 設定エラーの全画面: スタッフ向けの小さな説明が「管理画面／の「進行役にする」」のように言葉の途中で折れていた → v2/tv.js で「。」のあとで改行 */
+/* 文字の太さをそろえる: 出馬表の見出し・馬名・QR の札・上の帯の発走時刻だけ 700（太字）で、ほかの見出し・名前（900）より細く見えていた */
+#stage.v2 .side .card h4 .t, #stage.v2 .horse .l1 b, #stage.v2 .v2qr .tx b, #stage.v2 .raceinfo b { font-weight: 900; }
+/* 着順掲示板の文字（馬名・着差・見出し・払戻）も 900 に（ほかの場面の名前・数字と同じ太さ。電光の数字 DSEG7 はそのまま） */
+#stage.v2 .bd-row .nm, #stage.v2 .bd-row .mg, #stage.v2 .bd-head span, #stage.v2 .bd-time small, #stage.v2 .bd-time b, #stage.v2 .bd-pay div, #stage.v2 .bd-pay div b { font-weight: 900; }
+
+/* ======================================================================================================
+   2026-10-23 デザイン見直し 1 回目（テレビ。ChatGPT の採点 86 → 90 以上をねらう。DESIGN_SYSTEM_V4.md・DESIGN_REVIEW_V4.md「A テレビ」）
+   設計座標は 1600×900（1920 の画面では 1.2 倍）。いつも出ている文字は 1920 で 22px 以上（設計 19px 以上）。
+   ====================================================================================================== */
+/* ---------- A-3 投票中: QR（参加の誘い）をいちばんに。下の 3 つの枠（残り時間・人気の組み合わせ・QR）の上の端と下の端をそろえる（y512〜883） ---------- */
+/* QR の枠: 見出しの帯「アプリ不要 スマホで参加」を枠の中の上に（前は枠の上にはみ出していた）、下に「参加無料・1人1票まで」 */
+#stage.v2.m-open .v2qr { top: 512px; right: 35px; width: 320px; height: 371px; padding: 0 0 8px; gap: 0; justify-content: flex-start; align-items: center; border-radius: 18px; box-shadow: 0 0 0 5px var(--orange), 0 0 0 8px #fff, 0 14px 30px rgba(0, 0, 0, .35); }
+#stage.v2.m-open .v2qr .tx, #stage.v2.m-result .v2qr .tx { position: static; transform: none; order: -1; align-self: stretch; }
+#stage.v2.m-open .v2qr .tx b, #stage.v2.m-result .v2qr .tx b { display: block; width: auto; height: 46px; padding: 0 10px; border-radius: 18px 18px 0 0; background: #d84300; color: #fff; font: 900 26px/46px var(--font-tv); letter-spacing: .02em; text-align: center; white-space: nowrap; box-shadow: none; }
+#stage.v2.m-open .v2qr .code { order: 1; width: var(--qo); height: var(--qo); margin: auto 0; }
+#stage.v2.m-open .v2qr .free { order: 2; margin: 0; font: 900 26px/1.2 var(--font-tv); color: #1e8a43; letter-spacing: .02em; white-space: nowrap; }
+/* 残り時間と人気の組み合わせ（QR の左。横幅は QR の枠の左 18px まで） */
+#stage.v2 .v2info { width: 1187px; }
+.v2info .cd { width: 330px; padding: 22px 28px; gap: 8px; justify-content: center; }
+.v2info .cd small { font-size: 25px; line-height: 1.2; }              /* 「締切まで あと」1920 で 30px */
+.v2info .cd b { font-size: 112px; }                                    /* 残り時間 1920 で 134px */
+.v2info .cd .cdl { margin-top: 2px; }
+.v2info .cd .cdl span { font-size: 24px; line-height: 1.25; }
+/* 人気の組み合わせ: 倍率は 1920 で 32px（QR より弱く） */
+.v2info .x6 { padding: 20px 24px 22px; gap: 14px; }
+.v2info .x6 h4 { font-size: 30px; gap: 12px; }
+.v2info .x6 h4 small { font-size: 22px; padding: 4px 12px; }
+.v2info .x6 ol { gap: 12px 16px; }
+.v2info .x6 li { justify-content: center; gap: 12px; padding: 0 18px 0 12px; border-radius: 12px; } /* 順位・馬番・倍率をひとまとまりで真ん中に（間が空きすぎない） */
+.v2info .x6 li em { width: 34px; height: 34px; font-size: 22px; }
+.v2info .x6 li .pr { gap: 4px; }
+#stage.v2 .v2info .x6 li .pr i.hc { font-size: 24px; border-radius: 7px; }
+.v2info .x6 li .pr s { border-width: 8px 0 8px 11px; }
+.v2info .x6 li b { margin-left: 22px; min-width: 118px; text-align: right; font-size: 27px; }
+.v2info .x6 li b small.bai { font-size: 19px; }
+.v2info .x6 li.none { font-size: 28px; }
+
+/* ---------- A-4〜8 レース中: 小さな文字をなくす（左上の順位・右の倍率の列・下の帯） ---------- */
+/* 左上の順位: 数字 1920 で 36px、馬番は角丸の四角（スマホと同じ形） */
+#stage.v2 .rankp { width: 214px; height: auto; padding: 10px 18px 10px 24px; gap: 6px; justify-content: flex-start; }
+#stage.v2 .rankp .rr { height: 46px; }
+#stage.v2 .rankp .rr b { font-size: 30px; }
+#stage.v2 .rankp .rr b small { font-size: 19px; color: #c9d6ee; }
+#stage.v2 .rankp .rr i { width: 44px; height: 44px; border-radius: 9px; font-size: 29px; box-shadow: 0 0 0 2px rgba(255, 255, 255, .9); }
+/* 右の列「2連単 人気上位」: 見出し 1920 で 31px、倍率 36px、順位と「倍」23px */
+#stage.v2 .v2odds.xo h5 { font-size: 26px; line-height: 1.1; padding: 8px 2px 7px; letter-spacing: .02em; }
+#stage.v2 .v2odds.xo h5 small { font-size: 22px; color: #ffd54f; letter-spacing: .04em; }
+#stage.v2 .v2odds.xo li em { left: 5px; top: 5px; font-size: 19px; color: #e8eef8; }
+#stage.v2 .v2odds.xo li .pr i { width: 38px; height: 38px; font-size: 26px; border-radius: 8px; }
+#stage.v2 .v2odds.xo li b { font-size: 30px; }
+#stage.v2 .v2odds.xo li b small { font-size: 19px; }
+#stage.v2 .v2odds.xo.cmp h5 { font-size: 24px; }
+#stage.v2 .v2odds.xo.cmp li em { font-size: 19px; top: 4px; }
+#stage.v2 .v2odds.xo.cmp li .pr i { width: 34px; height: 34px; font-size: 23px; }
+#stage.v2 .v2odds.xo.cmp li b { font-size: 27px; }
+#stage.v2 .v2odds.xo.cmp li b small { font-size: 19px; }
+/* 下の帯: 「2:17 発走 ｜ 芝1000m 晴 ｜ 全店で 120 人参加」を真ん中に大きく（映像の左下の小さなコース名・右下の距離と速さは出さない＝js/race3d.js の tvHud） */
+.v2strip .crs { display: none; }
+#stage.v2.m-live .v2strip { gap: 0; padding: 0 40px; justify-content: center; }
+#stage.v2.m-live .v2strip .ttl { font-size: 50px; padding-right: 44px; }
+#stage.v2.m-live .v2strip .crs { display: block; padding: 0 44px; border-left: 2px solid rgba(255, 255, 255, .22); border-right: 2px solid rgba(255, 255, 255, .22); font: 900 38px/1.3 var(--font-tv); color: #dfe7f3; white-space: nowrap; }
+#stage.v2.m-live .v2strip .ppl { padding-left: 44px; font-size: 32px; }
+#stage.v2.m-live .v2strip .ppl b { font-size: 58px; }
+#stage.v2.m-live.st-soon .v2strip .crs { display: none !important; }
+
+/* ---------- A-6〜8 勝ち馬のカード（左上）: 1 着と 2 着で同じ位置・同じ大きさ。馬名 1920 で 58px、馬番は角丸の四角（スマホと同じ色と形） ---------- */
+#stage.v2 .wincard { left: 34px; top: 82px; width: 520px; max-width: none; box-sizing: border-box; padding: 16px 30px 18px 34px; border-radius: 10px; }
+#stage.v2 .wincard .w1 { font-size: 40px; gap: 12px; }
+#stage.v2 .wincard .w1 i { width: 56px; height: 56px; border-radius: 10px; font-size: 38px; box-shadow: 0 0 0 3px #fff; }
+#stage.v2 .wincard .w1 small:empty { display: none; }
+#stage.v2 .wincard .w2 { margin-top: 12px; font-size: 48px; line-height: 1.12; white-space: nowrap; overflow: hidden; }
+
+/* ---------- A-1・A-2 待ち時間: カードの中の余白をそろえる（上下左右 30・36px＝1920 で 36・43px）。見出しの高さも同じ。主役を 1 つに ---------- */
+#stage.v2 .v2wait { height: 566px; width: 1110px; }                                                /* y96〜662（右の QR の列とは今までどおり少し空ける） */
+#stage.v2.m-wait .v2nx { top: 680px; height: 200px; width: 1110px; gap: 30px; padding: 0 36px; }    /* y680〜880 */
+#stage.v2.m-wait .v2nx .at small { font-size: 32px; }
+#stage.v2.m-wait .v2nx .at b { font-size: 120px; }
+#stage.v2.m-wait .v2nx .at em { font-size: 36px; padding-bottom: 14px; }
+#stage.v2.m-wait .v2nx .cd > span { font-size: 32px; }
+#stage.v2.m-wait .v2nx .cd .left small { font-size: 26px; }
+#stage.v2.m-wait .v2nx .cd .left b { font-size: 88px; }
+.v2wait .how, .v2wait .win { padding: 30px 36px; gap: 14px; }
+.v2wait h3 { height: 44px; font-size: 36px; line-height: 44px; }
+.v2wait h3 small { font-size: 24px; }
+/* 遊び方: 3 つの手順が主役 */
+.v2wait .how ol { gap: 16px; }
+.v2wait .how li { grid-template-columns: 60px 1fr; column-gap: 22px; }
+.v2wait .how li::before { width: 60px; height: 60px; font-size: 38px; }
+.v2wait .how li b { font-size: 48px; }
+.v2wait .how li span { font-size: 24px; color: #6b4e36; }
+.v2wait .how .pay { gap: 16px; padding: 14px 24px; border-radius: 14px; font-size: 30px; }
+.v2wait .how .pay b { font-size: 40px; }
+.v2wait .how .pay span { font-size: 24px; }
+/* 前のレースの結果: 倍率 1920 で 58px・当たった人の当選額 38px */
+.v2wait .win .hd .cnt { font-size: 26px; }
+.v2wait .win .hd .cnt b { font-size: 40px; }
+.v2wait .win .cmb { gap: 16px; padding: 12px 24px; border-radius: 14px; font-size: 36px; }
+#stage.v2 .v2wait .win .cmb i.hc { font-size: 40px; }
+.v2wait .win .cmb small { font-size: 28px; }
+.v2wait .win .cmb .ar { font-size: 40px; }
+.v2wait .win .cmb .co { font-size: 48px; }
+.v2wait .win .cmb .co small.bai { font-size: 26px; }
+.v2wait .win .v2wl { border-radius: 0; background: none; box-shadow: none; border-top: 2px solid rgba(255, 255, 255, .12); }
+.v2wait .win .v2wl .row { padding: 0 24px; gap: 18px; border-bottom-color: rgba(255, 255, 255, .1); }
+.v2wait .win .v2wl .row .st { font-size: 24px; padding: 5px 12px; }
+.v2wait .win .v2wl .row .bl { font-size: 32px; }
+.v2wait .win .v2wl .row .nk { font-size: 34px; }
+.v2wait .win .v2wl .row b { font-size: 32px; }
+.v2wait .win .v2wl.dense .row .nk, .v2wait .win .v2wl.dense .row .bl { font-size: 28px; }
+.v2wait .win .v2wl.dense .row b { font-size: 29px; }
+.v2wait .win .v2wl .none { font-size: 34px; }
+
+/* ---------- A-10・A-11 結果 ---------- */
+/* 行の高さ: 着順 515・組み合わせの帯 150・下の帯 74（下の端 y871 を右下の QR の枠とそろえる） */
+#v2res { grid-template-rows: 60px 515px 150px 74px; }
+#v2res .pay, #v2res .foot { margin-right: 310px; }
+/* 組み合わせの帯（高さ 150）: 数字を少し大きく */
+#v2res .pay .cmb i.hc { font-size: 44px; }
+#v2res .pay b.o { font-size: 80px; }
+/* 着順: 「結果発表」（0:00〜）と「当たった人」（0:20〜）で行の高さ・太さ・枠を同じに（場面で変えない） */
+#v2res .ord .o { opacity: 1; }
+#v2res .ord .o .mg { opacity: 1; }
+#v2res .ord .o:first-child { box-shadow: inset 0 0 0 2px rgba(255, 213, 79, .85); }
+#v2res .ord .o.top2:nth-child(2) { opacity: 1; box-shadow: inset 0 0 0 2px rgba(220, 230, 240, .55); }
+#v2res .pay { box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffb300, 0 10px 30px rgba(0, 0, 0, .4); }
+/* 「全店の当たった人」の横の小さな「当選額」は出さない（「全店で 3 人」は残す） */
+.v2res .r .head h3 small { display: none; }
+/* 右下の QR: 投票中（A-3）と同じ形（上に見出しの帯「次のレースに スマホで参加」・下に「参加無料・1人1票まで」）。QR のまわりに 20px 以上の白。下の端は y871 */
+#stage.v2.m-result .v2qr { top: auto; bottom: 29px; right: 45px; width: 290px; height: auto; padding: 0 0 8px; gap: 0; justify-content: flex-start; align-items: center; border-radius: 16px; }
+#stage.v2.m-result .v2qr { box-shadow: 0 0 0 5px var(--orange), 0 0 0 8px #fff, 0 14px 30px rgba(0, 0, 0, .35); }
+#stage.v2.m-result[data-resph="next"] .v2qr, #stage.v2.m-result[data-resph="cd"] .v2qr { box-shadow: 0 0 0 5px #2e9d4f, 0 0 0 8px #fff, 0 0 36px rgba(46, 157, 79, .8); }
+#stage.v2.m-result .v2qr .tx b { height: 40px; border-radius: 16px 16px 0 0; font-size: 22px; line-height: 40px; padding: 0 8px; }
+#stage.v2.m-result .v2qr .code { order: 1; width: var(--qr); height: var(--qr); margin: 10px 0 4px; }
+#stage.v2.m-result .v2qr .free { display: block; order: 2; margin: 0; font: 900 22px/1.2 var(--font-tv); color: #1e8a43; white-space: nowrap; }
+#stage.v2.m-result .v2qr .free .f2::before { content: '・'; }
+/* 右の列（当たった人・受け取りの案内・右下の小さな枠）は QR の枠の 16px 上（y553）で止める */
+.v2res .r .v2wl { margin-bottom: 66px; }
+.v2res .ract { margin-bottom: 66px; }
+.v2res .rsub { margin-bottom: 66px; }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 256px; }
+.v2res.sub-on .r .v2wl { margin-bottom: 312px; }
+/* 組み合わせの帯の下（前は空いていた帯）: 当たった人の時間は「本日中に リングチップでお渡し」、当たりなし・テストのときは次のレースの帯 */
+.v2res.has-w:not(.sub-on) .rnote { grid-column: 1 / 3; grid-row: 4; align-self: stretch; display: flex; align-items: center; justify-content: center; height: auto; margin: 0 310px 0 0; border-radius: 12px; background: rgba(242, 183, 5, .12); box-shadow: inset 0 0 0 2px rgba(242, 183, 5, .5); font: 900 34px/1 var(--font-tv); color: #ffe14d; letter-spacing: .04em; }
+.v2res:not(.has-w).ph-top .foot, .v2res.test.ph-top .foot, .v2res.test.ph-win .foot { opacity: 1; visibility: visible; }
