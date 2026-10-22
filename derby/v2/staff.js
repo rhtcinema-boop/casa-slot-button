@@ -36,6 +36,7 @@
   const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + pad(s % 60); };
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
   const ptT = (n) => amt(n) + 'pt';
+  const nwrap = (t) => esc(t).replace(/^(.+?)(（.+）)$/, '<span class="nw">$1</span><span class="nw">$2</span>'); // 「店舗を変える／（ログアウト）」の所でだけ折り返す
   const qs = new URLSearchParams(location.search);
   const qNorm = (v) => (v === 'auto' || v === 'max' ? v : '');
 
@@ -47,15 +48,36 @@
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) { /* noop */ } };
   const now = () => (C ? C.serverNow() : Date.now());
 
-  function toast(t, err, ms) { const el = $('toast'); el.textContent = t; el.className = 'toast' + (err ? ' err' : ''); clearTimeout(toast.h); toast.h = setTimeout(() => el.classList.add('hidden'), ms || 3000); }
+  /* 枠に入らない文字（ニックネーム・下のボタン）: 「…」で切らずに、まず小さく（data-fit の px まで）、それでも入らなければ 2 行に（2026-10-23 見直し） */
+  function fitText(root) {
+    if (!root) return;
+    root.querySelectorAll('[data-fit]').forEach((el) => {
+      el.style.fontSize = ''; el.classList.remove('wrap2');
+      const w = el.clientWidth; if (!w || el.scrollWidth <= w + 1) return;
+      const fs = parseFloat(getComputedStyle(el).fontSize), min = Number(el.dataset.fit) || 12;
+      el.style.fontSize = Math.max(min, Math.floor((fs * w) / el.scrollWidth * 10) / 10) + 'px';
+      if (el.scrollWidth > el.clientWidth + 1) el.classList.add('wrap2');
+    });
+  }
+  let fitT = 0;
+  const fitAll = () => { fitText($('main')); fitText($('dock')); };
+  window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(fitAll, 120); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitAll);
+  /* お知らせ（3 秒）: 上の帯（ロゴ・「スロット｜競馬」・テレビ・レース）を隠さないように、帯のすぐ下に出す（2026-10-23 デザイン見直し 1 回目） */
+  function toast(t, err, ms) {
+    const el = $('toast'), top = document.querySelector('header.top'), lg = $('login');
+    const b = top && !(lg && !lg.classList.contains('hidden')) ? Math.round(top.getBoundingClientRect().bottom) : 0;
+    el.style.top = b > 0 ? (b + 8) + 'px' : '';
+    el.textContent = t; el.className = 'toast' + (err ? ' err' : ''); clearTimeout(toast.h); toast.h = setTimeout(() => el.classList.add('hidden'), ms || 3000);
+  }
   const errText = (e) => (e && !e.status ? TX.netErr : (e && e.body && e.body.message) || (e && e.message) || TX.failed);
   const pinGone = (e) => { if (!(e && (e.status === 401 || e.code === 'bad_pin'))) return false; closeSheet(); toast(TX.pinChanged, true, 4000); logout(true); return true; };
   /* 画面の中の確認の窓（ブラウザの確認は使わない） */
-  function ask(title, text, okLabel) {
+  function ask(title, text, okLabel, kind) { // kind: 'danger'＝取り消せない操作（赤）／'test'＝テスト（青）／なし＝金
     return new Promise((res) => {
       const old = $('askBox'); if (old) old.remove();
       const w = document.createElement('div'); w.id = 'askBox'; w.className = 'ask';
-      w.innerHTML = '<div class="card" role="dialog" aria-modal="true"><h3>' + esc(title) + '</h3>' + (text ? '<p>' + esc(text) + '</p>' : '') + '<div class="row"><button type="button" class="btn ghost" data-r="0">' + esc(TX.cancel) + '</button><button type="button" class="btn ok" data-r="1">' + esc(okLabel || TX.yes) + '</button></div></div>';
+      w.innerHTML = '<div class="card" role="dialog" aria-modal="true"><h3>' + esc(title) + '</h3>' + (text ? '<p>' + esc(text) + '</p>' : '') + '<div class="row"><button type="button" class="btn ghost" data-r="0">' + esc(TX.cancel) + '</button><button type="button" class="btn ' + (kind === 'danger' ? 'danger' : kind === 'test' ? 'testgo' : 'ok') + '" data-r="1">' + esc(okLabel || TX.yes) + '</button></div></div>';
       w.addEventListener('click', (e) => { const b = e.target.closest('[data-r]'); if (!b && e.target !== w) return; w.remove(); res(!!b && b.dataset.r === '1'); });
       document.body.appendChild(w);
     });
@@ -102,7 +124,7 @@
     saved = null; wins = null; st = null; try { localStorage.removeItem(KEY); } catch (e) { /* noop */ }
     closeSheet(); await login(); start();
   }
-  function showMain(on) { ['main', 'dock', 'tvRow', 'nextRow'].forEach((id) => $(id).classList.toggle('hidden', !on)); }
+  function showMain(on) { ['main', 'dock', 'tvRow', 'nextRow'].forEach((id) => $(id).classList.toggle('hidden', !on)); if (on) setTimeout(fitAll, 0); }
 
   /* ================= 上: 店名・テレビ・次のレース ================= */
   function gameNow() {
@@ -120,28 +142,39 @@
     if ($('tvRow').innerHTML !== tv) $('tvRow').innerHTML = tv;
     const nx = nextHtml(); if ($('nextRow').innerHTML !== nx) $('nextRow').innerHTML = nx;
   }
+  /* いまのレース: 1 行目＝レースの状態、2 行目＝締切と票（2026-10-23 デザイン見直し 1 回目）。
+     テストのレースのあいだ（準備中・投票中・レース中・結果画面）は 1 行目にいつも「テスト」の札 */
+  function testActive(n) {
+    if (!st) return false;
+    if ([st.open, st.live].some((r) => r && r.test)) return true;
+    const l = st.last; if (l && l.test && l.status !== 'void' && n < (l.endAt || ((l.revealAt || l.at) + 300000))) return true;
+    const q = trS && trS.req; return !!(q && (trPending(q, n) || (q.raceAt && q.raceAt > n))); // 押したあと、レースができるまで（できたあとは上の open・live・last の test で分かる）
+  }
   function nextHtml() {
     if (!st) return '';
     const n = now(), o = st.open, live = st.live, c = st.current;
-    const tag = (r) => (r && r.test ? '<i class="tt">' + esc(TX.test) + '</i>' : '');
-    if (o) return tag(o) + '<span>' + esc(fill(TX.voting, { t: hhmm(o.at) })) + '</span><span class="' + (o.closeAt - n < 15000 ? 'hot' : '') + '">' + esc(TX.closeIn) + ' <b>' + mmss(o.closeAt - n) + '</b></span><span>' + esc(fill(TX.votes, { n: ((o.participants && o.participants.byStore) || {})[saved.store] || 0 })) + '</span>';
-    if (live) return tag(live) + '<span>' + esc(fill(TX.racing, { t: hhmm(live.at) })) + '</span>' + (c ? '<span class="dim">' + esc(fill(TX.nextRace, { t: hhmm(c.at) })) + '</span>' : '');
+    const tag = (r) => ((r && r.test) || testActive(n) ? '<i class="tt">' + esc(TX.test) + '</i>' : '');
+    const l1 = (r, h) => '<div class="nl1">' + tag(r) + h + '</div>', l2 = (h) => (h ? '<div class="nl2">' + h + '</div>' : '');
+    if (o) return l1(o, '<span>' + esc(fill(TX.voting, { t: hhmm(o.at) })) + '</span>') + l2('<span class="' + (o.closeAt - n < 15000 ? 'hot' : '') + '">' + esc(TX.closeIn) + ' <b>' + mmss(o.closeAt - n) + '</b></span><span>' + esc(fill(TX.votes, { n: ((o.participants && o.participants.byStore) || {})[saved.store] || 0 })) + '</span>');
+    if (live) return l1(live, '<span>' + esc(fill(TX.racing, { t: hhmm(live.at) })) + '</span>') + l2(c ? '<span>' + esc(fill(TX.nextRace, { t: hhmm(c.at) })) + '</span>' : '');
     const nx = c || ((st.upcoming || []).filter((x) => x.at > n)[0]) || null;
-    if (!nx) return '<span class="dim">' + esc(TX.dayOver) + '</span>';
-    return tag(nx) + '<span>' + esc(fill(TX.nextRace, { t: hhmm(nx.at) })) + '</span><span class="dim">' + esc(fill(TX.voteFrom, { t: hhmm(nx.openAt || nx.at) })) + '</span>';
+    if (!nx) return l1(null, '<span>' + esc(TX.dayOver) + '</span>');
+    return l1(nx, '<span>' + esc(fill(TX.nextRace, { t: hhmm(nx.at) })) + '</span>') + l2('<span>' + esc(fill(TX.voteFrom, { t: hhmm(nx.openAt || nx.at) })) + '</span>');
   }
 
   /* ================= 真ん中: 今日の当たり ================= */
   const combo = (w) => (w.first != null && w.second != null ? (w.first + 1) + '→' + (w.second + 1) : '');
   function winRow(w) {
-    const meta = (w.raceAt ? fill(TX.race, { t: hhmm(w.raceAt) }) : '') + (combo(w) ? '・' + combo(w) : '');
-    const head = '<span class="bill">' + esc(w.bill) + '</span><div class="wn"><b>' + esc(w.nick) + '</b><small>';
+    const meta = (w.raceAt ? '<span class="nw">' + esc(fill(TX.race, { t: hhmm(w.raceAt) })) + '</span>' : '') + (combo(w) ? (w.raceAt ? '・' : '') + '<span class="nw">' + esc(combo(w)) + '</span>' : ''); // 折り返すときは「・」で
+    /* 2026-10-23 見直し: 1 行目＝ニックネーム（幅いっぱい・「…」で切らない）、2 行目＝レース・組み合わせと額。番号は左に 2 行ぶん */
+    const head = '<span class="bill">' + esc(w.bill) + '</span><b class="nk" data-fit="12">' + esc(w.nick) + '</b><small class="meta">';
+    const wa = '<span class="wa">' + amt(w.amount) + '<small>pt</small></span>';
     if (w.status === 'unpaid') {
-      return '<div class="win unpaid" data-pid="' + esc(w.pid) + '"><div class="wl">' + head + esc(meta) + '</small></div><span class="wa">' + amt(w.amount) + '<small>pt</small></span></div>' +
+      return '<div class="win unpaid" data-pid="' + esc(w.pid) + '"><div class="wl">' + head + meta + '</small>' + wa + '</div>' +
         '<div class="slider" data-pid="' + esc(w.pid) + '" role="slider" aria-label="' + esc(w.bill + '番 ' + TX.slide) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fillbar"></div><span class="lbl">' + esc(TX.slide) + ' ›››</span><div class="knob" aria-hidden="true">›</div></div></div>';
     }
     const sub = w.status === 'paid' ? esc(fill(TX.paidAt, { t: hhmm(w.paidAt) })) + '<span class="via">' + esc(w.paidVia === 'self' ? TX.viaSelf : TX.viaStaff) + '</span>' : esc(w.status === 'expired' ? TX.expired : TX.voided);
-    return '<div class="win ' + esc(w.status) + '" data-pid="' + esc(w.pid) + '"><div class="wl">' + head + sub + '</small></div><span class="wa">' + amt(w.amount) + '<small>pt</small></span></div></div>';
+    return '<div class="win ' + esc(w.status) + '" data-pid="' + esc(w.pid) + '"><div class="wl">' + head + sub + '</small>' + wa + '</div></div>';
   }
   function drawMain() {
     const m = $('main'); if (!m || !saved) return;
@@ -156,6 +189,7 @@
     h += '<div class="wins">' + un.map(winRow).join('') + (un.length && (pd.length || rest.length) ? '<div class="sep"></div>' : '') + pd.map(winRow).join('') + rest.map(winRow).join('') + '</div>';
     m.innerHTML = h;
     m.querySelectorAll('.slider').forEach(bindSlider);
+    fitText(m);
   }
   let winsSeq = 0, winsAt = 0;
   async function loadWins() {
@@ -211,7 +245,9 @@
   function drawSheet() {
     const s = $('sheet'); if (!sheet) return closeSheet();
     const h = sheet === 'release' ? relHtml() : sheet === 'test' ? testHtml() : moreHtml();
-    s.className = 'sheet'; s.innerHTML = '<div class="card">' + h + '<button type="button" class="btn ghost close" data-act="close">' + esc(TX.close) + '</button></div>';
+    const close = '<button type="button" class="btn ghost close" data-act="close">' + esc(TX.close) + '</button>';
+    const fresh = s.classList.contains('hidden'); // 開いたときだけ下から出す（描き直しのたびに薄く出し直さない）
+    s.className = 'sheet'; s.innerHTML = '<div class="card ' + esc(sheet) + (fresh ? ' in' : '') + '">' + (sheet === 'release' ? h.replace('<!--close-->', close) : h + close) + '</div>'; // 番号を空ける: 「閉じる」と「空ける」を横に並べる（低いスマホでも 1 画面に入るように。2026-10-23）
   }
   $('sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet' && !busy) closeSheet(); });
 
@@ -225,13 +261,13 @@
       '<div class="digits" id="relDigits">' + dg + '</div>' +
       (relMsg ? '<div class="msg ' + (relMsg.ok ? 'ok' : 'ng') + '" id="relMsg" role="status">' + esc(relMsg.text) + '</div>' : '') +
       '<div class="keypad">' + keys.map((k) => '<button type="button" data-rkey="' + k + '"' + (k === 'clr' ? '>消す' : k === 'del' ? ' aria-label="1文字消す">⌫' : '>' + k) + '</button>').join('') + '</div>' +
-      '<button type="button" class="btn ok big" data-act="release"' + (r && !busy ? '' : ' disabled') + '>' + esc(TX.relBtn) + '</button>';
+      '<div class="row acts"><!--close--><button type="button" class="btn danger big" data-act="release"' /* 取り消せない操作は赤（金は前に進む操作だけ） */ + (r && !busy ? '' : ' disabled') + '>' + esc(TX.relBtn) + '</button></div>';
   }
   async function doRelease() {
     const r = relRace(); if (!r || busy) return;
     const b = relBill; if (!/^\d{1,2}$/.test(b) || Number(b) < 1) { relMsg = { ok: false, text: TX.errBill }; return drawSheet(); }
     const bill = pad(Number(b));
-    if (!(await ask(fill(TX.relAsk, { b: bill }), fill(TX.relAskSub, { t: hhmm(r.at) }), TX.relBtn))) return;
+    if (!(await ask(fill(TX.relAsk, { b: bill }), fill(TX.relAskSub, { t: hhmm(r.at) }), TX.relBtn, 'danger'))) return;
     busy = true; drawSheet();
     try {
       const d = await C.release(saved.pin, bill, r.id);
@@ -282,7 +318,7 @@
   function testHtml() {
     const [t, off] = testWhy();
     return '<h3>' + esc(TX.testHead) + '</h3><p>' + esc(TX.testSub) + '</p><p class="now" id="trNow">' + esc(t || testHint()) + '</p>' +
-      '<button type="button" class="btn ok big" data-act="test"' + (off || trBusy ? ' disabled' : '') + '>' + esc(TX.testBtn) + '</button>';
+      '<button type="button" class="btn testgo big" data-act="test"' /* テストは青い枠と青い文字 */ + (off || trBusy ? ' disabled' : '') + '>' + esc(TX.testBtn) + '</button>';
   }
   function paintTest() { if (sheet !== 'test') return; const el = $('trNow'), b = document.querySelector('[data-act=test]'); if (!el || !b) return drawSheet(); const [t, off] = testWhy(); const tx = t || testHint(); if (el.textContent !== tx) el.textContent = tx; b.disabled = off || trBusy; }
   async function testPoll(force) {
@@ -294,7 +330,7 @@
   }
   async function testPress() {
     const [, off] = testWhy(); if (off || trBusy) return;
-    if (!(await ask(TX.testAsk, testHint(), TX.testBtn))) return;
+    if (!(await ask(TX.testAsk, testHint(), TX.testBtn, 'test'))) return;
     trBusy = true; paintTest();
     try { const d = await C.testRace(saved.pin, TEST_SEC, { switchTv: true }); toast(d && d.switched ? 'テレビを casa DERBY に切り替えました' : d && d.raceId ? 'テストのレースを作りました' : 'テストのレースをお願いしました'); trMsg = ''; }
     catch (e) { if (!pinGone(e)) { const m = e.code === 'busy' ? 'いまはテストのレースを作れません（投票中・レース中か、もうすぐ次のレースです）' : e.code === 'too_soon' ? '少し待ってからもう一度押してください' : e.code === 'no_decider' ? '進行役のテレビがありません' : errText(e); toast(m, true, 4500); trMsg = m; } }
@@ -309,7 +345,7 @@
       '<div class="tq"><h4>' + esc(TX.qHead) + '<small>' + esc(TX.qSub) + '</small></h4><p class="now">' + esc(TX.qNow) + ': <b id="tvqNow">' + (q === undefined ? '…' : QN[q]) + '</b></p>' +
       '<div class="three">' + QS3.map(([v, name, note]) => '<button type="button" data-tvq="' + v + '" class="' + (q === v ? 'cur' : '') + '"' + (q === v || busy ? ' disabled' : '') + '><b>' + name + '</b><small>' + note + '</small></button>').join('') + '</div></div>' +
       (SW && SW.home && SW.home() ? '<div class="auto"><span>' + esc(TX.autoHead) + '<small>' + esc(TX.autoSub) + '</small></span><button type="button" data-act="auto">' + esc(SW.auto() ? TX.on : TX.off) + '</button></div>' : '') +
-      '<div class="row2"><button type="button" class="btn ghost" data-act="reload">' + esc(TX.reload) + '</button><button type="button" class="btn ghost" data-act="logout">' + esc(TX.logout) + '</button></div>';
+      '<div class="row2"><button type="button" class="btn ghost" data-act="reload">' + esc(TX.reload) + '</button><button type="button" class="btn ghost" data-act="logout">' + nwrap(TX.logout) + '</button></div>';
   }
   async function setQuality(v) {
     if (busy || v === qNow()) return;
