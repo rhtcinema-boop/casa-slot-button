@@ -110,9 +110,9 @@
   stageEl.appendChild(el('<div class="v2info" id="v2info"><div class="cd" id="v2cd"><small id="v2cdLbl">締切まで あと</small><b id="v2cdNum">--:--</b><div class="cdl"><span id="v2cdSub"></span></div></div>' +
     '<div class="x6" id="v2x6"><h4>人気の組み合わせ<small>2連単</small></h4><ol id="v2x6List"></ol></div></div>'));
   // QR: 上の札「アプリ不要 スマホで参加」＋下に「参加無料」。QR の下の URL は出さない（テレビでは途中で折り返して読めない。2026-10-14 見た目の講評）。#v2qrUrl は中身だけ持つ（確認用）
-  stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b><span>アプリ不要</span> <span>スマホで参加</span></b><small id="v2qrUrl" hidden></small></div><div class="free" id="v2qrFree">参加無料</div></div>'));
+  stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b><span>アプリ不要</span> <span>スマホで参加</span></b><small id="v2qrUrl" hidden></small></div><div class="free" id="v2qrFree"><span class="f1">参加無料</span><span class="f2">1人1票まで</span></div></div>'));
   stageEl.appendChild(el('<div class="v2odds" id="v2odds"><h5><small>2連単</small>人気上位</h5><ol id="v2oddsList"></ol></div>')); // 中身は Race3D.Exacta（js/race3d.js）が描く
-  stageEl.appendChild(el('<div class="v2strip" id="v2strip"><div class="ttl" id="v2stripTtl"></div><div class="sep"></div><div class="ppl">全店で<b id="v2stripPpl">0</b>人参加</div><div class="stores" id="v2stripStores"></div><div class="soon">結果はまもなく</div></div>'));
+  stageEl.appendChild(el('<div class="v2strip" id="v2strip"><div class="ttl" id="v2stripTtl"></div><div class="crs" id="v2stripCrs"></div><div class="sep"></div><div class="ppl">全店で<b id="v2stripPpl">0</b>人参加</div><div class="stores" id="v2stripStores"></div><div class="soon">結果はまもなく</div></div>'));
   // リプレイ（m-hl）の右の列: 前のレースの結果（1着・2着・2 連単の倍率）と全店の当たった人の数
   stageEl.appendChild(el('<div class="v2hlw" id="v2hlw"><h5>前のレース<small id="v2hlwSub"></small></h5><div class="hlres" id="v2hlwRes"></div><div class="hlcnt" id="v2hlwCnt"></div></div>'));
   stageEl.appendChild(el('<div class="v2closed" id="v2closed">締切ました</div>'));
@@ -121,7 +121,7 @@
   // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
   stageEl.appendChild(el('<div class="v2down" id="v2down"><b>通信が切れています</b><span>自動でつなぎ直します</span></div>'));
   stageEl.appendChild(el('<div class="v2net" id="v2net">通信中…</div>'));
-  stageEl.appendChild(el('<div class="v2net v2key" id="v2key"><b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）テレビの合言葉がありません。管理画面のテレビの URL で開き直すか、管理画面の「進行役にする」で選んでください</small></div>'));
+  stageEl.appendChild(el('<div class="v2net v2key" id="v2key"><b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）テレビの合言葉がありません。\n管理画面のテレビの URL で開き直すか、管理画面の「進行役にする」で選んでください</small></div>'));
   stageEl.appendChild(el('<div class="v2snd" id="v2snd">決定ボタン（OK）を押すと音が出ます</div>'));
   // 進行役のテレビ（2026-10-19）: 管理画面で「進行役にする」を押されている間だけ、上の帯のまん中に確認の 4 けたの数字（オーナーが管理画面の数字と見くらべる）
   stageEl.appendChild(el('<div class="v2pair" id="v2pair" aria-live="polite"><small id="v2pairLbl">進行役の確認</small><b id="v2pairCode"></b></div>'));
@@ -212,7 +212,7 @@
   async function refresh() {
     if (!C) return;
     try { applyState(await C.state()); badStore = false; }
-    catch (e) { sseErr = true; badStore = !!(e && e.code === 'no_store'); if (badStore) { const n = $('v2net'); n.classList.add('show', 'full'); n.innerHTML = '<b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）店舗「' + esc(STORE) + '」が見つかりません。管理画面のテレビの URL で開き直してください</small>'; } } // 画面全体を覆う（ふつうの画面や QR を出さない）
+    catch (e) { sseErr = true; badStore = !!(e && e.code === 'no_store'); if (badStore) { const n = $('v2net'); n.classList.add('show', 'full'); n.innerHTML = '<b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）店舗「' + esc(STORE) + '」が見つかりません。<br>管理画面のテレビの URL で開き直してください</small>'; } } // 画面全体を覆う（ふつうの画面や QR を出さない）
   }
   // 古いレースは捨てる（何日もつけっぱなしのテレビでメモリが増え続けないように）
   function pruneCache() {
@@ -248,6 +248,7 @@
   const raceView = new Race($('race'));
   raceView.timeScale = 1;
   raceView.no800 = true; // 2026-10-20 オーナー「消して」: 残り 800m の縦の札（js/race3d.js）は店内モニターでは出さない
+  raceView.tvHud = true; // 2026-10-23 デザイン見直し: 映像の上の小さな文字（TIME・残り・パドックの字幕）を大きく、飾りの文字（距離・速さ・コース名）は出さない。結果の組み合わせの帯の馬番は角丸の四角（js/race3d.js）
   raceView.ordBig = true; // 2026-10-20 オーナー「画面中央にもっと大きく」: レース中の通過順の丸（js/race3d.js）を大きく・横だけまん中に（一人用のゲームは今まで通り）
   const T = Engine.TYPES;
   let view = null;                 // いま映像に入っているレース（Race オブジェクト）
@@ -294,6 +295,26 @@
     let f = max; while (f > min && e.scrollWidth > e.clientWidth + 1) { f -= 1; e.style.fontSize = f + 'px'; }
   }
   function fitNames() { document.querySelectorAll('#horses .horse .l1 b').forEach((b) => fitText(b, 38, 22)); } // 2026-10-19: 店内モニター向けに大きく。v4: 倍率の列がないぶん 38px まで
+  /* 2026-10-23 見直し（オーナー「レイアウトからはみ出てる」）: CSS の大きさのまま入らないときだけ小さくする（最小は 6 割）。
+     大きな数字（残り時間が 10 分以上・1 時間以上の「1:59:59」）と、当たった人のニックネーム（8 文字・当選額 100,000pt でも「…」で切らない） */
+  function fitCss(e, minK, box) { // box: はみ出しを測る枠（無ければ自分）。枠に入るまで 1px ずつ小さく
+    if (!e) return; e.style.fontSize = ''; box = box || e;
+    const over = () => {
+      if (!box.clientWidth) return false;
+      if (box.scrollWidth > box.clientWidth + 1) return true;
+      if (box === e) return false;
+      // 枠の内側の余白（padding）にはみ出していても scrollWidth では分からない → 自分と親の左右の端を枠の中身の端とくらべる
+      const br = box.getBoundingClientRect(), k = br.width / (box.offsetWidth || 1), cs = getComputedStyle(box);
+      const lo = br.left + ((parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.borderLeftWidth) || 0)) * k - 1, hi = br.right - ((parseFloat(cs.paddingRight) || 0) + (parseFloat(cs.borderRightWidth) || 0)) * k + 1;
+      for (let x = e; x && x !== box; x = x.parentElement) { const r = x.getBoundingClientRect(); if (r.left < lo || r.right > hi) return true; }
+      return false;
+    };
+    if (!over()) return;
+    const max = Math.floor(parseFloat(getComputedStyle(e).fontSize) || 30), min = Math.max(12, Math.round(max * (minK || 0.6)));
+    let f = max; while (f > min && over()) { f -= 2; e.style.fontSize = f + 'px'; }
+  }
+  const fitLen = new WeakMap(); // 文字数が変わったときだけ測り直す（4 回/秒の書き換えで毎回測らない。要素ごと＝作り直した要素は測り直す）
+  function setFit(id, text, boxSel, minK) { const e = $(id); if (!e) return; if (e.textContent !== text) e.textContent = text; const k = text.length + '|' + TV.mode + '|' + innerWidth + '|' + stageEl.className; if (fitLen.get(e) !== k) { fitLen.set(e, k); fitCss(e, minK, boxSel ? e.closest(boxSel) : null); } }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitNames()).catch(() => {});
   function horsePic(i, kind) { try { return raceView.portrait ? raceView.portrait(i, kind) : null; } catch (e) { return null; } }
   /* 出馬表（2026-10-19 オーナー「出走表には直近の成績と、逃げとかの特徴は書いていいよ」。2026-10-20「馬の調子を出馬表にも」）:
@@ -365,9 +386,9 @@
   /* QR の大きさ（オーナー 2026-10-14「QRはかなり大きくしていいかも」）: 1 マスが整数の画素になる大きさを場面ごとに選ぶ（にじまない）。
      受付・待ち時間 340〜360px、ハイライト 260〜280、結果 240〜260 をねらう（その範囲に整数のマスが無ければいちばん近いもの）。
      SVG の中の白い余白は 3 マス。まわりの白い枠（10px 以上）と合わせて 4 マス以上の余白になる。CSS の --qo / --qh / --qr で使う */
-  const QR_RANGE = { qw: [340, 360], qo: [310, 330], qh: [260, 280], qr: [240, 260] }; // v4: qw＝待ち時間（右の列いっぱい）・qo＝投票（下に「参加無料」の札があるぶん少し小さく）
+  const QR_RANGE = { qw: [340, 360], qo: [256, 271], qh: [260, 280], qr: [198, 214] }; // 2026-10-23 デザイン見直し: 投票・結果の QR は見出しの帯と「参加無料・1人1票まで」を枠の中に入れたので、枠の高さ（投票 371px）に収まる大きさ。上限を超えない（qo・qr） // v4: qw＝待ち時間（右の列いっぱい）・qo＝投票（下に「参加無料」の札があるぶん少し小さく）
   function qrPx(w, lo, hi) { const a = Math.floor(hi / w), b = Math.ceil(lo / w); if (a >= b) return a * w; const lo2 = Math.max(1, a) * w, hi2 = b * w; return lo - lo2 <= hi2 - hi ? lo2 : hi2; }
-  function sizeQR() { const sv = $('v2qrCode').querySelector('svg'), vb = sv && sv.viewBox && sv.viewBox.baseVal, w = vb ? vb.width : 0; if (!w) return; const q = $('v2qr'); Object.keys(QR_RANGE).forEach((k) => q.style.setProperty('--' + k, qrPx(w, QR_RANGE[k][0], QR_RANGE[k][1]) + 'px')); q.dataset.modules = w; }
+  function sizeQR() { const sv = $('v2qrCode').querySelector('svg'), vb = sv && sv.viewBox && sv.viewBox.baseVal, w = vb ? vb.width : 0; if (!w) return; const q = $('v2qr'); Object.keys(QR_RANGE).forEach((k) => q.style.setProperty('--' + k, Math.min(k === 'qo' || k === 'qr' ? QR_RANGE[k][1] : 1e9, qrPx(w, QR_RANGE[k][0], QR_RANGE[k][1])) + 'px')); q.dataset.modules = w; }
 
   // ---------- 場面の切り替え ----------
   const TV = { mode: '', playing: null, done: {}, dismissed: {}, skipped: {}, armed: false, resultRace: null, resultFrom: 0, hl: null, waitSince: 0, nextAt: 0, log: [], wp: { page: '', since: 0, n: 0, key: '' } };
@@ -512,7 +533,7 @@
     $('v2wpCombo').innerHTML = c ? comboH(P, c.first, c.second, c.odds) : '';
     $('v2wpWinCnt').innerHTML = P.winners ? '全店の当たった人<b>' + list.length + '</b>人' : '集計中…';
     $('v2wait').classList.toggle('has-test', list.some((w) => w.test));
-    fillWinners($('v2wpList'), list, { max: 92, normal: 70, dense: 56 });
+    fillWinners($('v2wpList'), list, { max: 86, normal: 62, dense: 50 }); // 2026-10-23 デザイン見直し: 当選額 36〜40px（1920）に合わせて行を低く
   }
   // ---------- 前のレースのリプレイ（ゴール前 9 秒から。リプレイ・勝ち馬のアップまで） ----------
   function stopHighlight() { const h = TV.hl; if (!h) return; TV.hl = null; h.abort(); }
@@ -564,14 +585,17 @@
     inner.innerHTML = list.map(row).join('');
     const n = list.length, avail = box.clientHeight || 500;
     let rh = Math.min(o.max, Math.floor(avail / n));
-    if (rh >= o.dense) { box.style.setProperty('--rh', rh + 'px'); box.classList.toggle('dense', rh < o.normal); box.classList.toggle('big', rh >= o.max - 4); /* 2026-10-19: 当たった人が少ないときは行も文字も大きく（遠くから読める） */ pagerCtl.set(box, { per: n, pages: 1, hold: false, goto() {} }); return; }
+    if (rh >= o.dense) { box.style.setProperty('--rh', rh + 'px'); box.classList.toggle('dense', rh < o.normal); box.classList.toggle('big', rh >= o.max - 4); /* 2026-10-19: 当たった人が少ないときは行も文字も大きく（遠くから読める） */ pagerCtl.set(box, { per: n, pages: 1, hold: false, goto() {} }); fitNicks(box); return; }
     const per = Math.max(1, Math.floor(avail / o.normal)), pages = Math.ceil(n / per); rh = Math.floor(avail / per);
-    box.style.setProperty('--rh', rh + 'px'); box.classList.add('paged');
+    box.style.setProperty('--rh', rh + 'px'); box.classList.add('paged'); fitNicks(box);
     const ctl = { per, pages, p: 0, hold: false, goto(q) { q = ((q % pages) + pages) % pages; if (q !== ctl.p) { ctl.p = q; show(); } } };
     const show = () => { inner.style.transform = 'translateY(' + (-ctl.p * per * rh) + 'px)'; if (pg) pg.textContent = (ctl.p + 1) + ' / ' + pages; };
     show(); pagerCtl.set(box, ctl); pagers.set(box, setInterval(() => { if (!box.isConnected || ctl.hold) return; ctl.p = (ctl.p + 1) % pages; show(); }, 6000));
   }
 
+  /* 2026-10-23 見直し: 8 文字のニックネーム＋当選額 100,000pt で名前が「…」で切れていた → 入りきらない行だけ文字を小さく（最小 6 割。それでも入らなければ「…」）。
+     見えていないページの行も同じ（ページをめくったときに変わらない） */
+  function fitNicks(box) { const L = Array.from(box.querySelectorAll('.row .nk')); L.forEach((e) => { e.style.fontSize = ''; }); L.filter((e) => e.clientWidth && e.scrollWidth > e.clientWidth + 1).forEach((e) => fitCss(e, 0.6)); } // 先に全部を元の大きさに戻してから測る（300 行でも測るのは 1 回＋入らない行だけ）
   // ---------- レース（締切 → ゲートイン → レース → ゴール → リプレイ → 勝ち馬 → 掲示板 → 結果） ----------
   async function until(cond, every) { while (!cond()) await sleep(every || 100); }
   async function playRace(R0) {
@@ -676,6 +700,7 @@
     // 2026-10-19: 短く（距離・馬場は映像の左下に出ている）
     $('v2stripTtl').innerHTML = head ? '<small class="pre">前のレース</small>' + esc(raceTitle(R)) : esc(raceTitle(R)); // 2026-10-19: 補足を減らす。ハイライトは「前のレース」と分かるように上に小さく
     $('v2stripPpl').textContent = ppl(R);
+    $('v2stripCrs').textContent = (R.surface === 'dirt' ? 'ダート' : '芝') + R.dist + 'm' + ({ sunny: ' 晴', cloudy: ' 曇', rain: ' 雨' }[R.weather] || ''); // 2026-10-23: 映像の左下の小さな「casa競馬場 芝1000m 晴」の代わりに帯に大きく
     const by = (R.participants && R.participants.byStore) || {};
     $('v2stripStores').innerHTML = ((S && S.stores) || []).map((s) => '<span class="' + (s.id === STORE ? 'me' : '') + '">' + esc(s.name) + '<b>' + (by[s.id] || 0) + '</b></span>').join('');
   }
@@ -815,7 +840,7 @@
     const until = Math.min(endAt, N && N.openAt > t ? N.openAt : Infinity); // 次のレースの投票が始まったら結果の画面は閉じる（decide と同じ）
     const total = Math.max(1, until - (R.revealAt || until - 300000)), left = Math.max(0, until - t);
     $('v2resNx').innerHTML = N ? '<small>次のレース</small><b>' + hhmm(N.at) + '</b> 発走' + (S.open ? '<em>投票中</em>' : N.openAt ? '<span class="op">投票は ' + hhmm(N.openAt) + ' から</span>' : '') : '<small>本日のレースは</small>終了しました';
-    $('v2resNxL').textContent = N ? '発走まで' : ''; $('v2resNxN').textContent = N ? fmtLeft(N.at - t) : '';
+    $('v2resNxL').textContent = N ? '発走まで' : ''; setFit('v2resNxN', N ? fmtLeft(N.at - t) : '', '.foot');
     $('v2resRestL').textContent = 'この画面 あと'; $('v2resRestN').textContent = fmtLeft(left); $('v2resBar').style.width = (100 * left / total).toFixed(1) + '%';
     resStage(R, resPhase(R, t, until, endAt), N, t, until);
   }
@@ -861,7 +886,7 @@
     if (tl.hi !== RT.hi) {
       RT.hi = tl.hi;
       const L = $('v2resList'), ctl = pagerCtl.get(L);
-      L.querySelectorAll('.row').forEach((r, i) => r.classList.toggle('hi', i === tl.hi));
+      L.querySelectorAll('.row').forEach((r, i) => { r.classList.toggle('hi', i === tl.hi); r.classList.remove('nocg'); if (i === tl.hi) { const nk = r.querySelector('.nk'); if (nk && nk.scrollWidth > nk.clientWidth + 1) r.classList.add('nocg'); } }); // 「おめでとう！」で名前が「…」に切れる行では出さない（2026-10-23）
       if (ctl) { ctl.hold = tl.hi >= 0; if (tl.hi >= 0) ctl.goto(Math.floor(tl.hi / ctl.per)); }
     }
     // 右下の小さな枠（振り返り・次のレース・カウントダウン）。形が変わるときだけ作り直し（0.3 秒で出る）、数字は 4 回/秒
@@ -871,7 +896,7 @@
       if (subOn) { sub.innerHTML = ph === 'look' ? lookHtml(R) : ph === 'next' ? nextHtml(N) : cdHtml(N, until); if (ph === 'look') { drawLookFaces(R); sub.querySelectorAll('.lb b').forEach((b) => fitText(b, 24, 15)); } sub.classList.remove('swap'); void sub.offsetWidth; sub.classList.add('swap'); }
     }
     if (subOn && ph !== 'look') {
-      const n = $('v2subN'); if (n) n.textContent = ph === 'cd' ? fmtLeft(tl.left) : N ? fmtLeft(N.at - t) : '';
+      if ($('v2subN')) setFit('v2subN', ph === 'cd' ? fmtLeft(tl.left) : N ? fmtLeft(N.at - t) : '', '.rsub');
       const ul = $('v2subUl'); if (ul) ul.textContent = cdLabel(N, until);
     }
     box.classList.toggle('cd-hot', ph === 'cd' && tl.left <= 60000);
@@ -927,7 +952,7 @@
         $('v2nxL').textContent = '次のレース'; $('v2nxAt').textContent = hhmm(N.at); $('v2nxAtU').textContent = '発走';
         $('v2nxOpen').textContent = N.openAt ? '投票は ' + hhmm(N.openAt) + ' から' : '';
         $('v2nxLeftL').textContent = opened ? '発走まで あと' : '投票開始まで あと';
-        $('v2nxLeft').textContent = fmtLeft(target - t);
+        setFit('v2nxLeft', fmtLeft(target - t), '.v2nx');
         nx.classList.toggle('hot', !opened && target - t < 60000);
       } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = 'ご参加ありがとうございました'; $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; }
       const P = prevRace(); $('v2nx').classList.toggle('prev', m === 'hl' && !!P);
@@ -935,7 +960,7 @@
     // 投票（m-open）: 締切までの大きな残り時間（1 つだけ）・全店の参加人数・人気の組み合わせ上位 6
     if (m === 'open' && S.open) {
       const R = S.open, left = R.closeAt - t, hot = left < 30000;
-      $('v2cdLbl').textContent = '締切まで あと'; $('v2cdNum').textContent = fmtLeft(left); $('v2cd').classList.toggle('hot', hot);
+      $('v2cdLbl').textContent = '締切まで あと'; setFit('v2cdNum', fmtLeft(left), '.cd'); $('v2cd').classList.toggle('hot', hot);
       const sub = testOf(R) ? 'テストレース\n受け取りなし' : 'スマホで\n1着・2着を選ぶ';
       if ($('v2cdSub').textContent !== sub) $('v2cdSub').textContent = sub;
       renderTop6(cache[R.id] || R);
@@ -962,7 +987,7 @@
     else if (m === 'hl') tx = '前のレースのリプレイ';
     else if (m === 'live') {
       const ph = raceView.phase, pre = view && view.runAt && t < view.runAt;
-      if (!$('board').hidden || ph === 'winner') { tx = 'レース結果'; c = 'res'; }
+      if (!$('board').hidden || ph === 'winner' || (ph === 'done' && view && view.runAt && t > view.runAt + 20000)) { tx = 'レース結果'; c = 'res'; } // 2026-10-23 見直し: 勝ち馬のあと〜着順掲示板の 1 秒ほど（done）に「LIVE レース中」へ戻っていた
       else if (ph === 'replay') tx = $('tagPhoto').classList.contains('show') ? (/2着/.test($('tagPhoto').textContent) ? '2着 写真判定中' : '写真判定中') : 'リプレイ'; // v4: 2 着争いの写真判定
       else if (pre || ph === 'idle') { tx = '投票締切・まもなく発走'; c = 'race'; } // 赤のままだと警告に見える（締切の瞬間は「締切ました」が出る）
       else { tx = stageEl.classList.contains('bc-final') ? 'LIVE　ゴール前' : 'LIVE　レース中'; c = 'live'; }
