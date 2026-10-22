@@ -1710,7 +1710,9 @@ window.Race3D = (function () {
       for (const m of [400, 200, 100]) {
         if (remain < m - 8 || remain > m + 260) continue;
         const q = pointAt(FINISH_S - m, RO - 1.5), s = this.project(q.x, 0, q.z); if (!s || s.x < 0 || s.x > W) continue;
-        const fs = Math.max(11, Math.min(26, s.s * 1.6)); tvText(c, m + 'm', s.x, s.y - fs * 0.7, fs, '#ffffff', 'center');
+        const fs = Math.max(11, Math.min(26, s.s * 1.6)), ly = s.y - fs * 0.7;
+        if (ly > H - 84 || s.x < fs * 1.5 || s.x > W - fs * 1.5) continue; // 2026-10-23 見直し: 下の帯（通過順の丸・TURF 1,000m）に重なる所・画面の端で半分切れる所では描かない
+        tvText(c, m + 'm', s.x, ly, fs, '#ffffff', 'center');
       }
     }
     // 雨（光と空の部品が代わりのときだけ。本物の部品は自分で雨を降らせる）
@@ -1783,10 +1785,11 @@ window.Race3D = (function () {
       c.fillStyle = 'rgba(0,0,0,.6)'; roundRect(c, 20, H - 144, 520, 124, 8); c.fill();
       c.fillStyle = h.color; roundRect(c, 20, H - 144, 80, 124, 8); c.fill();
       c.fillStyle = h.ink; c.font = '900 54px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(h.no), 60, H - 82);
-      c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = '900 34px ' + MARU; c.fillText(h.name, 116, H - 114);
-      c.font = '500 22px ' + MARU; c.fillStyle = '#ffd54f'; c.fillText(inf.line1 || '', 116, H - 74);
-      c.fillStyle = '#ddd'; c.fillText(inf.line2 || '', 116, H - 42);
-      c.fillStyle = 'rgba(0,0,0,.55)'; roundRect(c, W - 236, 12, 222, 40, 6); c.fill(); c.fillStyle = '#fff'; c.font = 'bold 20px ' + MARU; c.textAlign = 'center'; c.fillText((this.inPaddock() ? 'パドック  ' : 'まもなく発走  ') + (i + 1) + ' / ' + race.horses.length, W - 125, 32);
+      const TB = !!this.tvHud; // 2026-10-23 デザイン見直し（店内テレビだけ。v2/tv.js が tvHud を立てる）: 字幕の文字を 1920 の画面で 22px 以上に（投票中は映像が 0.8 倍で小さい）
+      c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = '900 ' + (TB ? 36 : 34) + 'px ' + MARU; c.fillText(h.name, 116, H - 114, 410); // 札の幅（x116〜526）を超えない
+      c.font = '700 ' + (TB ? 25 : 22) + 'px ' + MARU; c.fillStyle = '#ffd54f'; c.fillText(inf.line1 || '', 116, H - 74, 410); // 2026-10-23: 500 → 700（太さをそろえる）
+      c.fillStyle = TB ? '#e8e8e8' : '#ddd'; c.fillText(inf.line2 || '', 116, H - 42, 410);
+      { const pw = TB ? 262 : 222; c.fillStyle = 'rgba(0,0,0,.55)'; roundRect(c, W - 14 - pw, 12, pw, TB ? 44 : 40, 6); c.fill(); c.fillStyle = '#fff'; c.font = 'bold ' + (TB ? 24 : 20) + 'px ' + MARU; c.textAlign = 'center'; c.fillText((this.inPaddock() ? 'パドック  ' : 'まもなく発走  ') + (i + 1) + ' / ' + race.horses.length, W - 14 - pw / 2, TB ? 34 : 32); }
       return;
     }
     if (!this.band) { this.band = c.createLinearGradient(0, H - 92, 0, H); this.band.addColorStop(0, 'rgba(0,0,0,0)'); this.band.addColorStop(1, 'rgba(0,0,0,.42)'); }
@@ -1801,7 +1804,7 @@ window.Race3D = (function () {
     const final = !!run && this.phase === 'run' && dom && ((1 - Math.min(1, Math.max.apply(null, run.pos))) * race.dist < 70 || run.finish.some((x) => x > 0));
     const nowMs = performance.now(); if (final) { if (!this.finalAt) this.finalAt = nowMs; } else if (this.phase === 'run') this.finalAt = 0;
     const fa = final ? Math.max(0, 1 - (nowMs - this.finalAt) / 800) : 1;
-    tvText(c, 'casa競馬場  ' + (race.surface === 'dirt' ? 'ダート' : '芝') + race.dist + 'm  ' + { sunny: '晴', cloudy: '曇', rain: '雨' }[race.weather], 18, H - 17, 14, '#eeeeee', 'left');
+    if (!this.tvHud) tvText(c, 'casa競馬場  ' + (race.surface === 'dirt' ? 'ダート' : '芝') + race.dist + 'm  ' + { sunny: '晴', cloudy: '曇', rain: '雨' }[race.weather], 18, H - 17, 14, '#eeeeee', 'left'); // 店内テレビ（tvHud）は映像の下の帯に「芝1000m 晴」を大きく出す（v2/tv.js）
     // 再生・勝ち馬のアップ: 止まった勝ちタイムの時計だけ（ref/STRAIGHT_STUDY.md 2-4）。接戦の 2 回目の再生で止めている間はゴールの縦の線と着差
     if (run && dom && (this.phase === 'replay' || this.phase === 'winner')) { const f1 = run.finish.filter((x) => x > 0); if (f1.length) this.clockBox(c, Math.min.apply(null, f1), true, []); if (this.phase === 'replay' && this.photoHold > 0) this.photoLine(c); this.comboBar(c); }
     if (!run || this.phase === 'winner' || this.phase === 'replay') return;
@@ -1874,8 +1877,10 @@ window.Race3D = (function () {
     const gpt = pointAt(FINISH_S, RC); c.fillStyle = '#ff5252'; c.fillRect(mx + gpt.x * sx - 1.5, my + gpt.z * sx - 7, 3, 14);
     const lp = this.horsePos(L_); c.fillStyle = '#ffd54f'; c.strokeStyle = '#000'; c.lineWidth = 1; c.beginPath(); c.arc(mx + lp.x * sx, my + lp.z * sx, 4.5, 0, 6.28); c.fill(); c.stroke();
     const spd = run.speed && run.speed[L_] ? (run.speed[L_] * race.dist / run.length * 3.6) : 0;
-    tvText(c, (race.surface === 'dirt' ? 'DIRT ' : 'TURF ') + race.dist.toLocaleString() + 'm', W - 186, H - 13, 14, '#fff', 'left');
-    tvText(c, spd.toFixed(1) + 'km/h', W - 16, H - 13, 14, '#fff', 'right');
+    if (!this.tvHud) { // 店内テレビ（tvHud）は小さな飾りの文字（距離・速さ）を出さない（2026-10-23 デザイン見直し。コース図はそのまま）
+      tvText(c, (race.surface === 'dirt' ? 'DIRT ' : 'TURF ') + race.dist.toLocaleString() + 'm', W - 186, H - 13, 14, '#fff', 'left');
+      tvText(c, spd.toFixed(1) + 'km/h', W - 16, H - 13, 14, '#fff', 'right');
+    }
     if (!dom && remain <= 400 && remain > 0) tvText(c, '残り ' + remain + 'm', W / 2, 30, 24, '#fff', 'center');
     c.globalAlpha = 1;
   };
@@ -1939,7 +1944,8 @@ window.Race3D = (function () {
       const i = it.i, r = it.r, rank = it.rank != null ? it.rank : r, sx = it.sx, sy = it.sy, lineIn = it.lineIn, iy = y0 + 34 + r * (ih + gapY) + 20, h = this.race.horses[i];
       const rc = RANK_COL[rank] || '#fff';
       c.fillStyle = rc; roundRect(c, ix, iy - 20, 34, 17, 3); c.fill(); c.fillStyle = '#142436'; c.textAlign = 'center'; c.font = '900 12px ' + CLK_JP; c.fillText((rank + 1) + '着', ix + 17, iy - 11);
-      badge(c, ix + 48, iy - 11.5, 8.5, h); c.fillStyle = '#fff'; c.textAlign = 'left'; c.font = 'bold 14px ' + CLK_JP; c.fillText(h.name, ix + 61, iy - 11);
+      badge(c, ix + 48, iy - 11.5, 8.5, h); c.fillStyle = '#fff'; c.textAlign = 'left';
+      { const av = iw - 63; let fs = 14; c.font = 'bold ' + fs + 'px ' + CLK_JP; while (fs > 10 && c.measureText(h.name).width > av) { fs--; c.font = 'bold ' + fs + 'px ' + CLK_JP; } c.fillText(h.name, ix + 61, iy - 11, av); } // 2026-10-23 見直し: 9 文字の馬名が窓の右（画面の右端）で切れていた
       try {
         c.save(); c.beginPath(); c.rect(ix, iy, iw, ih); c.clip(); c.imageSmoothingEnabled = true;
         const ins = this.inset; // 足元の札を隠して撮った絵（renderInset）。無ければいまの画面から
@@ -1948,8 +1954,8 @@ window.Race3D = (function () {
         if (r > 0) { // 1 つ上の着との差: 決勝線が窓の外なら距離（m）も
           const up = items[r - 1] ? items[r - 1].i : pc.w, mg = (this.photoMargins && this.photoMargins[r]) || this.photoMargin || 'ハナ';
           const gm = Math.max(0, (run.pos[up] - run.pos[i]) * this.race.dist), txt = lineIn ? (rank) + '着と ' + mg + '差' : '差 ' + gm.toFixed(1) + 'm（' + mg + '）';
-          c.font = 'bold 13px ' + CLK_JP; const tw2 = c.measureText(txt).width + 14; c.fillStyle = 'rgba(20,36,54,.88)'; roundRect(c, ix + 6, iy + ih - 25, tw2, 20, 4); c.fill();
-          c.fillStyle = '#ffd54f'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(txt, ix + 13, iy + ih - 15);
+          c.font = 'bold 13px ' + CLK_JP; const tw2 = Math.min(iw - 12, c.measureText(txt).width + 14); c.fillStyle = 'rgba(20,36,54,.88)'; roundRect(c, ix + 6, iy + ih - 25, tw2, 20, 4); c.fill();
+          c.fillStyle = '#ffd54f'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(txt, ix + 13, iy + ih - 15, tw2 - 14);
         }
         c.restore();
       } catch (e) { c.restore(); }
@@ -1979,7 +1985,12 @@ window.Race3D = (function () {
     let x = x0 + pad;
     const one = (rank, i) => {
       c.font = '900 17px ' + CLK_JP; c.textAlign = 'left'; c.fillStyle = RANK_COL[rank]; c.fillText((rank + 1) + '着', x, cy + 1); x += wL + 6;
-      c.fillStyle = RANK_COL[rank]; c.beginPath(); c.arc(x + r, cy, r + 2, 0, 6.2832); c.fill(); badge(c, x + r, cy, r, hs[i]); x += r * 2 + 3;
+      if (this.tvHud) { // 店内テレビ: 馬番は角丸の四角（スマホ・テレビの画面の部品と同じ形と色。2026-10-23 デザイン見直し）。縁は着の色（金・銀）
+        const h = hs[i], rr = 5.5; c.fillStyle = RANK_COL[rank]; roundRect(c, x - 2, cy - r - 2, r * 2 + 4, r * 2 + 4, rr + 2); c.fill();
+        c.fillStyle = h.color; roundRect(c, x, cy - r, r * 2, r * 2, rr); c.fill();
+        c.fillStyle = h.ink; c.font = '900 ' + Math.round(r * 1.35) + 'px ' + CLK_FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(h.no, x + r, cy + 1);
+      } else { c.fillStyle = RANK_COL[rank]; c.beginPath(); c.arc(x + r, cy, r + 2, 0, 6.2832); c.fill(); badge(c, x + r, cy, r, hs[i]); }
+      x += r * 2 + 3;
       c.font = '900 17px ' + CLK_JP; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = '#fff'; c.fillText('番', x, cy + 1); x += wB;
     };
     one(0, a);
@@ -2001,13 +2012,14 @@ window.Race3D = (function () {
     const bw = 176, bx = W - 14 - bw; let y = 10;
     const panel = (h) => { c.fillStyle = 'rgba(20,36,54,.86)'; roundRect(c, bx, y, bw, h, 4); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(bx, y, 4, h); };
     panel(40);
-    c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = '900 12px ' + CLK_FONT; c.fillStyle = '#9fb3d9'; c.fillText('T I M E', bx + 14, y + 21);
+    const TB = !!this.tvHud; // 店内テレビ: 見出し（TIME・残り）を 1920 の画面で 22px 以上に（2026-10-23 デザイン見直し）
+    c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = '900 ' + (TB ? 15 : 12) + 'px ' + CLK_FONT; c.fillStyle = TB ? '#c9d6ee' : '#9fb3d9'; c.fillText(TB ? 'TIME' : 'T I M E', bx + 14, y + 21);
     c.textAlign = 'right'; c.font = '900 28px ' + CLK_FONT; c.fillStyle = done ? '#ffd54f' : '#ffffff'; c.fillText(fmtRace(t, done), bx + bw - 12, y + 21.5);
     y += 44;
     rows.forEach((r) => {
       if (!r) return; panel(28);
-      if (r[0] === 'SLOW') { c.fillStyle = '#e84141'; c.beginPath(); c.arc(bx + 17, y + 14, 4.5, 0, 6.283); c.fill(); c.textAlign = 'left'; c.font = '900 13px ' + CLK_FONT; c.fillStyle = '#fff'; c.fillText('S L O W   M O T I O N', bx + 30, y + 14.5); }
-      else { c.textAlign = 'left'; c.font = 'bold 13px ' + CLK_JP; c.fillStyle = '#9fb3d9'; c.fillText(r[0], bx + 14, y + 14.5); c.textAlign = 'right'; c.font = '900 20px ' + CLK_FONT; c.fillStyle = r[2]; c.fillText(r[1], bx + bw - 12, y + 15); }
+      if (r[0] === 'SLOW') { c.fillStyle = '#e84141'; c.beginPath(); c.arc(bx + 17, y + 14, 4.5, 0, 6.283); c.fill(); c.textAlign = 'left'; c.font = '900 ' + (TB ? 15 : 13) + 'px ' + CLK_FONT; c.fillStyle = '#fff'; c.fillText(TB ? 'SLOW MOTION' : 'S L O W   M O T I O N', bx + 30, y + 14.5); }
+      else { c.textAlign = 'left'; c.font = (TB ? '900 15px ' : 'bold 13px ') + CLK_JP; c.fillStyle = TB ? '#c9d6ee' : '#9fb3d9'; if (TB) c.fillText(r[0], bx + 14, y + 14.5, 76); else c.fillText(r[0], bx + 14, y + 14.5); c.textAlign = 'right'; c.font = '900 ' + (TB ? 22 : 20) + 'px ' + CLK_FONT; c.fillStyle = r[2]; c.fillText(r[1], bx + bw - 12, y + 15); }
       y += 32;
     });
   };
@@ -2049,9 +2061,11 @@ window.Race3D = (function () {
         '.v2odds.xo h5 small{letter-spacing:.06em;color:#ffd54f}',
         '.v2odds.xo ol{padding:4px 6px;justify-content:space-around}',
         '.v2odds.xo li{position:relative;flex-direction:column;justify-content:center;align-items:center;gap:4px;height:94px;padding:0 2px}',
-        '.v2odds.xo li em{position:absolute;left:3px;top:4px;font:800 13px/1 var(--font-num,sans-serif);font-style:normal;color:#9fb3d9}',
+        '.v2odds.xo li em{position:absolute;left:3px;top:4px;font:900 16px/1 var(--font-num,sans-serif);font-style:normal;color:#dfe7f3}', /* 2026-10-23: 13px の薄い色では読めなかった */
+        '.v2odds.xo li b small{font-size:16px;margin-left:2px;color:#c9d6ee}',
+        '.v2odds.xo.cmp li em{font-size:15px;top:3px}',
         '.v2odds.xo li .pr{display:flex;align-items:center;gap:3px}',
-        '.v2odds.xo li .pr i{width:38px;height:38px;font-size:25px;border-radius:7px}',
+        '.v2odds.xo li .pr i{width:36px;height:36px;font-size:24px;border-radius:7px}',
         '.v2odds.xo li .pr s{width:0;height:0;border-style:solid;border-width:7px 0 7px 10px;border-color:transparent transparent transparent #e8eef8;margin:0 1px}',
         '.v2odds.xo li b{font-size:29px}',
         '.v2odds.xo li.part{background:rgba(242,183,5,.16)}',
