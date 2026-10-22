@@ -164,9 +164,11 @@
   function stepRow(label, hint, key, val, unit, min, max, step) {
     return '<div class="row"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div>' +
       '<div class="stepper" data-k="' + key + '" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '"><button type="button" data-act="st" data-d="-1" aria-label="減らす">◀</button>' +
-      '<input class="pv" type="number" inputmode="decimal" id="n-' + key + '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + step + '"><i>' + unit + '</i>' +
+      '<input class="pv" type="number" inputmode="decimal" id="n-' + key + '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + step + '" style="--d:' + pvDigits(max, step) + '"><i>' + unit + '</i>' +
       '<button type="button" data-act="st" data-d="1" aria-label="増やす">▶</button></div></div>';
   }
+  /* 数字の欄の幅（2026-10-23 見直し）: いちばん大きい値の桁数（99999900 → 8 桁）。admin.css の .stepper input.pv が --d から幅を決める＝大きな上限でも数字が欄からはみ出さない */
+  const pvDigits = (max, step) => String(Math.floor(Math.abs(Number(max) || 0))).length + (Number(step) < 1 ? 2 : 0);
   // 変えられない値（決まり）の 1 行
   const fixedRow = (label, hint, val, id) => '<div class="row fixed"' + (id ? ' id="' + id + '"' : '') + '><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div><div class="fixv"><b>' + val + '</b><small>決まり</small></div></div>';
   const numOf = (key) => { const el = $('n-' + key); return el ? Number(el.value) : NaN; };
@@ -233,7 +235,7 @@
       '<p class="hint">ふだんは DERBY のまま。SLOT にしていても、<b>投票が始まると自動で DERBY</b> になります（遊んでいる途中なら終わってから）。</p>' +
       (S.length ? S.map((s) => {
         const g = sset(s).tvGame;
-        return '<div class="tvrow" data-store="' + esc(s.id) + '"><button type="button" class="nm" data-act="store-edit" data-id="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'の設定を開く" title="店舗の設定を開く">' + esc(s.name) + '<i aria-hidden="true">›</i>' + (sset(s).test ? '<span class="chip test">テスト</span>' : '') + '<span class="vh">テレビ: ' + gameName(g) + '</span></button>' +
+        return '<div class="tvrow" data-store="' + esc(s.id) + '"><button type="button" class="nm" data-act="store-edit" data-id="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'の設定を開く" title="店舗の設定を開く">' + esc(s.name) + '<i aria-hidden="true">›</i>' + (sset(s).test ? '<span class="chip test">テスト</span>' : '') + '<span class="tvnow" data-g="' + g + '">テレビ: ' + gameName(g) + '</span></button>' +
           '<div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビに映すゲーム">' + ['slot', 'derby'].map((v) => '<button type="button" data-act="tvgame-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (g === v ? 'on' : '') + '" aria-pressed="' + (g === v) + '">' + (v === 'derby' ? 'DERBY' : 'SLOT') + '</button>').join('') + '</div>' +
           '<button class="btn sm ghost" data-act="tv-reload" data-store="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'のテレビを読み込み直す">読み込み直す</button>' +
           '<div class="tvq"><span>画質</span><div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="tvq-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (sset(s).tvQuality === v ? 'on' : '') + '" aria-pressed="' + (sset(s).tvQuality === v) + '">' + nm + '</button>').join('') + '</div></div></div>';
@@ -722,7 +724,7 @@
     const isToday = d === todayStr(), nm = toMin(hm(now()));
     const total = items.reduce((a, x) => a + (Number(x.p) || 0), 0);
     box.innerHTML = '<div class="summary" style="grid-template-columns:1fr 1fr"><div class="stat"><small>レース数</small><b>' + items.length + '</b></div><div class="stat"><small>当選額の目標の合計</small><b>' + ptN(total) + '</b></div></div>' +
-      (items.length ? '<div class="pv-list"><table><tr><th>走り出す</th><th>投票</th><th class="n">目標</th><th>予定</th></tr>' + items.map((x) => '<tr class="' + (isToday && toMin(x.t) < nm ? 'past' : '') + '"><td><b>' + esc(x.t) + '</b>' + (x.store ? '<small class="hint"> ' + esc(storeName(x.store)) + 'だけ</small>' : '') + '</td><td><small class="hint">' + esc(x.open || '') + '〜</small></td><td class="n">' + ptN(x.p) + '</td><td><small class="hint">' + esc(x.name || '') + '</small></td></tr>').join('') + '</table></div>'
+      (items.length ? '<div class="pv-list"><table><tr><th>走り出す</th><th>投票</th><th class="n">目標</th><th>予定</th></tr>' + items.map((x) => '<tr class="' + (isToday && toMin(x.t) < nm ? 'past' : '') + '"><td><b>' + esc(x.t) + '</b>' + (x.store ? '<small class="hint"> ' + esc(storeName(x.store)) + 'だけ</small>' : '') + '</td><td><small class="hint">' + esc(x.open || '') + '〜</small></td><td class="n">' + ptN(x.p) + '</td><td class="pvname"><small class="hint" title="' + esc(x.name || '') + '">' + esc(x.name || '') + '</small></td></tr>').join('') + '</table></div>'
         : '<div class="empty">この日はレースがありません</div>');
   }
   async function loadServerPreview() {
@@ -790,8 +792,10 @@
     const d = r.decision; if (!d || !d.reason) return '';
     const n = d.band && Array.isArray(d.band.combos) ? d.band.combos.length : 0;
     const t = (REASONS[d.reason] || d.reason) + (d.reason === 'band' && n ? '（候補 ' + n + ' 組）' : '') + (d.target ? '・目標 ' + ptT(d.target) : '') + (d.reason !== 'nobody' ? '・当選額 ' + ptT(d.paid != null ? d.paid : d.payout) : '') + (d.cap ? '・上限 ' + ptT(d.cap) : '');
-    return '<small class="hint memo-reason" style="display:block;margin:0">' + esc(t) + '</small>';
+    return '<small class="hint memo-reason" style="display:block;margin:0">' + nwJoin(t, '・') + '</small>';
   }
+  // 区切り（・や /）ごとのかたまりを途中で折り返さない（「看/板の絵柄」のような切れ方をなくす。文字はそのまま）
+  const nwJoin = (t, sep) => { const p = t.split(sep), tail = sep.replace(/\s+$/, ''), gap = sep.length > tail.length ? ' ' : '<wbr>'; return p.map((x, i) => '<span class="nw">' + esc(x + (i < p.length - 1 ? tail : '')) + '</span>').join(gap); }; // 区切りは前のかたまりの終わりに付ける（行の頭に「・」「/」が来ない）
   const leftTxt = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return s >= 60 ? Math.floor(s / 60) + '分' + pad(s % 60) + '秒' : s + '秒'; };
   function nowCard(list, isToday) {
     if (!isToday) return '';
@@ -836,7 +840,7 @@
       const stK = statusOf(r), st = STATUS[stK] || [r.status, 'st-upcoming'];
       const canRefund = ['closed', 'decided', 'done'].indexOf(r.status) >= 0 && !r.refunded;
       const open = refundOpen === r.id && canRefund, before = r.status === 'upcoming' && stK === 'upcoming';
-      const money = r.test ? '<small class="hint">テスト（払わない）</small>' : finished(r) ? ptN(r.paidTotal) + '<span class="hint"> / ' + ptN(r.payoutTarget) + '</span>' : '<span class="hint">目標 </span>' + ptN(r.payoutTarget);
+      const money = r.test ? '<small class="hint">テスト（払わない）</small>' : finished(r) ? ptN(r.paidTotal) + '<span class="hint tg"> / ' + ptN(r.payoutTarget) + '</span>' : '<span class="hint">目標 </span>' + ptN(r.payoutTarget);
       return '<tr class="' + (stK === 'vote' ? 'now' : r.status === 'upcoming' ? '' : 'past') + (r.refunded ? ' voided' : '') + (r.test ? ' testrace' : '') + (open ? ' rfopen' : '') + '" data-race="' + esc(r.id) + '">' +
         td('', '<b class="mono" style="font-size:15px">' + hm(r.at) + '</b>' + (r.test ? ' <span class="chip test">テスト</span>' : '') + (r.storeId ? '<small class="hint"> ' + esc(storeName(r.storeId)) + 'だけ</small>' : '') + (before ? '<small class="hint vfrom"> 投票 ' + hm(r.openAt) + '〜</small>' : ''), 'head') +
         td('', '<span class="status ' + st[1] + '">' + st[0] + '</span>') +
@@ -948,7 +952,7 @@
   /* 確定演出（店舗には見せない）: 演出ごとに「出す割合」と「当たる割合」を 1 行に。保存は下の「保存」ボタン（変えた演出だけ送る） */
   function stepMini(label, key, val, unit, min, max, step) {
     return '<div class="mini"><span>' + label + '</span><div class="stepper" data-k="' + key + '" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '"><button type="button" data-act="st" data-d="-1" aria-label="減らす">◀</button>' +
-      '<input class="pv" type="number" inputmode="decimal" id="n-' + key + '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + step + '" aria-label="' + esc(label) + '"><i>' + unit + '</i><button type="button" data-act="st" data-d="1" aria-label="増やす">▶</button></div></div>';
+      '<input class="pv" type="number" inputmode="decimal" id="n-' + key + '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + step + '" style="--d:' + pvDigits(max, step) + '" aria-label="' + esc(label) + '"><i>' + unit + '</i><button type="button" data-act="st" data-d="1" aria-label="増やす">▶</button></div></div>';
   }
   function viewCues(T) {
     const cz = T.cues || DEF_CUES;
@@ -963,7 +967,7 @@
     const cz = r.cues || (r.decision && r.decision.cues); if (!cz || !r.result) return '';
     const fired = CUES.filter(([k]) => cz[k] && cz[k].horse != null);
     const t = fired.length ? '演出: ' + fired.map(([k, name]) => { const h = cz[k].horse; return name + '→' + noOf(r, h) + '番 ' + (h === r.result.winner ? '○' : '×'); }).join(' / ') : '演出なし';
-    return '<small class="hint cue-txt" style="display:block;margin:0">' + esc(t) + '</small>';
+    return '<small class="hint cue-txt" style="display:block;margin:0">' + nwJoin(t, ' / ') + '</small>';
   }
   /* 馬の見た目（全店共通。v2/core.js の horseLook）: 押すとすぐ保存。全店のテレビが次のレースから同じ見た目にそろう */
   const HORSE_LOOKS = [['cute', 'かわいい（標準）'], ['real', '本物寄り']];
@@ -1057,7 +1061,7 @@
     const qOn = (q) => { const r = quickRange(q); return r[0] === stFrom && r[1] === stTo; }; // 今選んでいる期間ボタンは銀
     /* 日ごと・店舗別の 1 行（PC は表、スマホはカード）。スマホは主な数字（票の数・当選額・まだ渡していない）を先に、残りは「くわしく」で開く */
     const cell = (l, v, more) => '<td class="n' + (more ? ' more' : '') + '" data-l="' + l + '">' + v + '</td>';
-    const unc = (v) => (v ? '<b style="color:var(--ng)">' + ptN(v) + '</b>' : '0' + '<small class="pt">pt</small>');
+    const unc = (v) => (v ? '<b style="color:var(--unpaid)">' + ptN(v) + '</b>' : '0' + '<small class="pt">pt</small>');
     const moreBtn = '<button type="button" class="btn xs ghost daymore" data-act="day-more" aria-expanded="false">くわしく</button>';
     return '<div class="panel"><h3>集計を見る</h3>' +
       '<div class="quick">' + quick.map((q) => '<button class="btn sm ghost" data-act="stq" data-q="' + q[0] + '" aria-pressed="' + qOn(q[0]) + '">' + q[1] + '</button>').join('') + '</div>' +
@@ -1101,10 +1105,10 @@
   function viewLogs(L) {
     const keys = Object.keys(L.byBill || {});
     return (keys.length ? '<div class="tbl"><table class="cards" id="billTable"><tr class="hd"><th>店舗・会計番号</th><th>ニックネーム</th><th class="n">票</th><th class="n">当選額</th><th class="n">渡した額</th><th class="n">まだ渡していない</th><th class="n">期限切れ</th></tr>' +
-      keys.slice(0, 200).map((k) => { const x = L.byBill[k], un = Math.max(0, (x.win || 0) - (x.paid || 0) - (x.expired || 0)); return '<tr><td class="head"><b>' + esc(storeName(x.storeId)) + ' ' + esc(x.bill) + '番</b></td><td data-l="ニックネーム">' + esc(x.nick || '') + '</td><td class="n" data-l="票">' + fmtN(x.votes) + '</td><td class="n" data-l="当選額">' + ptN(x.win) + '</td><td class="n" data-l="渡した額">' + ptN(x.paid) + '</td><td class="n" data-l="まだ渡していない">' + (un ? '<b style="color:var(--ng)">' + ptN(un) + '</b>' : '0<small class="pt">pt</small>') + '</td><td class="n" data-l="期限切れ">' + ptN(x.expired) + '</td></tr>'; }).join('') + '</table></div>' : '') +
+      keys.slice(0, 200).map((k) => { const x = L.byBill[k], un = Math.max(0, (x.win || 0) - (x.paid || 0) - (x.expired || 0)); return '<tr><td class="head"><b>' + esc(storeName(x.storeId)) + ' ' + esc(x.bill) + '番</b></td><td class="nick" data-l="ニックネーム">' + esc(x.nick || '') + '</td><td class="n" data-l="票">' + fmtN(x.votes) + '</td><td class="n" data-l="当選額">' + ptN(x.win) + '</td><td class="n" data-l="渡した額">' + ptN(x.paid) + '</td><td class="n" data-l="まだ渡していない">' + (un ? '<b style="color:var(--unpaid)">' + ptN(un) + '</b>' : '0<small class="pt">pt</small>') + '</td><td class="n" data-l="期限切れ">' + ptN(x.expired) + '</td></tr>'; }).join('') + '</table></div>' : '') +
       '<h3 style="margin-top:14px;font-size:14px">明細（' + fmtN(L.logs.length) + ' 件' + (L.logs.length > 500 ? '。新しい 500 件を表示' : '') + '）</h3>' +
       (L.logs.length ? '<div class="tbl"><table class="cards"><tr class="hd"><th>日時</th><th>店舗</th><th>会計番号</th><th>ニックネーム</th><th>種類</th><th>組み合わせ</th><th class="n">額</th></tr>' +
-        L.logs.slice(0, 500).map((x) => { const k = logKind(x), a = logAmt(x); return '<tr><td class="mono">' + esc(x.date ? x.date.slice(5) : ymd(x.at).slice(5)) + ' ' + hms(x.at).slice(0, 5) + '</td><td>' + esc(storeName(x.storeId)) + '</td><td class="mono">' + esc(x.bill) + '</td><td>' + esc(x.nick || '') + '</td><td><span class="chip ' + k[1] + '">' + esc(k[0]) + '</span></td><td class="mono">' + esc(comboTxt(x.combo)) + '</td><td class="n">' + (a == null ? '' : esc(ptT(a))) + '</td></tr>'; }).join('') + '</table></div>'
+        L.logs.slice(0, 500).map((x) => { const k = logKind(x), a = logAmt(x); return '<tr><td class="mono dt">' + esc(x.date ? x.date.slice(5) : ymd(x.at).slice(5)) + ' ' + hms(x.at).slice(0, 5) + '</td><td>' + esc(storeName(x.storeId)) + '</td><td class="mono">' + esc(x.bill) + '</td><td class="nick">' + esc(x.nick || '') + '</td><td><span class="chip kind ' + k[1] + '">' + esc(k[0]) + '</span></td><td class="mono">' + esc(comboTxt(x.combo)) + '</td><td class="n">' + (a == null ? '' : esc(ptT(a))) + '</td></tr>'; }).join('') + '</table></div>'
         : '<div class="empty">記録はありません</div>');
   }
   // 会計番号の記録: 管理用の API（logs）があればそれ、なければ各店舗の PIN でスタッフ用の記録を日ごとに集める
