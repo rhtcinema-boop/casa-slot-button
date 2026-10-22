@@ -14,7 +14,7 @@
     waitHead: '次のレース', waitVoteFrom: '投票は {t} から', waitLeft: '投票の始まりまで', dayOver: '本日のレースは終わりました',
     billHead: '会計番号', billSub: '伝票の番号（2けた）', nickHead: 'ニックネーム', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
     errBill: '会計番号を 2 けたで入れてください', errNick: 'ニックネームを入れてください',
-    pickHead: '1着と2着をえらぶ', pickAxis: '縦が1着・横が2着', pickTap: 'マスを押してください', cond: '調子', recent: '近走',
+    pickHead: '1着と2着をえらぶ', pickAxis: '縦が1着・横が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
     confHead: 'この予想で投票しますか？', ifWin: '当たれば', shiftNote: '倍率は締切のときに少し変わることがあります',
     voteBtn: '投票する', changeBtn: 'この予想に変える', back: '戻る', sending: '送っています…',
     voted: '投票しました', yourPick: 'あなたの予想', closeIn: '締切まで', redo: '選び直す',
@@ -83,13 +83,14 @@
   const waku = (h, cls) => (h ? '<span class="waku' + (cls ? ' ' + cls : '') + '" style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</span>' : '');
   const exOdds = (r, a, b) => { const v = r && r.exacta ? Number(r.exacta[a + '-' + b]) : NaN; return Number.isFinite(v) && v > 0 ? v : null; };
   const comboText = (r, a, b, o) => { const hs = horsesOf(r), h1 = hs[a], h2 = hs[b]; return '1着 ' + (h1 ? h1.no : a + 1) + '番 → 2着 ' + (h2 ? h2.no : b + 1) + '番' + (o ? ' ' + oddsTxt(o) + '倍' : ''); };
-  function pickCard(r, a, b, big) { // 「1着 [3] 名前 → 2着 [5] 名前」
-    const hs = horsesOf(r), h1 = hs[a], h2 = hs[b];
-    const one = (lb, h, i) => '<div class="pp"><span class="lb">' + lb + '</span>' + (h ? waku(h, big ? 'xl' : 'lg') + '<span class="nm">' + esc(h.name) + '</span>' : '<span class="waku lg">' + (i + 1) + '</span>') + '</div>';
-    return '<div class="pick' + (big ? ' big' : '') + '">' + one('1着', h1, a) + '<i class="arw" aria-hidden="true">→</i>' + one('2着', h2, b) + '</div>';
+  function pickCard(r, a, b, size) { // 「1着 [3] 名前 → 2着 [5] 名前」。size: 'big'＝④確認（馬番 56px）／'mid'＝⑤投票済み・⑥レース中（同じ札。馬番 40px）／なし＝結果の行
+    const hs = horsesOf(r), h1 = hs[a], h2 = hs[b], big = size === 'big';
+    const one = (lb, h, i) => '<div class="pp"><span class="lb">' + lb + '</span>' + (h ? waku(h, big ? 'xl' : 'lg') + '<span class="nm" data-fit="13">' + esc(h.name) + '</span>' : '<span class="waku lg">' + (i + 1) + '</span>') + '</div>'; // 馬名は「…」で切らない（入らなければ小さく → 2 行。fitText）
+    return '<div class="pick' + (size ? ' ' + size : '') + '">' + one('1着', h1, a) + '<i class="arw" aria-hidden="true">→</i>' + one('2着', h2, b) + '</div>';
   }
   const arrowNum = (a, b) => '<b class="an">' + (a + 1) + '<i>→</i>' + (b + 1) + '</b>'; // 「3→5」（数字は太い文字・矢印はふつうの文字）
   const bigAmt = (n, cls) => { const t = amt(n); return '<span class="' + cls + (t.length >= 7 ? ' l7' : t.length >= 6 ? ' l6' : '') + '">' + t + '<small class="pt">pt</small></span>'; }; // 桁が多いときは少し小さく
+  const whoLine = (bill, nick) => '<div class="who"><span class="nw">' + esc(TX.billHead) + ' <b>' + esc(bill) + '</b></span>・<span class="nw">' + esc(nick) + '</span></div>'; // 折り返すときは「・」で（番号やニックネームの途中で切らない）
   const isTest = (r) => !!((r && r.test) || (st && st.settings && st.settings.test));
   const shiftOn = () => { const x = st && st.settings; if (!x || x.shiftUp == null || x.shiftDown == null) return true; return Number(x.shiftUp) > 0 || Number(x.shiftDown) > 0; };
 
@@ -105,7 +106,7 @@
   }
   function nextLine() {
     const nx = nextRace(); if (!nx) return '<p class="nextr">' + esc(TX.dayOver) + '</p>';
-    return '<p class="nextr">' + esc(fill(TX.nextRace, { t: hhmm(nx.at) })) + (nx.openAt ? '<small>' + esc(fill(TX.nextVote, { t: hhmm(nx.openAt) })) + '</small>' : '') + '</p>';
+    return '<p class="nextr">' + esc(TX.nextRace).replace('{t}', '<b class="nt">' + hhmm(nx.at) + '</b>') + /* 時刻だけ大きく（言葉は文字帳のまま） */ (nx.openAt ? '<small>' + esc(fill(TX.nextVote, { t: hhmm(nx.openAt) })) + '</small>' : '') + '</p>';
   }
   function unpaidNote() {
     const u = unpaidList.filter((x) => !my || x.vid !== my.vid)[0]; if (!u) return '';
@@ -172,33 +173,36 @@
   R.pick = () => {
     const r = st && st.current; if (!r) return R.wait();
     const hs = horsesOf(r), d = draft;
-    const info = '<div class="hinfo">' + hs.map((h) => '<div class="hr">' + waku(h, 'sm') + '<span class="hn">' + esc(h.name) + '</span>' +
-      (h.cond ? '<span class="hc">' + esc(TX.cond) + ' <b>' + esc(h.cond) + '</b></span>' : '') +
-      (h.type ? '<span class="ht" style="background:' + h.typeColor + '">' + esc(h.type) + '</span>' : '') +
-      (h.recent ? '<span class="hf">' + esc(TX.recent) + ' <b>' + esc(h.recent) + '</b></span>' : '') + '</div>').join('') + '</div>';
-    let g = '<div class="grid" role="grid" aria-label="2連単の倍率の表"><div class="gc corner"><small>1着↓<br>2着→</small></div>' + hs.map((h) => '<div class="gc ch">' + waku(h, 'sm') + '</div>').join('');
+    /* 2026-10-23 見直し: 「調子」「近走」を行ごとに書かず、上に 1 回だけ（列の見出し）。そのぶん馬名の幅を広く（「サッポロユキダ…」と切れていた） */
+    const info = '<div class="hinfo"><div class="hh"><span></span><span></span><span class="hc">' + esc(TX.cond) + '</span><span class="hy">' + esc(TX.style) + '</span><span class="hf">' + esc(TX.recent) + '</span></div>' +
+      hs.map((h) => '<div class="hr">' + waku(h, 'sm') + '<span class="hn" data-fit="12">' + esc(h.name) + '</span>' +
+      '<span class="hc"><b>' + esc(h.cond) + '</b></span>' +
+      '<span class="hy">' + (h.type ? '<span class="ht" style="background:' + h.typeColor + '">' + esc(h.type) + '</span>' : '') + '</span>' +
+      '<span class="hf"><b>' + esc(h.recent) + '</b></span></div>').join('') + '</div>';
+    const has = d.first != null && d.second != null; // 選び直し: 今の予想の行（1 着）と列（2 着）を少し明るく・交わるマスに金の枠（2026-10-23 デザイン見直し 1 回目）
+    let g = '<div class="grid" role="grid" aria-label="2連単の倍率の表"><div class="gc corner"><small>1着↓<br>2着→</small></div>' + hs.map((h) => '<div class="gc ch' + (has && d.second === h.i ? ' on' : '') + '">' + waku(h, 'sm') + '</div>').join('');
     hs.forEach((a) => {
-      g += '<div class="gc rh">' + waku(a, 'sm') + '</div>';
+      g += '<div class="gc rh' + (has && d.first === a.i ? ' on' : '') + '">' + waku(a, 'sm') + '</div>';
       hs.forEach((b) => {
         if (a.i === b.i) { g += '<div class="gc x" aria-hidden="true"></div>'; return; }
-        const o = exOdds(r, a.i, b.i), sel = d.first === a.i && d.second === b.i;
-        g += '<button type="button" class="gc cell' + (sel ? ' sel' : '') + (o && o < 10 ? ' lo' : o && o >= 100 ? ' hi' : '') + '" data-a="' + a.i + '" data-b="' + b.i + '" aria-label="1着 ' + a.no + '番 2着 ' + b.no + '番 ' + oddsTxt(o) + '倍">' + oddsTxt(o) + '</button>';
+        const o = exOdds(r, a.i, b.i), sel = d.first === a.i && d.second === b.i, ax = has && !sel && (d.first === a.i || d.second === b.i);
+        g += '<button type="button" class="gc cell' + (sel ? ' sel' : ax ? ' ax' : '') + (o && o < 10 ? ' lo' : o && o >= 100 ? ' hi' : '') + '" data-a="' + a.i + '" data-b="' + b.i + '" aria-label="1着 ' + a.no + '番 2着 ' + b.no + '番 ' + oddsTxt(o) + '倍">' + oddsTxt(o) + '</button>';
       });
     });
     g += '</div>';
     return '<div class="scr pickscr">' + testTag(r) + '<h1>' + esc(TX.pickHead) + '</h1>' + info +
       '<p class="axis">' + esc(TX.pickAxis) + '・' + esc(TX.pickTap) + '</p>' + g +
-      (d.redo ? '<button class="btn ghost" data-act="cancelRedo">' + esc(TX.back) + '</button>' : '<button class="link" data-act="toEntry">' + esc(bill2(d.bill)) + '番・' + esc(d.nick) + '　' + esc(TX.back) + '</button>') + '</div>';
+      (d.redo ? '<button class="btn ghost" data-act="cancelRedo">' + esc(TX.back) + '</button>' : '<button class="link" data-act="toEntry"><span class="nw">' + esc(bill2(d.bill)) + '番・' + esc(d.nick) + '</span>　<span class="nw">' + esc(TX.back) + '</span></button>') + '</div>';
   };
 
   /* ④ 確認: 組み合わせ・倍率・当たれば ○pt */
   R.confirm = () => {
     const r = st && st.current, d = draft; if (!r || d.first == null) return R.pick();
     const o = exOdds(r, d.first, d.second);
-    return '<div class="scr confirm">' + testTag(r) + '<h1>' + esc(TX.confHead) + '</h1>' + pickCard(r, d.first, d.second, true) + /* 組み合わせの文は出さない（2026-10-21 文字帳 w0052） */
+    return '<div class="scr confirm">' + testTag(r) + '<h1>' + esc(TX.confHead) + '</h1>' + pickCard(r, d.first, d.second, 'big') + /* 組み合わせの文は出さない（2026-10-21 文字帳 w0052） */
       '<div class="ifwin"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(o ? payFor(o) : 0, 'n') + '</b></div>' +
-      (shiftOn() ? '<p class="sub">' + esc(TX.shiftNote) + '</p>' : '') +
-      '<div class="who">' + esc(TX.billHead) + ' <b>' + esc(bill2(d.bill)) + '</b>・' + esc(d.nick) + '</div>' +
+      (shiftOn() ? '<p class="sub shift">' + esc(TX.shiftNote) + '</p>' : '') +
+      whoLine(bill2(d.bill), d.nick) +
       '<p class="err" id="err" role="alert">' + esc(d.err && d.err !== 'bill_taken' ? d.err : '') + '</p>' +
       '<div class="dock"><button class="btn" data-act="vote">' + esc(d.redo ? TX.changeBtn : TX.voteBtn) + '</button><button class="btn ghost" data-act="toPick2">' + esc(TX.back) + '</button></div></div>';
   };
@@ -209,9 +213,9 @@
     if (!v || !r) return R.boot();
     const o = exOdds(r, v.first, v.second);
     return '<div class="scr voted">' + testTag(r) + '<h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' +
-      '<div class="mine"><p class="mk">' + esc(TX.yourPick) + '</p>' + pickCard(r, v.first, v.second, true) +
+      '<div class="mine"><p class="mk">' + esc(TX.yourPick) + '</p>' + pickCard(r, v.first, v.second, 'mid') +
       '<div class="combo">' + esc(comboText(r, v.first, v.second, o)) + '</div><div class="ifwin sm"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(o ? payFor(o) : 0, 'n') + '</b></div>' +
-      '<div class="who">' + esc(TX.billHead) + ' <b>' + esc(v.bill) + '</b>・' + esc(v.nick) + '</div></div>' +
+      whoLine(v.bill, v.nick) + '</div>' +
       '<div class="clock"><div class="k">' + esc(TX.closeIn) + '</div><div class="v">' + cd(r.closeAt) + '</div></div>' +
       '<button class="btn ghost" data-act="redo">' + esc(TX.redo) + '</button></div>';
   };
@@ -219,9 +223,9 @@
   /* ⑥ レース中: 自分の予想だけ */
   R.race = () => {
     const v = my && my.vote, r = my && my.race; if (!v || !r) return R.boot();
-    return '<div class="scr racing mid">' + testTag(r) + '<div class="mine"><p class="mk">' + esc(TX.yourPick) + '</p>' + pickCard(r, v.first, v.second, true) +
+    return '<div class="scr racing mid">' + testTag(r) + '<div class="mine"><p class="mk">' + esc(TX.yourPick) + '</p>' + pickCard(r, v.first, v.second, 'mid') + /* ⑤投票済みと同じ札・同じ大きさ */
       (() => { const o = exOdds(r, v.first, v.second); return o ? '<div class="ifwin sm"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(payFor(o), 'n') + '</b></div>' : ''; })() + /* 当たればいくら（2026-10-21 文字帳の指示） */
-      '<div class="who">' + esc(TX.billHead) + ' <b>' + esc(v.bill) + '</b>・' + esc(v.nick) + '</div></div></div>';
+      whoLine(v.bill, v.nick) + '</div></div>';
   };
 
   /* ⑦ 結果 */
@@ -242,21 +246,22 @@
     else if (p.status === 'paid') pay = '<div class="stamp" role="status"><b>' + esc(TX.paid) + '</b>' + (p.paidAt ? '<small>' + hhmm(p.paidAt) + '</small>' : '') + '</div>';
     else if (p.status === 'expired') pay = '<div class="note red" role="status"><b>' + esc(TX.expired) + '</b></div>';
     else if (p.status === 'void') pay = '<div class="note red" role="status"><b>' + esc(TX.voided) + '</b></div>';
-    else pay = '<p class="ops">' + esc(TX.staffOps) + '</p><div class="slider" id="slider" role="slider" aria-label="' + esc(TX.slide) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fillbar"></div><span class="lbl">' + esc(TX.slide) + ' ›››</span><div class="knob" aria-hidden="true">›</div></div><p class="err" id="err" role="alert"></p>';
+    else pay = '<div class="payop"><p class="ops">' + esc(TX.staffOps) + '</p><div class="slider" id="slider" role="slider" aria-label="' + esc(TX.slide) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fillbar"></div><span class="lbl">' + esc(TX.slide) + ' ›››</span><div class="knob" aria-hidden="true">›</div></div><p class="err" id="err" role="alert"></p></div>'; // 「スタッフが操作します」はスライドのすぐ上
     return '<div class="scr result win">' + testTag(r) + '<div class="hit"><h1 class="t">' + esc(TX.win) + '</h1><div class="combo">' + esc(comboText(r, res.first, res.second, res.odds)) + '</div>' +
       '<div class="k">' + esc(TX.amount) + '</div><div class="a">' + bigAmt(res.amount, 'n') + '</div></div>' +
-      '<div class="billbig"><span>' + esc(TX.billHead) + '</span><b>' + esc(v.bill) + '</b><small>' + esc(v.nick) + '</small></div>' + pay +
+      '<div class="billbig"><span>' + esc(TX.billHead) + '</span><b>' + esc(v.bill) + '</b><small data-fit="13">' + esc(v.nick) + '</small></div>' + pay +
       nextBtn(true) + '</div>';
   };
 
   /* ================= 描画 ================= */
   function go(name) { if (screen !== name) window.scrollTo(0, 0); screen = name; draw(); }
-  let dragging = false, drawLater = false;
+  let dragging = false, drawLater = false, drawn = ''; // drawn: 前に描いた画面（画面が変わったときだけふわっと出す。描き直しのたびに出し直すとちらつく）
   function draw() {
     if (dragging) { drawLater = true; return; } // スライドを動かしている途中は描き直さない
     drawLater = false;
     $('main').innerHTML = (R[screen] || R.boot)();
-    drawTop();
+    if (drawn !== screen) { const f = $('main').firstElementChild; if (f) f.classList.add('in'); drawn = screen; }
+    drawTop(); fitText($('main'));
     if (screen === 'entry') {
       const i = $('nick');
       i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
@@ -265,6 +270,20 @@
     if (screen === 'result') { const s = $('slider'); if (s) bindSlider(s); }
     notice = screen === 'entry' ? notice : '';
   }
+  /* 枠に入らない文字（馬名・ニックネーム）: 「…」で切らずに、まず文字を小さく（data-fit の px まで）、それでも入らなければ 2 行にする（2026-10-23 見直し） */
+  function fitText(root) {
+    if (!root) return;
+    root.querySelectorAll('[data-fit]').forEach((el) => {
+      el.style.fontSize = ''; el.classList.remove('wrap2');
+      const w = el.clientWidth; if (!w || el.scrollWidth <= w + 1) return;
+      const fs = parseFloat(getComputedStyle(el).fontSize), min = Number(el.dataset.fit) || 12;
+      el.style.fontSize = Math.max(min, Math.floor((fs * w) / el.scrollWidth * 10) / 10) + 'px';
+      if (el.scrollWidth > el.clientWidth + 1) el.classList.add('wrap2');
+    });
+  }
+  let fitT = 0;
+  window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(() => fitText($('main')), 120); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitText($('main'))); // 文字（Noto Sans JP）が届いたら測り直す
   /* 会計番号の 2 つの枠: 1 けただけなら右の枠に入れて左は薄い 0（07 の 7 と同じに見える） */
   function digitsHtml(b) { return b.length === 2 ? '<span class="dg">' + esc(b[0]) + '</span><span class="dg">' + esc(b[1]) + '</span>' : b.length === 1 ? '<span class="dg ph">0</span><span class="dg">' + esc(b) + '</span>' : '<span class="dg"></span><span class="dg"></span>'; }
   function drawDigits() { const d = $('digits'); if (!d) return draw(); const b = draft.bill || ''; d.innerHTML = digitsHtml(b); d.classList.toggle('empty', !b); d.setAttribute('aria-label', '会計番号 ' + b); }
@@ -316,6 +335,15 @@
       return { kind, raceId: r.id, vid: m.vid, key: m.key, race: r };
     }
     if (pinned) return Object.assign({ kind: 'pin' }, pinned);
+    /* 2026-10-23 直した: 締切のあと、進行役のテレビがレースを「締切」にする前（Firestore 版・Web デモ）は、状態の current がもう次のレースで live もまだ空。
+       発表の時刻のあと、結果が書かれる前も live・last のどちらにも入らない。この数秒〜数十秒、自分の票が見えなくなり待ち画面がちらついていた。
+       その間は、見ている自分の票をそのまま持つ（結果がまだ → レース中、結果が来た → 結果）。持つのは締切から 15 分・発表から 2 分まで */
+    const r = my && my.race, n = now();
+    if (r && MV.get(my.raceId) && !dismissed.has(my.raceId) && r.closeAt && n >= r.closeAt && r.status !== 'void' && !r.refunded) {
+      const res = my.vote && my.vote.result;
+      if (!res && n < r.closeAt + 15 * 60000) return { kind: 'live', raceId: my.raceId, vid: my.vid, key: my.key, race: r };
+      if (res && n < Math.max(r.revealAt || 0, r.closeAt) + 2 * 60000) return { kind: 'hold', raceId: my.raceId, vid: my.vid, key: my.key, race: r };
+    }
     return null;
   }
   function route() {
