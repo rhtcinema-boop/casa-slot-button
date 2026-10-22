@@ -7,6 +7,7 @@
      途中では移らない: シート（番号を空ける・テストレース・その他）・スライドの途中・確認の窓・ログインの入力中・6 秒さわっていないとき以外。
      行ったり来たり: 10 分に 6 回を超えたら 10 分止める。「このスマホは自動で入れ替えない」（'casa.phoneSwitch' = 'off'）は staff.js の「その他」で切り替える（StaffSwitch.setAuto）。
    - 店のゲームは v2/tvswitch.js の DerbyTvSwitch.watch（数秒）。通知が使えないときは 30 秒ごとに読む。Web デモでは何もしない。
+   - 2026-10-23 デザイン見直し 1 回目: 確認の窓（#gtAsk）を紺の地・金のボタン（DESIGN_SYSTEM_V4.md）に。タブの見た目は casa SLOT と同じのまま。
    - v4 で変えたこと: 上の帯の「テレビ: … 切り替え・画質 ›」のボタンとシートはなくした（staff.js の画面の上・「その他」に移した）。 */
 (function () {
   'use strict';
@@ -47,12 +48,13 @@
   const gcss = document.createElement('style');
   gcss.textContent = '#gameTabs{position:fixed;top:calc(var(--sat,0px) + 5px);left:10px;z-index:45;display:flex;gap:2px;padding:2px;border-radius:12px;border:1px solid #3a3a42;background:#101012;font:700 13px/1 -apple-system,"Hiragino Sans",sans-serif}' +
     '#gameTabs[hidden]{display:none}#gameTabs button{height:34px;min-width:46px;padding:0 8px;border:0;border-radius:9px;background:transparent;color:#cfd6cc;font:inherit;letter-spacing:.02em;white-space:nowrap}' +
-    '#gameTabs button.cur{background:#d9dce3;color:#1a1d24}@media (max-width:389px){#gameTabs{font-size:12px}#gameTabs button{padding:0 7px;min-width:42px}}' +
-    '#gtAsk{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:24px}' +
-    '#gtAsk .card{width:100%;max-width:360px;box-sizing:border-box;background:#15120a;border:1px solid #c9a03e;border-radius:16px;padding:18px;color:#e8e3d2;font-family:-apple-system,"Hiragino Sans",sans-serif}' +
-    '#gtAsk h3{margin:0 0 8px;font-size:17px;color:#ffd773}#gtAsk p{margin:0 0 16px;font-size:15px;line-height:1.6;color:#cfd6cc}#gtAsk .row{display:flex;gap:10px}' +
-    '#gtAsk button{flex:1;min-height:50px;border-radius:12px;font:inherit;font-size:16px}#gtAsk [data-gt="no"]{border:1px solid #3a3a42;background:#1a1a1a;color:#cfd6cc}' +
-    '#gtAsk [data-gt="yes"]{border:1px solid #a57c26;background:linear-gradient(#f3d27a,#c99a3a);color:#1a1205;font-weight:800}';
+    '#gameTabs button{position:relative}#gameTabs button::after{content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}' + /* 見た目は casa SLOT と同じ 34px のまま、押せる所だけ上下に広げる（44px。2026-10-23） */
+    '#gameTabs button.cur{background:#d9dce3;color:#1a1d24}@media (max-width:389px){#gameTabs{font-size:12px}#gameTabs button{padding:0 7px;min-width:44px}}' +
+    '#gtAsk{position:fixed;inset:0;z-index:70;background:rgba(4,7,13,.8);display:flex;align-items:center;justify-content:center;padding:24px}' +
+    '#gtAsk .card{width:100%;max-width:360px;box-sizing:border-box;background:#101d36;border:1px solid #2c3a57;border-radius:16px;padding:20px;color:#f5f3ef;font-family:-apple-system,"Hiragino Sans",sans-serif}' +
+    '#gtAsk h3{margin:0 0 8px;font-size:18px;color:#f5f3ef;text-align:center}#gtAsk p{margin:0 0 16px;font-size:15px;line-height:1.6;color:#b8beca;text-align:center}#gtAsk .row{display:flex;gap:10px}' +
+    '#gtAsk button{flex:1;min-height:52px;border-radius:14px;font:inherit;font-size:16px;font-weight:700}#gtAsk [data-gt="no"]{border:1px solid #2c3a57;background:#16213a;color:#e8eaf0}' +
+    '#gtAsk [data-gt="yes"]{border:0;background:linear-gradient(180deg,#ffe9a8,#c9a03e);color:#1a1408;font-weight:900}';
   document.head.appendChild(gcss);
   const tabs = document.createElement('div');
   tabs.id = 'gameTabs'; tabs.hidden = true; tabs.setAttribute('role', 'tablist');
