@@ -93,11 +93,13 @@
   top.insertBefore(el('<span class="v2store" id="v2store"></span>'), sndBtn);
   // テストレース（スタッフの「この店だけテストレース」）: 投票・レース・結果のあいだ、上の帯に赤い札（当たっても受け取りはない）
   top.insertBefore(el('<span class="v2testtag" id="v2testTag" hidden>テストレース</span>'), top.querySelector('.raceinfo') ? top.querySelector('.raceinfo').nextSibling : sndBtn);
+  // 初参加ボーナス（2026-10-24 オーナー決定: そのスマホで初めて投票するレースは 2 票）: 投票のあいだ上の帯に「初参加は 2票！」（tv.css で m-open のときだけ見せる）
+  top.insertBefore(el('<span class="v2bonus" id="v2bonus">初参加は<b>2票！</b></span>'), top.querySelector('#v2testTag').nextSibling);
   /* レースとレースの間（m-wait）: 上の大きな枠（遊び方・前のレースの結果）と、下の大きな時計（次のレース）。リプレイは m-hl・パドックは映像をそのまま見せる */
   stageEl.appendChild(el('<div class="v2wait" id="v2wait">' +
-    '<div class="wpg how" id="v2wpHow"><h3>遊び方</h3><ol>' +
+    '<div class="wpg how" id="v2wpHow"><h3>遊び方</h3><div class="bn" id="v2howBonus"><b>初参加は 2票！</b><span>初めて投票するスマホは もう1票</span></div><ol>' + /* 初参加ボーナス（2026-10-24） */
       '<li><b>QR をスマホで読む</b><span>アプリは要りません</span></li>' +
-      '<li><b>会計番号と ニックネームを入れる</b><span>会計番号は 2 けた</span></li>' +
+      '<li><b>会計番号と ニックネームを入れる</b></li>' /* 2026-10-24 文字帳 w0217: 「会計番号は 2 けた」を消す */ +
       '<li><b>1着と2着を 順番どおりに当てる</b><span>締切までは 選び直せます</span></li>' +
     '</ol><p class="pay">当たれば <b>100<small class="pt">pt</small> × 倍率</b><span>リングチップでお渡し</span></p></div>' +
     '<div class="wpg win" id="v2wpWin"><div class="hd"><h3>前のレースの結果<small id="v2wpWinT"></small></h3><span class="cnt" id="v2wpWinCnt"></span><span class="pg"></span></div>' +
@@ -954,7 +956,7 @@
         $('v2nxLeftL').textContent = opened ? '発走まで あと' : '投票開始まで あと';
         setFit('v2nxLeft', fmtLeft(target - t), '.v2nx');
         nx.classList.toggle('hot', !opened && target - t < 60000);
-      } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = 'ご参加ありがとうございました'; $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; }
+      } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = ''; /* 2026-10-24 文字帳 w0232: 「ご参加ありがとうございました」を消す */ $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; }
       const P = prevRace(); $('v2nx').classList.toggle('prev', m === 'hl' && !!P);
     }
     // 投票（m-open）: 締切までの大きな残り時間（1 つだけ）・全店の参加人数・人気の組み合わせ上位 6
