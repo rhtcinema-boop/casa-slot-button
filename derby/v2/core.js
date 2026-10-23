@@ -369,14 +369,32 @@
     return { first: a, second: c };
   }
   function cleanVote(b, n) { b = b || {}; return Object.assign({ bill: cleanBill(b.bill), nick: cleanNick(b.nick) }, cleanPair(b, n)); }
-  const voteId = (raceId, store, bill) => String(raceId) + '~' + String(store) + '~' + String(bill);
-  function parseVoteId(vid) { const m = /^(.+)~([a-z0-9_-]{1,32})~(\d{2})$/.exec(String(vid || '')); return m ? { raceId: m[1], storeId: m[2], bill: m[3] } : null; }
+  /* 票の id: レース~店~会計番号。初参加ボーナスの 2 票目（2026-10-24）は後ろに ~2（n = 2） */
+  const voteId = (raceId, store, bill, n) => String(raceId) + '~' + String(store) + '~' + String(bill) + (Number(n) === 2 ? '~2' : '');
+  function parseVoteId(vid) { const m = /^(.+)~([a-z0-9_-]{1,32})~(\d{2})(~2)?$/.exec(String(vid || '')); return m ? { raceId: m[1], storeId: m[2], bill: m[3], n: m[4] ? 2 : 1 } : null; }
+  const baseVid = (vid) => String(vid || '').replace(/~2$/, ''); // 2 票目の id → 1 票目の id
   const comboOf = (v) => (v && v.first != null && v.second != null ? v.first + '-' + v.second : null);
-  // 投票した組み合わせの数（参加人数と人気）: { total, byStore, combos }
+  /* 投票した組み合わせの数（参加人数と人気）: { total, byStore, combos, bonus }。
+     total・byStore は人数（初参加ボーナスの 2 票目は数えない）、combos は票の数（2 票目も 1 票）、bonus は 2 票目の数 */
   function countVotes(votes) {
-    const p = { total: 0, byStore: {}, combos: {} };
-    (votes || []).forEach((v) => { if (!v || v.first == null) return; p.total++; p.byStore[v.storeId] = (p.byStore[v.storeId] || 0) + 1; const k = comboOf(v); p.combos[k] = (p.combos[k] || 0) + 1; });
+    const p = { total: 0, byStore: {}, combos: {}, bonus: 0 };
+    (votes || []).forEach((v) => { if (!v || v.first == null) return; const k = comboOf(v); p.combos[k] = (p.combos[k] || 0) + 1; if (v.n === 2) { p.bonus++; return; } p.total++; p.byStore[v.storeId] = (p.byStore[v.storeId] || 0) + 1; });
     return p;
+  }
+  /* ---------- 端末 ID と 初参加ボーナス（2026-10-24 オーナー決定。仕様書_v4_大改修.md の最後） ----------
+     端末 ID: Firestore 版は匿名ログインの uid、模擬クラウドはスマホが覚える番号（client.js の deviceId）。
+     端末のリスト（derbyDevices/<端末 ID>）: { firstAt, firstRaceId, firstStore, lastAt, lastRaceId, lastStore, races }。本物のレースの 1 票目を作ったときだけ書く（テストレース・テストの店の票は数えない）。
+     ボーナス: その端末で初めて投票するレース（端末のリストが無い・firstRaceId がこのレース）で、その日・その店・その会計番号でまだ使っていなければ 2 票目を入れられる。
+     使った印（derbyBonus/<営業日>~<店>~<会計番号>）は 2 票目と一緒に作る（消さない）。テストの票は印を見ない・作らない（テストで本物の印を使い切らない）。 */
+  const bonusKey = (day, store, bill) => String(day) + '~' + String(store) + '~' + String(bill);
+  // dev: 端末のリストの 1 件（無ければ null）、marked: その日・店・番号の印があるか、test: 1 票目がテスト
+  const bonusDeviceOk = (dev, raceId) => !dev || !dev.firstRaceId || dev.firstRaceId === raceId;
+  const bonusOk = (dev, raceId, marked, test) => bonusDeviceOk(dev, raceId) && (!!test || !marked);
+  // 1 票目を作ったときの端末のリストの書き方: null（書かない）| { create: {...} } | { update: {...} }
+  function devicePlan(dev, raceId, store, t) {
+    if (!dev) return { create: { firstAt: t, firstRaceId: raceId, firstStore: store, lastAt: t, lastRaceId: raceId, lastStore: store, races: 1 } };
+    if (dev.lastRaceId === raceId) return null;
+    return { update: { lastAt: t, lastRaceId: raceId, lastStore: store, races: (Number(dev.races) || 0) + 1 } };
   }
   // QR の文字列（derby:pay:<pid>）・id
   function parseCode(code) { const raw = String(code || '').trim(), m = /^derby:(auth|pay):(.+)$/.exec(raw); if (m && m[1] !== 'pay') throw err(400, 'wrong_code', 'これは受け取りの QR ではありません'); return { id: m ? m[2] : raw }; }
@@ -384,7 +402,7 @@
      result は発表のあと（done）だけ: { combo（レースの 1 着-2 着）, first, second, odds（確定倍率）, win, amount（当選額。テストでも計算した額）, test（テストなので受け取りなし）, payout } */
   function voteView(v, race, payout) {
     if (!v) return null;
-    const out = { vid: v.vid, raceId: v.raceId, storeId: v.storeId, bill: v.bill, nick: v.nick, first: v.first, second: v.second, combo: comboOf(v), votedAt: v.votedAt || null, updatedAt: v.updatedAt || null, test: !!v.test, result: null };
+    const out = { vid: v.vid, raceId: v.raceId, storeId: v.storeId, bill: v.bill, nick: v.nick, first: v.first, second: v.second, combo: comboOf(v), votedAt: v.votedAt || null, updatedAt: v.updatedAt || null, test: !!v.test, n: v.n === 2 ? 2 : 1, result: null };
     if (race && race.status === 'done' && race.result) {
       const R = race.result, combo = R.combo || (R.order ? R.order[0] + '-' + R.order[1] : null), win = combo === out.combo && !race.refunded;
       const odds = R.finalExacta && combo ? Number(R.finalExacta[combo]) : null, p = payout && payout.status !== 'void' ? payout : null;
@@ -397,7 +415,7 @@
   // 1 票の当選額（outcome.js と同じ: 100pt × 倍率 の 100pt 切り上げ）。core.js は Outcome を持たないので写し
   function payFor(odds) { const t = Math.max(10, Math.round(Number(odds) * 10)); return Math.ceil(t * 10 / STAKE - 1e-9) * STAKE; }
   /* 当たりの見せ方（スタッフの「今日の当たり一覧」・管理）。paidVia: 'staff'（スタッフのスマホ）| 'self'（お客さんのスマホのスライド） */
-  const payoutView = (p, storeName, revealed) => ({ pid: p.pid, code: 'derby:pay:' + p.pid, vid: p.vid || null, test: !!p.test, kind: 'win', raceId: p.raceId, raceAt: p.raceAt || null, storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, bill: p.bill, nick: p.nick,
+  const payoutView = (p, storeName, revealed) => ({ pid: p.pid, code: 'derby:pay:' + p.pid, vid: p.vid || null, test: !!p.test, kind: 'win', n: p.n === 2 ? 2 : 1, raceId: p.raceId, raceAt: p.raceAt || null, storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, bill: p.bill, nick: p.nick,
     first: p.first != null ? p.first : null, second: p.second != null ? p.second : null, combo: p.combo || null, odds: p.odds != null ? p.odds : null, amount: p.amount, status: p.status, createdAt: p.createdAt, paidAt: p.paidAt || null, paidBy: p.paidBy || null, paidVia: p.paidVia || null, expireAt: p.expireAt || null, revealed: !!revealed });
   // スタッフの一覧の並び: まだ渡していない（unpaid）を上（新しい順）、渡した（paid）は下（渡した時刻の新しい順）、期限切れ・取り消しは最後
   function sortWins(list) {
@@ -441,20 +459,30 @@
       const test = isT(v);
       winners.push(Object.assign({ storeId: v.storeId, bill: v.bill, nick: v.nick, amount, combo: res.combo }, test ? { test: true } : {}));
       if (test) return; // テストの当たりは払わない（当たりを作らない）
-      payouts.push({ kind: 'win', vid: v.vid, owner: v.owner || null, raceId: race.id, raceAt: race.at, storeId: v.storeId, bill: v.bill, nick: v.nick, first: res.first, second: res.second, combo: res.combo, odds, amount, status: 'unpaid' });
+      const po = { kind: 'win', vid: v.vid, owner: v.owner || null, raceId: race.id, raceAt: race.at, storeId: v.storeId, bill: v.bill, nick: v.nick, first: res.first, second: res.second, combo: res.combo, odds, amount, status: 'unpaid' };
+      if (v.n === 2) po.n = 2; // 初参加ボーナスの 2 票目（当たればそれぞれ払う）。undefined は Firestore に書けないので付けるときだけ
+      payouts.push(po);
       paid += amount;
     });
+    mergeWinners(winners); // 同じ人の 2 票（同じ組み合わせ）はテレビでは 1 行（額は 2 票分）
     winners.sort((a, b) => b.amount - a.amount || (a.storeId < b.storeId ? -1 : a.storeId > b.storeId ? 1 : a.bill < b.bill ? -1 : 1));
     decision.paid = paid; decision.paidReal = paid; decision.winners = winners.length; decision.votes = real.length; decision.testVotes = list.length - real.length;
     const participants = countVotes(list);
     decision.runShift = shift; decision.lateReveal = late;
     return { result, decision, cues, runAt, revealAt, endAt, photo, photo2, payouts, winners, participants, runShift: shift, lateReveal: late };
   }
+  /* 同じ人（店・会計番号）の当たりは 1 行にまとめる（初参加ボーナスの 2 票が同じ組み合わせで当たったとき。額は 2 票分・votes: 2）。list をその場で書き換えて返す */
+  function mergeWinners(list) {
+    if (!list) return list;
+    const seen = {}, out = [];
+    list.forEach((w) => { const k = w.storeId + '~' + w.bill + (w.test ? '~t' : ''), x = seen[k]; if (x) { x.amount += w.amount; x.votes = (x.votes || 1) + 1; } else { seen[k] = w; out.push(w); } });
+    list.length = 0; out.forEach((w) => list.push(w)); return list;
+  }
   // 当たった人の一覧（テレビの結果画面「上野 12番 たろう 1,300pt」。全店。金額の大きい順。最大 300 件）。storeName で店名を付ける
   function winnersView(winners, storeName) { return (winners || []).slice(0, 300).map((w) => Object.assign({}, w, { storeName: storeName ? storeName(w.storeId) : w.storeId })); }
-  // 当たり（payouts）から一覧を作る（以前の形の呼び方。取り消し済みは除く）
+  // 当たり（payouts）から一覧を作る（以前の形の呼び方。取り消し済みは除く。同じ人の 2 票は 1 行）
   function winnersFrom(payouts, storeName) {
-    return winnersView((payouts || []).filter((p) => p.status !== 'void').sort((a, b) => b.amount - a.amount || (a.createdAt || 0) - (b.createdAt || 0)).map((p) => Object.assign({ storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null }, p.test ? { test: true } : {})), storeName);
+    return winnersView(mergeWinners((payouts || []).filter((p) => p.status !== 'void').sort((a, b) => b.amount - a.amount || (a.createdAt || 0) - (b.createdAt || 0)).map((p) => Object.assign({ storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null }, p.test ? { test: true } : {}))).sort((a, b) => b.amount - a.amount), storeName);
   }
   // 取り消し（成立しなかったレース。管理の「返還」の v4 版）: まだ渡していない当たりは void。渡した当たりはそのまま（参加無料なので返すものはない）
   function voidPlan(payouts) { const voids = [], kept = []; (payouts || []).forEach((p) => { if (p.status === 'unpaid') voids.push(p); else if (p.status === 'paid') kept.push(p); }); return { voids, kept, voided: voids.reduce((a, p) => a + p.amount, 0) }; }
@@ -540,7 +568,7 @@
     err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, voteWindow, votingOpen, manualStages,
-    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, comboOf, countVotes, parseCode, voteView, payFor, payoutView, sortWins,
+    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, PW_CHARS, genTvPassword };
