@@ -14,7 +14,7 @@
     staff: 'スタッフ', connecting: '接続中…', waiting: '接続を待っています', online: 'につながっています',
     tv: 'テレビ', toSlot: 'SLOT にする', toDerby: 'DERBY にする', tvAsk: '{s}のテレビを {g} にしますか？', tvAskSub: '数秒で切り替わります（ゲーム中・レース中は終わってから）', tvDone: 'テレビを {g} にしました', change: '切り替える',
     nextRace: '次のレース {t}', voteFrom: '投票は {t} から', voting: '{t} のレース 投票中', closeIn: '締切まで', votes: 'この店 {n} 票', racing: '{t} のレース レース中', dayOver: '本日のレースは終わりました', test: 'テスト',
-    winsHead: '今日の当たり', unpaidN: 'まだ {n} 人', paidN: '渡した {n} 人', noWins: '今日の当たりはまだありません', loadErr: '読み込めませんでした',
+    winsHead: '今日の当たり', unpaidN: 'まだ {n} 人', paidN: '渡した {n} 人', vote2: '2票目', /* vote2: 初参加ボーナスの 2 票目の当たり（2026-10-24。当たればそれぞれ払う＝行が 2 つ） */ noWins: '今日の当たりはまだありません', loadErr: '読み込めませんでした',
     slide: 'スライドして渡した', saving: '記録しています…', gave: '{b}番 {n} {a} を渡しました', paidAt: '渡した {t}', viaSelf: 'お客さんのスマホ', viaStaff: 'スタッフ', expired: '期限切れ', voided: '取り消し', race: '{t} のレース',
     alreadyPaid: 'もう渡してあります', expiredMsg: '受け取りの期限が切れています', voidMsg: 'このレースは取り消しになりました', netErr: '通信できませんでした。もう一度お試しください', failed: 'うまくいきませんでした',
     relHead: '番号を空ける', relSub: '{t} のレースの、その番号の票を消します。お客さんはもう一度投票できます', relNone: 'いま投票できるレースがありません', relBtn: '空ける', relAsk: '{b}番の票を消しますか？', relAskSub: '{t} のレース・消すと元に戻せません', relDone: '{b}番を空けました。お客さんはもう一度投票できます', relNoVote: '{b}番の票はありません', relClosed: '締め切ったレースの票は消せません', errBill: '会計番号を 2 けたで入れてください',
@@ -165,7 +165,7 @@
   /* ================= 真ん中: 今日の当たり ================= */
   const combo = (w) => (w.first != null && w.second != null ? (w.first + 1) + '→' + (w.second + 1) : '');
   function winRow(w) {
-    const meta = (w.raceAt ? '<span class="nw">' + esc(fill(TX.race, { t: hhmm(w.raceAt) })) + '</span>' : '') + (combo(w) ? (w.raceAt ? '・' : '') + '<span class="nw">' + esc(combo(w)) + '</span>' : ''); // 折り返すときは「・」で
+    const meta = (w.raceAt ? '<span class="nw">' + esc(fill(TX.race, { t: hhmm(w.raceAt) })) + '</span>' : '') + (combo(w) ? (w.raceAt ? '・' : '') + '<span class="nw">' + esc(combo(w)) + '</span>' : '') + (w.n === 2 ? '<span class="v2t">' + esc(TX.vote2) + '</span>' : ''); // 折り返すときは「・」で。初参加ボーナスの 2 票目には小さな札
     /* 2026-10-23 見直し: 1 行目＝ニックネーム（幅いっぱい・「…」で切らない）、2 行目＝レース・組み合わせと額。番号は左に 2 行ぶん */
     const head = '<span class="bill">' + esc(w.bill) + '</span><b class="nk" data-fit="12">' + esc(w.nick) + '</b><small class="meta">';
     const wa = '<span class="wa">' + amt(w.amount) + '<small>pt</small></span>';
@@ -174,7 +174,7 @@
         '<div class="slider" data-pid="' + esc(w.pid) + '" role="slider" aria-label="' + esc(w.bill + '番 ' + TX.slide) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fillbar"></div><span class="lbl">' + esc(TX.slide) + ' ›››</span><div class="knob" aria-hidden="true">›</div></div></div>';
     }
     const sub = w.status === 'paid' ? esc(fill(TX.paidAt, { t: hhmm(w.paidAt) })) + '<span class="via">' + esc(w.paidVia === 'self' ? TX.viaSelf : TX.viaStaff) + '</span>' : esc(w.status === 'expired' ? TX.expired : TX.voided);
-    return '<div class="win ' + esc(w.status) + '" data-pid="' + esc(w.pid) + '"><div class="wl">' + head + sub + '</small>' + wa + '</div></div>';
+    return '<div class="win ' + esc(w.status) + '" data-pid="' + esc(w.pid) + '"><div class="wl">' + head + sub + (w.n === 2 ? '<span class="v2t">' + esc(TX.vote2) + '</span>' : '') + '</small>' + wa + '</div></div>';
   }
   function drawMain() {
     const m = $('main'); if (!m || !saved) return;
@@ -183,7 +183,8 @@
     let h = '<div class="whead"><h2>' + esc(TX.winsHead) + '</h2>';
     if (!wins) { m.innerHTML = h + '</div><p class="empty">' + esc(winsErr || TX.connecting) + '</p>'; return; }
     const un = wins.filter((w) => w.status === 'unpaid'), pd = wins.filter((w) => w.status === 'paid'), rest = wins.filter((w) => w.status !== 'unpaid' && w.status !== 'paid');
-    h += '<span class="cnt"><b class="u">' + esc(fill(TX.unpaidN, { n: un.length })) + '</b><span>' + esc(fill(TX.paidN, { n: pd.length })) + '</span></span></div>';
+    const ppl = (l) => new Set(l.map((w) => w.raceId + '~' + w.bill)).size; // 人数（初参加ボーナスの 2 票が両方当たっても 1 人）
+    h += '<span class="cnt"><b class="u">' + esc(fill(TX.unpaidN, { n: ppl(un) })) + '</b><span>' + esc(fill(TX.paidN, { n: ppl(pd) })) + '</span></span></div>';
     if (winsErr) h += '<p class="warn">' + esc(winsErr) + '</p>';
     if (!wins.length) h += '<p class="empty">' + esc(TX.noWins) + '</p>';
     h += '<div class="wins">' + un.map(winRow).join('') + (un.length && (pd.length || rest.length) ? '<div class="sep"></div>' : '') + pd.map(winRow).join('') + rest.map(winRow).join('') + '</div>';
