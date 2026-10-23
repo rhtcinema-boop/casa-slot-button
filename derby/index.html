@@ -191,7 +191,7 @@ window.addEventListener('error', function (e) {
 <script>
 (function () {
   // _r＝管理画面の「テレビを読み込み直す」で付く印。v2 のファイルの版に足して、古いファイル（キャッシュ）を使わない
-  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't30' + (r ? '-' + r : '');
+  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't31' + (r ? '-' + r : ''); // t31: 2026-10-24 初参加ボーナス（t30 は 10-23 に公開先へ写し済みのため 1 つ進めた）
   if (/[?&]store=[^&]/.test(location.search)) document.write('<link rel="stylesheet" href="v2/tv.css?v=' + v + '"><script src="v2/client.js?v=' + v + '"><\/script><script src="v2/qr.js?v=' + v + '"><\/script><script src="v2/form.js?v=' + v + '"><\/script><script src="v2/tv.js?v=' + v + '"><\/script><script src="v2/tvswitch.js?v=' + v + '"><\/script>');
   else document.write('<script src="js/game.js?v=k11"><\/script>');
 })();
