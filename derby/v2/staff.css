@@ -195,3 +195,7 @@ button { font-family: inherit; }
   .dockbar button { min-height: 46px; }
   .sheet .card { max-height: 100%; }
 }
+
+/* 初参加ボーナスの 2 票目の当たり（2026-10-24。当たればそれぞれ払うので行が 2 つ）: 番号のそばに小さな札「2票目」（色だけでなく言葉で） */
+.win .meta .v2t { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--gold2, #c9a03e); color: #ffe9a8; font-size: 12px; font-weight: 700; line-height: 18px; white-space: nowrap; vertical-align: 1px; }
+.win.paid .meta .v2t, .win.expired .meta .v2t, .win.void .meta .v2t { border-color: #2c3a57; color: #b8beca; }
