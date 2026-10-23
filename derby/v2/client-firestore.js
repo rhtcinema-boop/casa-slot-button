@@ -15,7 +15,7 @@
   'use strict';
 
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // casa SLOT と同じ版（compat）
-  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19） */
+  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24） */
   const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
@@ -181,7 +181,7 @@
 
     /* ---------- 読み込み（キャッシュつき） ---------- */
     let storesCache = null, storesAt = 0, pubCache = null, pubAt = 0;
-    const live = { races: null, subs: 0, votes: {}, payouts: {} }; // 見張りで届いた写し（state・myVote は読み取りなしで答える）
+    const live = { races: null, subs: 0, votes: {}, payouts: {}, watch2: {} }; // 見張りで届いた写し（state・myVote は読み取りなしで答える）。watch2: 2 票目も見張っている 1 票目の vid
     async function getStores(force) {
       if (!force && storesCache && (local() - storesAt < 30000 || live.subs > 0)) return storesCache; // 見張り中は変わったときに届くので読み直さない
       const q = await db.collection(COL.stores).get();
@@ -237,6 +237,40 @@
        まだ誰も使っていない番号の票は「無い」と読める（ルール: resource == null）＝ 番号が空いているかが分かる */
     const effPay = (p) => (p && p.status === 'unpaid' && p.expireAt != null && now() >= p.expireAt ? Object.assign({}, p, { status: 'expired' }) : p);
     async function raceFor(id) { return (live.subs > 0 && live.races && live.races.find((x) => x.id === id)) || data(await doc(COL.races, id).get()); }
+    /* ---------- 端末のリストと初参加ボーナス（2026-10-24。Core の「端末 ID と 初参加ボーナス」） ----------
+       端末 ID ＝ 匿名ログインの uid。derbyDevices/<uid> はこのスマホだけが読み書きできる（ルール）。本物のレースの 1 票目を作ったあとに書く（失敗しても投票はそのまま）。
+       2 票目（derbyVotes/<1 票目の id>~2）と使った印（derbyBonus/<営業日>~<店>~<会計番号>）は 1 回のまとめた書き込みで作る（ルールが印の有無・端末の初めてのレースを確かめる）。
+       ルールを貼る前（古いルール）は端末のリストが読めない → ボーナスを出さない（投票はふつうにできる） */
+    let devCache; // undefined: まだ読んでいない / null: 無い / { ... } / 'err'（読めない＝古いルール）
+    async function myDevice() {
+      if (devCache !== undefined) return devCache;
+      try { devCache = data(await doc(COL.devices, uid()).get()); } catch (e) { devCache = 'err'; }
+      return devCache;
+    }
+    async function touchDevice(r, sid, t) {
+      const dev = await myDevice(); if (dev === 'err') return;
+      const pl = Core.devicePlan(dev, r.id, sid, t); if (!pl) return;
+      const ref = doc(COL.devices, uid());
+      try { if (pl.create) { await ref.set(pl.create); devCache = pl.create; } else { await ref.update(pl.update); devCache = Object.assign({}, dev, pl.update); } } catch (e) { devCache = undefined; }
+    }
+    const raceDay = (r) => r.day || Core.bizDate(r.at, (pubCache || Core.DEFAULT_TUNING).dayStartHour);
+    const bonusMemo = {}; // 1 票目の vid → いま 2 票目を入れられるか（端末と印を 1 回だけ読む。2 票目を作った・番号を空けられたら消す）
+    async function bonusCan(v1, r, v2) {
+      if (!v1 || v2 || !r || !Core.votingOpen(r, now())) return false;
+      if (bonusMemo[v1.vid] !== undefined) return bonusMemo[v1.vid];
+      const dev = await myDevice(); let ok = false;
+      if (dev !== 'err' && Core.bonusDeviceOk(dev, r.id)) {
+        if (v1.test) ok = true; // テストの票は印を見ない（本物の印を使い切らない）
+        else { try { ok = !(await doc(COL.bonus, Core.bonusKey(raceDay(r), v1.storeId, v1.bill)).get()).exists; } catch (e) { ok = false; } } // 人の印は読めない（＝使われている）
+      }
+      bonusMemo[v1.vid] = ok; return ok;
+    }
+    async function readVote(vid) { if (live.votes[vid]) return live.votes[vid]; try { return data(await doc(COL.votes, vid).get()); } catch (e) { return null; } }
+    // スマホに返す票の組: { vote（1 票目）, vote2（2 票目 | null）, bonus（いま 2 票目を入れられる）, r（レース） }
+    async function pairOf(v1, v2) {
+      const b1 = await voteBundle(v1), b2 = v2 ? await voteBundle(v2) : null;
+      return { vote: Core.voteView(v1, b1.r, b1.p), vote2: v2 ? Core.voteView(v2, b2.r, b2.p) : null, bonus: await bonusCan(v1, b1.r, v2), r: b1.r };
+    }
     async function vote(o) {
       await ready(); o = o || {};
       const sid = (o && o.store) || store, pl = role === 'phone' && !(live.subs > 0 && live.races) ? await phoneLive(sid) : null;
@@ -249,6 +283,30 @@
       if (r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切りました', { openId: openId() });
       const ow = Core.voteWindow(r).openAt;
       if (t < ow) throw E(409, 'not_open', '投票はまだ始まっていません（' + Core.fmtTime(ow) + ' から）', { raceId: r.id, openAt: ow, at: r.at });
+      const raceOut = () => Core.publicRace(r, { role: 'phone', store: sid, storeSettings: st.settings, openId: r.id });
+      if (Number(o.n) === 2) { // 初参加ボーナスの 2 票目（初めて・選び直し）
+        const vid1 = Core.voteId(r.id, sid, c.bill), vid2 = vid1 + '~2', ref2 = doc(COL.votes, vid2);
+        let v1 = null; try { v1 = live.votes[vid1] || data(await doc(COL.votes, vid1).get()); } catch (e) { if (!(e && e.code === 'permission-denied')) throw mapErr(e); }
+        if (!v1 || v1.owner !== uid()) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill });
+        let v2 = await readVote(vid2);
+        try {
+          if (v2) { const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t }; await ref2.update(patch); v2 = Object.assign(v2, patch); }
+          else {
+            if (!(await bonusCan(v1, r, null))) throw E(409, 'no_bonus', '初参加ボーナスの 2 票目は使えません（このスマホの初めてのレースで、その日その番号で 1 回だけ）');
+            v2 = { vid: vid2, raceId: r.id, storeId: sid, bill: v1.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: !!v1.test, n: 2 };
+            const b = db.batch(); b.set(ref2, v2);
+            if (!v1.test) { const day = raceDay(r); b.set(doc(COL.bonus, Core.bonusKey(day, sid, v1.bill)), { day, storeId: sid, bill: v1.bill, raceId: r.id, owner: uid(), at: t }); }
+            await b.commit(); bonusMemo[vid1] = false;
+          }
+        } catch (e) {
+          if (e && e.code === 'no_bonus') throw e;
+          if (e && e.code === 'permission-denied') { bonusMemo[vid1] = false; const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) throw E(409, 'no_bonus', '初参加ボーナスの 2 票目は使えません'); throw E(409, 'closed', '締め切りました', { openId: openId() }); }
+          throw mapErr(e);
+        }
+        if (live.votes[vid2]) live.votes[vid2] = v2;
+        const pr = await pairOf(v1, v2);
+        return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
+      }
       const vid = Core.voteId(r.id, sid, c.bill), ref = doc(COL.votes, vid);
       let mine = null, taken = false;
       try { mine = data(await ref.get()); } catch (e) { if (e && e.code === 'permission-denied') taken = true; else throw mapErr(e); }
@@ -262,7 +320,9 @@
         throw mapErr(e);
       }
       if (live.votes[vid]) live.votes[vid] = v; // 見張り中の写しだけ直す（見張っていない票は写しを持たない＝決める係の書いた当たりの印を見落とさない）
-      return { vote: Core.voteView(v, r, null), key: 'uid', race: Core.publicRace(r, { role: 'phone', store: sid, storeSettings: st.settings, openId: r.id }) };
+      if (!mine && !v.test) await touchDevice(r, sid, t); // 端末のリスト（本物のレースの 1 票目だけ）
+      const pr = await pairOf(v, mine ? await readVote(vid + '~2') : null); // 新しい 1 票目に 2 票目は無い（番号を空けると両方消える）
+      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
     }
     async function voteBundle(v) {
       const r = await raceFor(v.raceId);
@@ -270,13 +330,16 @@
       if (r && r.status === 'done' && v.payoutId) { p = live.payouts[v.payoutId] || null; if (!p) { try { p = data(await doc(COL.payouts, v.payoutId).get()); } catch (e) { p = null; } } }
       return { r, p: effPay(p) };
     }
+    // 自分の票の組 → { vote（1 票目）, vote2（初参加ボーナスの 2 票目 | null）, bonus, race }。vid は 2 票目の id でもよい
     async function myVote(vid) {
       await ready();
-      let v = live.votes[vid] || null;
-      if (!v) { try { v = data(await doc(COL.votes, String(vid || '')).get()); } catch (e) { v = null; } }
+      const base = Core.baseVid(vid);
+      let v = live.votes[base] || null;
+      if (!v) { try { v = data(await doc(COL.votes, base).get()); } catch (e) { v = null; } }
       if (!v || v.owner !== uid()) throw E(404, 'no_vote', '票が見つかりません（番号を空けられたか、別のスマホの票です）');
-      const b = await voteBundle(v);
-      return { vote: Core.voteView(v, b.r, b.p), race: Core.publicRace(b.r, { role: 'phone', store: v.storeId }) };
+      const v2 = live.watch2[base] ? live.votes[base + '~2'] || null : await readVote(base + '~2'); // 見張っていれば写しが正しい（読まない）
+      const pr = await pairOf(v, v2 && v2.owner === uid() ? v2 : null);
+      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, race: Core.publicRace(pr.r, { role: 'phone', store: v.storeId }) };
     }
     // 受け取りの確かめ（取引の中。スタッフ・お客さんのスライド共通）
     function claimCheck(s, rr, names) {
@@ -364,11 +427,11 @@
       const r = raceId ? data(await doc(COL.races, String(raceId)).get()) : Core.currentRaceFor(await getRaces(true), store, t);
       if (!r || !Core.visibleTo(r, store)) throw E(409, 'no_open_race', 'いま投票できるレースがありません');
       if (r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切ったレースの票は消せません');
-      const vid = Core.voteId(r.id, store, bill), ref = doc(COL.votes, vid);
+      const vid = Core.voteId(r.id, store, bill), ref = doc(COL.votes, vid), ref2 = doc(COL.votes, vid + '~2');
       try {
-        const v = data(await ref.get());
+        const v1 = data(await ref.get()), v2 = data(await ref2.get()), v = v1 || v2; // 初参加ボーナスの 2 票目も一緒に消す（使った印 derbyBonus は残る）
         if (!v) return { ok: true, released: false, vid, raceId: r.id, bill };
-        const b = db.batch(); b.delete(ref);
+        const b = db.batch(); if (v1) b.delete(ref); if (v2) b.delete(ref2);
         b.set(doc(COL.logs, 'rel_' + vid.replace(/[^A-Za-z0-9_-]/g, '_') + '_' + t), { at: t, date: Core.bizDate(t, (await getPublic()).dayStartHour), cal: Core.dateStr(t), type: 'release', storeId: store, bill, nick: v.nick, combo: Core.comboOf(v), vid, raceId: r.id });
         await b.commit();
         return { ok: true, released: true, vid, raceId: r.id, bill };
@@ -845,22 +908,33 @@
             gotRaces(d.races || []);
           }, () => startFull()));
         } else startFull();
-        if (o.vid) { // スマホ: 自分の票（消えた＝番号を空けられたら vote: null・released: true）と、発表のあとの当たり
-          let lastKey = '', lastV = null, payWatch = null, payWatchId = null;
-          const pushVote = async (v) => {
-            if (!v) { const k = 'released'; if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote({ vote: null, released: true, vid: o.vid }); } return; }
-            const b = await voteBundle(v), view = Core.voteView(v, b.r, b.p), k = JSON.stringify(view);
-            if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote({ vote: view }); }
+        if (o.vid) { // スマホ: 自分の票の組（1 票目と初参加ボーナスの 2 票目。消えた＝番号を空けられたら vote: null・released: true）と、発表のあとの当たり
+          const vid1 = Core.baseVid(o.vid), vid2 = vid1 + '~2';
+          let lastKey = '', v1L = null, v2L = null, got1 = false, got2 = false; const payW = {};
+          const pushVote = async () => {
+            if (!got1 || !got2) return; // 2 つとも最初の値が届いてから
+            if (!v1L) { const k = 'released'; if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote({ vote: null, released: true, vid: vid1 }); } return; }
+            const pr = await pairOf(v1L, v2L), view = { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus }, k = JSON.stringify(view);
+            if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote(view); }
           };
           const watchPayout = (v) => {
-            if (!v || !v.payoutId || (payWatch && payWatchId === v.payoutId)) return;
+            if (!v || !v.payoutId || payW[v.payoutId]) return;
             const r = races.find((x) => x.id === v.raceId); if (!r || r.status !== 'done') return;
-            if (payWatch) payWatch(); payWatchId = v.payoutId; const pidW = v.payoutId;
-            payWatch = doc(COL.payouts, pidW).onSnapshot((ps) => { const pd = data(ps); if (pd) live.payouts[pidW] = pd; pushVote(live.votes[o.vid] || v); }, () => { payWatch = null; payWatchId = null; });
+            const pidW = v.payoutId;
+            payW[pidW] = doc(COL.payouts, pidW).onSnapshot((ps) => { const pd = data(ps); if (pd) live.payouts[pidW] = pd; pushVote(); }, () => { delete payW[pidW]; });
           };
-          unsubs.push(() => { delete live.votes[o.vid]; if (payWatch) payWatch(); });
-          unsubs.push(doc(COL.votes, o.vid).onSnapshot((s) => { const v = data(s); lastV = v; if (v) live.votes[o.vid] = v; else delete live.votes[o.vid]; pushVote(v); watchPayout(v); }, fail));
-          raceHooks.push(() => { if (lastV) { const r = races.find((x) => x.id === lastV.raceId); if (r && r.status === 'done') { pushVote(lastV); watchPayout(lastV); } } });
+          live.watch2[vid1] = true;
+          unsubs.push(() => { delete live.votes[vid1]; delete live.votes[vid2]; delete live.watch2[vid1]; Object.keys(payW).forEach((k) => payW[k]()); });
+          const onVote = (which) => (s) => {
+            const v = data(s), id = which === 1 ? vid1 : vid2;
+            if (which === 1) { v1L = v; got1 = true; } else { v2L = v && v.owner === uid() ? v : null; got2 = true; }
+            if (v) live.votes[id] = v; else delete live.votes[id];
+            if (which === 1 && !v) delete bonusMemo[vid1]; // 番号を空けられた（もう一度投票したらボーナスを確かめ直す）
+            pushVote(); watchPayout(v);
+          };
+          unsubs.push(doc(COL.votes, vid1).onSnapshot(onVote(1), fail));
+          unsubs.push(doc(COL.votes, vid2).onSnapshot(onVote(2), () => { got2 = true; v2L = null; pushVote(); })); // 古いルール（2 票目が読めない）でも 1 票目は届く
+          raceHooks.push(() => { if (v1L) { const r = races.find((x) => x.id === v1L.raceId); if (r && r.status === 'done') { pushVote(); watchPayout(v1L); watchPayout(v2L); } } });
         }
         if (role === 'staff' && (handlers.payout || handlers.wins)) { // スタッフ: 今日の当たり一覧（発表済み）を見張る。新しい当たり・受け取り（スタッフ・お客さんのスライドのどちらでも）が届く
           const seen = {}; let un = null, dayT = null;
