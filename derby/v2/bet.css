@@ -236,3 +236,37 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
   .dock { flex-direction: row-reverse; }
   .dock .btn { flex: 1 1 0; min-height: 50px; }
 }
+
+/* 2026-10-24 文字帳 w0030: 「番号が使われています」の説明を 2 行で */
+.note .ln { display: block; }
+
+/* ---------- 初参加ボーナス（2026-10-24。そのスマホで初めて投票するレースで、その日その番号で 1 回だけ 2 票）DESIGN_SYSTEM_V4.md の色・角丸 ---------- */
+/* 札「初参加ボーナス」: 金の枠＋金の文字（押すボタンの金の面と見分ける） */
+.bonustag { align-self: center; padding: 4px 14px; border-radius: 999px; border: 2px solid var(--gold); background: var(--card2); color: var(--gold); font-size: 13px; font-weight: 900; letter-spacing: .08em; white-space: nowrap; }
+.sub.b2sub { margin: -6px 0 0; text-align: center; font-size: 13px; color: var(--dim); }
+/* 2 票目をえらぶ表: 1 票目のマスの右上に金の点（文字は入れない＝12px 未満の文字を出さない。説明は上の 1 行。同じマスも押せる） */
+.gc.cell.m1 { position: relative; border-color: var(--gold2); }
+.gc.cell.m1::after { content: ""; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 6px rgba(255, 215, 115, .7); }
+/* あなたの予想の札: 「1票目」「初参加ボーナス」の小さな札 */
+.mine .mk .vn { display: inline-block; margin-left: 8px; padding: 1px 10px; border-radius: 6px; border: 1px solid var(--gold2); color: var(--cream); font-size: 12px; font-weight: 700; letter-spacing: .04em; vertical-align: 1px; }
+.mine .mk .vn.bt { border-color: var(--gold); color: var(--gold); }
+.mine.b2 { border: 2px solid var(--gold2); }
+/* 「初参加ボーナス：もう1票」: 明るいカード＋金の枠 2px・金の主ボタン（この画面の主な操作） */
+.bonusbox { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; border: 2px solid var(--gold); background: var(--card2); text-align: center; box-shadow: 0 0 18px rgba(255, 215, 115, .18); }
+.bonusbox > b { font-size: 18px; font-weight: 900; color: var(--gold); letter-spacing: .04em; word-break: auto-phrase; }
+.bonusbox > span { font-size: 13px; color: var(--dim); font-weight: 500; line-height: 1.5; word-break: auto-phrase; text-wrap: balance; }
+.bonusbox .btn { margin-top: 4px; }
+/* 2 票あるときの「選び直す」は横に 2 つ（ふつうのボタン） */
+.redo2 { display: flex; gap: 8px; }
+.redo2 .btn { flex: 1 1 0; min-width: 0; padding: 10px 6px; font-size: 15px; word-break: auto-phrase; }
+/* レース中に 2 票: 上に寄せて 2 枚（真ん中寄せだと低い画面で上が切れる） */
+.scr.racing.two { gap: 12px; }
+/* 結果: 票ごとの「1票目 3→5 当たり」 */
+.vlist { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+.vlist .vr { display: flex; align-items: center; gap: 12px; min-height: 32px; }
+.vlist .vk { flex: none; font-size: 13px; font-weight: 700; color: var(--dim); white-space: nowrap; }
+.vlist .an { font-size: 22px; }
+.vlist .vm { margin-left: auto; flex: none; font-size: 15px; font-weight: 900; color: var(--dim); white-space: nowrap; }
+.vlist .vr.w .vm { color: var(--gold); }
+.vlist .vr.w .vk { color: var(--cream); }
+.hit .x2 { font-size: 15px; font-weight: 700; color: var(--cream); font-variant-numeric: tabular-nums; }
