@@ -55,6 +55,16 @@
     prune(ms) { try { const lim = Date.now() - (ms || 2 * 86400000); for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.indexOf(VKEY) === 0) { let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch (e) { v = null; } if (!v || !(v.at > lim)) localStorage.removeItem(k); } } } catch (e) { /* noop */ } },
   };
 
+  /* 端末 ID（2026-10-24 初参加ボーナス）: 本物の端末の番号はブラウザから取れないので、このブラウザに覚えさせた番号を使う（localStorage 'casa.derby.device'）。
+     模擬クラウドはこの番号を投票に付けて送る。Firestore 版は匿名ログインの uid が端末 ID（この番号は使わない）。
+     履歴を消す・シークレット・別のブラウザ（LINE の中と Safari など）だと別の端末になる。個人の情報は入れない（でたらめな文字だけ） */
+  const DKEY = 'casa.derby.device';
+  let devMem = null;
+  function deviceId() {
+    const rnd = () => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < 20; i++) s += a[Math.floor(Math.random() * a.length)]; return s; };
+    try { let d = localStorage.getItem(DKEY); if (!/^[A-Za-z0-9_-]{12,64}$/.test(d || '')) { d = rnd(); localStorage.setItem(DKEY, d); } return d; } catch (e) { return devMem || (devMem = rnd()); }
+  }
+
   /* ---------- Firestore 版（v2/config.js に Firebase の設定があるとき） ---------- */
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); }); }
   // オッズの計算（重い）は Worker で（Fire TV の絵が止まらないように）。使えなければ null（その場で計算）
@@ -168,17 +178,19 @@
       stores: () => get('/api/stores'),
       state: (s) => get('/api/state?' + qs({ store: s || store, role, tv, tvid })),
       race: (id) => get('/api/race?' + qs({ id, role, store, tv, tvid })),
-      /* スマホ（v4）: 投票（初めて・選び直し）。o = { raceId（画面に出していたレース。省略可＝いまのレース）, bill（2 けた）, nick, first, second, key（選び直しのときだけ。省略すると myVotes から） }
-         → { vote, key, race }。キーは myVotes に覚える。409: bill_taken（ほかのスマホがその番号で投票済み）・not_open（投票の前）・closed（締切のあと） */
+      /* スマホ（v4）: 投票（初めて・選び直し）。o = { raceId（画面に出していたレース。省略可＝いまのレース）, bill（2 けた）, nick, first, second, key（選び直しのときだけ。省略すると myVotes から）,
+         n（2 ＝ 初参加ボーナスの 2 票目。2026-10-24） }
+         → { vote（1 票目）, vote2（2 票目 | null）, bonus（いま 2 票目を入れられる）, key, race }。キーは myVotes に覚える（2 票目も同じキー）。
+         409: bill_taken（ほかのスマホがその番号で投票済み）・not_open（投票の前）・closed（締切のあと）・no_bonus（2 票目は使えない） */
       vote: async (o) => {
         o = o || {}; const mine = o.raceId ? myVotes.get(o.raceId) : null, bill = o.bill != null ? String(o.bill).trim().padStart(2, '0') : '';
         const key = o.key || (mine && mine.vid && mine.vid.slice(-2) === bill ? mine.key : undefined);
-        const r = await post('/api/vote', { store, raceId: o.raceId, bill: o.bill, nick: o.nick, first: o.first, second: o.second, key });
+        const r = await post('/api/vote', { store, raceId: o.raceId, bill: o.bill, nick: o.nick, first: o.first, second: o.second, key, device: o.device || deviceId(), n: Number(o.n) === 2 ? 2 : undefined });
         if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key);
         return r;
       },
-      myVote: (vid, key) => get('/api/vote?' + qs({ vid, key })), // → { vote, race }（票が消えていたら 404 no_vote）
-      claimSelf: (vid, key) => post('/api/vote/claim', { vid, key }), // お客さんのスマホのスライドで「受け取った」→ { payout, vote }
+      myVote: (vid, key) => get('/api/vote?' + qs({ vid, key })), // → { vote, vote2, bonus, race }（票が消えていたら 404 no_vote）
+      claimSelf: (vid, key) => post('/api/vote/claim', { vid, key }), // お客さんのスマホのスライドで「受け取った」→ { payout, vote }（vid は 2 票目の id でもよい。キーは 1 票目と同じ）
       // スタッフ
       staffLogin: (pin) => post('/api/staff/login', { store, pin }),
       release: (pin, bill, raceId) => post('/api/staff/release', { store, pin, bill, raceId }), // 番号を空ける → { ok, released, vid, raceId, bill }
@@ -267,5 +279,5 @@
     } catch (e) { /* なし */ }
   })();
 
-  return { create, serverNow, parseCode, phase, stage, myVotes, get offset() { return offset; } };
+  return { create, serverNow, parseCode, phase, stage, myVotes, deviceId, get offset() { return offset; } };
 });
