@@ -87,6 +87,41 @@
       : fmtDate(t.from) + '〜' + fmtDate(t.to) + ' は期間限定で「' + esc(presetName(t.presetId)) + '」') + '</div>';
   }
   const dtl = (ms) => { if (!ms) return ''; const d = new Date(ms), p = (n) => ('0' + n).slice(-2); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }; // input type="datetime-local" の値（端末の時刻）
+
+  /* 公開期間（2026-10-24）: pub = { kind, date, days, from, to }。now の時点で公開中なら true。pub が無ければいつも公開 */
+  function pubOpen(pub, now) {
+    if (!pub || !pub.kind) return true;
+    const hm = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const f = hm(pub.from), t = hm(pub.to);
+    if (f == null || t == null) return false;
+    const d = new Date(now || Date.now()), cur = d.getHours() * 60 + d.getMinutes();
+    const ymd = (x) => x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2);
+    const dayOk = (x) => pub.kind === 'daily' ? true : pub.kind === 'date' ? ymd(x) === pub.date : pub.kind === 'weekly' ? (pub.days || []).map(Number).indexOf(x.getDay()) >= 0 : false;
+    if (t > f) return dayOk(d) && cur >= f && cur < t; // 同じ日の中
+    // 日をまたぐ（例 21:00〜02:00）: 今日の from から、または前の日の from から続いている
+    if (cur >= f) return dayOk(d);
+    const y = new Date(d.getTime() - 86400000);
+    return cur < t && dayOk(y);
+  }
+  function pubText(pub) {
+    if (!pub || !pub.kind) return '';
+    const W = ['日', '月', '火', '水', '木', '金', '土'];
+    const when = pub.kind === 'date' ? String(pub.date || '').replace(/^\d{4}-/, '').replace('-', '/') + ' だけ' : pub.kind === 'daily' ? '毎日' : '毎週 ' + (pub.days || []).map((x) => W[Number(x)] || '').join('');
+    return when + ' ' + (pub.from || '') + '〜' + (pub.to || '');
+  }
+  const pubOf = (s, pid) => (s && s.presetPub && s.presetPub[pid]) || null;
+  const pubNote = (s) => { const live = (s.presetIds || []).filter((id) => pubOf(s, id)); return live.length ? '<div class="smeta sm"><span style="color:#ffe9a8">⏱ 期間限定で選べる: ' + live.map((id) => esc(presetName(id)) + '（' + esc(pubText(pubOf(s, id))) + (pubOpen(pubOf(s, id)) ? '・いま公開中' : '') + '）').join('・') + '</span></div>' : ''; };
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  function pubRow(s, p) { // チェックの下に出す公開期間の入力
+    const pub = pubOf(s, p.id) || {}, k = pub.kind || '', id = esc(p.id), today = (function () { const d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); })();
+    return '<div class="pub" data-pub="' + id + '">' +
+      '<select data-pk="' + id + '"><option value=""' + (!k ? ' selected' : '') + '>いつでも</option><option value="date"' + (k === 'date' ? ' selected' : '') + '>この日だけ</option><option value="daily"' + (k === 'daily' ? ' selected' : '') + '>毎日</option><option value="weekly"' + (k === 'weekly' ? ' selected' : '') + '>毎週</option></select>' +
+      '<span class="pubx" data-px="' + id + '"' + (k ? '' : ' hidden') + '>' +
+      '<input type="date" data-pd="' + id + '" value="' + esc(pub.date || today) + '"' + (k === 'date' ? '' : ' hidden') + '>' +
+      '<span class="wd" data-pw="' + id + '"' + (k === 'weekly' ? '' : ' hidden') + '>' + WD.map((w, i) => '<label><input type="checkbox" data-pwd="' + id + '" value="' + i + '"' + ((pub.days || []).map(Number).indexOf(i) >= 0 ? ' checked' : '') + '>' + w + '</label>').join('') + '</span>' +
+      '<input type="time" data-pf="' + id + '" value="' + esc(pub.from || '19:00') + '"><span class="tilde">〜</span><input type="time" data-pt="' + id + '" value="' + esc(pub.to || '23:00') + '">' +
+      '</span></div>';
+  }
   function storeWarn(s) {
     const p = presets.find((x) => x.id === s.activePresetId);
     return p && !Engine.validateProbs(p.probs).ok ? '<div class="swarn">⚠ この当たりの設定に誤りがあり、お店では前の設定のまま動いています</div>' : '';
@@ -144,7 +179,7 @@
     const nOk = stores.filter((s) => aliveOf(s) === 'ok').length, nWarn = stores.filter((s) => aliveOf(s) === 'warn').length, nNone = stores.length - nOk - nWarn;
     return '<div class="panel" id="storesPanel"><div class="phead"><h3>お店のようす</h3><span class="fsum">全 ' + stores.length + ' 店' + (stores.length ? '：動いている ' + nOk + (nWarn ? '・つながっていない ' + nWarn : '') + (nNone ? '・未使用 ' + nNone : '') : '') + '</span></div>' +
       (stores.length ? '<div class="slist">' + stores.map((s) => '<div class="scard"><div class="sinfo"><div class="sname"><span>' + esc(s.name) + '</span>' + verBadge(s.deviceVersion) + '</div>' +
-        '<div class="smeta">' + aliveBadge(s) + '</div><div data-warn="' + esc(s.id) + '">' + storeWarn(s) + timedNote(s) + '</div></div>' +
+        '<div class="smeta">' + aliveBadge(s) + '</div><div data-warn="' + esc(s.id) + '">' + storeWarn(s) + timedNote(s) + pubNote(s) + '</div></div>' +
         '<div class="sctl">' + presetSelect(s) + '<button class="btn sm ghost sedit" data-act="store-edit" data-id="' + esc(s.id) + '">お店の設定</button></div></div>').join('') + '</div>' : '<div class="empty">まだお店がありません</div>') +
       '<div class="updbox" id="updBox"><div class="oldnote" id="oldNote"></div><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全 ' + stores.length + ' 店の画面を最新にする</button></div>' +
       '<div class="acts start"><button class="btn ghost" data-act="store-new">＋ お店を追加</button><button class="btn ghost" data-act="stores-reload">読み直す</button></div>' +
@@ -177,7 +212,7 @@
       '<label class="f"><span>お店の名前</span><input type="text" id="sname" value="' + esc(s.name || '') + '" maxlength="30"></label>' +
       (s.id ? '' : pinField) + // 新しい店舗はパスワードが必須なので上に出す
       '<label class="f"><span>いま使う当たりの設定<small class="lsub">このお店に設定されているもの</small></span><select id="sactive"><option value="">（未設定）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '" ' + (s.activePresetId === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></label>' +
-      '<div class="sub"><h4>お店の画面で選べる当たりの設定<small>お店の人が画面で切り替えられるもの。いま使う設定は自動で含まれます</small></h4>' + (presets.length ? presets.map((p) => '<label class="check"><input type="checkbox" data-pid="' + esc(p.id) + '" ' + ((s.presetIds || []).indexOf(p.id) >= 0 ? 'checked' : '') + '> <i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + ' <span class="chip">平均 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '</span></label>').join('') : '<div class="empty">先に「当たりの設定」のタブで作ってください</div>') + '</div>' +
+      '<div class="sub"><h4>お店の画面で選べる当たりの設定<small>お店の人が画面で切り替えられるもの。いま使う設定は自動で含まれます。チェックした設定ごとに「公開する期間」を決められます（期間の外は選べません）</small></h4>' + (presets.length ? presets.map((p) => '<label class="check"><input type="checkbox" data-pid="' + esc(p.id) + '" ' + ((s.presetIds || []).indexOf(p.id) >= 0 ? 'checked' : '') + '> <i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + ' <span class="chip">平均 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '</span></label>' + pubRow(s, p)).join('') : '<div class="empty">先に「当たりの設定」のタブで作ってください</div>') + '</div>' +
       (function () { // 期間限定の当たりの設定（2026-10-24）
         const t = timedOf(s), n = Date.now(), live = t && n < t.to;
         return '<div class="sub"><h4>期間限定の当たりの設定<small>決めた期間だけ、この設定で動きます。終わると「いま使う当たりの設定」に自動で戻ります</small></h4>' +
@@ -213,6 +248,19 @@
     if (s.id && active === (s.activePresetId || '')) { // b99: フォームを開いている間に端末・スマホが使用中プリセットを変えていたら、それを上書きしない
       try { const fresh = await Cloud.getStore(s.id); if (fresh && (fresh.activePresetId || '') !== (s.activePresetId || '')) active = fresh.activePresetId || ''; } catch (e) { /* 取れなければフォームの値 */ }
     }
+    const presetPub = {}; // 公開期間（2026-10-24）
+    { let bad = '';
+      presetIds.forEach((pid) => {
+        const kSel = document.querySelector('[data-pk="' + pid + '"]'); if (!kSel || !kSel.value) return;
+        const kind = kSel.value, from = (document.querySelector('[data-pf="' + pid + '"]') || {}).value || '', to = (document.querySelector('[data-pt="' + pid + '"]') || {}).value || '';
+        if (!/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to)) { bad = '「' + presetName(pid) + '」の公開する時間を入れてください。'; return; }
+        if (from === to) { bad = '「' + presetName(pid) + '」の公開する時間の始まりと終わりが同じです。'; return; }
+        const pub = { kind, from, to };
+        if (kind === 'date') { const dv = (document.querySelector('[data-pd="' + pid + '"]') || {}).value || ''; if (!/^\d{4}-\d{2}-\d{2}$/.test(dv)) { bad = '「' + presetName(pid) + '」の日付を入れてください。'; return; } pub.date = dv; }
+        if (kind === 'weekly') { const days = Array.from(document.querySelectorAll('[data-pwd="' + pid + '"]:checked')).map((x) => Number(x.value)); if (!days.length) { bad = '「' + presetName(pid) + '」の曜日を 1 つ以上選んでください。'; return; } pub.days = days; }
+        presetPub[pid] = pub;
+      });
+      if (bad) { err.textContent = bad; return; } }
     if (active && presetIds.indexOf(active) < 0) presetIds.push(active);
     const notes = [0, 1, 2].map((i) => $('snote' + i).value.trim().slice(0, 80)).filter(Boolean); // 待機中に左側に出す説明（入力されたものだけ）
     let presetTimed = null; // 期間限定の当たりの設定（2026-10-24）
@@ -224,7 +272,7 @@
         if (to <= Date.now()) { err.textContent = '期間限定の「終わり」がもう過ぎています。'; return; }
         presetTimed = { presetId: tp, from, to, setAt: Date.now() };
       } }
-    const data = { name, presetIds, activePresetId: active || null, presetTimed, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
+    const data = { name, presetIds, activePresetId: active || null, presetTimed, presetPub, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
     if (pin) data.pin = Engine.makePin(pin);
     try { await Cloud.saveStore(s.id || null, data); }
     catch (e) { err.textContent = '保存できませんでした。通信を確認して、もう一度押してください。'; throw e; }
@@ -486,11 +534,12 @@
     try { await Cloud.saveStore(s.id, { presetIds, activePresetId: active }); s.presetIds = presetIds; s.activePresetId = active; toast(s.name + ' の当たりの設定を「' + presetName(active) + '」にしました'); }
     catch (err) { back('保存できませんでした。通信を確認して、もう一度選んでください'); }
     sel.disabled = false; if (btn) { btn.hidden = true; btn.disabled = false; if (btn.nextElementSibling) btn.nextElementSibling.hidden = true; }
-    const w = main.querySelector('[data-warn="' + s.id + '"]'); if (w) w.innerHTML = storeWarn(s) + timedNote(s);
+    const w = main.querySelector('[data-warn="' + s.id + '"]'); if (w) w.innerHTML = storeWarn(s) + timedNote(s) + pubNote(s);
   }
   main.addEventListener('change', (e) => {
     if (e.target.dataset && e.target.dataset.qid) return quickPick(e.target);
     if (e.target.id === 'stsel') return loadStats(e.target.value);
+    if (e.target.dataset && e.target.dataset.pk) { const id = e.target.dataset.pk, k = e.target.value, q = (a) => document.querySelector('[' + a + '="' + id + '"]'); q('data-px').hidden = !k; q('data-pd').hidden = k !== 'date'; q('data-pw').hidden = k !== 'weekly'; return; } // 公開期間の種類（2026-10-24）
     if (/^(sbill|sdoor|shw)$/.test(e.target.id) && $('playSum')) { $('playSum').innerHTML = playSum($('sbill').checked, $('sdoor').checked, $('shw').checked); return; } // 畳んだ見出しの ON/OFF（保存はまだ）
     // 集計の期間（開始・終了）を変えた
     if ((e.target.id === 'stfrom' || e.target.id === 'stto') && statsStore) {
