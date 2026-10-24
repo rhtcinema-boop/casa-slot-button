@@ -96,7 +96,7 @@
     if (f == null || t == null) return false;
     const d = new Date(now || Date.now()), cur = d.getHours() * 60 + d.getMinutes();
     const ymd = (x) => x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2);
-    const dayOk = (x) => pub.kind === 'daily' ? true : pub.kind === 'date' ? ymd(x) === pub.date : pub.kind === 'weekly' ? (pub.days || []).map(Number).indexOf(x.getDay()) >= 0 : false;
+    const dayOk = (x) => pub.kind === 'daily' ? true : pub.kind === 'date' ? (ymd(x) >= String(pub.date || '') && ymd(x) <= String(pub.date2 || pub.date || '')) : pub.kind === 'weekly' ? (pub.days || []).map(Number).indexOf(x.getDay()) >= 0 : false;
     if (t > f) return dayOk(d) && cur >= f && cur < t; // 同じ日の中
     // 日をまたぐ（例 21:00〜02:00）: 今日の from から、または前の日の from から続いている
     if (cur >= f) return dayOk(d);
@@ -106,7 +106,8 @@
   function pubText(pub) {
     if (!pub || !pub.kind) return '';
     const W = ['日', '月', '火', '水', '木', '金', '土'];
-    const when = pub.kind === 'date' ? String(pub.date || '').replace(/^\d{4}-/, '').replace('-', '/') + ' だけ' : pub.kind === 'daily' ? '毎日' : '毎週 ' + (pub.days || []).map((x) => W[Number(x)] || '').join('');
+    const md = (v) => String(v || '').replace(/^\d{4}-/, '').replace('-', '/');
+    const when = pub.kind === 'date' ? (pub.date2 && pub.date2 !== pub.date ? md(pub.date) + '〜' + md(pub.date2) : md(pub.date) + ' だけ') : pub.kind === 'daily' ? '毎日' : '毎週 ' + (pub.days || []).map((x) => W[Number(x)] || '').join('');
     return when + ' ' + (pub.from || '') + '〜' + (pub.to || '');
   }
   const pubOf = (s, pid) => (s && s.presetPub && s.presetPub[pid]) || null;
@@ -115,9 +116,9 @@
   function pubRow(s, p) { // チェックの下に出す公開期間の入力
     const pub = pubOf(s, p.id) || {}, k = pub.kind || '', id = esc(p.id), today = (function () { const d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); })();
     return '<div class="pub" data-pub="' + id + '">' +
-      '<select data-pk="' + id + '"><option value=""' + (!k ? ' selected' : '') + '>いつでも</option><option value="date"' + (k === 'date' ? ' selected' : '') + '>この日だけ</option><option value="daily"' + (k === 'daily' ? ' selected' : '') + '>毎日</option><option value="weekly"' + (k === 'weekly' ? ' selected' : '') + '>毎週</option></select>' +
+      '<select data-pk="' + id + '"><option value=""' + (!k ? ' selected' : '') + '>いつでも</option><option value="date"' + (k === 'date' ? ' selected' : '') + '>この期間だけ</option><option value="daily"' + (k === 'daily' ? ' selected' : '') + '>毎日</option><option value="weekly"' + (k === 'weekly' ? ' selected' : '') + '>毎週</option></select>' +
       '<span class="pubx" data-px="' + id + '"' + (k ? '' : ' hidden') + '>' +
-      '<input type="date" data-pd="' + id + '" value="' + esc(pub.date || today) + '"' + (k === 'date' ? '' : ' hidden') + '>' +
+      '<span class="pdr" data-pd="' + id + '"' + (k === 'date' ? '' : ' hidden') + '><input type="date" data-pd1="' + id + '" value="' + esc(pub.date || today) + '"><span class="tilde">〜</span><input type="date" data-pd2="' + id + '" value="' + esc(pub.date2 || pub.date || today) + '"></span>' +
       '<span class="wd" data-pw="' + id + '"' + (k === 'weekly' ? '' : ' hidden') + '>' + WD.map((w, i) => '<label><input type="checkbox" data-pwd="' + id + '" value="' + i + '"' + ((pub.days || []).map(Number).indexOf(i) >= 0 ? ' checked' : '') + '>' + w + '</label>').join('') + '</span>' +
       '<input type="time" data-pf="' + id + '" value="' + esc(pub.from || '19:00') + '"><span class="tilde">〜</span><input type="time" data-pt="' + id + '" value="' + esc(pub.to || '23:00') + '">' +
       '</span></div>';
@@ -256,7 +257,7 @@
         if (!/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to)) { bad = '「' + presetName(pid) + '」の公開する時間を入れてください。'; return; }
         if (from === to) { bad = '「' + presetName(pid) + '」の公開する時間の始まりと終わりが同じです。'; return; }
         const pub = { kind, from, to };
-        if (kind === 'date') { const dv = (document.querySelector('[data-pd="' + pid + '"]') || {}).value || ''; if (!/^\d{4}-\d{2}-\d{2}$/.test(dv)) { bad = '「' + presetName(pid) + '」の日付を入れてください。'; return; } pub.date = dv; }
+        if (kind === 'date') { const d1 = (document.querySelector('[data-pd1="' + pid + '"]') || {}).value || '', d2 = (document.querySelector('[data-pd2="' + pid + '"]') || {}).value || d1; if (!/^\d{4}-\d{2}-\d{2}$/.test(d1) || !/^\d{4}-\d{2}-\d{2}$/.test(d2)) { bad = '「' + presetName(pid) + '」の期間の日付を入れてください。'; return; } if (d2 < d1) { bad = '「' + presetName(pid) + '」の期間の終わりの日は、始まりの日より後にしてください。'; return; } pub.date = d1; pub.date2 = d2; }
         if (kind === 'weekly') { const days = Array.from(document.querySelectorAll('[data-pwd="' + pid + '"]:checked')).map((x) => Number(x.value)); if (!days.length) { bad = '「' + presetName(pid) + '」の曜日を 1 つ以上選んでください。'; return; } pub.days = days; }
         presetPub[pid] = pub;
       });
