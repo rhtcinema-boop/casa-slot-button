@@ -516,7 +516,8 @@
   /* ---------- スタッフの「この店だけテストレース」 ----------
      v4: 投票は 60 秒（TEST_RACE.voteSec）。押した時刻から startIn 秒後に発走（60〜600。決まりの範囲）。投票の始まりは発走の 60 秒前（startIn が 60 なら押してすぐ）。
      店のテレビが SLOT のときは、切り替えのお願い（switchSec 120 秒）＝テレビが来るのを待ってから作る（来た時刻から quickSec）。当たりは払わない・集計に入れない */
-  const TEST_RACE = { startIn: 120, quickSec: 60, switchSec: 120, minSec: 60, maxSec: 600, voteSec: 60, payout: 30000, waitSec: 180, staleSec: 600, deciderWaitSec: 300, tvWaitSec: 300, tvGraceSec: 20, tvSeenDays: 14 };
+  /* waitSec 8: 連打よけだけ（2026-10-25 オーナー「テストレースは何度でも走らせられるように」。以前は 180 秒。v2/firestore.rules の derbyTestReq と同じ数） */
+  const TEST_RACE = { startIn: 120, quickSec: 60, switchSec: 120, minSec: 60, maxSec: 600, voteSec: 60, payout: 30000, waitSec: 8, staleSec: 600, deciderWaitSec: 300, tvWaitSec: 300, tvGraceSec: 20, tvSeenDays: 14 };
   function testTvWait(tvs, store, reqAt, t) {
     const mine = (tvs || []).filter((x) => x && x.store === store && x.kind === 'casatv' && Number(x.at) > t - TEST_RACE.tvSeenDays * DAY);
     if (!mine.length) return null;
@@ -529,20 +530,23 @@
     const T = tuningOf(tuning), lead = Math.max(0, Number(T.closeLeadSec) || 0), sec = Math.min(TEST_RACE.maxSec, Math.max(testStartIn(startIn), Math.ceil(lead + 10)));
     return { voteSec: Math.min(TEST_RACE.voteSec, Math.max(10, sec - lead)), startIn: sec };
   }
+  /* レースが「ふさいでいる」時間 ＝ 投票の始まり〜結果の発表（revealAt）まで。結果の画面（resultSec。既定 5 分）はふさがない
+     （2026-10-25 オーナー「テストレースは何度でも走らせられるように。今、終わると押せなくなっている」。テレビは投票が始まれば結果の画面を閉じて投票の画面にする＝tv.js の decide） */
   function raceSpan(r, T) {
     const start = r.openAt != null ? r.openAt : r.at - T.voteSec * 1000;
-    const end = r.endAt || (r.revealAt ? r.revealAt + T.resultSec * 1000 : (r.runAt || r.at) + 60000 + (T.postSec + T.resultSec) * 1000);
+    const end = r.revealAt || (r.runAt || r.at) + 60000 + T.postSec * 1000;
     return [start, end];
   }
+  // 新しいテストレースがふさぐ時間: 今〜（発走 sec 秒後 ＋ ゲート ＋ 走り 60 秒 ＋ 結果まで postSec）
   function testRaceBusy(races, store, t, startIn, tuning, rules) {
     const T = tuningOf(tuning), sec = testStartIn(startIn);
-    const gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec, end = t + (sec + gate + 60 + T.postSec + T.resultSec) * 1000;
+    const gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec, end = t + (sec + gate + 60 + T.postSec) * 1000;
     const hit = (s, e) => s < end && e > t;
     for (const r of races || []) { if (!visibleTo(r, store) || r.status === 'void') continue; const [s, e] = raceSpan(r, T); if (hit(s, e)) return { reason: 'busy', raceId: r.id, at: r.at }; }
     const have = new Set((races || []).map((r) => r.id));
     for (const e of scheduleAround(t, rules || [])) {
       if (have.has(e.id) || (e.storeId && e.storeId !== store)) continue;
-      const s = e.at - T.voteSec * 1000, en = e.at + (gate + 60 + T.postSec + T.resultSec) * 1000;
+      const s = e.at - T.voteSec * 1000, en = e.at + (gate + 60 + T.postSec) * 1000;
       if (hit(s, en)) return { reason: 'busy', at: e.at };
     }
     return null;
