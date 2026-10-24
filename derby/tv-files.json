@@ -308,8 +308,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 56490,
-   "sha256": "229b9dadac39dcfd14c68dce2b044f9b4e7ac7b0ff333413e25f1750e461ad71"
+   "size": 57174,
+   "sha256": "8d42cc8b6128deeaf2b96be8b36f94784693f37d13d9596050bdf430ae627a63"
   },
   {
    "path": "v2/form.js",
