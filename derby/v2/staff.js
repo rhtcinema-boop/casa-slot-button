@@ -282,21 +282,22 @@
   }
 
   /* ---- テストレース（この店だけ・投票 1 分・当たっても払わない） ----
-     押せないとき: 進行役のテレビがいない／この店でレースの投票中・レース中・結果画面のあいだ／押したあと（準備中・そのレースが終わるまで）。
+     押せないとき: 進行役のテレビがいない／この店でレースの投票中・レース中（結果が出るまで）／押したあと（準備中・そのレースの結果が出るまで）。
+     結果の画面のあいだは押せる（2026-10-25 オーナー「テストレースは何度でも走らせられるように」。押すとテレビは結果の画面を閉じて投票の画面になる）。
      テレビが casa SLOT なら、押すと casa DERBY に切り替えてから（Firestore 版は切り替えの時間をとって 2 分後に発走）。 */
   const TEST_SEC = 60; // core.js の TEST_RACE.quickSec（押してから発走まで。投票はその 60 秒）
   const SWITCH_SEC = 120, TV_WAIT_MS = 300000, GRACE_MS = 20000; // core.js の TEST_RACE の switchSec・tvWaitSec・tvGraceSec
   let trS = null, trAt = 0, trBusy = false, trT = 0, trMsg = '';
   const trPending = (r, n) => !!r && !r.raceId && !r.err && n - r.at < TV_WAIT_MS + 15000;
   const numOr = (v, d) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
-  function trClash(n, sec) { // 'now' ＝投票中・レース中・結果画面／レース ＝もうすぐ次のレース／null ＝ぶつからない（core.js の testRaceBusy と同じ考え方）
+  function trClash(n, sec) { // { now: 結果が出る時刻 } ＝投票中・レース中／レース ＝もうすぐ次のレース／null ＝ぶつからない（core.js の testRaceBusy と同じ考え方。結果の画面はふさがない）
     if (!st) return null;
-    const S = st.settings || {}, gate = S.scenes && S.scenes.gate === false ? 0 : numOr(S.gateSec, 8), post = numOr(S.postSec, 28), res = numOr(S.resultSec, 300), vote = numOr(S.voteSec, 180);
-    const end = n + (sec + gate + 60 + post + res) * 1000, seen = new Set();
+    const S = st.settings || {}, gate = S.scenes && S.scenes.gate === false ? 0 : numOr(S.gateSec, 8), post = numOr(S.postSec, 28), vote = numOr(S.voteSec, 180);
+    const end = n + (sec + gate + 60 + post) * 1000, seen = new Set();
     for (const r of [st.live, st.last, st.open, st.next].filter((x) => x && !seen.has(x.id) && seen.add(x.id))) {
       if (r.status === 'void') continue;
-      const s = r.openAt != null ? r.openAt : r.at - vote * 1000, e = r.endAt || (r.revealAt ? r.revealAt + res * 1000 : (r.runAt || r.at) + 60000 + (post + res) * 1000);
-      if (s < end && e > n) return s <= n ? 'now' : r;
+      const s = r.openAt != null ? r.openAt : r.at - vote * 1000, e = r.revealAt || (r.runAt || r.at) + 60000 + post * 1000;
+      if (s < end && e > n) return s <= n ? { now: e } : r;
     }
     return null;
   }
@@ -304,10 +305,10 @@
     const n = now(), r = trS && trS.req;
     if (!trS) return ['読み込み中…', true];
     if (trPending(r, n)) return [n - r.at < GRACE_MS || !trS.decider ? 'テレビを casa DERBY に切り替えています…' : r.wait ? 'テレビはスロットのゲーム中です。終わってから切り替えます' : '準備中…（進行役のテレビがレースを作っています）', true];
-    if (r && r.raceAt && r.raceAt > n) return ['テストのレース 発走まで ' + mmss(r.raceAt - n), true];
+    if (r && r.raceAt && r.raceAt > n && !(st && st.last && st.last.id === r.raceId)) return ['テストのレース 発走まで ' + mmss(r.raceAt - n), true]; // 発走の前（管理画面で先に発表したレースは除く）
     if (!trS.decider && !trS.wake) return [trS.deciderStore && trS.deciderGame === 'slot' ? '進行役のテレビ（' + (trS.deciderName || trS.deciderStore) + '）が casa SLOT になっています' : '進行役のテレビがありません', true];
     const sw = trS.game === 'slot' && !trS.wake, c = trClash(n, sw ? SWITCH_SEC : TEST_SEC);
-    if (c === 'now') return ['いまはレース中です（終わってから押せます）', true];
+    if (c && c.now) return ['レース中 … あと ' + mmss(Math.max(0, c.now - n)) + '（結果が出たら押せます）', true];
     if (c) return ['もうすぐ次のレース（' + hhmm(c.at) + ' 発走）があるので押せません', true];
     if (r && r.err === 'busy' && n - r.at < 120000) return ['作れませんでした（もうすぐ次のレースです）', true];
     return [trMsg, false];
