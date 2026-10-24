@@ -76,6 +76,17 @@
 
   /* ---------- 店舗 ---------- */
   // 使用中のプリセットに誤りがあると、端末はそれを受け付けず前の設定のまま動く（b71）。店舗の一覧でそれが分かるようにする
+  /* 期間限定の当たりの設定（2026-10-24）: 店舗の presetTimed = { presetId, from, to, setAt }。from〜to の間だけ、お店の画面はこの設定で動き、
+     終わると「いま使う当たりの設定」（activePresetId）に自動で戻る（activePresetId は書き換えない）。js/game.js の effPid と同じ判定 */
+  const timedOf = (s) => { const t = s && s.presetTimed; return t && t.presetId && Number(t.from) > 0 && Number(t.to) > Number(t.from) ? t : null; };
+  function timedNote(s) {
+    const t = timedOf(s), n = Date.now();
+    if (!t || n >= t.to) return '';
+    return '<div class="swarn" style="border-color:rgba(201,160,62,.6);color:#ffe9a8;background:rgba(201,160,62,.08)">⏱ ' + (n >= t.from
+      ? '期間限定で「' + esc(presetName(t.presetId)) + '」を使っています（' + fmtDate(t.to) + ' まで。終わると「' + esc(presetName(s.activePresetId)) + '」に戻ります）'
+      : fmtDate(t.from) + '〜' + fmtDate(t.to) + ' は期間限定で「' + esc(presetName(t.presetId)) + '」') + '</div>';
+  }
+  const dtl = (ms) => { if (!ms) return ''; const d = new Date(ms), p = (n) => ('0' + n).slice(-2); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }; // input type="datetime-local" の値（端末の時刻）
   function storeWarn(s) {
     const p = presets.find((x) => x.id === s.activePresetId);
     return p && !Engine.validateProbs(p.probs).ok ? '<div class="swarn">⚠ この当たりの設定に誤りがあり、お店では前の設定のまま動いています</div>' : '';
@@ -133,7 +144,7 @@
     const nOk = stores.filter((s) => aliveOf(s) === 'ok').length, nWarn = stores.filter((s) => aliveOf(s) === 'warn').length, nNone = stores.length - nOk - nWarn;
     return '<div class="panel" id="storesPanel"><div class="phead"><h3>お店のようす</h3><span class="fsum">全 ' + stores.length + ' 店' + (stores.length ? '：動いている ' + nOk + (nWarn ? '・つながっていない ' + nWarn : '') + (nNone ? '・未使用 ' + nNone : '') : '') + '</span></div>' +
       (stores.length ? '<div class="slist">' + stores.map((s) => '<div class="scard"><div class="sinfo"><div class="sname"><span>' + esc(s.name) + '</span>' + verBadge(s.deviceVersion) + '</div>' +
-        '<div class="smeta">' + aliveBadge(s) + '</div><div data-warn="' + esc(s.id) + '">' + storeWarn(s) + '</div></div>' +
+        '<div class="smeta">' + aliveBadge(s) + '</div><div data-warn="' + esc(s.id) + '">' + storeWarn(s) + timedNote(s) + '</div></div>' +
         '<div class="sctl">' + presetSelect(s) + '<button class="btn sm ghost sedit" data-act="store-edit" data-id="' + esc(s.id) + '">お店の設定</button></div></div>').join('') + '</div>' : '<div class="empty">まだお店がありません</div>') +
       '<div class="updbox" id="updBox"><div class="oldnote" id="oldNote"></div><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全 ' + stores.length + ' 店の画面を最新にする</button></div>' +
       '<div class="acts start"><button class="btn ghost" data-act="store-new">＋ お店を追加</button><button class="btn ghost" data-act="stores-reload">読み直す</button></div>' +
@@ -167,6 +178,14 @@
       (s.id ? '' : pinField) + // 新しい店舗はパスワードが必須なので上に出す
       '<label class="f"><span>いま使う当たりの設定<small class="lsub">このお店に設定されているもの</small></span><select id="sactive"><option value="">（未設定）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '" ' + (s.activePresetId === p.id ? 'selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></label>' +
       '<div class="sub"><h4>お店の画面で選べる当たりの設定<small>お店の人が画面で切り替えられるもの。いま使う設定は自動で含まれます</small></h4>' + (presets.length ? presets.map((p) => '<label class="check"><input type="checkbox" data-pid="' + esc(p.id) + '" ' + ((s.presetIds || []).indexOf(p.id) >= 0 ? 'checked' : '') + '> <i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + ' <span class="chip">平均 ' + fmtN(Math.round(Engine.probStats(p.probs).ev)) + '</span></label>').join('') : '<div class="empty">先に「当たりの設定」のタブで作ってください</div>') + '</div>' +
+      (function () { // 期間限定の当たりの設定（2026-10-24）
+        const t = timedOf(s), n = Date.now(), live = t && n < t.to;
+        return '<div class="sub"><h4>期間限定の当たりの設定<small>決めた期間だけ、この設定で動きます。終わると「いま使う当たりの設定」に自動で戻ります</small></h4>' +
+          '<label class="f"><span>期間中に使う当たりの設定</span><select id="stimed"><option value="">（使わない）</option>' + presets.map((p) => '<option value="' + esc(p.id) + '"' + (live && t.presetId === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></label>' +
+          '<div class="cols"><label class="f"><span>始まり</span><input type="datetime-local" id="stfrom" value="' + (live ? dtl(t.from) : '') + '"></label>' +
+          '<label class="f"><span>終わり</span><input type="datetime-local" id="stto" value="' + (live ? dtl(t.to) : '') + '"></label></div>' +
+          '<p class="hint">' + (live ? (n >= t.from ? 'いま期間中です。' : 'まだ始まっていません。') + '「（使わない）」にして保存すると、すぐ取り消せます。' : '終わった期間は自動で消えます。始まりを今より前にすると、保存してすぐ切り替わります（ゲームの途中なら、終わってから）。') + '</p></div>';
+      })() +
       fold('st-play', '<h4>遊び方と飾り</h4><span class="fsum" id="playSum">' + playSum(s.billMode, s.doors, s.halloween) + '</span>',
         chk('sbill', s.billMode, 'スマホの紙幣でゲームを始める（紙幣モード）', 'ON にすると、この店舗の画面から NEXT GAME ボタンが消え、スタッフのスマホの紙幣ページ（公開 URL の bill.html）で紙幣をスライドしたときだけゲームが始まります。スマホが使えないときは、テレビはリモコンの決定を 2 秒長押し、iPad は左上のロゴを 2 秒長押しで始められます。', 'h-bill') +
         chk('sdoor', s.doors, '3つの扉を出す', '当たりの回の 5 回に 1 回くらい、最後にリールの代わりに扉が 3 つ出ます。スタッフのスマホ（またはリモコンの左右と決定）で扉を選ぶと、その回の当たり金額が出ます。見せ方が変わるだけで、当たりの確率と金額は変わりません。「スマホの紙幣で始める」が ON の店舗だけで動きます。', 'h-door') +
@@ -196,7 +215,16 @@
     }
     if (active && presetIds.indexOf(active) < 0) presetIds.push(active);
     const notes = [0, 1, 2].map((i) => $('snote' + i).value.trim().slice(0, 80)).filter(Boolean); // 待機中に左側に出す説明（入力されたものだけ）
-    const data = { name, presetIds, activePresetId: active || null, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
+    let presetTimed = null; // 期間限定の当たりの設定（2026-10-24）
+    { const tp = $('stimed') ? $('stimed').value : '';
+      if (tp) {
+        const from = Date.parse($('stfrom').value), to = Date.parse($('stto').value);
+        if (!Number.isFinite(from) || !Number.isFinite(to)) { err.textContent = '期間限定の当たりの設定の「始まり」と「終わり」を入れてください。'; return; }
+        if (to <= from) { err.textContent = '期間限定の「終わり」は「始まり」より後にしてください。'; return; }
+        if (to <= Date.now()) { err.textContent = '期間限定の「終わり」がもう過ぎています。'; return; }
+        presetTimed = { presetId: tp, from, to, setAt: Date.now() };
+      } }
+    const data = { name, presetIds, activePresetId: active || null, presetTimed, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
     if (pin) data.pin = Engine.makePin(pin);
     try { await Cloud.saveStore(s.id || null, data); }
     catch (e) { err.textContent = '保存できませんでした。通信を確認して、もう一度押してください。'; throw e; }
@@ -458,7 +486,7 @@
     try { await Cloud.saveStore(s.id, { presetIds, activePresetId: active }); s.presetIds = presetIds; s.activePresetId = active; toast(s.name + ' の当たりの設定を「' + presetName(active) + '」にしました'); }
     catch (err) { back('保存できませんでした。通信を確認して、もう一度選んでください'); }
     sel.disabled = false; if (btn) { btn.hidden = true; btn.disabled = false; if (btn.nextElementSibling) btn.nextElementSibling.hidden = true; }
-    const w = main.querySelector('[data-warn="' + s.id + '"]'); if (w) w.innerHTML = storeWarn(s);
+    const w = main.querySelector('[data-warn="' + s.id + '"]'); if (w) w.innerHTML = storeWarn(s) + timedNote(s);
   }
   main.addEventListener('change', (e) => {
     if (e.target.dataset && e.target.dataset.qid) return quickPick(e.target);
