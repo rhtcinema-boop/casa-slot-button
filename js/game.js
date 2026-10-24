@@ -913,7 +913,7 @@ const Game = (function () {
     let res;
     // 抽選の前に、マスターから配られている今のプリセットをもう一度当てる（端末側の保存を書き換えられていても、配られた設定で抽選する。同じなら何もしない。b76）
     if (supOk && superUsable()) { if (!superBase) superBase = presetOfState(); applyPreset(superMerged()); } // b101: スーパーモードの回は当たりやすいプリセット（b105: 枠を確保できた回だけ。1日の区切りは店舗のプリセットのまま）
-    else { supOk = false; if (storeMode() && cloudStore && cloudStore.activePresetId && cloudPresets[cloudStore.activePresetId]) applyPreset(cloudPresets[cloudStore.activePresetId]); else if (superBase) applyPreset(superBase); superBase = null; } // b105: 店舗のプリセットが見つからないときは、スーパー前の設定に戻す
+    else { supOk = false; if (storeMode() && cloudStore && effPid() && cloudPresets[effPid()]) applyPreset(cloudPresets[effPid()]); /* 2026-10-24: 期間限定の当たりの設定があればそちら */ else if (superBase) applyPreset(superBase); superBase = null; } // b105: 店舗のプリセットが見つからないときは、スーパー前の設定に戻す
     syncTable(); // 念のため、抽選の前に配当表をそろえる（変わっていなければ何もしない）
     const startSt = [1, 2, 3].indexOf(pendingStart) >= 0 ? pendingStart : 1; pendingStart = 1; // b107
     try {
@@ -2278,17 +2278,18 @@ const Game = (function () {
       }
       const ids = (doc.presetIds || []).slice();
       if (doc.activePresetId && ids.indexOf(doc.activePresetId) < 0) ids.push(doc.activePresetId);
+      if (doc.presetTimed && doc.presetTimed.presetId && ids.indexOf(doc.presetTimed.presetId) < 0) ids.push(doc.presetTimed.presetId); // 期間限定の当たりの設定も見張る
       ids.forEach((pid) => {
         if (presetWatch[pid]) return;
         presetWatch[pid] = true;
         Cloud.watchPreset(pid, (p) => {
           if (!p) { delete cloudPresets[pid]; return; }
           cloudPresets[pid] = p;
-          if (cloudStore && cloudStore.activePresetId === pid) applyPreset(p);
+          if (cloudStore && effPid() === pid) applyPreset(p);
           if (Admin.isOpen()) Admin.rerender();
         });
       });
-      if (doc.activePresetId && cloudPresets[doc.activePresetId]) applyPreset(cloudPresets[doc.activePresetId]);
+      { const ep = effPid(doc); if (ep && cloudPresets[ep]) applyPreset(cloudPresets[ep]); timedLast = ep; }
       // b81: 自分の 10 分ごとの生存報告（lastSeen）だけが変わった通知では設定画面を描き直さない（開いている最中に伏せ字が戻る・音量の操作が途切れるため）
       const sig = JSON.stringify(Object.assign({}, doc, { lastSeen: 0, deviceVersion: '', phase: '', phaseAt: 0 }));
       if (sig !== storeSig) {
@@ -2298,6 +2299,25 @@ const Game = (function () {
         if (!busy && !insertBusy && lockbar.classList.contains('show') && (!!lockbar.querySelector('.sand')) !== billMode()) { if (Store.state.play && Store.state.play.phase === 'shown') renderLockbar(); else idleBar(); }
       }
     });
+  }
+  /* 期間限定の当たりの設定（2026-10-24、オーナー指示）: 店舗の presetTimed = { presetId, from, to } の間だけ、そのプリセットで動く。
+     終わると activePresetId（いつもの設定）に戻る。activePresetId は書き換えない（その前に使っていたものに戻る）。境目はゲームの途中なら終わってから */
+  function effPid(doc) {
+    doc = doc || cloudStore;
+    if (!doc) return null;
+    const t = doc.presetTimed, n = Date.now();
+    if (t && t.presetId && n >= Number(t.from) && n < Number(t.to) && cloudPresets[t.presetId]) return t.presetId;
+    return doc.activePresetId || null;
+  }
+  let timedLast = null;
+  function timedWatch() { // 期間の始まり・終わりで、その場で切り替える（applyPreset はゲームの途中なら終わるまで待つ）
+    if (!cloudStore || !storeMode()) return;
+    const pid = effPid();
+    if (pid === timedLast) return;
+    const was = timedLast; timedLast = pid;
+    if (was === null || !pid || !cloudPresets[pid]) return;
+    applyPreset(cloudPresets[pid]);
+    try { Store.transact(() => Store.log('PRESET_TIMED', { to: pid, name: String(cloudPresets[pid].name || '').slice(0, 20), timed: !!(cloudStore.presetTimed && pid === cloudStore.presetTimed.presetId) })); } catch (e) { /* ログのみ */ }
   }
   /* 設定画面から: 店舗がプリセット名を選ぶ */
   async function choosePreset(pid) {
@@ -2372,7 +2392,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); hitWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); hitWatch(); timedWatch(); }, 500);
     setInterval(statWatch, 5000); // b91: 端末の状態をスマホの設定画面へ（変わったときだけ書く）
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
