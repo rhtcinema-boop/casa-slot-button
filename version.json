@@ -1,9 +1,9 @@
 {
- "v": "b143",
+ "v": "b144",
  "files": [
   {
    "path": "index.html",
-   "sha256": "6798474c671c345f1489b194462dc17fd589e88fd2894fe5f506c14d11d1e12f"
+   "sha256": "cd36c4acc1984bf0801264f4d55555d77cd6ca9fc63446a4858ce25185d8943f"
   },
   {
    "path": "manifest.webmanifest",
@@ -67,11 +67,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "d85116107f2125205c9ae33af030745ee5acc8e4fd53d3d1ed65d1945b86992b"
+   "sha256": "1b85d1cbed75c692c579c24cbe07f19c2b58e528743dc2c5e82574b1ce56856d"
   },
   {
    "path": "js/master.js",
-   "sha256": "3f8f738aaea6a1dfac0141c78dbf140d3fd50a225246aa9f91c40488e3c7b2a5"
+   "sha256": "7ca0e6e21d6e33b58ed3a1728ef816d95523463b867fc8fe45d45d092c5bebab"
   },
   {
    "path": "js/phoneswitch.js",
