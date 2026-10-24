@@ -485,7 +485,7 @@ const Game = (function () {
     try {
       const playing = busy || pressing || insertBusy || (Store.state.play && Store.state.play.phase !== 'shown') || creditsLeft() > 0;
       if ((d.type === 'logout' || d.type === 'statsReset') && playing) { ok = false; reason = 'playing'; } // b99: 回転中・FREE SPIN 中は切らない
-      else if (d.type === 'preset') { ok = await choosePreset(String((d.data || {}).id || '')); if (!ok) reason = 'preset'; }
+      else if (d.type === 'preset') { const pid = String((d.data || {}).id || ''); ok = pubOk(pid) && await choosePreset(pid); if (!ok) reason = 'preset'; } // 公開期間の外は受け付けない（2026-10-24）
       else if (d.type === 'statsReset') { Store.transact((st) => { Store.log('STATS_RESET', { plays: st.session.playNo, awarded: st.session.awarded, total: st.wonTotal || 0, by: 'phone' }, 'phone'); st.session.playNo = 0; st.session.awarded = 0; st.wonTotal = 0; st.bestValue = (st.play && st.play.phase === 'drawn' && !st.play.test) ? st.play.value : 0; st.winCount = 0; st.recent = []; st.lastValue = null; st.credits = 0; st.dud = 0; }); showCredits(); refresh(); if (Admin.isOpen()) Admin.rerender(); ok = true; }
       else if (d.type === 'volume') { const v = Math.max(0, Math.min(1, Number((d.data || {}).v))); if (isFinite(v)) { Store.transact((st) => { st.settings.volume = v; }); Sfx.setVolume(v); ok = true; } else reason = 'volume'; }
       else if (d.type === 'update') { autoUpdate(true); ok = true; }
@@ -2309,6 +2309,25 @@ const Game = (function () {
     if (t && t.presetId && n >= Number(t.from) && n < Number(t.to) && cloudPresets[t.presetId]) return t.presetId;
     return doc.activePresetId || null;
   }
+  let pubLast = '';
+  function pubWatch() { // 公開期間の始まり・終わり: スマホの一覧を更新し、使用中の設定が期間の外になったら「いま使う当たりの設定」へ戻す
+    if (!cloudStore || !storeMode()) return;
+    const ids = cloudStore.presetIds || [], sig = ids.map((id) => id + ':' + (pubOk(id) ? 1 : 0)).join(',');
+    if (sig === pubLast) return;
+    const was = pubLast; pubLast = sig;
+    if (was === '') return; // 起動直後は様子を見るだけ
+    statSig = ''; statWatch();
+    if (Admin.isOpen()) Admin.rerender();
+    const cur = Store.state.presetId;
+    // 戻り先: 配られているもののうち、公開期間の無いもの（いつでも選べるもの）の最初。無ければ公開中の最初
+    const ids2 = cloudStore.presetIds || [];
+    const back = ids2.find((id) => id !== cur && cloudPresets[id] && !(cloudStore.presetPub && cloudStore.presetPub[id])) || ids2.find((id) => id !== cur && cloudPresets[id] && pubOk(id)) || null;
+    if (cur && !pubOk(cur) && back) {
+      applyPreset(cloudPresets[back]);
+      try { Store.transact(() => Store.log('PRESET_PUB', { from: cur, to: back })); } catch (e) { /* ログのみ */ }
+      try { Cloud.updateStoreFields(Store.state.store.id, { activePresetId: back }).catch(() => {}); } catch (e) { /* noop */ }
+    }
+  }
   let timedLast = null;
   function timedWatch() { // 期間の始まり・終わりで、その場で切り替える（applyPreset はゲームの途中なら終わるまで待つ）
     if (!cloudStore || !storeMode()) return;
@@ -2327,7 +2346,30 @@ const Game = (function () {
     try { await Cloud.updateStoreFields(me.id, { activePresetId: pid }); } catch (err) { UI.toast('クラウドへの保存に失敗しました（端末には反映済み）。', 'err'); }
     return true;
   }
-  const storeInfo = () => ({ store: Store.state.store, presets: (cloudStore && cloudStore.presetIds || []).map((id) => cloudPresets[id]).filter(Boolean), activeId: Store.state.presetId || (cloudStore && cloudStore.activePresetId) || null, warn: presetWarn, appliedName: Store.state.presetName || '' });
+
+  /* 公開期間（2026-10-24）: pub = { kind, date, days, from, to }。now の時点で公開中なら true。pub が無ければいつも公開 */
+  function pubOpen(pub, now) {
+    if (!pub || !pub.kind) return true;
+    const hm = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const f = hm(pub.from), t = hm(pub.to);
+    if (f == null || t == null) return false;
+    const d = new Date(now || Date.now()), cur = d.getHours() * 60 + d.getMinutes();
+    const ymd = (x) => x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2);
+    const dayOk = (x) => pub.kind === 'daily' ? true : pub.kind === 'date' ? ymd(x) === pub.date : pub.kind === 'weekly' ? (pub.days || []).map(Number).indexOf(x.getDay()) >= 0 : false;
+    if (t > f) return dayOk(d) && cur >= f && cur < t; // 同じ日の中
+    // 日をまたぐ（例 21:00〜02:00）: 今日の from から、または前の日の from から続いている
+    if (cur >= f) return dayOk(d);
+    const y = new Date(d.getTime() - 86400000);
+    return cur < t && dayOk(y);
+  }
+  function pubText(pub) {
+    if (!pub || !pub.kind) return '';
+    const W = ['日', '月', '火', '水', '木', '金', '土'];
+    const when = pub.kind === 'date' ? String(pub.date || '').replace(/^\d{4}-/, '').replace('-', '/') + ' だけ' : pub.kind === 'daily' ? '毎日' : '毎週 ' + (pub.days || []).map((x) => W[Number(x)] || '').join('');
+    return when + ' ' + (pub.from || '') + '〜' + (pub.to || '');
+  }
+  const pubOk = (id) => pubOpen(cloudStore && cloudStore.presetPub && cloudStore.presetPub[id]); // 公開期間（2026-10-24）: 期間の外は選べない
+  const storeInfo = () => ({ store: Store.state.store, presets: (cloudStore && cloudStore.presetIds || []).filter(pubOk).map((id) => cloudPresets[id]).filter(Boolean), activeId: Store.state.presetId || (cloudStore && cloudStore.activePresetId) || null, warn: presetWarn, appliedName: Store.state.presetName || '' });
 
   function initSecret() {
     // casa ロゴ（左上のエンブレム／中央上の casa SLOT）を続けて3回タップ → PIN → 設定画面
@@ -2392,7 +2434,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
-    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); hitWatch(); timedWatch(); }, 500);
+    setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); hitWatch(); timedWatch(); pubWatch(); }, 500);
     setInterval(statWatch, 5000); // b91: 端末の状態をスマホの設定画面へ（変わったときだけ書く）
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { reelHeal(); setTimeout(reelHeal, 600); } });
