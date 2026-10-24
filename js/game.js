@@ -2355,7 +2355,7 @@ const Game = (function () {
     if (f == null || t == null) return false;
     const d = new Date(now || Date.now()), cur = d.getHours() * 60 + d.getMinutes();
     const ymd = (x) => x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2);
-    const dayOk = (x) => pub.kind === 'daily' ? true : pub.kind === 'date' ? ymd(x) === pub.date : pub.kind === 'weekly' ? (pub.days || []).map(Number).indexOf(x.getDay()) >= 0 : false;
+    const dayOk = (x) => pub.kind === 'daily' ? true : pub.kind === 'date' ? (ymd(x) >= String(pub.date || '') && ymd(x) <= String(pub.date2 || pub.date || '')) : pub.kind === 'weekly' ? (pub.days || []).map(Number).indexOf(x.getDay()) >= 0 : false;
     if (t > f) return dayOk(d) && cur >= f && cur < t; // 同じ日の中
     // 日をまたぐ（例 21:00〜02:00）: 今日の from から、または前の日の from から続いている
     if (cur >= f) return dayOk(d);
@@ -2365,7 +2365,8 @@ const Game = (function () {
   function pubText(pub) {
     if (!pub || !pub.kind) return '';
     const W = ['日', '月', '火', '水', '木', '金', '土'];
-    const when = pub.kind === 'date' ? String(pub.date || '').replace(/^\d{4}-/, '').replace('-', '/') + ' だけ' : pub.kind === 'daily' ? '毎日' : '毎週 ' + (pub.days || []).map((x) => W[Number(x)] || '').join('');
+    const md = (v) => String(v || '').replace(/^\d{4}-/, '').replace('-', '/');
+    const when = pub.kind === 'date' ? (pub.date2 && pub.date2 !== pub.date ? md(pub.date) + '〜' + md(pub.date2) : md(pub.date) + ' だけ') : pub.kind === 'daily' ? '毎日' : '毎週 ' + (pub.days || []).map((x) => W[Number(x)] || '').join('');
     return when + ' ' + (pub.from || '') + '〜' + (pub.to || '');
   }
   const pubOk = (id) => pubOpen(cloudStore && cloudStore.presetPub && cloudStore.presetPub[id]); // 公開期間（2026-10-24）: 期間の外は選べない
