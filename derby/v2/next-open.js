@@ -54,7 +54,7 @@
       rs.filter((r) => (r.kind || 'daily') === pri).forEach((r) => {
         ruleMins(r).forEach((min) => {
           const at = dayStart(ds) + min * 60000, id = compact(ds) + '-' + pad(Math.floor(min / 60)) + pad(min % 60) + (g ? '-' + g : '');
-          out[id] = { id, at, time: pad(Math.floor(min / 60)) + ':' + pad(min % 60), storeId: g || null };
+          out[id] = { id, at, time: pad(Math.floor(min / 60)) + ':' + pad(min % 60), storeId: g || null, storeIds: Array.isArray(r.storeIds) && r.storeIds.length ? r.storeIds.map(String) : null }; /* storeIds: 投票できる店（null ＝ 全店。2026-10-26）。casa SLOT のテレビは見ない（見るだけの店もレースの時刻に DERBY へ移る）。time は 25:00 のような営業日の時刻のまま */
         });
       });
     });
@@ -66,7 +66,8 @@
     const sc = schedule || {}, rules = arr(sc.rules), t = Number(nowMs);
     if (!rules.length || !Number.isFinite(t)) return [];
     const voteSec = secs(sc.voteSec, VOTE_SEC_DEFAULT), lead = secs(sc.closeLeadSec, 0), want = n || 5, seen = {}, out = [];
-    for (let d = 0; d <= LOOK_DAYS && out.length < want; d++) {
+    // d = -1: 前の日の決まりの 24:00〜28:59（25 時表記。2026-10-26）は今日の深夜に走る（Core.scheduleAround も前の日から見る）
+    for (let d = -1; d <= LOOK_DAYS && out.length < want; d++) {
       for (const e of expandDate(dateStr(t + d * DAY), rules)) {
         if (e.at <= t || (e.storeId && e.storeId !== storeId)) continue;
         const k = (e.storeId || '') + '|' + e.at; if (seen[k]) continue; seen[k] = 1;
