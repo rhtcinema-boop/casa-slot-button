@@ -1367,3 +1367,21 @@
 .v2wait .how .bn { position: absolute; top: 22px; right: 30px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 24px 12px; border-radius: 16px; background: #d84300; color: #fff; box-shadow: 0 6px 14px rgba(0, 0, 0, .22); white-space: nowrap; }
 .v2wait .how .bn b { font: 900 36px/1.1 var(--font-tv); letter-spacing: .02em; }
 .v2wait .how .bn span { font: 900 20px/1.2 var(--font-tv); color: #ffe9d6; }
+
+/* ---------- 2026-10-26 オーナー「レースごとに投票できる店を選べる」（仕様書_v4_大改修.md の最後）。選ばれていない店のテレビは他店のレースを見るだけで映す ----------
+   投票の画面（m-open）で #stage に v2-watch・QR の枠に .watch: QR・「アプリ不要 スマホで参加」・「参加無料・1人1票まで」を隠し、同じ枠（同じ大きさ: QR の一辺 + 41px）の中に
+   大きく「このレースは 渋谷・上野 のみ投票」（1920 の画面で 31px／48px）、小さく「この店は 21:30 のレースから参加できます」（26px 以上）。上の帯の「初参加は 2票！」も出さない。
+   待ち時間の時計（.v2nx）: 次のレースがこの店で投票できないときだけ、残り時間の下に小さく「（渋谷・上野 のみ投票）」（29px） */
+.v2qr .nv { display: none; }
+.v2qr .nv[hidden] { display: none !important; }
+#stage.v2.m-open .v2qr.watch .code, #stage.v2.m-open .v2qr.watch .tx, #stage.v2.m-open .v2qr.watch .free { display: none !important; }
+#stage.v2.m-open .v2qr.watch { box-shadow: 0 0 0 5px #5d6b7c, 0 0 0 9px #fff, 0 14px 30px rgba(0, 0, 0, .35); } /* 枠の色だけ灰（投票の誘いではない） */
+#stage.v2.m-open .v2qr.watch .nv { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 22px; width: var(--qo); height: calc(var(--qo) + 41px); text-align: center; color: var(--ink); font-family: var(--font-tv); }
+.v2qr .nv .nv1 { display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 100%; }
+.v2qr .nv .nv1 small { font: 900 26px/1.15 var(--font-tv); color: var(--ink-sub); }
+.v2qr .nv .nv1 b { display: block; max-width: 100%; font: 900 40px/1.15 var(--font-tv); color: #d84300; white-space: nowrap; }
+.v2qr .nv .nv2 { font: 900 22px/1.35 var(--font-tv); color: var(--ink); }
+.v2qr .nv .nv2 b { font: 900 30px/1 var(--font-num); color: var(--ink); font-variant-numeric: tabular-nums; }
+#stage.v2.m-open.v2-watch .top .v2bonus { display: none; }
+.v2nx .cd .nv { font: 900 24px/1.1 var(--font-tv); color: #ffd54f; white-space: nowrap; }
+.v2nx .cd .nv:empty { display: none; }
