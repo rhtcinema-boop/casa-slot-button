@@ -88,6 +88,9 @@
   const weekday = (ds) => { const p = ds.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); };
   const hhmm = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim()); return m && Number(m[2]) < 60 ? Number(m[1]) * 60 + Number(m[2]) : null; };
   const fmtTime = (ms) => new Date(ms + JST).toISOString().slice(11, 16);
+  /* 営業日の時刻（2026-10-26 25 時表記。オーナー「営業が 25 時まである」）: 朝の区切り h 時（dayStartHour。初期 5）より前の時刻は 24 を足す → "25:00"・"28:59"。
+     テレビ・スマホ・スタッフ・管理画面の時刻の表示はこれを使う（fmtTime はカレンダーの時刻。id・記録の日付など中の処理用） */
+  const fmtBizTime = (ms, h) => { h = h == null ? 5 : Number(h) || 0; const d = new Date(Number(ms) + JST); let hr = d.getUTCHours(); if (hr < h) hr += 24; return String(hr).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
   const compact = (ds) => ds.replace(/-/g, '');
   const bizDate = (ms, h) => dateStr(ms - (h == null ? 5 : h) * 3600000);
   const bizDay = (ms, h) => compact(bizDate(ms, h));
@@ -124,7 +127,7 @@
         ruleSlots(r).forEach(({ min, payout }) => {
           const at = dayStart(ds) + min * 60000, h = Math.floor(min / 60), mm = min % 60;
           const id = compact(ds) + '-' + String(h).padStart(2, '0') + String(mm).padStart(2, '0') + (g ? '-' + g : '');
-          out[id] = { id, at, time: String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'), payout, scope: r.scope === 'store' ? 'store' : 'all', storeId: g || null, ruleId: r.id || String(r._idx), tpl: r.tpl || null };
+          out[id] = { id, at, time: String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'), payout, scope: r.scope === 'store' ? 'store' : 'all', storeId: g || null, storeIds: storeIdsOf(r.storeIds), ruleId: r.id || String(r._idx), tpl: r.tpl || null };
         });
       });
     });
@@ -134,12 +137,31 @@
     const all = [].concat(expandDate(dateStr(t - DAY), rules), expandDate(dateStr(t), rules), expandDate(dateStr(t + DAY), rules)), seen = {};
     return all.filter((e) => { const k = (e.storeId || '') + '|' + e.at; if (seen[k]) return false; seen[k] = 1; return true; }).sort((a, b) => a.at - b.at);
   }
-  function normalizeRules(input, storeIds, storeName) {
+  /* 投票できる店（2026-10-26 オーナー「レースごとに投票できる店をチェックで選べる」）: rule.storeIds・race.storeIds。null ＝ 全店。
+     選ばれていない店はテレビで「見るだけ」（visibleTo は true・canVote は false）。storeIdsOf: 形をそろえる（空・配列でない → null。重複は 1 つに） */
+  function storeIdsOf(v) { if (!Array.isArray(v)) return null; const out = []; v.forEach((x) => { const s = String(x == null ? '' : x).trim(); if (s && !out.includes(s)) out.push(s); }); return out.length ? out : null; }
+  // 管理画面から来た storeIds の確かめ: 無い・null ＝ 全店。あるなら店を 1 つ以上・知っている店だけ。全店をえらんだら null（全店）に
+  function cleanStoreIds(v, known, where) {
+    if (v == null) return null;
+    if (!Array.isArray(v)) throw err(400, 'bad_rule', '店の選び方の形がちがいます' + (where || ''));
+    const ids = storeIdsOf(v);
+    if (!ids) throw err(400, 'bad_rule', '店を 1 つは選んでください' + (where || ''));
+    if (Array.isArray(known)) { const bad = ids.find((s) => !known.includes(s)); if (bad) throw err(400, 'bad_rule', '店舗がありません: ' + bad); if (known.every((s) => ids.includes(s))) return null; }
+    return ids;
+  }
+  /* 時刻表の時刻の範囲（2026-10-26 25 時表記）: 朝の区切り h 時（dayStartHour。初期 5）から 24 時間 ＝ "05:00"〜"28:59"（深夜は 24:00〜28:59 と書く。00:00〜04:59 は受け付けない） */
+  const bizMinOk = (min, h) => min >= h * 60 && min < (24 + h) * 60;
+  const bizRangeText = (h) => String(h).padStart(2, '0') + ':00〜' + String(23 + h).padStart(2, '0') + ':59';
+  /* storeIds: 知っている店の id の一覧（決まりの storeId・storeIds の確かめ）。storeName: 店名（重なりのエラー文）。dayStartHour: 時刻の範囲の確かめ（初期 5）。
+     決まりに storeId（その店だけ別のレース。以前からの形）があるときは storeIds は見ない（その店だけのレースなので） */
+  function normalizeRules(input, storeIds, storeName, dayStartHour) {
     if (!Array.isArray(input)) throw err(400, 'bad_rules', '時刻表の決まりがありません');
+    const h = dayStartHour == null ? 5 : Math.max(0, Math.min(12, Number(dayStartHour) || 0));
     const rules = input.map((r, i) => {
       const kind = ['daily', 'weekday', 'date'].includes(r.kind) ? r.kind : 'daily';
       if (kind === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) throw err(400, 'bad_rule', '日付の形がちがいます（' + (i + 1) + ' 行目）');
-      const rule = { id: String(r.id || 'r' + (i + 1)), enabled: r.enabled !== false, kind, payout: roundAmount(r.payout), scope: r.scope === 'store' ? 'store' : 'all', storeId: r.storeId || null };
+      const rule = { id: String(r.id || 'r' + (i + 1)), enabled: r.enabled !== false, kind, payout: roundAmount(r.payout), scope: r.scope === 'store' ? 'store' : 'all', storeId: r.storeId || null, storeIds: null };
+      if (!rule.storeId) rule.storeIds = cleanStoreIds(r.storeIds, Array.isArray(storeIds) ? storeIds : null, '（' + (i + 1) + ' 行目）');
       if (kind === 'weekday') rule.weekdays = (r.weekdays || []).map(Number).filter((d) => d >= 0 && d <= 6);
       if (kind === 'date') rule.date = r.date;
       if (r.tpl != null) rule.tpl = String(r.tpl).slice(0, 64);
@@ -149,6 +171,9 @@
         if (rule.races.some((x) => hhmm(x.time) == null)) throw err(400, 'bad_rule', '時刻は HH:MM で（' + (i + 1) + ' 行目）');
       } else if (Array.isArray(r.times)) { rule.times = r.times.map(String); if (rule.times.some((x) => hhmm(x) == null)) throw err(400, 'bad_rule', '時刻は HH:MM で（' + (i + 1) + ' 行目）'); }
       else { rule.from = r.from; rule.to = r.to; rule.everyMin = Number(r.everyMin); if (hhmm(r.from) == null || hhmm(r.to) == null || !(rule.everyMin >= 1)) throw err(400, 'bad_rule', '開始・終了・間隔を入れてください（' + (i + 1) + ' 行目）'); }
+      // 時刻の範囲（25 時表記）: 時刻の一覧・開始・終了のどれも h:00〜(23+h):59 の中
+      const mins = ruleSlots(rule).map((x) => x.min).concat(rule.from != null ? [hhmm(rule.from), hhmm(rule.to)] : []);
+      if (mins.some((m) => m != null && !bizMinOk(m, h))) throw err(400, 'bad_rule', '時刻は ' + bizRangeText(h) + ' で（深夜は 24:00〜' + String(23 + h).padStart(2, '0') + ':59。' + (i + 1) + ' 行目）');
       if (rule.storeId && storeIds && !storeIds.includes(rule.storeId)) throw err(400, 'bad_rule', '店舗がありません: ' + rule.storeId);
       return rule;
     });
@@ -170,7 +195,7 @@
      管理画面で時刻表・調整（投票の秒数など）を保存したときに書き直す */
   function publicRules(rules) {
     return (Array.isArray(rules) ? rules : []).map((r) => {
-      const o = { id: String(r.id || ''), enabled: r.enabled !== false, kind: ['daily', 'weekday', 'date'].includes(r.kind) ? r.kind : 'daily', storeId: r.storeId || null };
+      const o = { id: String(r.id || ''), enabled: r.enabled !== false, kind: ['daily', 'weekday', 'date'].includes(r.kind) ? r.kind : 'daily', storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds) }; /* storeIds: 投票できる店（null ＝ 全店。2026-10-26）。casa SLOT のテレビは見ない（見るだけの店もレースの時刻に DERBY へ移る） */
       if (o.kind === 'weekday') o.weekdays = (r.weekdays || []).map(Number);
       if (o.kind === 'date') o.date = String(r.date || '');
       if (Array.isArray(r.races)) o.races = r.races.map((x) => ({ time: String((x && x.time) || '') }));
@@ -275,7 +300,7 @@
     const vs = secOf(opt.voteSec) != null ? secOf(opt.voteSec) : T.voteSec, gateSec = T.scenes && T.scenes.gate === false ? 0 : T.gateSec;
     const closeAt = entry.at - T.closeLeadSec * 1000;
     const race = {
-      id: entry.id, storeId: entry.storeId || null, at: entry.at, openAt: closeAt - vs * 1000, voteSec: vs, closeAt, runAt: entry.at + gateSec * 1000, revealAt: 0, endAt: 0,
+      id: entry.id, storeId: entry.storeId || null, storeIds: storeIdsOf(entry.storeIds), at: entry.at, openAt: closeAt - vs * 1000, voteSec: vs, closeAt, runAt: entry.at + gateSec * 1000, revealAt: 0, endAt: 0, /* storeIds: 投票できる店（null ＝ 全店。2026-10-26） */
       gateSec, postSec: T.postSec, resultSec: T.resultSec, status: 'upcoming', createdAt: t,
       dist: base.dist, weather: base.weather, surface: base.surface, horses: base.horses, tune: base.tune,
       odds: odds.tansho, exacta: odds.exacta, tenkai: odds.tenkai, participants: { total: 0, byStore: {}, combos: {} }, refunded: false, day: bizDate(entry.at, T.dayStartHour),
@@ -289,8 +314,13 @@
 
   /* ---------- 誰に見せるか ---------- */
   const visibleTo = (race, store) => !race.storeId || race.storeId === store;
-  // いまのレース: その店に見える、締切前の upcoming のうち一番早いもの（投票の前で待っているときも）
-  function currentRaceFor(races, store, t) { return races.filter((r) => visibleTo(r, store)).sort((a, b) => a.at - b.at).find((r) => r.status === 'upcoming' && r.closeAt > t) || null; }
+  /* その店が投票できるレースか（2026-10-26「このレースはこの店だけ」）: 見えていて、storeIds が無い（全店）か その店が入っている。
+     見えるが投票できないレース（canVote が false）はテレビで「見るだけ」（stateFor の watch）。スマホは次に投票できるレースを出す */
+  const canVote = (race, store) => visibleTo(race, store) && (!Array.isArray(race.storeIds) || !race.storeIds.length || race.storeIds.includes(store));
+  // 投票できない店からの投票・番号を空ける → 409 not_my_store「このレースは 渋谷・上野 だけの開催です」（模擬クラウドと Firestore 版で同じ文）。storeName: 店の id → 名前
+  function notMyStore(race, storeName) { const ids = storeIdsOf(race && race.storeIds) || []; return err(409, 'not_my_store', 'このレースは ' + ids.map((s) => (storeName ? storeName(s) : s) || s).join('・') + ' だけの開催です', { raceId: race && race.id, storeIds: ids }); }
+  // いまのレース: その店が投票できる、締切前の upcoming のうち一番早いもの（投票の前で待っているときも。見るだけのレースは入らない）
+  function currentRaceFor(races, store, t) { return races.filter((r) => canVote(r, store)).sort((a, b) => a.at - b.at).find((r) => r.status === 'upcoming' && r.closeAt > t) || null; }
   // いま投票できるレース（いまのレースが投票の時間に入っていれば）
   function openRaceFor(races, store, t) { const r = currentRaceFor(races, store, t); return r && t >= voteWindow(r).openAt ? r : null; }
   /* 2 連単の人気の上位（テレビの「人気の組み合わせ上位 6」・レース中の右側）: 実際の票が多い順。票が 0・同じ数のときは倍率の低い順で補う。
@@ -313,7 +343,7 @@
     const rs = ss.resultSec != null && ss.resultSec !== '' ? Number(ss.resultSec) : NaN;
     const vw = voteWindow(r);
     const out = {
-      id: r.id, storeId: r.storeId || null, at: r.at, openAt: vw.openAt, voteSec: vw.voteSec, closeAt: r.closeAt, runAt: r.runAt, revealAt: r.revealAt, endAt: r.revealAt && Number.isFinite(rs) && rs >= 0 ? r.revealAt + rs * 1000 : r.endAt, status,
+      id: r.id, storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds), at: r.at, openAt: vw.openAt, voteSec: vw.voteSec, closeAt: r.closeAt, runAt: r.runAt, revealAt: r.revealAt, endAt: r.revealAt && Number.isFinite(rs) && rs >= 0 ? r.revealAt + rs * 1000 : r.endAt, status,
       dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta || null, tenkai: r.tenkai,
       participants: Object.assign({ total: 0, byStore: {}, combos: {} }, r.participants || {}), result: null, winners: null, refunded: !!r.refunded, refundedAt: r.refundedAt || null,
     };
@@ -330,23 +360,30 @@
   }
   /* 今の状態（GET /api/state と同じ形）。
      open: いま投票できるレース | null。next: open 以外で一番早い締切前のレース（open がなければ「投票の始まりを待っている」レース。待ち画面の「次のレースは 21:00、投票は 20:57 から」）。
-     current: open || next。live: 締切後〜発表前。last: 一番新しい発表済み。upcoming: この先 5 レースの時刻（作る前の時刻表の分も。openAt つき） */
+     current: open || next。live: 締切後〜発表前。last: 一番新しい発表済み。upcoming: この先 5 レースの時刻（作る前の時刻表の分も。openAt つき）。
+     2026-10-26「このレースはこの店だけ」: open・next・current はその店が投票できるレースだけ。watch: この店は投票できないが見えるレースで、投票が始まっている（openAt〜closeAt）もの（テレビの「見るだけ」。QR の所に「このレースは ○○店のみ投票」）| null。
+     upcoming の 1 件は { id, at, time（25 時表記）, storeId, storeIds（null ＝ 全店）, canVote（この店が投票できるか）, openAt }。スマホ（role phone）は投票できる分だけ、テレビ・スタッフ・管理は見える分ぜんぶ。
+     time の文字はどれも fmtBizTime（営業日の時刻。深夜は 25:00） */
   function stateFor(p) {
     const t = p.t, store = p.store, st = p.stores.find((s) => s.id === store);
     if (!st) throw err(404, 'no_store', '店舗が見つかりません');
-    const T = tuningOf(p.tuning);
+    const T = tuningOf(p.tuning), H = T.dayStartHour;
     const list = p.races.filter((r) => visibleTo(r, store)).sort((a, b) => a.at - b.at), cur = currentRaceFor(list, store, t), open = cur && t >= voteWindow(cur).openAt ? cur : null;
     const live = list.filter((r) => (r.status === 'closing' || r.status === 'closed' || r.status === 'decided') && t < r.revealAt).pop() || null;
     const last = list.filter((r) => r.status === 'done').pop() || null;
-    const next = list.find((r) => r.status === 'upcoming' && r.closeAt > t && (!open || r.id !== open.id)) || null;
-    const up0 = p.upcoming || list.filter((r) => r.status === 'upcoming').map((r) => ({ id: r.id, at: r.at, time: fmtTime(r.at), storeId: r.storeId || null, openAt: voteWindow(r).openAt }));
-    const upcoming = up0.filter((e) => e.at > t && (!e.storeId || e.storeId === store)).slice(0, 5).map((e) => Object.assign({}, e, { openAt: e.openAt != null ? e.openAt : e.at - T.closeLeadSec * 1000 - T.voteSec * 1000 }));
+    const next = list.find((r) => canVote(r, store) && r.status === 'upcoming' && r.closeAt > t && (!open || r.id !== open.id)) || null;
+    // 見るだけのレース: この店は投票できないが、投票が始まっていて締切前（他店の投票中）。テレビはこれを映す
+    const watch = list.find((r) => !canVote(r, store) && r.status === 'upcoming' && t >= voteWindow(r).openAt && t < r.closeAt) || null;
+    const up0 = p.upcoming || list.filter((r) => r.status === 'upcoming').map((r) => ({ id: r.id, at: r.at, storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds), openAt: voteWindow(r).openAt }));
+    const upcoming = up0.filter((e) => e.at > t && (!e.storeId || e.storeId === store))
+      .map((e) => Object.assign({}, e, { time: fmtBizTime(e.at, H), storeIds: storeIdsOf(e.storeIds), canVote: canVote({ storeId: e.storeId || null, storeIds: e.storeIds }, store), openAt: e.openAt != null ? e.openAt : e.at - T.closeLeadSec * 1000 - T.voteSec * 1000 }))
+      .filter((e) => p.role !== 'phone' || e.canVote).slice(0, 5);
     const ss = st.settings || {}, res = p.results || {};
     const pr = (r) => { const o = publicRace(r, { role: p.role, store, storeSettings: ss, openId: open && open.id, result: r && res[r.id] }); if (o) o.horseLook = horseLookFor(p.tuning, r); return o; };
     const out = {
-      now: t, day: bizDay(t, T.dayStartHour), store: { id: st.id, name: st.name, nextSeq: st.nextSeq || 0, reloadSeq: st.reloadSeq || 0 },
+      now: t, day: bizDay(t, H), store: { id: st.id, name: st.name, nextSeq: st.nextSeq || 0, reloadSeq: st.reloadSeq || 0 },
       stores: p.stores.map((s) => ({ id: s.id, name: s.name })), settings: settingsFor(p.tuning, ss, t),
-      open: pr(open), next: pr(next), live: pr(live), last: pr(last), upcoming,
+      open: pr(open), next: pr(next), live: pr(live), last: pr(last), watch: pr(watch), upcoming,
     };
     out.current = out.open || out.next;
     return out;
@@ -569,9 +606,9 @@
   function pidFor(Outcome, salt, raceId, vid, kind) { return 'p' + Outcome.hash(salt, raceId, vid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', vid, raceId, salt).toString(36); }
 
   return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
-    err, dateStr, dayStart, weekday, hhmm, fmtTime, compact, bizDate, bizDay, expireAtFor,
-    ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
-    tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, voteWindow, votingOpen, manualStages,
+    err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
+    ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
+    tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
