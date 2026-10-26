@@ -107,12 +107,12 @@
     '</div>'));
   // 次のレースの時計（待ち時間・リプレイ・結果の画面と同じ言葉: 「次のレース 21:00 発走」「投票は 20:57 から」「あと m:ss」）
   stageEl.appendChild(el('<div class="v2nx" id="v2nx"><div class="at"><small id="v2nxL">次のレース</small><b id="v2nxAt">--:--</b><em id="v2nxAtU">発走</em></div>' +
-    '<div class="cd"><span id="v2nxOpen"></span><div class="left"><small id="v2nxLeftL">あと</small><b id="v2nxLeft">--:--</b></div></div><small class="mh" id="v2nxMh"></small></div>'));
+    '<div class="cd"><span id="v2nxOpen"></span><div class="left"><small id="v2nxLeftL">あと</small><b id="v2nxLeft">--:--</b></div><small class="nv" id="v2nxNv"></small></div><small class="mh" id="v2nxMh"></small></div>')); // v2nxNv: 次のレースがこの店で投票できないとき「（渋谷・上野 のみ投票）」（2026-10-26）
   /* 投票（m-open）の下の段: 締切までの大きな残り時間（1 つだけ）＋人気の組み合わせ上位 6（順番と倍率だけ。票の数は出さない） */
   stageEl.appendChild(el('<div class="v2info" id="v2info"><div class="cd" id="v2cd"><small id="v2cdLbl">締切まで あと</small><b id="v2cdNum">--:--</b><div class="cdl"><span id="v2cdSub"></span></div></div>' +
     '<div class="x6" id="v2x6"><h4>人気の組み合わせ<small>2連単</small></h4><ol id="v2x6List"></ol></div></div>'));
   // QR: 上の札「アプリ不要 スマホで参加」＋下に「参加無料」。QR の下の URL は出さない（テレビでは途中で折り返して読めない。2026-10-14 見た目の講評）。#v2qrUrl は中身だけ持つ（確認用）
-  stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b><span>アプリ不要</span> <span>スマホで参加</span></b><small id="v2qrUrl" hidden></small></div><div class="free" id="v2qrFree"><span class="f1">参加無料</span><span class="f2">1人1票まで</span></div></div>'));
+  stageEl.appendChild(el('<div class="v2qr" id="v2qr"><div class="code" id="v2qrCode"></div><div class="tx" id="v2qrTx"><b><span>アプリ不要</span> <span>スマホで参加</span></b><small id="v2qrUrl" hidden></small></div><div class="free" id="v2qrFree"><span class="f1">参加無料</span><span class="f2">1人1票まで</span></div><div class="nv" id="v2qrWatch" hidden></div></div>')); // v2qrWatch: 他店だけのレースのとき QR の代わり「このレースは ○○ のみ投票」（2026-10-26。renderWatch）
   stageEl.appendChild(el('<div class="v2odds" id="v2odds"><h5><small>2連単</small>人気上位</h5><ol id="v2oddsList"></ol></div>')); // 中身は Race3D.Exacta（js/race3d.js）が描く
   stageEl.appendChild(el('<div class="v2strip" id="v2strip"><div class="ttl" id="v2stripTtl"></div><div class="crs" id="v2stripCrs"></div><div class="sep"></div><div class="ppl">全店で<b id="v2stripPpl">0</b>人参加</div><div class="stores" id="v2stripStores"></div><div class="soon">結果はまもなく</div></div>'));
   // リプレイ（m-hl）の右の列: 前のレースの結果（1着・2着・2 連単の倍率）と全店の当たった人の数
@@ -197,7 +197,7 @@
     // 馬の見た目（全店共通の設定）: 本物寄りを使うかもしれないなら、レースの区切りより前に部品を読み込んでおく（v2/core.js の horseLookFor）
     { const hs = s.settings || {}; if ((hs.horseLook === 'real' || hs.horseLookPrev === 'real' || /[?&]horse=real\b/.test(QS)) && window.Race3D && Race3D.loadHorseReal) Race3D.loadHorseReal(); }
     if (typeof s.tvAuth === 'boolean') tvAuth = s.tvAuth;
-    ['open', 'live', 'last', 'next'].forEach((k) => { if (s[k]) s[k] = keepRace(s[k]); });
+    ['open', 'live', 'last', 'next', 'watch'].forEach((k) => { if (s[k]) s[k] = keepRace(s[k]); }); // watch: 他店だけのレース（2026-10-26）も覚えておく（締切のあと同じように流す）
     const seq = s.store && s.store.nextSeq;
     if (seq != null) { if (seenSeq != null && seq > seenSeq) onNext(); seenSeq = seq; }
     const rs = s.store && s.store.reloadSeq;
@@ -219,7 +219,7 @@
   // 古いレースは捨てる（何日もつけっぱなしのテレビでメモリが増え続けないように）
   function pruneCache() {
     const lim = now() - 2 * 3600e3, keep = {};
-    ['open', 'live', 'last', 'next'].forEach((k) => { if (S && S[k]) keep[S[k].id] = 1; });
+    ['open', 'live', 'last', 'next', 'watch'].forEach((k) => { if (S && S[k]) keep[S[k].id] = 1; });
     if (view) keep[view.id] = 1; if (TV.resultRace) keep[TV.resultRace.id] = 1; if (TV.playing) keep[TV.playing] = 1;
     Object.keys(cache).forEach((id) => { const r = cache[id]; if (!keep[id] && r && (r.endAt || r.at || 0) < lim) { delete cache[id]; delete TV.done[id]; delete TV.dismissed[id]; delete TV.skipped[id]; delete missing[id]; } });
   }
@@ -361,7 +361,19 @@
   const billH = (w) => '<span class="bl">' + (w && w.bill != null && w.bill !== '' ? esc(w.bill) + '<small>番</small>' : '') + '</span>'; // 列をそろえるため、番号が無くても空の枠
   // 近走の着順（v2/form.js。馬名＋営業日の種。営業日の区切りは設定の dayStartHour）
   const formOf = (h, R) => FORM.formOf(h, (R && R.at) || now(), ST().dayStartHour, (R && R.horses && R.horses.length) || 6);
-  const hhmm = (ms) => { const d = new Date(ms + 9 * 3600e3); return d.getUTCHours() + ':' + String(d.getUTCMinutes()).padStart(2, '0'); }; // いつも日本時間（Fire TV の時間帯の設定がずれていても）
+  /* いつも日本時間（Fire TV の時間帯の設定がずれていても）。2026-10-26 オーナー「25 時表記」: 営業日の時計（区切り dayStartHour＝ふだん 5 時より前は +24。深夜 1:00 → 25:00）。
+     時は 0 を付けない（9:05・25:00）。中身の Core.fmtBizTime（0 付きの HH:MM）があればそれを使って先頭の 0 だけ取る */
+  const dayStartHour = () => { const x = S && ((S.tuning && S.tuning.dayStartHour) != null ? S.tuning.dayStartHour : ST().dayStartHour); const h = Number(x); return Number.isFinite(h) ? h : 5; };
+  const hhmm = (ms) => {
+    const h = dayStartHour(), CORE = window.DerbyCore || window.Core;
+    if (CORE && CORE.fmtBizTime) return String(CORE.fmtBizTime(ms, h)).replace(/^0(\d:)/, '$1');
+    const d = new Date(ms + 9 * 3600e3), hr = d.getUTCHours(); return (hr < h ? hr + 24 : hr) + ':' + String(d.getUTCMinutes()).padStart(2, '0');
+  };
+  /* レースごとに投票できる店（2026-10-26 オーナー。race.storeIds: 店の id の並び。null＝全店）。この店が入っていないレースは「見るだけ」（state.watch） */
+  const canVote = (r) => !r || r.canVote === true || (r.canVote !== false && (!Array.isArray(r.storeIds) || r.storeIds.indexOf(STORE) >= 0));
+  const storeNames = (ids) => (ids || []).map(storeName).join('・');
+  const watchRace = () => { const w = S && S.watch; return w && w.closeAt && now() < w.closeAt && !canVote(w) ? w : null; }; // 投票が始まっている他店だけのレース
+  const openRace = () => (S && S.open) || watchRace() || null; // 投票の画面に映すレース（この店で投票できるものが先）
   const raceTitle = (R) => (R.no ? '第' + R.no + 'レース' : hhmm(R.at) + ' 発走');
   function renderHeader(R) {
     $('raceNo').textContent = raceTitle(R);
@@ -401,6 +413,7 @@
     if (m === 'live' && AUTO_SOUND && !audioOn) unlockAudio(); // 店のテレビ: 音が止められていたら、レースに入るときにもう一度鳴らし直す
     ['m-wait', 'm-hl', 'm-open', 'm-live', 'm-result'].forEach((c) => stageEl.classList.toggle(c, c === 'm-' + m));
     if (m !== 'wait') { delete stageEl.dataset.wp; TV.wp.page = ''; }
+    if (m !== 'open') { stageEl.classList.remove('v2-watch'); $('v2qr').classList.remove('watch'); $('v2qrWatch').hidden = true; watchKey = ''; } // 他店だけのレースの印は投票の画面だけ（2026-10-26）
   }
   // 時刻からいまの場面を決める（4 回/秒）。レースの再生（playRace）・ハイライトは自分で続きを進める
   function decide() {
@@ -410,20 +423,21 @@
     // 1) 走っているレース（締切〜結果発表）。ハイライト中なら止めて切り替える
     let live = (S.live && !TV.done[S.live.id]) ? S.live : races.find((r) => !TV.done[r.id] && r.closeAt <= t && r.revealAt && t < r.revealAt && r.status !== 'upcoming' && r.status !== 'open');
     // 投票の締切の瞬間: 次の状態（締切後＝live）が届くまでの 1〜2 秒、投票の画面から待ち時間の画面に一瞬もどっていた → 映していた投票のレースをそのまま流し始める（結果は playRace が待つ）
-    if (!live && TV.mode === 'open' && view && S.open && view.id === S.open.id && !TV.done[S.open.id] && t >= S.open.closeAt && t < S.open.closeAt + 20000) live = S.open;
+    { const O = S.open || S.watch; if (!live && TV.mode === 'open' && view && O && view.id === O.id && !TV.done[O.id] && t >= O.closeAt && t < O.closeAt + 20000) live = O; } // 他店だけのレース（watch）も同じ
     if (TV.playing) return;
     if (live && t >= live.closeAt) { const sk = skipLive(live, t); if (sk === 'hold') return; if (!sk) { stopHighlight(); playRace(live); return; } } // hold: 参加人数が決まるまで今の画面のまま
-    const open = S.open && t < S.open.closeAt ? S.open : null;
+    // 投票の画面に映すレース: この店で投票できるレース（S.open）。無ければ他店だけのレース（S.watch。2026-10-26。QR の所に「このレースは ○○ のみ投票」）
+    const O = S.open && t < S.open.closeAt ? S.open : watchRace(), open = O && t >= (O.openAt || 0) ? O : null;
     // 2) 結果画面（終わったばかりのレース。途中から見始めたテレビは結果発表〜endAt の間なら最後の結果）
     let R = TV.resultRace;
     if (!R && S.last && S.last.result && S.last.revealAt <= t && t < S.last.endAt && !TV.dismissed[S.last.id] && !TV.skipped[S.last.id] && TV.resultShownFor !== S.last.id) { R = TV.resultRace = S.last; TV.resultFrom = performance.now(); }
     if (R) {
-      const cur = cache[R.id] || R, urgent = open && t >= (open.openAt || 0); // 次のレースの投票が始まったら投票の画面を優先（結果画面で時刻表を止めない。2026-10-14 リーダーの決め）
+      const cur = cache[R.id] || R, urgent = !!open; // 次のレースの投票が始まったら投票の画面を優先（結果画面で時刻表を止めない。2026-10-14 リーダーの決め）
       if (!TV.dismissed[R.id] && t < (cur.endAt || Infinity) && !urgent) { showResult(cur); return; }
       TV.resultShownFor = R.id; TV.resultRace = null; // 一度閉じた結果は出し直さない（レースごと。映像を見逃したレース＝結果が遅れて届いた等も結果画面は出す。QA3）
     }
     // 3) 投票（openAt〜closeAt。v4 の S.open は投票の時間の中だけ。それより前は待ち時間＝S.next）
-    if (open && t >= (open.openAt || 0)) { stopHighlight(); showOpen(open); return; }
+    if (open) { stopHighlight(); showOpen(open); return; }
     // 4) 待ち時間: 次のレースのパドック と 前のレースのハイライト を交互に
     showWait(t);
   }
@@ -445,6 +459,7 @@
   function showOpen(R) {
     if (TV.mode !== 'open' || !view || view.id !== R.id) { useRace(R, R.odds); }
     setMode('open');
+    renderWatch(R); // 他店だけのレース（2026-10-26）: QR の枠を「このレースは ○○ のみ投票」に
     renderTop6(R);
     // 締切の 8 秒前からは発走地点へ（「まもなく発走」）。パドックを切った店はずっと発走地点、長さの設定があれば投票の始まりからその秒数だけ
     const t = now(), left = R.closeAt - t, ps = sceneSec('paddock');
@@ -460,6 +475,25 @@
     L = (L || []).filter((x) => x && Number.isInteger(+x.first) && Number.isInteger(+x.second) && +x.first !== +x.second && +x.first >= 0 && +x.second >= 0 && +x.first < n && +x.second < n).slice(0, 6);
     return L.map((x) => ({ first: +x.first, second: +x.second, odds: Number(x.odds) || 0 }));
   }
+  /* 2026-10-26 オーナー「選ばれていない店はテレビに他店のレースを見るだけで映す」: 投票の画面（倍率の表・人気の組み合わせ・締切まで）はそのまま、
+     QR の枠（アプリ不要 スマホで参加／参加無料・1人1票まで）の代わりに同じ枠の中へ 大きく「このレースは 渋谷・上野 のみ投票」、小さく「この店は 21:30 のレースから参加できます」
+     （この店の次に投票できるレースが無ければ「本日のこの店のレースは終了しました」）。枠の大きさは QR のときと同じ（tv.css の .v2qr .nv） */
+  let watchKey = '';
+  function nextVotable(t) { // この店が次に投票できるレース（投票中のものは除く）
+    const L = [S && S.open, S && S.next].concat((S && S.upcoming) || []).filter((r) => r && r.at > t && canVote(r) && !(S.open && r.id === S.open.id && t >= (r.openAt || 0)));
+    return L.sort((a, b) => a.at - b.at)[0] || null;
+  }
+  function renderWatch(R) {
+    const w = !canVote(R), q = $('v2qr'), nv = $('v2qrWatch');
+    stageEl.classList.toggle('v2-watch', w); q.classList.toggle('watch', w);
+    if (!w) { watchKey = ''; nv.hidden = true; return; }
+    const nx = nextVotable(now()), key = R.id + '|' + (R.storeIds || []).join(',') + '|' + (nx ? nx.id + nx.at : '-') + '|' + ((S && S.stores) || []).length;
+    if (key === watchKey) return; watchKey = key;
+    nv.hidden = false;
+    nv.innerHTML = '<div class="nv1"><small>このレースは</small><b id="v2qrWatchS">' + esc(storeNames(R.storeIds)) + '</b><small>のみ投票</small></div>' +
+      '<div class="nv2">' + (nx ? 'この店は<br><b>' + hhmm(nx.at) + '</b> のレースから<br>参加できます' : '本日のこの店のレースは<br>終了しました') + '</div>'; // 3 行（枠の幅 ≈ 265px に「この店は 21:35 のレースから」は入らない）
+    fitCss($('v2qrWatchS'), 0.6, nv); // 店の名前が多いときは小さく（枠からはみ出さない）
+  }
   let top6Key = '';
   function renderTop6(R) {
     const L = top6Of(R), key = R.id + '|' + L.map((x) => x.first + '-' + x.second + ':' + x.odds).join(',');
@@ -468,18 +502,18 @@
   }
   // ---------- 次のレース ----------
   // 次のレース（時計に出す）: いま投票中のレース → 投票の始まりを待っているレース → 時刻表のこの先の 1 つ（まだ作られていなければ時刻だけ）
+  /* 2026-10-26: このテレビの時刻表は「見えるレース全部」（他店だけのレースも）。投票中（open・watch）→ そのあとは発走の早い順（next・時刻表の upcoming のいちばん近いもの） */
   function nextInfo() {
     if (!S) return null;
-    if (S.open) return S.open;
-    if (S.next) return S.next;
-    const u = (S.upcoming || []).find((x) => (!x.storeId || x.storeId === STORE) && x.at > now());
-    return u || null;
+    const t = now(), O = S.open || watchRace(); if (O) return O;
+    const L = [S.next].concat((S.upcoming || []).filter((x) => x && (!x.storeId || x.storeId === STORE) && x.at > t)).filter((x) => x && x.at > t);
+    return L.sort((a, b) => a.at - b.at)[0] || null;
   }
   function nextRaceOf() { // 映像（パドック）に入れられる次のレース（馬のいるもの）
-    if (S.open) return S.open;
-    if (S.next) return S.next;
-    const u = (S.upcoming || []).find((x) => !x.storeId || x.storeId === STORE);
-    if (u) { const r = cache[u.id]; if (r && r.horses) return r; if (!TV.fetching) { TV.fetching = true; getRace(u.id).finally(() => { TV.fetching = false; }); } }
+    const N = nextInfo(); if (!N) return null;
+    if (N.horses) return N;
+    const r = cache[N.id]; if (r && r.horses) return r;
+    if (!TV.fetching) { TV.fetching = true; getRace(N.id).finally(() => { TV.fetching = false; }); }
     return null;
   }
   /* ---------- レースとレースの間（m-wait）: 上の大きな枠を順に回す ----------
@@ -841,7 +875,7 @@
     const t = resClock(), endAt = R.endAt || (TV.resBase.t + 300000), N = nextInfo();
     const until = Math.min(endAt, N && N.openAt > t ? N.openAt : Infinity); // 次のレースの投票が始まったら結果の画面は閉じる（decide と同じ）
     const total = Math.max(1, until - (R.revealAt || until - 300000)), left = Math.max(0, until - t);
-    $('v2resNx').innerHTML = N ? '<small>次のレース</small><b>' + hhmm(N.at) + '</b> 発走' + (S.open ? '<em>投票中</em>' : N.openAt ? '<span class="op">投票は ' + hhmm(N.openAt) + ' から</span>' : '') : '<small>本日のレースは</small>終了しました';
+    $('v2resNx').innerHTML = N ? '<small>次のレース</small><b>' + hhmm(N.at) + '</b> 発走' + (openRace() && openRace().id === N.id ? '<em>投票中</em>' : N.openAt ? '<span class="op">投票は ' + hhmm(N.openAt) + ' から</span>' : '') + (canVote(N) ? '' : '<span class="op">（' + esc(storeNames(N.storeIds)) + ' のみ投票）</span>') : '<small>本日のレースは</small>終了しました'; // 他店だけのレース（2026-10-26）はその印
     $('v2resNxL').textContent = N ? '発走まで' : ''; setFit('v2resNxN', N ? fmtLeft(N.at - t) : '', '.foot');
     $('v2resRestL').textContent = 'この画面 あと'; $('v2resRestN').textContent = fmtLeft(left); $('v2resBar').style.width = (100 * left / total).toFixed(1) + '%';
     resStage(R, resPhase(R, t, until, endAt), N, t, until);
@@ -929,15 +963,15 @@
   }
   function nextHtml(N) {
     if (!N) return '<h4>本日のレースは終了しました</h4><p class="thx">ご参加ありがとうございました。<br>またのお越しをお待ちしています。</p>';
-    const p = S.open ? ppl(S.open) : 0;
-    return '<h4>次のレース' + (S.open ? '<em>投票中</em>' : '') + '</h4>' +
+    const O = openRace(), on = !!(O && O.id === N.id), p = on ? ppl(O) : 0, cv = canVote(N); // 他店だけのレース（2026-10-26）: 「いまスマホで投票できます」「右下の QR へ」は出さない
+    return '<h4>次のレース' + (on ? '<em>投票中</em>' : '') + '</h4>' +
       '<div class="nr"><div class="at"><b>' + hhmm(N.at) + '</b><span>発走</span></div><div class="cdn"><small>発走まで</small><b id="v2subN"></b></div></div>' +
-      '<p class="go">' + (S.open ? 'いまスマホで投票できます' : '投票は ' + hhmm(N.openAt || N.at) + ' から') + (p ? '・全店で <b>' + p + '</b> 人参加' : '') + '<span class="arr">右下の QR へ</span></p>';
+      '<p class="go">' + (!cv ? esc(storeNames(N.storeIds)) + ' のみ投票' : on ? 'いまスマホで投票できます' : '投票は ' + hhmm(N.openAt || N.at) + ' から') + (p ? '・全店で <b>' + p + '</b> 人参加' : '') + (cv ? '<span class="arr">右下の QR へ</span>' : '') + '</p>';
   }
   function cdLabel(N, until) { return !N ? 'この画面 あと' : N.openAt && N.openAt <= until + 500 ? '次のレースの投票まで' : '次のレースの案内まで'; }
   function cdHtml(N, until) {
     return '<h4>' + (N ? 'まもなく次のレース' : '本日のレースは終了しました') + '</h4><div class="cdw"><small id="v2subUl">' + esc(cdLabel(N, until)) + '</small><b id="v2subN"></b></div>' +
-      '<p class="go">' + (N ? hhmm(N.at) + ' 発走' + (S.open ? '・<em>投票中</em>' : '') + '<span class="arr">右下の QR から投票</span>' : 'ご参加ありがとうございました') + '</p>';
+      '<p class="go">' + (N ? hhmm(N.at) + ' 発走' + (openRace() && openRace().id === N.id ? '・<em>投票中</em>' : '') + (canVote(N) ? '<span class="arr">右下の QR から投票</span>' : '<span class="arr">' + esc(storeNames(N.storeIds)) + ' のみ投票</span>') : 'ご参加ありがとうございました') + '</p>';
   }
 
   // ---------- 時刻の表示（4 回/秒） ----------
@@ -956,24 +990,25 @@
         $('v2nxLeftL').textContent = opened ? '発走まで あと' : '投票開始まで あと';
         setFit('v2nxLeft', fmtLeft(target - t), '.v2nx');
         nx.classList.toggle('hot', !opened && target - t < 60000);
-      } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = ''; /* 2026-10-24 文字帳 w0232: 「ご参加ありがとうございました」を消す */ $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; }
+        const nvt = canVote(N) ? '' : '（' + storeNames(N.storeIds) + ' のみ投票）'; if ($('v2nxNv').textContent !== nvt) $('v2nxNv').textContent = nvt; // 次のレースがこの店で投票できないとき（2026-10-26）
+      } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = ''; /* 2026-10-24 文字帳 w0232: 「ご参加ありがとうございました」を消す */ $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; $('v2nxNv').textContent = ''; }
       const P = prevRace(); $('v2nx').classList.toggle('prev', m === 'hl' && !!P);
     }
     // 投票（m-open）: 締切までの大きな残り時間（1 つだけ）・全店の参加人数・人気の組み合わせ上位 6
-    if (m === 'open' && S.open) {
-      const R = S.open, left = R.closeAt - t, hot = left < 30000;
+    if (m === 'open' && openRace()) {
+      const R = openRace(), left = R.closeAt - t, hot = left < 30000;
       $('v2cdLbl').textContent = '締切まで あと'; setFit('v2cdNum', fmtLeft(left), '.cd'); $('v2cd').classList.toggle('hot', hot);
-      const sub = testOf(R) ? 'テストレース\n受け取りなし' : 'スマホで\n1着・2着を選ぶ';
+      const sub = testOf(R) ? 'テストレース\n受け取りなし' : !canVote(R) ? 'この店は\n投票なし' : 'スマホで\n1着・2着を選ぶ'; // 他店だけのレース（2026-10-26）
       if ($('v2cdSub').textContent !== sub) $('v2cdSub').textContent = sub;
-      renderTop6(cache[R.id] || R);
+      renderTop6(cache[R.id] || R); if (!canVote(R)) renderWatch(R);
     }
     // QR の札: 待ち・投票は「アプリ不要 スマホで参加」、結果・リプレイは「次のレースに スマホで参加」
     { const qb = $('v2qrTx').querySelector('b'), want = m === 'result' || m === 'hl' ? ['次のレースに', 'スマホで参加'] : ['アプリ不要', 'スマホで参加']; if (qb && qb.textContent !== want.join(' ')) qb.innerHTML = '<span>' + want[0] + '</span> <span>' + want[1] + '</span>'; } // 2 つの言葉の間でだけ折り返す（待ち時間の右の列は 2 行）
-    const N0 = m === 'open' ? S.open : m === 'live' || m === 'result' ? (view && (cache[view.id] || view)) : nextInfo();
-    $('v2pplNum').textContent = ppl(m === 'open' ? S.open : N0);
+    const N0 = m === 'open' ? openRace() : m === 'live' || m === 'result' ? (view && (cache[view.id] || view)) : nextInfo();
+    $('v2pplNum').textContent = ppl(N0);
     if (m === 'live' && view) { const r = cache[view.id] || view; $('v2stripPpl').textContent = ppl(r); }
     // テストレースの札（上の帯）: 投票・レースのあいだ（結果の画面は自分の見出しに出す）
-    const tr = (m === 'open' && testOf(S.open)) || (m === 'live' && testOf(view));
+    const tr = (m === 'open' && testOf(openRace())) || (m === 'live' && testOf(view));
     if ($('v2testTag').hidden === tr) $('v2testTag').hidden = !tr;
     stageEl.classList.toggle('v2-test', tr);
     const mh = runMode() === 'staff' && !TV.armed ? 'スタッフの「次へ」でレースを流します' : runMode() === 'bet' ? 'この店で投票があるとレースを流します' : '';
@@ -984,7 +1019,7 @@
   let stKey = '';
   function setStatus(m, t) {
     let tx = '', c = 'race';
-    if (m === 'open' && S.open) { const hot = S.open.closeAt - t < 30000; tx = hot ? 'まもなく締切' : '投票受付中'; c = hot ? 'hot' : 'vote'; }
+    if (m === 'open' && openRace()) { const hot = openRace().closeAt - t < 30000; tx = hot ? 'まもなく締切' : '投票受付中'; c = hot ? 'hot' : 'vote'; }
     else if (m === 'wait') { tx = nextInfo() ? '次のレース' : '本日のレースは終了'; }
     else if (m === 'hl') tx = '前のレースのリプレイ';
     else if (m === 'live') {
@@ -1101,7 +1136,7 @@
     get pair() { return window.__derbyPair; }, // 進行役のテレビ（2026-10-19）
     v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV,
     upd: UPD, updCheck: (force) => autoUpdate(force), updSafe, // 自動アップデート（tests/v2-tv-update.test.js）
-    get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now,
+    get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now, hhmm, canVote, nextInfo, // hhmm・canVote: 25 時表記と投票できる店（2026-10-26。tests/v4-tv.plan.js）
     get cues() { return TV.cues || null; }, cueOverride: CUE_Q, // 確定演出: いま映像に渡しているもの（tests/v2-tv.plan.js）と ?cues= の上書き
     // 結果画面の 5 分の流れの確認用: resultAt(秒) で「結果画面が出てから 秒」の場面にする（表示の時計だけ進める。閉じる時刻は本物のまま）。resultAt(null) で戻す
     resultAt(sec) { if (sec == null) { TV.resSkew = 0; return 0; } const b = TV.resBase; if (!b) return null; TV.resSkew = b.t + sec * 1000 - now(); if (TV.resultRace && TV.mode === 'result') showResult(cache[TV.resultRace.id] || TV.resultRace); return RT.ph; },
