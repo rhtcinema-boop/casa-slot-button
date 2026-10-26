@@ -14,6 +14,7 @@
     staff: 'スタッフ', connecting: '接続中…', waiting: '接続を待っています', online: 'につながっています',
     tv: 'テレビ', toSlot: 'SLOT にする', toDerby: 'DERBY にする', tvAsk: '{s}のテレビを {g} にしますか？', tvAskSub: '数秒で切り替わります（ゲーム中・レース中は終わってから）', tvDone: 'テレビを {g} にしました', change: '切り替える',
     nextRace: '次のレース {t}', voteFrom: '投票は {t} から', voting: '{t} のレース 投票中', closeIn: '締切まで', votes: 'この店 {n} 票', racing: '{t} のレース レース中', dayOver: '本日のレースは終わりました', test: 'テスト',
+    watchOnly: '{t} のレースは {s} だけ（この店は投票なし）', /* 2026-10-26 オーナー: レースごとに投票できる店を選べる。この店が入っていないレースの投票中 */
     winsHead: '今日の当たり', unpaidN: 'まだ {n} 人', paidN: '渡した {n} 人', vote2: '2票目', /* vote2: 初参加ボーナスの 2 票目の当たり（2026-10-24。当たればそれぞれ払う＝行が 2 つ） */ noWins: '今日の当たりはまだありません', loadErr: '読み込めませんでした',
     slide: 'スライドして渡した', saving: '記録しています…', gave: '{b}番 {n} {a} を渡しました', paidAt: '渡した {t}', viaSelf: 'お客さんのスマホ', viaStaff: 'スタッフ', expired: '期限切れ', voided: '取り消し', race: '{t} のレース',
     alreadyPaid: 'もう渡してあります', expiredMsg: '受け取りの期限が切れています', voidMsg: 'このレースは取り消しになりました', netErr: '通信できませんでした。もう一度お試しください', failed: 'うまくいきませんでした',
@@ -32,7 +33,18 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const KEY = 'casa.derby.staff.v1';
   const pad = (n) => ('0' + n).slice(-2);
-  const hhmm = (ms) => { if (!ms) return ''; const d = new Date(ms + 9 * 3600e3); return d.getUTCHours() + ':' + pad(d.getUTCMinutes()); }; // いつも日本時間
+  /* 時刻はいつも日本時間。2026-10-26 オーナー「25 時表記」: 営業日の時計（区切り dayStartHour＝ふだん 5 時より前は +24。深夜 1:00 → 25:00）。時は 0 を付けない（9:05・25:00）。
+     中身の Core.fmtBizTime（0 付きの HH:MM）があればそれを使って先頭の 0 だけ取る */
+  const dayStartHour = () => { const x = st && ((st.tuning && st.tuning.dayStartHour) != null ? st.tuning.dayStartHour : st.settings && st.settings.dayStartHour); const h = Number(x); return Number.isFinite(h) ? h : 5; };
+  const hhmm = (ms) => {
+    if (!ms) return '';
+    const h = dayStartHour(), CORE = window.DerbyCore || window.Core;
+    if (CORE && CORE.fmtBizTime) return String(CORE.fmtBizTime(ms, h)).replace(/^0(\d:)/, '$1');
+    const d = new Date(ms + 9 * 3600e3), hr = d.getUTCHours(); return (hr < h ? hr + 24 : hr) + ':' + pad(d.getUTCMinutes());
+  };
+  /* 投票できる店（race.storeIds: 店の id の並び。null＝全店）と、その名前「渋谷・上野」（2026-10-26） */
+  const canVote = (r) => !r || r.canVote === true || (r.canVote !== false && (!Array.isArray(r.storeIds) || !saved || r.storeIds.indexOf(saved.store) >= 0));
+  const storeNames = (ids) => { const L = (st && st.stores) || []; return (ids || []).map((id) => { const s = L.find((x) => x.id === id); return s ? s.name : id; }).join('・'); };
   const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + pad(s % 60); };
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
   const ptT = (n) => amt(n) + 'pt';
@@ -157,7 +169,10 @@
     const l1 = (r, h) => '<div class="nl1">' + tag(r) + h + '</div>', l2 = (h) => (h ? '<div class="nl2">' + h + '</div>' : '');
     if (o) return l1(o, '<span>' + esc(fill(TX.voting, { t: hhmm(o.at) })) + '</span>') + l2('<span class="' + (o.closeAt - n < 15000 ? 'hot' : '') + '">' + esc(TX.closeIn) + ' <b>' + mmss(o.closeAt - n) + '</b></span><span>' + esc(fill(TX.votes, { n: ((o.participants && o.participants.byStore) || {})[saved.store] || 0 })) + '</span>');
     if (live) return l1(live, '<span>' + esc(fill(TX.racing, { t: hhmm(live.at) })) + '</span>') + l2(c ? '<span>' + esc(fill(TX.nextRace, { t: hhmm(c.at) })) + '</span>' : '');
-    const nx = c || ((st.upcoming || []).filter((x) => x.at > n)[0]) || null;
+    const nx = c || ((st.upcoming || []).filter((x) => x.at > n && canVote(x))[0]) || null; // この店が投票できるレースだけ（2026-10-26）
+    /* この店が投票できないレースの投票中（state.watch。2026-10-26）: 1 行目「21:00 のレースは 渋谷 だけ（この店は投票なし）」、2 行目はこの店の次のレース */
+    const w = st.watch && st.watch.closeAt > n && !canVote(st.watch) ? st.watch : null;
+    if (w) return l1(w, '<span>' + esc(fill(TX.watchOnly, { t: hhmm(w.at), s: storeNames(w.storeIds) })) + '</span>') + l2(nx ? '<span>' + esc(fill(TX.nextRace, { t: hhmm(nx.at) })) + '</span><span>' + esc(fill(TX.voteFrom, { t: hhmm(nx.openAt || nx.at) })) + '</span>' : '<span>' + esc(TX.dayOver) + '</span>');
     if (!nx) return l1(null, '<span>' + esc(TX.dayOver) + '</span>');
     return l1(nx, '<span>' + esc(fill(TX.nextRace, { t: hhmm(nx.at) })) + '</span>') + l2('<span>' + esc(fill(TX.voteFrom, { t: hhmm(nx.openAt || nx.at) })) + '</span>');
   }
@@ -254,7 +269,7 @@
 
   /* ---- 番号を空ける ---- */
   let relBill = '', relMsg = null; // relMsg: { ok, text }
-  const relRace = () => (st && st.current) || null; // いまのレース（投票中か投票前）
+  const relRace = () => { const r = (st && st.current) || null; return r && canVote(r) ? r : null; }; // いまのレース（投票中か投票前）。この店が投票できないレース（2026-10-26 の watch）は対象外＝「いま投票できるレースがありません」
   function relHtml() {
     const r = relRace(), b = relBill, keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clr', '0', 'del'];
     const dg = b.length === 2 ? '<span class="dg">' + esc(b[0]) + '</span><span class="dg">' + esc(b[1]) + '</span>' : b.length === 1 ? '<span class="dg ph">0</span><span class="dg">' + esc(b) + '</span>' : '<span class="dg"></span><span class="dg"></span>';
@@ -418,7 +433,7 @@
   window.STAFF = {
     get saved() { return saved; }, get C() { return C; }, get st() { return st; }, get wins() { return wins; }, get sheet() { return sheet; },
     get sheetOpen() { return !!sheet || !!claiming || dragging || !!$('askBox'); }, // v2/staffswitch.js が見る（途中では画面を入れ替えない）
-    gameNow, onGame() { drawTop(); }, loadWins, openSheet, closeSheet, TX,
+    gameNow, onGame() { drawTop(); }, loadWins, openSheet, closeSheet, TX, hhmm, canVote,
     test: { why: testWhy, hint: testHint, press: testPress, get s() { return trS; }, sec: TEST_SEC },
   };
 
