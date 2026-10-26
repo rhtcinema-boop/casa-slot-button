@@ -279,6 +279,7 @@
       const openId = () => (Core.openRaceFor(races, sid, now()) || {}).id || null;
       const r = o.raceId ? races.find((x) => x.id === o.raceId) || data(await doc(COL.races, String(o.raceId)).get()) : Core.currentRaceFor(races, sid, now());
       if (!r || !Core.visibleTo(r, sid)) throw E(409, o.raceId ? 'closed' : 'no_open_race', o.raceId ? 'このレースは締め切りました' : 'いま投票できるレースがありません', { openId: openId() });
+      if (!Core.canVote(r, sid)) throw Core.notMyStore(r, storeNameOf(stores)); // 2026-10-26「このレースはこの店だけ」: 見るだけの店からは投票できない（409 not_my_store。ルールの voteOpen も同じ）
       const c = Core.cleanVote(o, (r.horses || []).length || 6), t = now();
       if (r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切りました', { openId: openId() });
       const ow = Core.voteWindow(r).openAt;
@@ -426,6 +427,7 @@
       const bill = Core.cleanBill(billIn), t = now();
       const r = raceId ? data(await doc(COL.races, String(raceId)).get()) : Core.currentRaceFor(await getRaces(true), store, t);
       if (!r || !Core.visibleTo(r, store)) throw E(409, 'no_open_race', 'いま投票できるレースがありません');
+      if (!Core.canVote(r, store)) throw Core.notMyStore(r, storeNameOf(await getStores())); // 見るだけの店に票は無い（2026-10-26）
       if (r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切ったレースの票は消せません');
       const vid = Core.voteId(r.id, store, bill), ref = doc(COL.votes, vid), ref2 = doc(COL.votes, vid + '~2');
       try {
@@ -487,7 +489,7 @@
     }
     /* 店ごとの「いまの状態」: その店に見えるレース（30 分前より後・まだ終わっていないもの）を、スマホに見せてよい項目だけで。
        結果（result）と当たった人（winners）は発表後（done）だけ。目標額・決定の中身は入れない。中身が変わったときだけ書く */
-    const LIVE_KEYS = ['id', 'storeId', 'at', 'openAt', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'exacta', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test', 'photo', 'photo2'];
+    const LIVE_KEYS = ['id', 'storeId', 'storeIds', 'at', 'openAt', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'exacta', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test', 'photo', 'photo2']; /* storeIds: 投票できる店（null ＝ 全店。2026-10-26。スマホが canVote を見るのに要る） */
     function liteRace(r) { const o = {}; LIVE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; }); if (o.status === 'closing') o.status = 'closed'; if (r.status === 'done') { o.result = r.result || null; o.winners = r.winners || []; o.photo = !!r.photo; o.photo2 = !!r.photo2; } return o; }
     const liveKeys = {};
     async function publishLive(races) {
@@ -574,7 +576,7 @@
       const sc = await secretConfig(), h = sc.tuning.dayStartHour;
       const res = data(await doc(COL.results, raceId).get()), sec = data(await doc(COL.secrets, raceId).get()) || {}, dc = sec.decision || {};
       const pq = await db.collection(COL.payouts).where('raceId', '==', raceId).get(), payouts = pq.docs.map((d) => d.data());
-      const names = storeNameOf(await getStores(true)), day = r0.day;
+      const storesAll = await getStores(true), names = storeNameOf(storesAll), day = r0.day;
       const out = await db.runTransaction(async (tx) => {
         const r = data(await tx.get(ref)); if (!r || r.status !== 'decided' || !!r.refunded !== !!r0.refunded) return null;
         const revealAt = Math.min(r.revealAt, t);
@@ -587,8 +589,9 @@
           let paid = 0; const by = {};
           payouts.forEach((p) => { if (p.status === 'void') return; paid += p.amount; by[p.storeId] = (by[p.storeId] || 0) + p.amount; });
           inc.paid = FieldValue.increment(paid);
-          const sids = new Set(Object.keys(real.byStore || {}).concat(Object.keys(by)));
-          sids.forEach((s) => { const bb = {}; Object.keys(real.bills || {}).forEach((k) => { if (k.indexOf(s + ':') === 0) bb[k.slice(s.length + 1)] = true; }); inc.byStore[s] = { votes: FieldValue.increment((real.byStore || {})[s] || 0), paid: FieldValue.increment(by[s] || 0), target: FieldValue.increment(sec.scope === 'store' && (real.byStore || {})[s] ? sec.payoutTarget || 0 : 0), bills: bb }; });
+          const voters = storesAll.map((s) => s.id).filter((s) => Core.canVote(r, s)); // 店ごとのレース数は、その店が投票できたレースだけ（2026-10-26）
+          const sids = new Set(Object.keys(real.byStore || {}).concat(Object.keys(by), voters));
+          sids.forEach((s) => { const bb = {}; Object.keys(real.bills || {}).forEach((k) => { if (k.indexOf(s + ':') === 0) bb[k.slice(s.length + 1)] = true; }); inc.byStore[s] = { races: FieldValue.increment(voters.includes(s) ? 1 : 0), votes: FieldValue.increment((real.byStore || {})[s] || 0), paid: FieldValue.increment(by[s] || 0), target: FieldValue.increment(sec.scope === 'store' && (real.byStore || {})[s] ? sec.payoutTarget || 0 : 0), bills: bb }; });
           tx.set(doc(COL.stats, day), inc, { merge: true });
         }
         return Object.assign(r, patch);
@@ -1004,13 +1007,17 @@
           return { ok: true, stores: list };
         }),
         saveTimetable: wrap(async (rulesIn) => {
-          const stores = await getStores(true), rules = Core.normalizeRules(rulesIn, stores.map((s) => s.id), storeNameOf(stores));
-          const tb = db.batch(); tb.set(doc(COL.config, 'secret'), { timetable: { rules } }, { merge: true }); tb.set(doc(COL.schedule, 'public'), Core.publicSchedule(rules, (await secretConfig()).tuning, now())); await tb.commit(); /* derbySchedule/public: 時刻だけの公開の時刻表（casa SLOT のテレビが読む） */
+          const stores = await getStores(true), sc0 = await secretConfig(), rules = Core.normalizeRules(rulesIn, stores.map((s) => s.id), storeNameOf(stores), Core.tuningOf(sc0.tuning).dayStartHour); /* 時刻は 05:00〜28:59（25 時表記。2026-10-26） */
+          const tb = db.batch(); tb.set(doc(COL.config, 'secret'), { timetable: { rules } }, { merge: true }); tb.set(doc(COL.schedule, 'public'), Core.publicSchedule(rules, sc0.tuning, now())); await tb.commit(); /* derbySchedule/public: 時刻だけの公開の時刻表（casa SLOT のテレビが読む） */
           const sched = Core.scheduleAround(now(), rules), keep = new Map(sched.map((e) => [e.id, e]));
           for (const r of await getRaces()) {
             if (r.status !== 'upcoming' || r.id.startsWith('x-')) continue;
             const e = keep.get(r.id);
-            if (e) { await doc(COL.secrets, r.id).set({ payoutTarget: e.payout, scope: e.scope }, { merge: true }); continue; }
+            if (e) {
+              await doc(COL.secrets, r.id).set({ payoutTarget: e.payout, scope: e.scope }, { merge: true });
+              if (JSON.stringify(Core.storeIdsOf(r.storeIds)) !== JSON.stringify(e.storeIds || null)) { await doc(COL.races, r.id).set({ storeIds: e.storeIds || null }, { merge: true }); await publishWith(Object.assign({}, r, { storeIds: e.storeIds || null })); } /* 投票できる店の変更も、作ってあるレースに写す（2026-10-26） */
+              continue;
+            }
             if (now() >= (r.openAt || r.closeAt) - 5000) continue; // 受付中のレースは消さない（票を確かめてから消すまでの間に投票が入ると、票だけ残ってレースが消えた。模擬サーバーは 1 本で動くので起きない）
             const t = await db.collection(COL.votes).where('raceId', '==', r.id).limit(1).get(); if (!t.empty) continue; // 票のあるレースは消さない
             const b = db.batch(); b.delete(doc(COL.races, r.id)); b.delete(doc(COL.secrets, r.id)); await b.commit();
@@ -1086,8 +1093,10 @@
           const tot = Object.assign(zero(), { byStore: {} }), days = [];
           q.docs.map((d) => d.data()).sort((a, b) => (a.date < b.date ? -1 : 1)).forEach((x) => {
             const cl = claimed[x.date] || {}, byStore = {};
-            Object.keys(x.byStore || {}).forEach((sid) => { byStore[sid] = Core.statRow(Object.assign({}, x.byStore[sid], { races: x.races || 0 }), cl[sid] || 0); });
-            const src = s ? Object.assign(zero(), byStore[s] || { races: x.races || 0 }) : Core.statRow(x, cl.all || 0);
+            // 店ごとのレース数（2026-10-26）: 新しい記録は店ごとに数えてある（その店が投票できたレースだけ）。無い（以前の記録）ときはその日のレース数
+            const perStore = Object.values(x.byStore || {}).some((b) => b && b.races != null), racesOf = (b) => (b && b.races != null ? b.races : perStore ? 0 : x.races || 0);
+            Object.keys(x.byStore || {}).forEach((sid) => { byStore[sid] = Core.statRow(Object.assign({}, x.byStore[sid], { races: racesOf(x.byStore[sid]) }), cl[sid] || 0); });
+            const src = s ? Object.assign(zero(), byStore[s] || { races: racesOf(null) }) : Core.statRow(x, cl.all || 0);
             const row = Object.assign({ date: x.date }, src, { byStore }); days.push(row);
             K.forEach((k) => (tot[k] += row[k] || 0));
             Object.keys(byStore).forEach((sid) => { if (s && sid !== s) return; const a = (tot.byStore[sid] = tot.byStore[sid] || zero()); K.forEach((k) => (a[k] += byStore[sid][k] || 0)); });
@@ -1104,7 +1113,8 @@
         }),
         createRace: wrap(async (o) => {
           o = o || {}; const sc = await secretConfig(), t = now(), sid = o.storeId || null;
-          const r = await writeRace({ id: 'x-' + t.toString(36) + randId('', 4).toLowerCase() + (sid ? '-' + sid : ''), /* 乱数つき: 同じミリ秒に 2 つ作ると前のレースを上書きしていた（RED TEAM） */ at: t + Math.max(0, Number(o.inSec) || 0) * 1000, payout: Math.max(0, Math.floor(Number(o.payout) || 0)), scope: o.scope === 'store' ? 'store' : 'all', storeId: sid, test: !!o.test }, sc, Core.manualStages(o, Number(o.inSec) || 0, sc.tuning));
+          const storeIds = sid ? null : Core.cleanStoreIds(o.storeIds, (await getStores(true)).map((s) => s.id)); /* 投票できる店（省くと全店。2026-10-26） */
+          const r = await writeRace({ id: 'x-' + t.toString(36) + randId('', 4).toLowerCase() + (sid ? '-' + sid : ''), /* 乱数つき: 同じミリ秒に 2 つ作ると前のレースを上書きしていた（RED TEAM） */ at: t + Math.max(0, Number(o.inSec) || 0) * 1000, payout: Math.max(0, Math.floor(Number(o.payout) || 0)), scope: o.scope === 'store' ? 'store' : 'all', storeId: sid, storeIds, test: !!o.test }, sc, Core.manualStages(o, Number(o.inSec) || 0, sc.tuning));
           const secret = data(await doc(COL.secrets, r.id).get());
           return { race: Core.publicRace(r, { role: 'admin', secret }) };
         }),
