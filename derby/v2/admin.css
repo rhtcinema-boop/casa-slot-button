@@ -894,3 +894,63 @@ nav.tabs button.on, .btn[aria-pressed="true"], .wdays label.on { background: lin
 }
 @media (min-width: 641px) and (max-width: 1100px) { .row > .stepper, .row.fixed .fixv { width: auto; } }
 @media (min-width: 641px) { .row + .hint.capnote { margin: 10px 0 4px; padding: 10px 14px; color: var(--text); } }
+
+/* ===== 2026-10-26 オーナー: 25 時表記と「このレースはこの店だけ」（v2/admin.js・tests/v2-admin.plan.js） =====
+   時刻の欄は type=time をやめて文字の欄（.tm。24 時以上が打てる）。幅はこれまでの時刻の欄と同じ。
+   行ごとの「投票できる店」は小さな札（.stchip。押すと ON/OFF。全部 ON ＝ 全店）。スマホでは時刻・目標の下の行に折り返す。 */
+input.tm { font-variant-numeric: tabular-nums; text-align: center; }
+.tt-rows input.tm { width: 128px; }
+.bulk input.tm { width: 124px; }
+.rowsbar .find input.tm { width: 124px; }
+.tt-rows th.th-s { font-weight: 700; color: var(--sub); }
+.tt-rows td.st { vertical-align: middle; }
+.stchips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 2px; border-radius: 10px; }
+.stchips.bad { outline: 2px solid var(--ng); outline-offset: 0; }
+.stchip { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; padding: 0 10px; border: 1px solid var(--line2, var(--line)); border-radius: 999px; background: var(--unsel, #232329); color: var(--unselText, var(--sub)); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; user-select: none; white-space: nowrap; }
+.stchip input { display: none; }
+.stchip.on { background: linear-gradient(var(--selTint, rgba(232, 199, 115, .22)), var(--selTint, rgba(232, 199, 115, .22))), var(--panel); color: var(--selText, #fff); border: 2px solid var(--gold); padding: 0 9px; }
+.stchip.all { border-style: dashed; }
+.stchip.all.on { border-style: solid; }
+.chip.st { background: rgba(184, 190, 202, .14); color: var(--sub); }
+.chip.st.lim { background: rgba(121, 169, 255, .18); color: var(--info); }
+.pv-list td.pvt .pvst { display: block; margin-top: 2px; }
+.pv-list td.pvt .pvst .chip { margin: 0; font-size: 12px; line-height: 1.3; padding: 2px 8px; white-space: normal; max-width: 12em; }
+.hint.nightnote { color: var(--sub); }
+.hint.nightnote b { color: var(--text); }
+@media (min-width: 641px) {
+  .tt-rows input.tm { width: 112px; } /* 「25:00」が入る幅。店の札の列を空けるため 140 → 112 */
+  .tpl .tt-rows input.pay { width: 120px; }
+  .bulk input.tm { width: 136px; }
+  .rowsbar .find input.tm { width: 136px; height: 44px; }
+  .stchip { min-height: 34px; font-size: 14px; }
+  .stchip.on { padding: 0 9px; }
+}
+@media (min-width: 1001px) { /* PC: 「全店」＋店 3 つを 1 行に（右に「この日の予定」がある幅）。列の余白を少し詰めて表が横に出ないように */
+  .stchips { flex-wrap: nowrap; }
+  .tpl .tt-rows th, .tpl .tt-rows td { padding: 4px 4px; }
+  .tpl .tt-rows td.ops .icon + .icon { margin-left: 6px; }
+  .stchip { padding: 0 8px; }
+  .stchip.on { padding: 0 7px; }
+}
+@media (max-width: 640px) {
+  /* スマホ: 時刻表の行をカードに（1 行目: 時刻・目標・×、2 行目: 投票できる店、エラーは全幅）。見出しの行は時刻と目標の 2 つだけ */
+  .tpl table.tt-rows, .tpl table.tt-rows tbody { display: block; width: 100%; }
+  .tpl .tt-rows tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .tpl .tt-rows tr.hd { padding: 0 0 2px; border-top: 0; }
+  .tpl .tt-rows tr.hd th { display: none; }
+  .tpl .tt-rows tr.hd th.th-t, .tpl .tt-rows tr.hd th.th-p { display: block; text-align: left; padding: 0 2px; font-size: 13px; }
+  .tpl .tt-rows tr.hd th.th-t { width: 100px; white-space: nowrap; }
+  .tpl .tt-rows tr.hd th.th-p { width: 84px; white-space: nowrap; }
+  .tpl .tt-rows td { display: block; border: 0; padding: 0; }
+  .tpl .tt-rows td.no { display: none; }
+  .tpl .tt-rows input.tm { width: 100px; padding: 0 4px; }
+  .tpl .tt-rows td.ops { margin-left: auto; }
+  .tpl .tt-rows td.st, .tpl .tt-rows td.empty { flex: 1 1 100%; order: 5; } /* 1 行目: 時刻・目標・コピー・×／2 行目: 店の札／3 行目: エラー */
+  .tpl .tt-rows td.msg:empty { display: none; }
+  .tpl .tt-rows td.msg { flex: 1 1 100%; order: 6; }
+  .tpl .tt-rows tr.more { display: none; }
+  .tpl .tt-rows tr.hit { background: rgba(233, 194, 94, .18); border-radius: 10px; }
+  .tpl .tt-rows tr.hit td { background: none; }
+  .stchip { min-height: 32px; font-size: 13px; }
+  .bulk input.tm { width: 112px; }
+}
