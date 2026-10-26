@@ -270,3 +270,6 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .vlist .vr.w .vm { color: var(--gold); }
 .vlist .vr.w .vk { color: var(--cream); }
 .hit .x2 { font-size: 15px; font-weight: 700; color: var(--cream); font-variant-numeric: tabular-nums; }
+
+/* ---------- 2026-10-26 オーナー「レースごとに投票できる店を選べる」: この店が投票できないレースの知らせ（待ち画面の上。文字 15px） ---------- */
+.note.watch { font-size: 15px; font-weight: 700; color: var(--cream); background: var(--card2); border: 1px solid var(--gold2); }
