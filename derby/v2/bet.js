@@ -34,6 +34,8 @@
     vote1: '1票目', vote2: '2票目', pick2Head: '2票目をえらぶ', pick2Sub: '金の点が1票目・同じ組み合わせでもえらべます', vote2Btn: '2票目を投票する',
     redo1: '1票目を選び直す', redo2: '2票目を選び直す', noBonus: '初参加ボーナスの2票目は使えません',
     times: '{a} × {n}票', hitMark: '当たり', missMark: 'はずれ', slideAll: 'スライドして2票分受け取り',
+    /* この店は投票できないレース（2026-10-26 オーナー: レースごとに投票できる店を選べる）。待ち画面の上の知らせと、送ってしまったときのお知らせ */
+    watchOnly: 'いまの {t} のレースは {s} だけの開催です', notMyStore: 'このレースはこの店では投票できません',
   };
   const fill = (s, o) => String(s).replace(/\{(\w+)\}/g, (m, k) => (o && o[k] != null ? o[k] : ''));
 
@@ -50,7 +52,17 @@
   /* ================= 小さな道具 ================= */
   const pad = (n) => ('0' + n).slice(-2);
   const JST = (ms) => new Date(ms + 9 * 3600e3); // いつも日本時間（テレビと同じ）
-  const hhmm = (ms) => { const d = JST(ms); return d.getUTCHours() + ':' + pad(d.getUTCMinutes()); };
+  /* 2026-10-26 オーナー「25 時表記」: 時刻は営業日の時計で出す（区切り dayStartHour＝ふだん 5 時より前の時刻は +24。深夜 1:00 → 25:00）。
+     時は今までどおり 0 を付けない（9:05・19:00・25:00）。中身の Core.fmtBizTime（0 付きの HH:MM）があればそれを使って先頭の 0 だけ取る */
+  const dayStartHour = () => { const x = st && ((st.tuning && st.tuning.dayStartHour) != null ? st.tuning.dayStartHour : st.settings && st.settings.dayStartHour); const h = Number(x); return Number.isFinite(h) ? h : 5; };
+  const hhmm = (ms) => {
+    const h = dayStartHour(), CORE = window.DerbyCore || window.Core;
+    if (CORE && CORE.fmtBizTime) return String(CORE.fmtBizTime(ms, h)).replace(/^0(\d:)/, '$1');
+    const d = JST(ms), hr = d.getUTCHours(); return (hr < h ? hr + 24 : hr) + ':' + pad(d.getUTCMinutes());
+  };
+  /* 投票できる店（race.storeIds: 店の id の並び。null＝全店）。名前は「渋谷・上野」のように「・」でつなぐ */
+  const canVote = (r) => !r || r.canVote === true || (r.canVote !== false && (!Array.isArray(r.storeIds) || r.storeIds.indexOf(STORE) >= 0));
+  const storeNames = (ids) => { const L = (st && st.stores) || []; return (ids || []).map((id) => { const s = L.find((x) => x.id === id); return s ? s.name : id; }).join('・'); };
   const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return (s >= 3600 ? Math.floor(s / 3600) + ':' + pad(Math.floor(s / 60) % 60) : Math.floor(s / 60)) + ':' + pad(s % 60); };
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
   const ptH = (n) => amt(n) + '<small class="pt">pt</small>', ptT = (n) => amt(n) + 'pt';
@@ -107,8 +119,11 @@
     if (!st) return null;
     const c = st.current; if (c && (!my || c.id !== my.raceId)) return c;
     const t = Math.max(now(), my && my.race ? my.race.at : 0);
-    return (st.upcoming || []).filter((x) => x && x.at > t).sort((x, y) => x.at - y.at)[0] || null;
+    return (st.upcoming || []).filter((x) => x && x.at > t && canVote(x)).sort((x, y) => x.at - y.at)[0] || null; // この店が投票できるレースだけ（2026-10-26）
   }
+  /* この店が投票できないのに投票が始まっているレース（state.watch。2026-10-26）: 待ち画面の上に「いまの 21:00 のレースは 渋谷 だけの開催です」 */
+  const watchRace = () => { const w = st && st.watch; return w && w.closeAt > now() && !canVote(w) ? w : null; };
+  const watchNote = () => { const w = watchRace(); return w ? '<div class="note watch" role="status">' + esc(fill(TX.watchOnly, { t: hhmm(w.at), s: storeNames(w.storeIds) })) + '</div>' : ''; };
   function nextLine() {
     const nx = nextRace(); if (!nx) return '<p class="nextr">' + esc(TX.dayOver) + '</p>';
     return '<p class="nextr">' + esc(TX.nextRace).replace('{t}', '<b class="nt">' + hhmm(nx.at) + '</b>') + /* 時刻だけ大きく（言葉は文字帳のまま） */ (nx.openAt ? '<small>' + esc(fill(TX.nextVote, { t: hhmm(nx.openAt) })) + '</small>' : '') + '</p>';
@@ -151,10 +166,10 @@
 
   /* ① 待ち: 次のレースは 21:00・投票は 20:57 から・残り */
   R.wait = () => {
-    const c = st && st.current, nx = c || ((st && st.upcoming) || []).filter((x) => x.at > now())[0] || null;
-    if (!nx) return '<div class="scr mid">' + unpaidNote() + '<div class="waitbox"><p class="wk">' + esc(TX.dayOver) + '</p></div></div>';
+    const c = st && st.current, nx = c || ((st && st.upcoming) || []).filter((x) => x.at > now() && canVote(x))[0] || null; // この店が投票できるレースだけ（2026-10-26）
+    if (!nx) return '<div class="scr mid">' + unpaidNote() + watchNote() + '<div class="waitbox"><p class="wk">' + esc(TX.dayOver) + '</p></div></div>';
     const open = nx.openAt || nx.at;
-    return '<div class="scr mid">' + unpaidNote() + testTag(nx) +
+    return '<div class="scr mid">' + unpaidNote() + watchNote() + testTag(nx) +
       '<div class="waitbox"><p class="wk">' + esc(TX.waitHead) + '</p><p class="wt">' + hhmm(nx.at) + '</p>' +
       '<p class="wv">' + esc(fill(TX.waitVoteFrom, { t: hhmm(open) })) + '</p>' +
       '<div class="clock"><div class="k">' + esc(TX.waitLeft) + '</div><div class="v">' + cd(open) + '</div></div></div></div>';
@@ -393,7 +408,7 @@
     go('wait'); lastSig = sigOf();
   }
   let lastSig = '';
-  function sigOf() { const v = my && my.vote, v2 = my && my.vote2, r = my && my.race, p = v && v.result && v.result.payout, p2 = v2 && v2.result && v2.result.payout; return [my && my.vid, v && v.combo, v && v.updatedAt, v2 && v2.combo, v2 && v2.updatedAt, my && my.bonus, r && r.status, v && v.result && v.result.combo, p && p.status, p2 && p2.status, (st && st.current && st.current.id) || '', unpaidList.length].join('|'); }
+  function sigOf() { const v = my && my.vote, v2 = my && my.vote2, r = my && my.race, p = v && v.result && v.result.payout, p2 = v2 && v2.result && v2.result.payout; return [my && my.vid, v && v.combo, v && v.updatedAt, v2 && v2.combo, v2 && v2.updatedAt, my && my.bonus, r && r.status, v && v.result && v.result.combo, p && p.status, p2 && p2.status, (st && st.current && st.current.id) || '', (st && st.watch && st.watch.id) || '' /* 他店だけのレースが始まった・終わった（2026-10-26） */, unpaidList.length].join('|'); }
 
   /* 自分の票を読む（myVote → { vote, vote2, bonus, race }）。無い（番号を空けられた・ほかのスマホ）なら覚えを消す */
   let loading = null;
@@ -488,6 +503,7 @@
         if (code === 'no_bonus') { toast(TX.noBonus, true, 5000); draft = null; if (my) my.bonus = false; lastSig = ''; return route(); } // 2 票目は使えなかった（ほかで使われた・端末の 2 レース目）
         if (code === 'bill_taken') { d.err = 'bill_taken'; d.redo = false; d.n = undefined; return go('entry'); }
         if (code === 'closed' || code === 'no_open_race' || code === 'not_open') { toast(code === 'not_open' ? TX.notOpen : code === 'no_open_race' ? TX.noOpen : TX.closed, true, 5000); draft = null; await refreshState(); return route(); }
+        if (code === 'not_my_store') { toast((e.body && e.body.message) || TX.notMyStore, true, 5000); draft = null; await refreshState(); return route(); } // この店は投票できないレース（2026-10-26）→ お知らせして待ち画面へ
         if (code === 'no_store') return badStore();
         d.err = !e || !e.status ? TX.netErr : (e.body && e.body.message) || TX.retry;
         if (code === 'bad_bill' || code === 'bad_nick') return go('entry');
@@ -562,7 +578,7 @@
     if (Date.now() - scanAt > 60000) scanUnpaid();
   }, 6000);
 
-  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get draft() { return draft; }, get unpaid() { return unpaidList; }, C, TX, payFor, oddsTxt, route, scanUnpaid };
+  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote };
 
   /* ================= 起動 ================= */
   async function boot() {
