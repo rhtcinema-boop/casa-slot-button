@@ -188,8 +188,8 @@
   },
   {
    "path": "index.html",
-   "size": 22108,
-   "sha256": "c3925ae724c55566ae59d0a02c8f9a03d670552759e7f753b2c9599c93a2b035"
+   "size": 22093,
+   "sha256": "ab4964372a19f92f02ec873154f16d7a6450d37fed75136e46448e8fef1008d8"
   },
   {
    "path": "js/audio.js",
@@ -293,8 +293,8 @@
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 102929,
-   "sha256": "c3e0935366690c4af892096d31d9dfaff42ef4cb27def42c1f34138817a860e4"
+   "size": 104792,
+   "sha256": "4e361d462bedd4445cfd88950fb74622c8c6d3d65e890f7a7a1ab05e2d2399d1"
   },
   {
    "path": "v2/client.js",
@@ -308,8 +308,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 57174,
-   "sha256": "8d42cc8b6128deeaf2b96be8b36f94784693f37d13d9596050bdf430ae627a63"
+   "size": 63449,
+   "sha256": "c5e0aedea72909dc0de38b09904a0a3c38faf82b2fbbed0e5199a5fc371356ec"
   },
   {
    "path": "v2/form.js",
@@ -318,8 +318,8 @@
   },
   {
    "path": "v2/next-open.js",
-   "size": 5912,
-   "sha256": "bd67f74eca09d445c3e0b8d6435ac3303860706974a2964668df51874e71d22c"
+   "size": 6392,
+   "sha256": "8618b9e3d042e3a4e7cd0c77cc187b8b0c09d28749623727cfbec7572d93653f"
   },
   {
    "path": "v2/outcome.js",
@@ -333,13 +333,13 @@
   },
   {
    "path": "v2/tv.css",
-   "size": 124816,
-   "sha256": "c56316696fb4b212e2579e9d8cf1c0cd3c3abc419e90bcb49365806efbb147eb"
+   "size": 127034,
+   "sha256": "ae1b43ae99b9b29133f0c17f63d06fa219fadb8fff66858b4ab1f913b0671edf"
   },
   {
    "path": "v2/tv.js",
-   "size": 112145,
-   "sha256": "5518dd64f3ca00e80ad3e040da24bf5e3f34eb0959763b9331e497f637ad2b19"
+   "size": 118037,
+   "sha256": "470874cdddc01693f6438f6c578b7ef37229c35b360e991fd54cf9fa0b9f66f2"
   },
   {
    "path": "v2/tvswitch.js",
