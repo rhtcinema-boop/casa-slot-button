@@ -282,7 +282,7 @@ R3D.Look = (function () {
     [1.55, 0.11, 0.7, 1.0, 0.22, 0.35, 0.7], /* 中景 */
     [1.05, 0.06, 0.3, 0.6, 0.10, 0.50, 1.0], /* 遠景: 細く短くゆっくり */
   ];
-  const RAIN_N = { high: 650, low: 480 };
+  const RAIN_N = { high: 650, low: 480, xlite: 180 }; // xlite: テレビの画質「さらになめらか（最軽量）」（R3D.xlite。2026-10-28）
   const RAIN_COLOR = '#c4dae5';
   const RAIN_SLANT = [Math.tan(8 * Math.PI / 180), Math.tan(14 * Math.PI / 180)];
   /* 足元の水しぶき（雨の日だけ）: 蹄が着いた所から小さな白い粒が跳ねる。全体で 36 粒まで・寿命 0.25〜0.45 秒・1 回の描画（点） */
@@ -444,7 +444,7 @@ R3D.Look = (function () {
     };
     function buildRain() {
       if (rain) { scene.remove(rain); rain.geometry.dispose(); rain.material.dispose(); }
-      const total = hq() ? RAIN_N.high : RAIN_N.low;
+      const total = hq() ? RAIN_N.high : R3D.xlite ? RAIN_N.xlite : RAIN_N.low;
       const counts = RAIN_LAYERS.map((L) => Math.round(total * L[5])), N = counts.reduce((a, b) => a + b, 0);
       const seed = new Float32Array(N * 16), corner = new Float32Array(N * 8), layer = new Float32Array(N * 4), pos = new Float32Array(N * 12), idx = new Uint16Array(N * 6);   /* 4 頂点 × 粒の数 < 65536 */
       const CR = [-1, 0, 1, 0, 1, 1, -1, 1];
@@ -485,7 +485,7 @@ R3D.Look = (function () {
     scene.add(splashPts);
     let spNext = 0, spAlive = 0;
     function splash(e) {
-      if (!rain || !rain.visible || !e || !(e.speed > 5)) return;
+      if (R3D.xlite || !rain || !rain.visible || !e || !(e.speed > 5)) return; // さらになめらか: 水しぶきなし
       const n = Math.random() < 0.5 ? 2 : 1;
       for (let k = 0; k < n; k++) {
         const i = spNext; spNext = (spNext + 1) % SPLASH_MAX;
