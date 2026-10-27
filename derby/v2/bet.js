@@ -120,7 +120,13 @@
     if (!st) return null;
     const c = st.current; if (c && (!my || c.id !== my.raceId)) return c;
     const t = Math.max(now(), my && my.race ? my.race.at : 0);
-    return (st.upcoming || []).filter((x) => x && x.at > t && canVote(x)).sort((x, y) => x.at - y.at)[0] || null; // この店が投票できるレースだけ（2026-10-26）
+    const up = (st.upcoming || []).filter((x) => x && x.at > t && canVote(x)).sort((x, y) => x.at - y.at)[0]; // この店が投票できるレースだけ（2026-10-26）
+    if (up) return up;
+    /* 2026-10-27: 進行役のテレビがまだレースを作っていない（15 分より先）・upcoming が届いていないときも、本日の時刻表（state.today）の次のレースを出す。
+       これが無いと「本日のレースは終わりました」と下の帯の「22:00 次」が食い違っていた */
+    const T = st.tuning || {}, lead = ((Number(T.closeLeadSec) || 0) + (Number(T.voteSec) || 180)) * 1000;
+    const td = (st.today || []).filter((x) => x && x.at > t).sort((x, y) => x.at - y.at)[0];
+    return td ? { id: td.id, at: td.at, time: td.time, storeIds: td.storeIds || null, openAt: td.at - lead } : null;
   }
   /* この店が投票できないのに投票が始まっているレース（state.watch。2026-10-26）: 待ち画面の上に「いまの 21:00 のレースは 渋谷 だけの開催です」 */
   const watchRace = () => { const w = st && st.watch; return w && w.closeAt > now() && !canVote(w) ? w : null; };
