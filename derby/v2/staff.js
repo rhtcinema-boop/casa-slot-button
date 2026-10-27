@@ -14,6 +14,7 @@
     staff: 'スタッフ', connecting: '接続中…', waiting: '接続を待っています', online: 'につながっています',
     tv: 'テレビ', toSlot: 'SLOT にする', toDerby: 'DERBY にする', tvAsk: '{s}のテレビを {g} にしますか？', tvAskSub: '数秒で切り替わります（ゲーム中・レース中は終わってから）', tvDone: 'テレビを {g} にしました', change: '切り替える',
     nextRace: '次のレース {t}', voteFrom: '投票は {t} から', voting: '{t} のレース 投票中', closeIn: '締切まで', votes: 'この店 {n} 票', racing: '{t} のレース レース中', dayOver: '本日のレースは終わりました', test: 'テスト',
+    todayHead: '本日のレース', todayNext: '次', todayNone: '本日のこの店のレースはありません', /* 本日の出走時間（2026-10-27） */
     watchOnly: '{t} のレースは {s} だけ（この店は投票なし）', /* 2026-10-26 オーナー: レースごとに投票できる店を選べる。この店が入っていないレースの投票中 */
     winsHead: '今日の当たり', unpaidN: 'まだ {n} 人', paidN: '渡した {n} 人', vote2: '2票目', /* vote2: 初参加ボーナスの 2 票目の当たり（2026-10-24。当たればそれぞれ払う＝行が 2 つ） */ noWins: '今日の当たりはまだありません', loadErr: '読み込めませんでした',
     slide: 'スライドして渡した', saving: '記録しています…', gave: '{b}番 {n} {a} を渡しました', paidAt: '渡した {t}', viaSelf: 'お客さんのスマホ', viaStaff: 'スタッフ', expired: '期限切れ', voided: '取り消し', race: '{t} のレース',
@@ -152,7 +153,7 @@
     const g = gameNow(), to = g === 'derby' ? 'slot' : 'derby';
     const tv = '<span class="k">' + esc(TX.tv) + '</span><b class="g ' + (g || '') + '">' + (g ? NAMES[g] : '…') + '</b>' + (g ? '<button type="button" class="sw" data-act="tv" data-g="' + to + '">' + esc(to === 'slot' ? TX.toSlot : TX.toDerby) + '</button>' : '');
     if ($('tvRow').innerHTML !== tv) $('tvRow').innerHTML = tv;
-    const nx = nextHtml(); if ($('nextRow').innerHTML !== nx) $('nextRow').innerHTML = nx;
+    const nx = nextHtml() + todayHtml(); if ($('nextRow').innerHTML !== nx) $('nextRow').innerHTML = nx; // 3 行目: 本日のレースの時刻（2026-10-27）
   }
   /* いまのレース: 1 行目＝レースの状態、2 行目＝締切と票（2026-10-23 デザイン見直し 1 回目）。
      テストのレースのあいだ（準備中・投票中・レース中・結果画面）は 1 行目にいつも「テスト」の札 */
@@ -175,6 +176,16 @@
     if (w) return l1(w, '<span>' + esc(fill(TX.watchOnly, { t: hhmm(w.at), s: storeNames(w.storeIds) })) + '</span>') + l2(nx ? '<span>' + esc(fill(TX.nextRace, { t: hhmm(nx.at) })) + '</span><span>' + esc(fill(TX.voteFrom, { t: hhmm(nx.openAt || nx.at) })) + '</span>' : '<span>' + esc(TX.dayOver) + '</span>');
     if (!nx) return l1(null, '<span>' + esc(TX.dayOver) + '</span>');
     return l1(nx, '<span>' + esc(fill(TX.nextRace, { t: hhmm(nx.at) })) + '</span>') + l2('<span>' + esc(fill(TX.voteFrom, { t: hhmm(nx.openAt || nx.at) })) + '</span>');
+  }
+
+  /* 本日のレースの時刻（2026-10-27 オーナー「本日の出走時間を店ごとにテレビとスマホへ」。お客さんのスマホと同じ見せ方）: state.today ＝ 時刻表のうち、この営業日のこの店が投票できるレースだけ。
+     上の段の 3 行目に「本日のレース 13:00 ✓ 16:00 ✓ 19:00 次 22:00」。済みは薄く ✓・次は金の枠。state に today が無い（古い中身）なら出さない */
+  function todayHtml() {
+    const L = st && Array.isArray(st.today) ? st.today : null; if (!L) return '';
+    const n = now(), ni = L.findIndex((x) => x.at > n);
+    if (!L.length) return '<div class="nl3 today"><span class="tl">' + esc(TX.todayHead) + '</span><span class="none">' + esc(TX.todayNone) + '</span></div>';
+    const MAX = 8, from = L.length <= MAX ? 0 : Math.max(0, Math.min(ni < 0 ? L.length - 1 : ni - 1, L.length - MAX)), to = Math.min(L.length, from + MAX); // 札は 8 つまで（お客さんのスマホと同じ。前後は「…」）
+    return '<div class="nl3 today"><span class="tl">' + esc(TX.todayHead) + '</span><span class="rcs">' + (from ? '<span class="more">…</span>' : '') + L.slice(from, to).map((x, k) => { const i = k + from, done = x.at <= n, nx = i === ni; return '<span class="rc' + (done ? ' done' : nx ? ' nx' : '') + '"><b>' + hhmm(x.at) + '</b>' + (done ? '<i>✓</i>' : nx ? '<i>' + esc(TX.todayNext) + '</i>' : '') + '</span>'; }).join('') + (to < L.length ? '<span class="more">…</span>' : '') + '</span></div>';
   }
 
   /* ================= 真ん中: 今日の当たり ================= */
