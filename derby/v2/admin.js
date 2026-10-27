@@ -258,13 +258,14 @@
       modeDefault: st.modeDefault || 'auto',
       test: !!st.test,
       tvGame: st.tvGame === 'derby' ? 'derby' : 'slot', /* テレビのゲーム: casa SLOT のテレビがこれを見て切り替わる */
-      tvQuality: qOf(st), /* テレビの画質: '' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先 */
+      tvQuality: qOf(st), /* テレビの画質: 'lite' ＝さらになめらか（最軽量）・'auto' ＝なめらか優先・'' ＝標準・'max' ＝きれい優先 */
     };
   }
   const gameName = (g) => (g === 'derby' ? 'casa DERBY' : 'casa SLOT');
-  const QUALS = [['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ。細かさはそのまま'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
-  const qOf = (st) => (st && (st.tvQuality === 'auto' || st.tvQuality === 'max') ? st.tvQuality : '');
-  const qName = (q) => (q === 'auto' ? 'なめらか優先' : q === 'max' ? 'きれい優先' : '標準');
+  /* [値, 名前, ひとこと, テレビの行の短い名前]。'lite'（2026-10-28 オーナー: 渋谷のテレビは「なめらか優先」でもカクカクする）は管理画面だけで選べる（スタッフのスマホ・casa SLOT のスタッフの画面は 3 択のまま） */
+  const QUALS = [['lite', 'さらになめらか（最軽量）', '動きが重いテレビ向け。画面は少し粗くなります', 'さらになめらか'], ['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ。細かさはそのまま'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
+  const qOf = (st) => (st && (st.tvQuality === 'lite' || st.tvQuality === 'auto' || st.tvQuality === 'max') ? st.tvQuality : '');
+  const qName = (q) => (q === 'lite' ? 'さらになめらか（最軽量）' : q === 'auto' ? 'なめらか優先' : q === 'max' ? 'きれい優先' : '標準');
   function viewStores() {
     const S = cfg.stores;
     return '<div class="panel" id="storePanel"><h3>店舗（名前・暗証番号）<span class="sp"></span><button class="btn sm ghost" data-act="cfg-reload">最新の情報にする</button></h3>' +
@@ -287,9 +288,9 @@
         return '<div class="tvrow" data-store="' + esc(s.id) + '"><button type="button" class="nm" data-act="store-edit" data-id="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'の設定を開く" title="店舗の設定を開く">' + esc(s.name) + '<i aria-hidden="true">›</i>' + (sset(s).test ? '<span class="chip test">テスト</span>' : '') + '<span class="tvnow" data-g="' + g + '">テレビ: ' + gameName(g) + '</span></button>' +
           '<div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビに映すゲーム">' + ['slot', 'derby'].map((v) => '<button type="button" data-act="tvgame-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (g === v ? 'on' : '') + '" aria-pressed="' + (g === v) + '">' + (v === 'derby' ? 'DERBY' : 'SLOT') + '</button>').join('') + '</div>' +
           '<button class="btn sm ghost" data-act="tv-reload" data-store="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'のテレビを読み込み直す">読み込み直す</button>' +
-          '<div class="tvq"><span>画質</span><div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="tvq-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (sset(s).tvQuality === v ? 'on' : '') + '" aria-pressed="' + (sset(s).tvQuality === v) + '">' + nm + '</button>').join('') + '</div></div></div>';
+          '<div class="tvq"><span>画質</span><div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビの画質">' + QUALS.map(([v, nm, , short]) => '<button type="button" data-act="tvq-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (sset(s).tvQuality === v ? 'on' : '') + '" aria-pressed="' + (sset(s).tvQuality === v) + '"' + (short ? ' title="' + nm + '" aria-label="' + nm + '"' : '') + '>' + (short || nm) + '</button>').join('') + '</div></div></div>';
       }).join('') : '<div class="empty">まだ店舗がありません（下の「＋ 店舗を追加」）</div>') +
-      (S.length ? '<p class="hint tvqhint">画質は casa DERBY を映しているときのもの。なめらか優先＝重いときは自動で少し粗く／きれい優先＝動きがカクカクすることがあります。1 分ほどで反映（レース中は終わってから）。</p>' : '') +
+      (S.length ? '<p class="hint tvqhint">画質は casa DERBY を映しているときのもの。さらになめらか＝動きが重いテレビ向け。画面は少し粗くなります／なめらか優先＝重いときは自動で少し粗く／きれい優先＝動きがカクカクすることがあります。1 分ほどで反映（レース中は終わってから）。</p>' : '') +
       (S.length > 1 ? '<div class="acts l tvall"><button class="btn sm ghost" data-act="tv-reload" data-store="">全店舗のテレビを読み込み直す</button></div>' : '') +
       viewPair() +
       '<details class="fold conn" id="connFold"' + (connOpen ? ' open' : '') + '><summary>テレビ・スマホ・スタッフ画面のリンク</summary><div class="in">' +
@@ -376,10 +377,10 @@
   }
   /* テレビの画質: 書き込みは店舗の編集の「保存」と同じ（saveStore。tvQuality だけ変えて保存） */
   async function quickTvQuality(b) {
-    const s = cfg.stores.find((x) => x.id === b.dataset.id), v = b.dataset.v === 'auto' || b.dataset.v === 'max' ? b.dataset.v : '';
+    const s = cfg.stores.find((x) => x.id === b.dataset.id), v = qOf({ tvQuality: b.dataset.v });
     if (!s || sset(s).tvQuality === v) return;
     if (!/^\d{4,8}$/.test(s.pin)) { toast('この店舗の暗証番号を直してから変えてください（店名を押すと開きます）'); return; }
-    if (!confirm(s.name + 'のテレビの画質を「' + qName(v) + '」にします。\n1 分ほどでテレビに反映されます（レース中は終わってから）。' + (v === 'max' ? '\nきれい優先は動きがカクカクすることがあります。' : ''))) return;
+    if (!confirm(s.name + 'のテレビの画質を「' + qName(v) + '」にします。\n1 分ほどでテレビに反映されます（レース中は終わってから）。' + (v === 'max' ? '\nきれい優先は動きがカクカクすることがあります。' : v === 'lite' ? '\nさらになめらかは画面が少し粗くなります。' : ''))) return;
     main.querySelectorAll('[data-act="tvq-set"][data-id="' + s.id + '"]').forEach((x) => { x.disabled = true; });
     editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s), quick: true }; editStore.x.tvQuality = v;
     try { await saveStore(); toast(s.name + 'のテレビの画質を「' + qName(v) + '」にしました（1 分ほどで反映。レース中は終わってから）'); }
@@ -425,9 +426,9 @@
       '<div class="seg big" id="stvseg" role="group" aria-label="テレビに映すゲーム">' + ['slot', 'derby'].map((v) => '<button type="button" data-act="sg-tv" data-v="' + v + '" class="' + (x.tvGame === v ? 'on' : '') + '" aria-pressed="' + (x.tvGame === v) + '">' + gameName(v) + '</button>').join('') + '</div>' +
       '<select id="stvgame" class="vh" aria-hidden="true" tabindex="-1"><option value="slot"' + (x.tvGame !== 'derby' ? ' selected' : '') + '>casa SLOT</option><option value="derby"' + (x.tvGame === 'derby' ? ' selected' : '') + '>casa DERBY</option></select>' +
       '<p class="hint" style="margin-bottom:0">保存すると約 30 秒で切り替わります。投票が始まると自動で casa DERBY になります。</p></div>' +
-      /* テレビの画質。見えるのは 3 択のボタン、保存される値は下の select（#stvq） */
+      /* テレビの画質。見えるのは 4 択のボタン、保存される値は下の select（#stvq） */
       '<div class="panel"><h3>テレビの画質 <small class="qsub">casa DERBY を映しているとき</small></h3>' +
-      '<div class="seg big q3" id="stvqseg" role="group" aria-label="テレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="sg-q" data-v="' + v + '" class="' + (x.tvQuality === v ? 'on' : '') + '" aria-pressed="' + (x.tvQuality === v) + '">' + nm + '</button>').join('') + '</div>' +
+      '<div class="seg big q3 q4" id="stvqseg" role="group" aria-label="テレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="sg-q" data-v="' + v + '" class="' + (x.tvQuality === v ? 'on' : '') + '" aria-pressed="' + (x.tvQuality === v) + '">' + nm + '</button>').join('') + '</div>' +
       '<select id="stvq" class="vh" aria-hidden="true" tabindex="-1">' + QUALS.map(([v, nm]) => '<option value="' + v + '"' + (x.tvQuality === v ? ' selected' : '') + '>' + nm + '</option>').join('') + '</select>' +
       '<ul class="qnotes">' + QUALS.map(([, nm, note]) => '<li><b>' + nm + '</b>' + note + '</li>').join('') + '</ul>' +
       '<p class="hint" style="margin-bottom:0">保存すると 1 分ほどでテレビに反映されます（レース中は終わってから）。</p></div>' +
@@ -1369,7 +1370,7 @@
         case 'tvgame-set': return await quickTvGame(b);
         case 'tvq-set': return await quickTvQuality(b);
         case 'copy': { const v = b.dataset.copy || ''; try { await navigator.clipboard.writeText(v); b.textContent = 'コピーしました'; setTimeout(() => { if (document.contains(b)) b.textContent = 'コピー'; }, 1500); } catch (err) { toast('コピーできませんでした。リンクを長押ししてコピーしてください'); } return; }
-        case 'sg-q': { const sel = $('stvq'); if (!sel) return; sel.value = b.dataset.v === 'auto' || b.dataset.v === 'max' ? b.dataset.v : ''; paintQSeg(); return validateStore(); }
+        case 'sg-q': { const sel = $('stvq'); if (!sel) return; sel.value = qOf({ tvQuality: b.dataset.v }); paintQSeg(); return validateStore(); }
         case 'sg-tv': { const sel = $('stvgame'); if (!sel) return; sel.value = b.dataset.v === 'derby' ? 'derby' : 'slot'; paintTvSeg(); return validateStore(); }
         case 'tv-reload': {
           const sid = b.dataset.store || ''; // 店ごとのボタン／「全店舗のテレビを読み込み直す」（空＝全店舗）
