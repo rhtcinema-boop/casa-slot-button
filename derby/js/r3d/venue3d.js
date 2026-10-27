@@ -610,7 +610,9 @@ R3D.Venue = (function () {
   }
 
   function makeMats(low, T_) {
-    const lam = (o) => new T.MeshLambertMaterial(o), std = (o) => new T.MeshStandardMaterial(Object.assign({ roughness: 0.9, metalness: 0 }, o));
+    const lam = (o) => new T.MeshLambertMaterial(o), std0 = (o) => new T.MeshStandardMaterial(Object.assign({ roughness: 0.9, metalness: 0 }, o));
+    /* さらになめらか（XLQ）: つやのある材質（ラチ・支柱・水・ガラス・扉）も軽い材質に（発走ゲートの金属だけはそのまま） */
+    const std = (o) => (XLQ ? lam(Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'roughness' && k !== 'metalness'))) : std0(o));
     // 芝・ダートの濡れは setRace で自分で扱う（照明側の自動の濡れ処理はしない: userData.noWet）
     const ground = (o) => { if (low) { delete o.roughness; delete o.envMapIntensity; } const m = low ? lam(o) : std(o); m.userData.noWet = true; return m; };
     const off = (m, f) => { m.polygonOffset = true; m.polygonOffsetFactor = f; m.polygonOffsetUnits = f * 2; return m; };
@@ -626,7 +628,7 @@ R3D.Venue = (function () {
       rail: fadePatch(std({ vertexColors: true, roughness: 0.62 })),
       railIn: fadePatch(std({ vertexColors: true, roughness: 0.62 })),
       post: fadePatch(std({ vertexColors: true, roughness: 0.62 })),   // 頂点色＝根元を暗く（接地感）
-      gate: gatePatch(std({ vertexColors: true, roughness: 0.38, metalness: 0.45 })),   // 発走ゲート: 頂点の tint＝金属らしさ（1 鉄骨・0 塗装やクッション）
+      gate: gatePatch(std0({ vertexColors: true, roughness: 0.38, metalness: 0.45 })),   // 発走ゲート: 頂点の tint＝金属らしさ（1 鉄骨・0 塗装やクッション）
       judge: fadePatch(lam({ vertexColors: true })),
       judgeGlass: fadePatch(std({ map: T_.glass, roughness: 0.18, metalness: 0.35, vertexColors: true })),
       conc: lam({ vertexColors: true }),
@@ -768,7 +770,7 @@ R3D.Venue = (function () {
      ゴール前（先頭の馬が最後の直線の残り約 480m 以内。uCheer）だけ、先頭の馬の近く（uLeadX）ほど応援する。前列（ラチ際）は 2 割、ほかは 1 割が両手を上げて跳ね、3 割前後が手をたたく */
   const PT = (part, ck) => part * 8 + ck;
   // Fire TV 向けのさらに軽い描き方（R3D.tv。js/race3d.js の ?q=tv）: 観客は板の人、木・支柱・街を間引き、ラチを粗く。build のたびに決める
-  let TVQ = false;
+  let TVQ = false, XLQ = false;
   const CROWD_U = { uTime: { value: 0 }, uCheer: { value: 0 }, uLeadX: { value: -1e4 }, uRain: { value: 0 } };
   /* 2026-10-14（講評 92→95 の 3「観客・背景・建物の統一」）: 馬・騎手と同じ「おもちゃの人形」の体つきに。
      頭を大きめ（半径 0.2）、胴は丸い豆形（回転体）、手は丸いミトン、髪は頭にかぶせた殻、顔に小さな目（パドック用はほっぺも。騎手と同じ色）。
@@ -951,6 +953,7 @@ R3D.Venue = (function () {
     opts = opts || {};
     const low = (opts.quality || R3D.quality || 'high') === 'low';
     TVQ = low && !!(opts.tv || R3D.tv);
+    XLQ = TVQ && !!(opts.xlite || R3D.xlite);   /* テレビの画質「さらになめらか（最軽量）」（2026-10-28）: 観客・木・旗をさらに間引く */
     const root = new T.Group(); root.name = 'venue'; scene.add(root);
     const crowdCv = cv(2048, 512), cueCrowd0 = cueHorse(CUES, 'crowd'); crowdTex(crowdCv, cueCrowd0 >= 0 ? CUE_CLOTH[cueCrowd0] : null);
     const TX = { blob: blobTex(), flower: flowerTex(), turf: turfTex(), dirt: dirtTex(), grass: grassTex(), ground: grassTex(true), leaf: leafTex(), crowd: tex(crowdCv), glass: glassTex(), win: winTex(), plate: plateTex(), sign: signTex(), score: scoreTex() };
@@ -1007,9 +1010,9 @@ R3D.Venue = (function () {
     const hedgeCol = (x, y) => C('#5a9244').clone().multiplyScalar(0.66 + 0.4 * y);
     sweep(G.hedge, cpath(RO + 1.9, LS + 0.25 * RC, 2 * LS + CUR + (Math.PI - 0.25) * RC, 2, 20), [[-0.5, 0], [0.5, 0], [0.5, 1.0], [0.35, 1.2], [-0.35, 1.2], [-0.5, 1.0], [-0.5, 0]], hedgeCol, (P, q) => [P.s / 3, q[1] + q[0]]);
     // 生け垣の上の実のかたまり（kind 5。向正面〜4 コーナーの内馬場のカメラと、4 コーナーのクレーンのカメラの背景に入る目の高さ）
-    for (let s = LS + 0.3 * RC, ks = 0; s < 2 * LS + CUR + (Math.PI - 0.3) * RC; s += (TVQ ? 12 : low ? 6 : 5) * (0.85 + 0.3 * hash3(ks++, 2, 3))) { const q = CO.pointAt(s, RO + 1.9 - 0.22); trees.push({ x: q.x, y: 1.14, z: q.z, h: 1, rad: 0.5, tone: 1, kind: 5 }); }
+    for (let s = LS + 0.3 * RC, ks = 0; s < 2 * LS + CUR + (Math.PI - 0.3) * RC; s += (XLQ ? 20 : TVQ ? 12 : low ? 6 : 5) * (0.85 + 0.3 * hash3(ks++, 2, 3))) { const q = CO.pointAt(s, RO + 1.9 - 0.22); trees.push({ x: q.x, y: 1.14, z: q.z, h: 1, rad: 0.5, tone: 1, kind: 5 }); }
     // 最後の直線（スタンド前）の花壇の上にも（2 回目。横からのゴール前のカメラの背景）
-    for (let x = SX0 - 4, ks = 0; x < SX1 + 4; x += (TVQ ? 12 : low ? 7 : 5.5) * (0.85 + 0.3 * hash3(ks++, 4, 1))) trees.push({ x, y: 0.62, z: RO + 2.6 + (hash3(x, 1, 2) - 0.5) * 0.8, h: 1, rad: 0.5, tone: 1, kind: 5 });
+    for (let x = SX0 - 4, ks = 0; x < SX1 + 4; x += (XLQ ? 20 : TVQ ? 12 : low ? 7 : 5.5) * (0.85 + 0.3 * hash3(ks++, 4, 1))) trees.push({ x, y: 0.62, z: RO + 2.6 + (hash3(x, 1, 2) - 0.5) * 0.8, h: 1, rad: 0.5, tone: 1, kind: 5 });
 
     /* ---------- ハロン棒（残り 100m ごと。200m ごとに数字の円板）とゴール板 ---------- */
     const red = C('#d42a2a');
@@ -1101,7 +1104,7 @@ R3D.Venue = (function () {
         x += 0.5 + r() * 0.35;
       }
       // 人だまり: 中心を密度に比例して選び、3〜17 人をまわりに（ときどき同じ色の服の仲間）
-      const nNear = TVQ ? 700 : low ? 1000 : 3300;
+      const nNear = XLQ ? 260 : TVQ ? 700 : low ? 1000 : 3300;
       for (let tries = 0; nNearNow < nNear && tries < 40000; tries++) {
         const cx = SX0 + 4 + r() * (SX1 - SX0 - 8), cz = zA + 0.8 + Math.pow(r(), 1.25) * (zB - zA - 0.9), dens = goal(cx) * noise(cx, cz);
         if (r() > Math.pow(dens, 1.5) * 1.25 || inAisle(cx, cz)) continue;
@@ -1113,18 +1116,18 @@ R3D.Venue = (function () {
         }
       }
       // スタンド前の帯（屋根の下・階段の前）: むらのある人の帯
-      const zC = ZS - 7.2, zD = ZS - 0.7, nBack = low ? 220 : 700;
+      const zC = ZS - 7.2, zD = ZS - 0.7, nBack = XLQ ? 70 : low ? 220 : 700;
       for (let tries = 0, n0 = peopleFar.length; peopleFar.length - n0 < nBack && tries < 12000; tries++) {
         const x = SX0 + 3 + r() * (SX1 - SX0 - 6), z = zC + r() * (zD - zC);
         if (r() > goal(x) * noise(x * 1.3, z + 40) || !free(x, z, 0.5)) continue;
         put(peopleFar, x, 0.03, z, face(x) + (r() - 0.5) * 1.2, {});
       }
       // 真ん中の広場: 2〜5 人の立ち話の輪（内向き）と、歩く人
-      for (let k = 0; k < (low ? 40 : 110); k++) {
+      for (let k = 0; k < (XLQ ? 12 : low ? 40 : 110); k++) {
         const cx = SX0 + 8 + r() * (SX1 - SX0 - 16), cz = RO + 15.5 + r() * (ZS - RO - 24), n = 2 + ((r() * 4) | 0), rad = 0.45 + n * 0.1;
         for (let j = 0; j < n; j++) { const a = j / n * 6.2832 + r() * 0.5, x = cx + Math.cos(a) * rad, z = cz + Math.sin(a) * rad; if (free(x, z, 0.45)) put(peopleFar, x, 0.03, z, Math.atan2(cx - x, cz - z) + (r() - 0.5) * 0.4, { kids: 0.12 }); }
       }
-      for (let k = 0; k < (low ? 50 : 160); k++) { const x = SX0 + 6 + r() * (SX1 - SX0 - 12), z = RO + 15 + r() * (ZS - RO - 23); if (free(x, z, 0.5)) put(peopleFar, x, 0.03, z, r() * 6.28, { kids: 0.1 }); }
+      for (let k = 0; k < (XLQ ? 12 : low ? 50 : 160); k++) { const x = SX0 + 6 + r() * (SX1 - SX0 - 12), z = RO + 15 + r() * (ZS - RO - 23); if (free(x, z, 0.5)) put(peopleFar, x, 0.03, z, r() * 6.28, { kids: 0.1 }); }
       // 座った観客（下の段の前 2 列、ゴールのまわり）: ところどころ空席
       if (!low) for (let k = 0; k < 2; k++) {
         const z = ZS + 0.5 + 0.55 + k * 1.03, y = 1.4 + (z - ZS - 0.5) * (7.2 / 16.5);
@@ -1137,7 +1140,7 @@ R3D.Venue = (function () {
        内馬場の縁（最後の直線の奥。スタンド側のクレーン・ゴール前のカメラの背景）と、向正面の生け垣の後ろ（内馬場を走るカメラの背景）。
        ふだんから鮮やかな服の団体（枠色 6 色が混ざる）。crowd のときは 9 割強が枠色の服になる（p.fan） */
     {
-      const r = srand(1213), tone = [ACC0, ACC0 + 1, ACC0 + 2, ACC0 + 3, ACC0 + 4, ACC0 + 5], nf = TVQ ? 18 : low ? 36 : 56, nflag = TVQ ? 2 : 3;   /* 2 回目: 人数 2 倍、大きな旗（2〜3m）を持つ */
+      const r = srand(1213), tone = [ACC0, ACC0 + 1, ACC0 + 2, ACC0 + 3, ACC0 + 4, ACC0 + 5], nf = XLQ ? 10 : TVQ ? 18 : low ? 36 : 56, nflag = XLQ ? 1 : TVQ ? 2 : 3;   /* 2 回目: 人数 2 倍、大きな旗（2〜3m）を持つ */
       const group = (cx, cz, w, d, face) => {
         for (let k = 0; k < nf; k++) { const p = rollPerson(r, { fanTone: tone, kids: 0.08 }); p.shirt = tone[(r() * tone.length) | 0]; p.fan = 1; p.x = cx + (r() - 0.5) * w; p.y = 0.03; p.z = cz + (r() - 0.5) * d; p.ry = face + (r() - 0.5) * 0.5; people.push(p); }
         for (let k = 0; k < nflag; k++) fanFlags.push({ x: cx + (r() - 0.5) * w * 0.8, y: 0.03, z: cz + (r() - 0.5) * d, k: 0.5 + r() * 0.12, ry: face + Math.PI / 2 + (r() - 0.5) * 1.2, cue: 1 });
@@ -1176,7 +1179,7 @@ R3D.Venue = (function () {
         const A = cp[k], B = cp[k + 1], dx = B.x - A.x, dz = B.z - A.z, l = Math.hypot(dx, dz) || 1, nx = -dz / l * 1.4, nz = dx / l * 1.4;
         G.pave.quad([A.x - nx, 0.025, A.z - nz], [B.x - nx, 0.025, B.z - nz], [B.x + nx, 0.025, B.z + nz], [A.x + nx, 0.025, A.z + nz], C('#d9c9a3'), null, 0, [0, 1, 0]);
       }
-      const step = TVQ ? 15 : low ? 11 : 8.6;
+      const step = XLQ ? 22 : TVQ ? 15 : low ? 11 : 8.6;
       for (let x = -LS / 2 - DIN; x <= LS / 2 + DIN; x += step) for (let z = -DIN; z <= DIN; z += step * 0.87) {
         const X = x + (R() - 0.5) * step * 0.8 + (Math.round(z / step) % 2) * step * 0.5, Z = z + (R() - 0.5) * step * 0.6;
         if (!inField(X, Z) || clear(X, Z)) continue;
@@ -1213,7 +1216,7 @@ R3D.Venue = (function () {
     }
 
     // 内馬場の縁（ダートの内ラチの内側）に丸い植え込みの列
-    for (let s = 0; s < L; s += TVQ ? 8 : low ? 5 : 3.4) { const p = CO.pointAt(s, DIN - 2.2); trees.push({ x: p.x, z: p.z, h: 1.5 + R() * 0.4, rad: 0.95 + R() * 0.2, tone: 0.95 + R() * 0.15, kind: 2 }); }
+    for (let s = 0; s < L; s += XLQ ? 14 : TVQ ? 8 : low ? 5 : 3.4) { const p = CO.pointAt(s, DIN - 2.2); trees.push({ x: p.x, z: p.z, h: 1.5 + R() * 0.4, rad: 0.95 + R() * 0.2, tone: 0.95 + R() * 0.15, kind: 2 }); }
     // スタンド前の広場のパラソル（青と白・ときどき赤や緑）
     for (const z of [RO + 19.5, RO + 28]) for (let x = SX0 + 8; x < SX1 - 4; x += 11) { if (R() < 0.12) continue; parasols.push({ x: x + (R() - 0.5) * 2, z: z + (R() - 0.5) * 2 }); }
 
@@ -1448,7 +1451,7 @@ R3D.Venue = (function () {
       }
     }
     // パラソル（柄・8 枚の布を交互に色と白・丸テーブル）
-    if (TVQ) parasols.splice(0, parasols.length, ...parasols.filter((_, i) => i % 2 === 0)); // Fire TV: パラソルは半分
+    if (TVQ) parasols.splice(0, parasols.length, ...parasols.filter((_, i) => i % (XLQ ? 4 : 2) === 0)); // Fire TV: パラソルは半分
     if (parasols.length) {
       const pg = new Geo(), wh = C("#f7f7f5"), N8 = 8, Rr = 2.5, Hh = 2.7;
       pg.add(new T.CylinderGeometry(0.03, 0.03, Hh, TVQ ? 4 : 5, 1, true), mat(0, Hh / 2, 0, 1, 1, 1), C('#d8d8d8'));   /* 柄（ふたなし） */
@@ -1736,7 +1739,7 @@ R3D.Venue = (function () {
       if (r() < 0.55) g.add(BOX, mat(x + (r() - 0.5) * w * 0.4, h + 1.1, z + (r() - 0.5) * d * 0.4, w * 0.3, 2.2, d * 0.3, ry), C('#a6aeac'), { uvf: () => [0.002, 0.998] });
     };
     // 碁盤の目の街区（道は地面のアスファルト色、街区は歩道＋建物、ときどき公園）
-    const BW = 64, BD = 56, maxD = TVQ ? 300 : low ? 560 : 860;
+    const BW = 64, BD = 56, maxD = XLQ ? 200 : TVQ ? 300 : low ? 560 : 860;
     for (let gx = -BW * 13; gx < BW * 13; gx += BW) for (let gz = -BD * 13; gz < BD * 11; gz += BD) {
       const cx = gx + BW / 2, cz = gz + BD / 2, d = Math.hypot(Math.max(0, Math.abs(cx) - LS / 2), cz);
       if (d < RO + 118 || d > maxD) continue;
