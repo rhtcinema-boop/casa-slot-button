@@ -5,7 +5,9 @@
    通信はすべて DerbyCloud（v2/client.js）経由（模擬クラウドも Firestore も同じ関数）。
    方針: 時刻表は「エラーがあったら保存できない」（casa SLOT の配当表と同じ）。見た目と言葉は 2026-10-19 のシンプル化（deploy/ADMIN_SIMPLE_NOTES.md）のまま。
    2026-10-26 オーナー: 営業は 25 時まで。時刻は「25:00」の書き方（05:00〜28:59・文字の欄・Core.fmtBizTime と同じ営業日の時計で表示）。
-   時刻表の行ごとに「投票できる店」のチェック（rule.storeIds。null ＝ 全店）。今日のレース・この日の予定に店の札（全店／上野・札幌）。 */
+   時刻表の行ごとに「投票できる店」のチェック（rule.storeIds。null ＝ 全店）。今日のレース・この日の予定に店の札（全店／上野・札幌）。
+   2026-10-27 オーナー: 時刻表に「祝日」の予定（kind 'holiday'。祝日は core.js が自動で判定: Core.isHoliday / Core.holidayName。振替休日・国民の休日を含む）。
+   使う順は 日付 → 祝日 → 曜日 → 毎日（サーバーと同じ）。この日の予定・今日のレースに「祝日・文化の日」の金の札。 */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -51,6 +53,20 @@
     return pad(h) + ':' + pad(d.getUTCMinutes());
   };
   const bizMin = (ms) => toMin(bizHM(ms)); // 営業日の 0:00 からの分（25:30 → 1530）
+  /* 祝日（2026-10-27 オーナー）: 判定は core.js の Core.isHoliday(日付) / Core.holidayName(日付)（振替休日・国民の休日を含む）。
+     模擬クラウドでは client.js が core.js を読まないので、無ければ ensureCore で自分の隣の core.js を読む。読めない間・読めなかったときは「祝日ではない」として何も出さない（bizHM と同じ考え） */
+  const holidayName = (ds) => { const K = window.DerbyCore; if (!K || typeof K.holidayName !== 'function' || !isDate(ds)) return null; try { return K.holidayName(ds) || null; } catch (e) { return null; } };
+  const isHoliday = (ds) => { const K = window.DerbyCore; if (!K || !isDate(ds)) return false; if (typeof K.isHoliday === 'function') { try { return !!K.isHoliday(ds); } catch (e) { return false; } } return !!holidayName(ds); };
+  const holidayChip = (ds, cls) => { const n = holidayName(ds); return n ? '<span class="chip holiday' + (cls ? ' ' + cls : '') + '">祝日・' + esc(n) + '</span>' : ''; }; // 金の札「祝日・文化の日」
+  const SELF_SRC = (document.currentScript && document.currentScript.src) || '';
+  function ensureCore() {
+    if (window.DerbyCore || !SELF_SRC) return;
+    const s = document.createElement('script');
+    s.src = SELF_SRC.replace(/[?#].*$/, '').replace(/[^/]*$/, '') + 'core.js' + ((/[?]v=[^#&]+/.exec(SELF_SRC) || [''])[0]); // 自分（admin.js?v=…）と同じ版の印を付ける
+    s.onload = () => { if (tab === 'timetable' && tt) paintPreview(); if (tab === 'races' && racesData) keepScroll(() => { main.innerHTML = viewRaces(); }); }; // 読めたら祝日の札を出し直す
+    s.onerror = () => { /* 読めなければ祝日なしのまま */ };
+    document.head.appendChild(s);
+  }
   const addDays = (d, n) => ymd(Date.parse(d + 'T00:00:00Z') + n * 864e5);
   const wdOf = (d) => new Date(d + 'T00:00:00Z').getUTCDay();
   const fmtDay = (d) => (+d.slice(5, 7)) + '/' + (+d.slice(8, 10)) + '(' + WD[wdOf(d)] + ')';
@@ -132,6 +148,7 @@
   async function start() {
     if (!window.DerbyCloud) { main.innerHTML = '<div class="panel"><h3>接続できません</h3><p class="hint">v2/client.js が読み込めませんでした。</p></div>'; return; }
     C = DerbyCloud.create({ role: 'admin' });
+    ensureCore(); // 祝日の判定（core.js）。模擬クラウドでは client.js が読まないので自分で読む（2026-10-27）
     try { await C.syncClock(); } catch (e) { /* 時刻合わせに失敗しても端末の時計で続ける */ }
     const saved = sessionStorage.getItem(PW_KEY);
     if (saved) { try { await login(saved); return; } catch (e) { sessionStorage.removeItem(PW_KEY); } }
@@ -552,31 +569,37 @@
   }
   const sKey = (r) => (r.s ? r.s.join(',') : ''); // 行の店の組を文字に（Rule に分けるときの鍵。'' ＝ 全店）
   const copyS = (s) => (Array.isArray(s) ? s.slice() : null);
-  function loadTT() {
+  const KINDS = ['daily', 'weekday', 'date', 'holiday']; // 予定の種類（2026-10-27: 祝日を足した。知らない種類は毎日として読む）
+  // サーバーの Rule → 画面のテンプレート（保存済みの決まりから「この日の予定」を見るときにも使う）
+  function tplsFromRules(rules) {
     const map = new Map(), tpls = [];
-    cfg.rules.forEach((r) => {
+    rules.forEach((r) => {
       const key = r.tpl || (r.id ? String(r.id).split('~')[0] : nk()); // サーバーが tpl を残さなくても、id の「~」より前で元のテンプレートに戻せる
       let t = map.get(key);
       if (!t) {
-        t = { k: nk(), id: key, name: r.name || '', enabled: r.enabled !== false, kind: r.kind || 'daily', weekdays: (r.weekdays || []).slice(), date: r.date || '', storeId: r.storeId || null, scope: r.scope || 'all', rows: [] };
+        t = { k: nk(), id: key, name: r.name || '', enabled: r.enabled !== false, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'daily', weekdays: (r.weekdays || []).slice(), date: r.date || '', storeId: r.storeId || null, scope: r.scope || 'all', rows: [] };
         map.set(key, t); tpls.push(t);
       }
       ruleRows(r).forEach((x) => t.rows.push({ k: nk(), t: x.t, p: String(x.p), s: copyS(x.s) }));
     });
     tpls.forEach((t) => sortRows(t));
+    return tpls;
+  }
+  function loadTT() {
+    const tpls = tplsFromRules(cfg.rules);
     tt = { tpls };
     ttOrig = new Set(); tpls.forEach((t) => t.rows.forEach((r) => ttOrig.add(t.id + '|' + r.t)));
     ttDirty = false;
   }
   const sortRows = (t) => t.rows.sort((a, b) => { const x = toMin(a.t), y = toMin(b.t); return (isNaN(x) ? 1e9 : x) - (isNaN(y) ? 1e9 : y); });
-  const tplName = (t) => t.name || (t.kind === 'daily' ? '毎日' : t.kind === 'weekday' ? '曜日: ' + (t.weekdays.length ? t.weekdays.slice().sort().map((d) => WD[d]).join('') : 'まだ選んでいない') : '日付: ' + (t.date ? fmtDay(t.date) : 'まだ選んでいない'));
+  const tplName = (t) => t.name || (t.kind === 'daily' ? '毎日' : t.kind === 'holiday' ? '祝日' : t.kind === 'weekday' ? '曜日: ' + (t.weekdays.length ? t.weekdays.slice().sort().map((d) => WD[d]).join('') : 'まだ選んでいない') : '日付: ' + (t.date ? fmtDay(t.date) : 'まだ選んでいない'));
   const legacyTpl = (t) => !!t.storeId || t.scope === 'store'; // 以前の形（店舗だけ・目標は店舗ごと）
   // 閉じた札の 1 行: いつ・件数・時間帯・目標
   function tplSummary(t) {
     const kind = tplName(Object.assign({}, t, { name: '' })), ts = t.rows.map((r) => r.t).filter((x) => !isNaN(toMin(x))).sort(), ps = t.rows.map((r) => Number(r.p)).filter((p) => p > 0);
     const lo = ps.length ? Math.min.apply(null, ps) : 0, hi = ps.length ? Math.max.apply(null, ps) : 0;
     const lim = t.rows.filter((r) => Array.isArray(r.s)).length; // 店を限定している行（2026-10-26）
-    return [t.name ? kind : '', t.storeId ? storeName(t.storeId) + 'だけ' : '', t.rows.length + ' レース', ts.length ? ts[0] + '〜' + ts[ts.length - 1] : '', ps.length ? '目標 ' + (lo === hi ? ptT(lo) : fmtN(lo) + '〜' + ptT(hi)) : '', lim ? lim + ' レースは店を限定' : ''].filter(Boolean).join('・');
+    return [t.name ? kind : '', t.kind === 'holiday' ? '祝日に使う（自動で判定）' : '', t.storeId ? storeName(t.storeId) + 'だけ' : '', t.rows.length + ' レース', ts.length ? ts[0] + '〜' + ts[ts.length - 1] : '', ps.length ? '目標 ' + (lo === hi ? ptT(lo) : fmtN(lo) + '〜' + ptT(hi)) : '', lim ? lim + ' レースは店を限定' : ''].filter(Boolean).join('・');
   }
   // 画面のテンプレート → サーバーの Rule。「同じ目標 × 同じ店の組」の行をひとつの Rule に（storeIds は配列か null＝全店）。並びは最初に出てきた組の順
   function templatesToRules(tpls) {
@@ -590,14 +613,17 @@
     });
     return rules;
   }
-  // その日・その店に適用されるテンプレート（サーバーと同じ決まり: 日付 → 曜日 → 毎日。全店の決まりと店舗ごとの決まりは別々に判定）
+  // その日・その店に適用されるテンプレート（サーバーと同じ決まり: 日付 → 祝日 → 曜日 → 毎日。全店の決まりと店舗ごとの決まりは別々に判定）
+  // 祝日は core.js の判定（2026-10-27）。core.js が無いときは祝日ではないとして進む（曜日 → 毎日）
   function dayTpls(tpls, d, group) {
     const mine = tpls.filter((t) => t.enabled && (t.storeId || null) === group);
     let pick = mine.filter((t) => t.kind === 'date' && t.date === d);
+    if (!pick.length && isHoliday(d)) pick = mine.filter((t) => t.kind === 'holiday');
     if (!pick.length) pick = mine.filter((t) => t.kind === 'weekday' && t.weekdays.indexOf(wdOf(d)) >= 0);
     if (!pick.length) pick = mine.filter((t) => t.kind === 'daily');
     return pick;
   }
+  const usesHoliday = (tpls, d) => dayTpls(tpls, d, null).some((t) => t.kind === 'holiday'); // その日は祝日の決まりを使うか（全店の決まりで見る）
   // その日・その店で実際に走るレース（storeId=null なら全店同時のレースだけ）
   // collide（配列）を渡すと、別のテンプレートどうしで同じ時刻になった組を入れる（サーバーは黙って下のテンプレートを使うので、画面ではエラーにする）
   function daySchedule(tpls, d, storeId, collide) {
@@ -680,7 +706,9 @@
     const g = minGapSec(), voteMin = secTxt(g.vote);
     const tplHtml = (t, i) => {
       const cond = t.kind === 'weekday' ? '<div class="wdays">' + [1, 2, 3, 4, 5, 6, 0].map((d) => '<label class="' + (t.weekdays.indexOf(d) >= 0 ? 'on' : '') + '"><input type="checkbox" data-wd="' + d + '"' + (t.weekdays.indexOf(d) >= 0 ? ' checked' : '') + '>' + WD[d] + '</label>').join('') + '</div>'
-        : t.kind === 'date' ? '<input type="date" data-tf="date" value="' + esc(t.date) + '">' : '<div class="hint" style="margin:0;padding-top:18px">曜日・日付の予定がない日に使います</div>';
+        : t.kind === 'date' ? '<input type="date" data-tf="date" value="' + esc(t.date) + '">'
+        : t.kind === 'holiday' ? '<div class="hint holnote" style="margin:0;padding-top:18px">祝日は自動で判定します（振替休日・国民の休日を含む）</div>' /* 2026-10-27: 祝日は曜日・日付を選ばない */
+        : '<div class="hint" style="margin:0;padding-top:18px">祝日・曜日・日付の予定がない日に使います</div>';
       const open = tplOpen.has(t.id);
       return '<div class="tpl' + (t.enabled ? '' : ' off') + (open ? ' open' : '') + '" data-tk="' + t.k + '">' +
         /* 閉じた札: 名前・いつ・件数・時間帯・目標・要確認。押すと開く */
@@ -692,8 +720,8 @@
         '<button type="button" class="icon" data-act="tpl-up" aria-label="上へ"' + (i ? '' : ' disabled') + '>↑</button><button type="button" class="icon" data-act="tpl-down" aria-label="下へ"' + (i < tt.tpls.length - 1 ? '' : ' disabled') + '>↓</button>' +
         '<button type="button" class="btn xs ghost" data-act="tpl-dup">コピー</button><button type="button" class="icon del" data-act="tpl-del" aria-label="この予定を消す">×</button></div>' +
         (legacyTpl(t) ? '<div class="legacy"><span>以前の形の予定です（' + esc(t.storeId ? storeName(t.storeId) + 'だけ' : '当選額の目標が店舗ごと') + '）。v4 の時刻表は全店同じです。</span><button type="button" class="btn xs ghost" data-act="tpl-allstores">全店にそろえる</button></div>' : '') +
-        '<div class="tpl-cond v4"><label class="f"><span>いつ</span><select data-tf="kind"><option value="daily"' + (t.kind === 'daily' ? ' selected' : '') + '>毎日</option><option value="weekday"' + (t.kind === 'weekday' ? ' selected' : '') + '>曜日を選ぶ</option><option value="date"' + (t.kind === 'date' ? ' selected' : '') + '>日付を選ぶ</option></select></label>' +
-        '<div class="f">' + (t.kind === 'daily' ? '' : '<span class="hint" style="display:block;margin:0 0 4px">' + (t.kind === 'weekday' ? '曜日' : '日付') + '</span>') + cond + '</div></div>' +
+        '<div class="tpl-cond v4"><label class="f"><span>いつ</span><select data-tf="kind"><option value="daily"' + (t.kind === 'daily' ? ' selected' : '') + '>毎日</option><option value="weekday"' + (t.kind === 'weekday' ? ' selected' : '') + '>曜日を選ぶ</option><option value="date"' + (t.kind === 'date' ? ' selected' : '') + '>日付を選ぶ</option><option value="holiday"' + (t.kind === 'holiday' ? ' selected' : '') + '>祝日</option></select></label>' +
+        '<div class="f">' + (t.kind === 'weekday' || t.kind === 'date' ? '<span class="hint" style="display:block;margin:0 0 4px">' + (t.kind === 'weekday' ? '曜日' : '日付') + '</span>' : '') + cond + '</div></div>' +
         '<div class="err" data-terr></div>' +
         '<div class="bulk"><b class="bt">まとめて作る</b>' +
         '<label class="f"><span>開始</span>' + timeInput('data-bf="from"', '19:00') + '</label><span class="t">〜</span>' +
@@ -713,7 +741,7 @@
         '</div></div>';
     };
     const side = '<div class="side"><div class="panel"><h3>この日の予定</h3>' +
-      '<label class="f"><span>日付</span><input type="date" id="pvdate" value="' + esc(pvDate || todayStr()) + '"></label>' +
+      '<label class="f"><span>日付</span><input type="date" id="pvdate" value="' + esc(pvDate || todayStr()) + '"></label><span class="pvhol" id="pvhol"></span>' + /* 祝日なら「祝日・文化の日」の札（paintPreview で入れる。2026-10-27） */
       '<div class="seg pvseg"><button type="button" class="' + (pvSrc === 'local' ? 'on' : '') + '" aria-pressed="' + (pvSrc === 'local') + '" data-act="pv-local">変更後</button><button type="button" class="' + (pvSrc === 'server' ? 'on' : '') + '" aria-pressed="' + (pvSrc === 'server') + '" data-act="pv-server">保存済み</button></div>' +
       '<div id="pvbox"></div></div></div>';
     return '<div class="panel"><h3>時刻表を変える</h3>' +
@@ -725,11 +753,11 @@
       '<p class="hint">' + voteExample(g.vote) + ' 21:00 に締め切って走り出します。</p>' +
       '<p class="hint">最短間隔 ' + secTxt(g.sec) + ' ＝ 投票 ' + g.vote + ' 秒＋ゲートイン ' + g.gate + ' 秒＋レース約 ' + RUN_SEC + ' 秒＋ゴール後 ' + g.post + ' 秒＋写真判定の余裕 ' + g.photo + ' 秒。投票の時間は「調整」で変えます。</p>' +
       '<p class="hint">当選額の目標＝そのレースで当たった人に渡す額の合計の目安（当たった人数 × 100pt × 倍率）。100 単位に丸めて保存します。勝ち馬はこの目標に近づくように決まります（「調整」の「勝ち馬の決まり方」）。</p>' +
-      '<p class="hint">その日に<b>日付の予定があればそれだけ → なければ曜日 → なければ毎日</b>を使います。同じ時刻は下の予定が使われます。</p>' +
+      '<p class="hint">その日に<b>日付の予定があればそれだけ → なければ祝日 → なければ曜日 → なければ毎日</b>を使います。祝日は自動で判定します（振替休日・国民の休日を含む）。同じ時刻は下の予定が使われます。</p>' +
       '<p class="hint">近すぎる・重なる・過去の時刻・おかしな値があると保存できません。保存すると、まだ作られていないこれからのレースに反映されます。</p>' +
       '</div></details></div>' +
       '<div class="tt-layout"><div>' + (tt.tpls.length ? tt.tpls.map(tplHtml).join('') : '<div class="panel"><div class="empty">まだ予定がありません。下のボタンで作ってください。</div></div>') +
-      '<div class="acts l"><button type="button" class="btn ghost" data-act="tpl-add" data-kind="daily">＋ 毎日の予定</button><button type="button" class="btn ghost" data-act="tpl-add" data-kind="weekday">＋ 曜日の予定</button><button type="button" class="btn ghost" data-act="tpl-add" data-kind="date">＋ 日付の予定</button></div>' +
+      '<div class="acts l"><button type="button" class="btn ghost" data-act="tpl-add" data-kind="daily">＋ 毎日の予定</button><button type="button" class="btn ghost" data-act="tpl-add" data-kind="weekday">＋ 曜日の予定</button><button type="button" class="btn ghost" data-act="tpl-add" data-kind="date">＋ 日付の予定</button><button type="button" class="btn ghost" data-act="tpl-add" data-kind="holiday">＋ 祝日の予定</button></div>' +
       '</div>' + side + '</div>' +
       '<div class="savebar"><div class="msg" id="ttmsg"></div><button type="button" class="btn ghost" data-act="tt-revert">元に戻す</button><button type="button" class="btn" data-act="tt-save" id="ttsave">保存</button></div>';
   }
@@ -771,6 +799,13 @@
   function paintPreview() {
     const box = $('pvbox'); if (!box) return;
     const d = pvDate || todayStr(), vs = (Number(cfg.tuning.voteSec) || 0) + (Number(cfg.tuning.closeLeadSec) || 0);
+    /* 祝日（2026-10-27）: 日付の横に「祝日・文化の日」の金の札。名前はサーバーの答え（preview の holiday）か core.js。
+       「変更後」はいま編集中の予定で、「保存済み」は保存済みの決まりで、その日に祝日の決まりを使うかを見て「祝日の決まりを使っています」 */
+    let hol = holidayName(d), usedHol = false;
+    if (pvSrc === 'server') { if (pvServer && !pvServer.err) { if (pvServer.holiday) hol = pvServer.holiday; usedHol = !!(hol || isHoliday(d)) && usesHoliday(tplsFromRules(cfg.rules), d); } }
+    else if (isDate(d) && tt) usedHol = usesHoliday(tt.tpls, d);
+    { const h = $('pvhol'); if (h) h.innerHTML = hol ? '<span class="chip holiday">祝日・' + esc(hol) + '</span>' : ''; }
+    const holHint = usedHol ? '<p class="hint holhint">祝日の決まりを使っています</p>' : '';
     let items;
     if (pvSrc === 'server') {
       if (!pvServer) { box.innerHTML = '<div class="empty">読み込み中…</div>'; return; }
@@ -784,13 +819,13 @@
     const isToday = d === bizToday(), nm = bizMin(now()); // 営業日で見る（25:00 は「今日」の深夜）
     const total = items.reduce((a, x) => a + (Number(x.p) || 0), 0);
     const anyLim = items.some((x) => Array.isArray(x.s) && x.s.length); // 店を限定したレースがあるときだけ、時刻の下に店の札（全店／渋谷・札幌）。右の枠は細いので列は増やさない
-    box.innerHTML = '<div class="summary" style="grid-template-columns:1fr 1fr"><div class="stat"><small>レース数</small><b>' + items.length + '</b></div><div class="stat"><small>当選額の目標の合計</small><b>' + ptN(total) + '</b></div></div>' +
+    box.innerHTML = holHint + '<div class="summary" style="grid-template-columns:1fr 1fr"><div class="stat"><small>レース数</small><b>' + items.length + '</b></div><div class="stat"><small>当選額の目標の合計</small><b>' + ptN(total) + '</b></div></div>' +
       (items.length ? '<div class="pv-list"><table><tr><th>走り出す</th><th>投票</th><th class="n">目標</th><th>予定</th></tr>' + items.map((x) => '<tr class="' + (isToday && toMin(x.t) < nm ? 'past' : '') + '"><td class="pvt"><b>' + esc(x.t) + '</b>' + (x.store ? '<small class="hint"> ' + esc(storeName(x.store)) + 'だけ</small>' : '') + (anyLim ? '<span class="pvst">' + storesChip(x.s) + '</span>' : '') + '</td><td><small class="hint">' + esc(x.open || '') + '〜</small></td><td class="n">' + ptN(x.p) + '</td><td class="pvname"><small class="hint" title="' + esc(x.name || '') + '">' + esc(x.name || '') + '</small></td></tr>').join('') + '</table></div>'
         : '<div class="empty">この日はレースがありません</div>');
   }
   async function loadServerPreview() {
     pvServer = null; paintPreview();
-    try { const r = await api('preview', pvDate || todayStr()); pvServer = { races: ((r && r.races) || []).filter((x) => !x.storeId) }; }
+    try { const r = await api('preview', pvDate || todayStr()); pvServer = { races: ((r && r.races) || []).filter((x) => !x.storeId), holiday: (r && r.holiday) || null }; } // holiday: 祝日の名前か null（2026-10-27）
     catch (e) { pvServer = { err: errText(e), races: [] }; }
     paintPreview();
   }
@@ -914,7 +949,10 @@
         td('', canRefund && !open ? '<button class="btn xs ghost" data-act="race-refund" data-id="' + esc(r.id) + '" aria-expanded="false">レース取消</button>' : '', 'right') + '</tr>' +
         (open ? '<tr class="rfrow"><td colspan="6">' + refundBox(r) + '</td></tr>' : '');
     };
-    return '<div class="panel" id="racePanel"><h3>' + (isToday ? '今日のレース' : esc(fmtDay(raceDate)) + 'のレース') + '<span class="sp"></span>' + (isToday ? '<small class="auto">自動で更新</small>' : '') + '</h3>' +
+    /* 祝日（2026-10-27）: 見出しの日付の横に「祝日・文化の日」の金の札。保存済みの決まりでその日に祝日の予定を使うなら一文 */
+    const holUsed = isHoliday(raceDate) && usesHoliday(tplsFromRules(cfg.rules), raceDate);
+    return '<div class="panel" id="racePanel"><h3>' + (isToday ? '今日のレース' : esc(fmtDay(raceDate)) + 'のレース') + holidayChip(raceDate, 'hd') + '<span class="sp"></span>' + (isToday ? '<small class="auto">自動で更新</small>' : '') + '</h3>' +
+      (holUsed ? '<p class="hint holhint">祝日の決まりを使っています</p>' : '') +
       (isToday ? tvStrip() : '') +
       nowCard(list, isToday) +
       '<div class="summary" id="raceSum"><div class="stat"><small>終わったレース</small><b>' + sum.done + ' / ' + real.length + '</b></div><div class="stat"><small>参加（票の数）</small><b>' + fmtN(sum.votes) + '人</b></div>' +
@@ -1375,6 +1413,7 @@
     get tt() { return tt; }, get cfg() { return cfg; }, get dirty() { return ttDirty; }, get tunDirty() { return tunDirty; }, get pair() { return pairData; }, get races() { return racesData; }, get stats() { return statsData; }, get tab() { return tab; }, loadPair, minGapSec: () => minGapSec().sec,
     validate: () => (tt ? validateTT() : null), templatesToRules: () => templatesToRules(tt.tpls), daySchedule: (d, s) => daySchedule(tt.tpls, d, s || null).map((x) => ({ t: x.t, p: x.p, store: x.group, stores: x.s })),
     bizHM, normTime, // 営業日の時計（25:00）と時刻の整え（テスト用）
+    holidayName, isHoliday, // 祝日の判定（core.js。無ければ null / false。2026-10-27）
     go(name) { name = TAB_ALIAS[name] || name; const b = document.querySelector('#tabs [data-tab="' + name + '"]'); if (b) b.click(); return tab; },
   };
   start();
