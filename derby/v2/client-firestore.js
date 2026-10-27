@@ -15,7 +15,7 @@
   'use strict';
 
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // casa SLOT と同じ版（compat）
-  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24） */
+  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
   const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
@@ -105,12 +105,29 @@
   /* ---------- ブラウザ: SDK を読み込んでつなぐ（casa SLOT の js/cloud.js と同じやり方） ---------- */
   let connectP = null;
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); }); }
+  /* App Check の下準備（2026-10-27。まだ「強制」はしない＝v2/FIREBASE_SETUP.md の「App Check」）:
+     window.DERBY_APPCHECK_KEY（v2/config.prod.js。いまは null）があるときだけ、同じ版の compat の SDK（firebase-app-check-compat.js）を読み、
+     reCAPTCHA v3（window.DERBY_APPCHECK_PROVIDER が 'enterprise' なら reCAPTCHA Enterprise）で有効にする。
+     鍵が無ければ何もしない。読めない・失敗した・3 秒かかったときは、そのまま続ける（画面を止めない。強制していないので Firestore はふつうに使える） */
+  function appCheck(app) {
+    const key = typeof window !== 'undefined' ? window.DERBY_APPCHECK_KEY : null;
+    if (!key || typeof key !== 'string') return Promise.resolve(false);
+    const go = (async () => {
+      if (!(firebase.appCheck)) await loadScript(SDK + 'firebase-app-check-compat.js');
+      const AC = firebase.appCheck, prov = window.DERBY_APPCHECK_PROVIDER === 'enterprise' ? new AC.ReCaptchaEnterpriseProvider(key) : new AC.ReCaptchaV3Provider(key);
+      const ac = typeof app.appCheck === 'function' ? app.appCheck() : AC(app);
+      ac.activate(prov, true); // true: 鍵の自動更新
+      return true;
+    })().catch(() => false);
+    return Promise.race([go, new Promise((res) => setTimeout(() => res(false), 3000))]);
+  }
   function connect(config) {
     if (connectP) return connectP;
     connectP = (async () => {
       for (const f of ['firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js']) await loadScript(SDK + f);
       /* global firebase */
       const app = firebase.apps.find((a) => a.name === 'derby') || firebase.initializeApp(config.firebase, 'derby'); // casa SLOT と同じページに入っても混ざらないよう名前つき
+      await appCheck(app); // App Check の下準備（2026-10-27。鍵があるときだけ・失敗しても止めない）
       const db = app.firestore();
       const newApp = (name) => firebase.initializeApp(config.firebase, name); /* テレビ用アカウントを作るときの 2 つ目の app（マスターのログインを入れ替えない） */
       return { fb: { db, auth: app.auth(), FieldValue: firebase.firestore.FieldValue, Timestamp: firebase.firestore.Timestamp, newApp }, config };
@@ -266,12 +283,21 @@
     }
     const raceDay = (r) => r.day || Core.bizDate(r.at, (pubCache || Core.DEFAULT_TUNING).dayStartHour);
     const bonusMemo = {}; // 1 票目の vid → いま 2 票目を入れられるか（端末と印を 1 回だけ読む。2 票目を作った・番号を空けられたら消す）
+    /* 同じ端末のボーナスは 1 日 1 回まで（2026-10-27）: derbyBonusDev/<営業日>~<uid>（自分の印は読める・まだ無い印は「無い」と読める）。
+       devDay[営業日]: true（もう使った）| false（まだ）| 'err'（読めない＝新しいルールを貼る前。印を作らずに今までどおり＝古いルールは印を見ない） */
+    const devDay = {};
+    async function bonusDevUsed(day) {
+      if (devDay[day] !== undefined) return devDay[day];
+      try { devDay[day] = (await doc(COL.bonusDev, Core.bonusDevKey(day, uid())).get()).exists; } catch (e) { devDay[day] = 'err'; }
+      return devDay[day];
+    }
     async function bonusCan(v1, r, v2) {
       if (!v1 || v2 || !r || !Core.votingOpen(r, now())) return false;
       if (bonusMemo[v1.vid] !== undefined) return bonusMemo[v1.vid];
       const dev = await myDevice(); let ok = false;
       if (dev !== 'err' && Core.bonusDeviceOk(dev, r.id)) {
         if (v1.test) ok = true; // テストの票は印を見ない（本物の印を使い切らない）
+        else if ((await bonusDevUsed(raceDay(r))) === true) ok = false; // この端末はこの営業日にもう使った（ほかの番号・ほかの店でも）＝「もう1票」を出さない
         else { try { ok = !(await doc(COL.bonus, Core.bonusKey(raceDay(r), v1.storeId, v1.bill)).get()).exists; } catch (e) { ok = false; } } // 人の印は読めない（＝使われている）
       }
       bonusMemo[v1.vid] = ok; return ok;
@@ -306,9 +332,12 @@
           else {
             if (!(await bonusCan(v1, r, null))) throw E(409, 'no_bonus', '初参加ボーナスの 2 票目は使えません（このスマホの初めてのレースで、その日その番号で 1 回だけ）');
             v2 = { vid: vid2, raceId: r.id, storeId: sid, bill: v1.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: !!v1.test, n: 2 };
-            const b = db.batch(); b.set(ref2, v2);
-            if (!v1.test) { const day = raceDay(r); b.set(doc(COL.bonus, Core.bonusKey(day, sid, v1.bill)), { day, storeId: sid, bill: v1.bill, raceId: r.id, owner: uid(), at: t }); }
-            await b.commit(); bonusMemo[vid1] = false;
+            const b = db.batch(); b.set(ref2, v2); const day = raceDay(r), markDev = !v1.test && (await bonusDevUsed(day)) !== 'err';
+            if (!v1.test) b.set(doc(COL.bonus, Core.bonusKey(day, sid, v1.bill)), { day, storeId: sid, bill: v1.bill, raceId: r.id, owner: uid(), at: t });
+            if (markDev) b.set(doc(COL.bonusDev, Core.bonusDevKey(day, uid())), { day, owner: uid(), raceId: r.id, storeId: sid, bill: v1.bill, at: t }); // 端末の 1 日 1 回の印（ルール: 同じ書き込みで作る）
+            await b.commit();
+            if (!v1.test) { devDay[day] = markDev ? true : devDay[day]; Object.keys(bonusMemo).forEach((k) => { delete bonusMemo[k]; }); } // ほかの番号の「もう1票」も消す
+            bonusMemo[vid1] = false;
           }
         } catch (e) {
           if (e && e.code === 'no_bonus') throw e;
@@ -320,19 +349,29 @@
         return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
       }
       const vid = Core.voteId(r.id, sid, c.bill), ref = doc(COL.votes, vid);
-      let mine = null, taken = false;
+      let mine = null, taken = false, devSame = false;
       try { mine = data(await ref.get()); } catch (e) { if (e && e.code === 'permission-denied') taken = true; else throw mapErr(e); }
       if (taken) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill });
       let v;
       try {
         if (mine) { const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t }; await ref.update(patch); v = Object.assign(mine, patch); }
-        else { v = { vid, raceId: r.id, storeId: sid, bill: c.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: !!(r.test || (st.settings && st.settings.test)) }; await ref.set(v); }
+        else {
+          v = { vid, raceId: r.id, storeId: sid, bill: c.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: !!(r.test || (st.settings && st.settings.test)) };
+          /* 本物のレースの 1 票目は、端末のリスト（derbyDevices/<uid>）も同じ書き込みで（2026-10-27。端末のリストを作らないまま「初めて」でいる道をふさぐ＝ルールは 2 票目のときに端末のリストがあることを見る）。
+             端末のリストの書き方が合わなかった（ほかのタブで書いた・古いルール）ときは、票だけを書いて、あとで今までどおり書く */
+          const dev = v.test ? 'err' : await myDevice(), pl = dev === 'err' ? null : Core.devicePlan(dev, r.id, sid, t);
+          if (pl) {
+            const dref = doc(COL.devices, uid()), b = db.batch(); b.set(ref, v); if (pl.create) b.set(dref, pl.create); else b.update(dref, pl.update);
+            try { await b.commit(); devCache = pl.create ? pl.create : Object.assign({}, dev, pl.update); devSame = true; }
+            catch (e1) { if (!(e1 && e1.code === 'permission-denied')) throw e1; devCache = undefined; await ref.set(v); }
+          } else await ref.set(v);
+        }
       } catch (e) {
         if (e && e.code === 'permission-denied') { const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill }); throw E(409, 'closed', '締め切りました', { openId: openId() }); }
         throw mapErr(e);
       }
       if (live.votes[vid]) live.votes[vid] = v; // 見張り中の写しだけ直す（見張っていない票は写しを持たない＝決める係の書いた当たりの印を見落とさない）
-      if (!mine && !v.test) await touchDevice(r, sid, t); // 端末のリスト（本物のレースの 1 票目だけ）
+      if (!mine && !v.test && !devSame) await touchDevice(r, sid, t); // 端末のリスト（本物のレースの 1 票目だけ。同じ書き込みで書けなかったときだけ）
       const pr = await pairOf(v, mine ? await readVote(vid + '~2') : null); // 新しい 1 票目に 2 票目は無い（番号を空けると両方消える）
       return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
     }
@@ -542,6 +581,7 @@
       const votes = vq.docs.map((d) => d.data());
       const day = r.day || Core.bizDate(r.at, sc.tuning.dayStartHour), st = data(await doc(COL.stats, day).get());
       const d = Core.decideRace(Engine, Outcome, r, secret, votes, sc.tuning, sc.salt, now(), (st && st.committed) || 0);
+      if (d.decision.manyBills) logD([now(), 'many_bills ' + raceId + ' ' + d.decision.manyBills.map((x) => x.dev + ':' + x.bills).join(',')]); // 1 台で番号が多いスマホ（2026-10-27。決め方に数えない。記録は derbyRaceSecrets の decision と当たりの flag）
       const exp = Core.expireAtFor(Math.max(r.at, d.revealAt), sc.tuning.dayStartHour);
       const mine = (x) => !!x && x.status === 'closing' && x.closingKey === key;
       const list = d.payouts.map((p) => ({ p, pid: Core.pidFor(Outcome, sc.salt, raceId, p.vid, 'win') }));
@@ -616,7 +656,7 @@
         if (force && p.revealAt > out.revealAt) Object.assign(patch, { revealAt: out.revealAt, revealAtTs: Ts(out.revealAt) });
         if (p.status === 'unpaid' && p.expireAt != null && p.expireAt < exp) Object.assign(patch, { expireAt: exp, expireAtTs: Ts(exp) });
         ws.push((b) => b.update(doc(COL.payouts, p.pid), patch));
-        ws.push((b) => b.set(doc(COL.logs, 'win_' + p.pid), { at: t, date: Core.bizDate(t, h), cal: Core.dateStr(t), type: 'win', storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null, vid: p.vid || null, pid: p.pid, raceId }));
+        ws.push((b) => b.set(doc(COL.logs, 'win_' + p.pid), Object.assign({ at: t, date: Core.bizDate(t, h), cal: Core.dateStr(t), type: 'win', storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null, vid: p.vid || null, pid: p.pid, raceId }, p.flag ? { flag: p.flag } : {}))); // flag: 1 台で番号が多いスマホの当たり（2026-10-27）
       });
       await commitChunks(ws);
       return out;
@@ -1115,6 +1155,18 @@
           const rate = (x) => (x.target ? Math.round(x.paid / x.target * 1000) / 1000 : 0);
           tot.payRate = rate(tot); Object.values(tot.byStore).forEach((b) => { b.payRate = rate(b); });
           return { from, to, store: s || null, days, totals: tot };
+        }),
+        /* 見える化（2026-10-27。管理の集計タブの「注意」。模擬クラウドの GET /api/admin/abuse と同じ形 ＝ Core.abuseReport）。
+           読むのはマスターが今までも読めるものだけ: その期間のレース（day）→ 本物のレースの票（raceId ごと）・当たり（day）・ボーナスの印 derbyBonus（day）。
+           端末 ID ＝ 票・当たり・印の owner（匿名ログインの uid）。画面には末尾 6 文字だけ */
+        abuse: wrap(async (from, to, s) => {
+          const sc = await secretConfig(); to = to || Core.bizDate(now(), sc.tuning.dayStartHour); from = from || to;
+          const rq = await db.collection(COL.races).where('day', '>=', from).where('day', '<=', to).get(), races = rq.docs.map((d) => d.data()).filter((r) => r && r.id);
+          const votes = [];
+          for (const r of races) { if (r.test) continue; const vq = await db.collection(COL.votes).where('raceId', '==', r.id).get(); vq.docs.forEach((d) => votes.push(d.data())); }
+          const pq = await db.collection(COL.payouts).where('day', '>=', from).where('day', '<=', to).get();
+          let bonus = []; try { bonus = (await db.collection(COL.bonus).where('day', '>=', from).where('day', '<=', to).get()).docs.map((d) => d.data()); } catch (e) { bonus = []; } // 印が読めない（古いルール）ときは数えない
+          return Core.abuseReport({ races: races.map((r) => ({ id: r.id, day: r.day, at: r.at, test: !!r.test })), votes, payouts: pq.docs.map((d) => d.data()), bonus, tuning: sc.tuning, from, to, store: s || null });
         }),
         logs: wrap(async (o) => {
           o = o || {}; const sc = await secretConfig(), to = o.to || Core.bizDate(now(), sc.tuning.dayStartHour), from = o.from || to;
