@@ -512,7 +512,7 @@
     async function tvQuality(pin, quality) {
       await staffEnsure(pin);
       const q = Core.tvQualityOf({ tvQuality: quality });
-      if (quality !== q) throw E(400, 'bad_quality', 'なめらか優先・標準・きれい優先から選んでください');
+      if (quality !== q) throw E(400, 'bad_quality', 'さらになめらか・なめらか優先・標準・きれい優先から選んでください');
       const write = async () => { await doc(COL.stores, store).update({ 'settings.tvQuality': q }); storesCache = null; return { store, tvQuality: q }; };
       try { return await write(); }
       catch (e) {
