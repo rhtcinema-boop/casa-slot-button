@@ -8,3 +8,8 @@ window.DERBY_FIREBASE = {
   tvEmail: 'derby-tv@casa-derby.jp',
   publicSite: 'https://rhtcinema-boop.github.io/casa-slot-button/', // 公開サイト（2026-10-20: Fire TV アプリの中のテレビの QR は、ここの derby/v2/bet.html を指す。v2/qr.js の joinURL）
 };
+/* App Check（2026-10-27。下準備だけ・まだ「強制」しない。手順は v2/FIREBASE_SETUP.md の「App Check」）:
+   reCAPTCHA の「サイトキー」（公開してよい値）を入れると、画面が App Check を有効にする（null のままなら何もしない）。
+   reCAPTCHA Enterprise のキーなら DERBY_APPCHECK_PROVIDER を 'enterprise' に。 */
+window.DERBY_APPCHECK_KEY = null;
+window.DERBY_APPCHECK_PROVIDER = 'v3';
