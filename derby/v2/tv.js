@@ -107,7 +107,8 @@
     '</div>'));
   // 次のレースの時計（待ち時間・リプレイ・結果の画面と同じ言葉: 「次のレース 21:00 発走」「投票は 20:57 から」「あと m:ss」）
   stageEl.appendChild(el('<div class="v2nx" id="v2nx"><div class="at"><small id="v2nxL">次のレース</small><b id="v2nxAt">--:--</b><em id="v2nxAtU">発走</em></div>' +
-    '<div class="cd"><span id="v2nxOpen"></span><div class="left"><small id="v2nxLeftL">あと</small><b id="v2nxLeft">--:--</b></div><small class="nv" id="v2nxNv"></small></div><small class="mh" id="v2nxMh"></small></div>')); // v2nxNv: 次のレースがこの店で投票できないとき「（渋谷・上野 のみ投票）」（2026-10-26）
+    '<div class="cd"><span id="v2nxOpen"></span><div class="left"><small id="v2nxLeftL">あと</small><b id="v2nxLeft">--:--</b></div><small class="nv" id="v2nxNv"></small></div><small class="mh" id="v2nxMh"></small>' +
+    '<div class="today" id="v2nxToday" hidden></div></div>')); // v2nxNv: 次のレースがこの店で投票できないとき「（渋谷・上野 のみ投票）」（2026-10-26）／v2nxToday: 本日のレースの時刻の帯「13:00 ✓ 16:00 ✓ 19:00 次 22:00」（2026-10-27。待ち時間だけ。renderToday）
   /* 投票（m-open）の下の段: 締切までの大きな残り時間（1 つだけ）＋人気の組み合わせ上位 6（順番と倍率だけ。票の数は出さない） */
   stageEl.appendChild(el('<div class="v2info" id="v2info"><div class="cd" id="v2cd"><small id="v2cdLbl">締切まで あと</small><b id="v2cdNum">--:--</b><div class="cdl"><span id="v2cdSub"></span></div></div>' +
     '<div class="x6" id="v2x6"><h4>人気の組み合わせ<small>2連単</small></h4><ol id="v2x6List"></ol></div></div>'));
@@ -118,7 +119,7 @@
   // リプレイ（m-hl）の右の列: 前のレースの結果（1着・2着・2 連単の倍率）と全店の当たった人の数
   stageEl.appendChild(el('<div class="v2hlw" id="v2hlw"><h5>前のレース<small id="v2hlwSub"></small></h5><div class="hlres" id="v2hlwRes"></div><div class="hlcnt" id="v2hlwCnt"></div></div>'));
   stageEl.appendChild(el('<div class="v2closed" id="v2closed">締切ました</div>'));
-  stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2><span class="v2testtag" id="v2resTest" hidden>テストレース</span></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div></div></div>' +
+  stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2><span class="v2testtag" id="v2resTest" hidden>テストレース</span></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div><div class="today" id="v2resToday" hidden></div></div></div>' + /* v2resToday: 下の帯の 2 行目「本日のレース 13:00 ✓ …」（2026-10-27） */
     '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b id="v2resActB">当たった方は</b><span id="v2resAct1">スマホの画面を</span><span id="v2resAct2">スタッフへ見せてください</span></div></div><div class="rnote" id="v2resNote">本日中に リングチップでお渡し</div><div class="rsub" id="v2resSub"></div></div></div>'));
   // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
   stageEl.appendChild(el('<div class="v2down" id="v2down"><b>通信が切れています</b><span>自動でつなぎ直します</span></div>'));
@@ -509,6 +510,29 @@
     const L = [S.next].concat((S.upcoming || []).filter((x) => x && (!x.storeId || x.storeId === STORE) && x.at > t)).filter((x) => x && x.at > t);
     return L.sort((a, b) => a.at - b.at)[0] || null;
   }
+  /* ---------- 本日の出走時間（2026-10-27 オーナー「本日の出走時間を店ごとにテレビとスマホへ」） ----------
+     state.today（Core.todayRaces: 時刻表からこの営業日の、この店が投票できるレースだけ。テストレース・手で作ったレースは入らない）を
+     待ち時間の時計（.v2nx）のいちばん下と、結果の画面の下の帯（.foot）の 2 行目に「本日のレース 13:00 ✓ 16:00 ✓ 19:00 次 22:00 25:00」。
+     済み（発走の時刻を過ぎた）は薄く ✓、次は金で「次」、そのあとはふつう。済み・次はテレビの時計で見る（状態が古くても時刻が来れば ✓ に）。
+     時刻表にこの店のレースが無い日は小さく「本日のこの店のレースはありません」。state に today が無い（古い中身）なら帯を出さない。
+     帯に入りきらないときは、済みのものを古い順に「…」にまとめる（文字は小さくしない＝22px 以上を守る） */
+  const todayKey = {};
+  function renderToday(id) {
+    const e = $(id); if (!e) return;
+    const L = S && Array.isArray(S.today) ? S.today : null, t = now();
+    if (!L) { if (!e.hidden) { e.hidden = true; e.innerHTML = ''; todayKey[id] = ''; } return; }
+    const all = L.map((x) => ({ time: hhmm(x.at), done: x.at <= t })), ni0 = all.findIndex((x) => !x.done);
+    const items = all.slice(0, (ni0 < 0 ? all.length : ni0) + 12), ni = ni0 < 0 ? -1 : ni0; // 次のあとは 12 個まで（1 日に何本もある店。それより先は帯に入らない）
+    const key = items.map((x) => x.time + (x.done ? 'd' : '')).join(',') + '|' + ni + '|' + innerWidth + '|' + TV.mode;
+    if (todayKey[id] === key && !e.hidden) return; todayKey[id] = key;
+    e.hidden = false;
+    if (!items.length) { e.innerHTML = '<span class="tl">本日のレース</span><span class="none">本日のこの店のレースはありません</span>'; return; }
+    const chip = (x, i) => '<span class="rc' + (x.done ? ' done' : i === ni ? ' nx' : '') + '"><b>' + esc(x.time) + '</b>' + (x.done ? '<i>✓</i>' : i === ni ? '<i>次</i>' : '') + '</span>';
+    const draw = (from) => { e.innerHTML = '<span class="tl">本日のレース</span>' + (from ? '<span class="more">…</span>' : '') + items.slice(from).map((x, k) => chip(x, k + from)).join(''); };
+    draw(0);
+    const keep = ni < 0 ? items.length - 1 : ni; // 次のレース（無ければ最後の 1 つ）は必ず残す
+    for (let from = 1; from <= keep && e.scrollWidth > e.clientWidth + 1; from++) draw(from);
+  }
   function nextRaceOf() { // 映像（パドック）に入れられる次のレース（馬のいるもの）
     const N = nextInfo(); if (!N) return null;
     if (N.horses) return N;
@@ -878,6 +902,7 @@
     $('v2resNx').innerHTML = N ? '<small>次のレース</small><b>' + hhmm(N.at) + '</b> 発走' + (openRace() && openRace().id === N.id ? '<em>投票中</em>' : N.openAt ? '<span class="op">投票は ' + hhmm(N.openAt) + ' から</span>' : '') + (canVote(N) ? '' : '<span class="op">（' + esc(storeNames(N.storeIds)) + ' のみ投票）</span>') : '<small>本日のレースは</small>終了しました'; // 他店だけのレース（2026-10-26）はその印
     $('v2resNxL').textContent = N ? '発走まで' : ''; setFit('v2resNxN', N ? fmtLeft(N.at - t) : '', '.foot');
     $('v2resRestL').textContent = 'この画面 あと'; $('v2resRestN').textContent = fmtLeft(left); $('v2resBar').style.width = (100 * left / total).toFixed(1) + '%';
+    renderToday('v2resToday'); // 下の帯の 2 行目: 本日のレースの時刻（2026-10-27）
     resStage(R, resPhase(R, t, until, endAt), N, t, until);
   }
   function fillResWinners(R) {
@@ -993,6 +1018,7 @@
         const nvt = canVote(N) ? '' : '（' + storeNames(N.storeIds) + ' のみ投票）'; if ($('v2nxNv').textContent !== nvt) $('v2nxNv').textContent = nvt; // 次のレースがこの店で投票できないとき（2026-10-26）
       } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = ''; /* 2026-10-24 文字帳 w0232: 「ご参加ありがとうございました」を消す */ $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; $('v2nxNv').textContent = ''; }
       const P = prevRace(); $('v2nx').classList.toggle('prev', m === 'hl' && !!P);
+      if (m === 'wait') renderToday('v2nxToday'); // 時計のいちばん下: 本日のレースの時刻（2026-10-27。リプレイ（m-hl）の低い時計には出さない＝tv.css で隠す）
     }
     // 投票（m-open）: 締切までの大きな残り時間（1 つだけ）・全店の参加人数・人気の組み合わせ上位 6
     if (m === 'open' && openRace()) {
@@ -1136,7 +1162,7 @@
     get pair() { return window.__derbyPair; }, // 進行役のテレビ（2026-10-19）
     v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV,
     upd: UPD, updCheck: (force) => autoUpdate(force), updSafe, // 自動アップデート（tests/v2-tv-update.test.js）
-    get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now, hhmm, canVote, nextInfo, // hhmm・canVote: 25 時表記と投票できる店（2026-10-26。tests/v4-tv.plan.js）
+    get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now, hhmm, canVote, nextInfo, renderToday, // hhmm・canVote: 25 時表記と投票できる店（2026-10-26。tests/v4-tv.plan.js）。renderToday: 本日のレースの帯（2026-10-27）
     get cues() { return TV.cues || null; }, cueOverride: CUE_Q, // 確定演出: いま映像に渡しているもの（tests/v2-tv.plan.js）と ?cues= の上書き
     // 結果画面の 5 分の流れの確認用: resultAt(秒) で「結果画面が出てから 秒」の場面にする（表示の時計だけ進める。閉じる時刻は本物のまま）。resultAt(null) で戻す
     resultAt(sec) { if (sec == null) { TV.resSkew = 0; return 0; } const b = TV.resBase; if (!b) return null; TV.resSkew = b.t + sec * 1000 - now(); if (TV.resultRace && TV.mode === 'result') showResult(cache[TV.resultRace.id] || TV.resultRace); return RT.ph; },
