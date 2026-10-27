@@ -405,7 +405,30 @@
      current: open || next。live: 締切後〜発表前。last: 一番新しい発表済み。upcoming: この先 5 レースの時刻（作る前の時刻表の分も。openAt つき）。
      2026-10-26「このレースはこの店だけ」: open・next・current はその店が投票できるレースだけ。watch: この店は投票できないが見えるレースで、投票が始まっている（openAt〜closeAt）もの（テレビの「見るだけ」。QR の所に「このレースは ○○店のみ投票」）| null。
      upcoming の 1 件は { id, at, time（25 時表記）, storeId, storeIds（null ＝ 全店）, canVote（この店が投票できるか）, openAt }。スマホ（role phone）は投票できる分だけ、テレビ・スタッフ・管理は見える分ぜんぶ。
-     time の文字はどれも fmtBizTime（営業日の時刻。深夜は 25:00） */
+     time の文字はどれも fmtBizTime（営業日の時刻。深夜は 25:00）
+     2026-10-27「本日の出走時間」: p.rules（公開の時刻表の決まり）を渡すと today ＝ todayRaces(...)（この営業日のこの店が投票できるレースの時刻。済み・次の印つき）を足す。渡さなければ today は付かない */
+  /* 本日の出走時間（2026-10-27 オーナー「本日の出走時間を店ごとにテレビとスマホへ」。テレビの待ち時間・結果、スマホの待ち・投票済み・結果の「本日のレース 13:00 ✓ 16:00 ✓ 19:00 ◀次 22:00 25:00」）
+     rules: 時刻表の決まり（公開の publicRules でも管理の決まりでもよい）。store: この店。nowMs: いま。tuning: dayStartHour（営業日の区切り）を見る。
+     営業日 ＝ bizDate(nowMs, dayStartHour)。その日の決まりを expandDate で広げ（日付 > 祝日 > 曜日 > 毎日 は expandDate のまま）、
+     区切り h 時〜翌日 h 時の間に走り出すもの（25:00 の決まりは同じ営業日。深夜 1:30 に見れば「きょう」は前の日の営業日で、25:00 は済み）。
+     古い形の決まりで 00:00〜04:59 の時刻（次のカレンダーの日の深夜）も同じ営業日に入れる（翌日の決まりも広げて、営業日の中の分だけ取る）。
+     この店が投票できるものだけ（storeIds が無い＝全店、またはこの店が入っている。以前の形の storeId はその店だけ）。テストレース・手で作ったレースは時刻表に無いので入らない。
+     返り値（発走の早い順）: [{ id, at, time（25 時表記）, storeIds（null ＝ 全店）, done（at <= now）, next（まだ来ていない最初の 1 つ） }]。時刻表が空ならば [] */
+  function todayRaces(rules, store, nowMs, tuning) {
+    const T = tuningOf(tuning), H = T.dayStartHour, t = Number(nowMs);
+    if (!Number.isFinite(t)) return [];
+    const ds = bizDate(t, H), from = dayStart(ds) + H * 3600000, to = from + DAY, seen = {}, out = [];
+    [].concat(expandDate(ds, rules || []), expandDate(dateStr(dayStart(ds) + DAY), rules || [])).forEach((e) => {
+      if (e.at < from || e.at >= to) return;
+      if (e.storeId && e.storeId !== store) return;
+      if (Array.isArray(e.storeIds) && e.storeIds.length && !e.storeIds.includes(store)) return;
+      const k = (e.storeId || '') + '|' + e.at; if (seen[k]) return; seen[k] = 1;
+      out.push({ id: e.id, at: e.at, time: fmtBizTime(e.at, H), storeIds: storeIdsOf(e.storeIds), done: e.at <= t, next: false });
+    });
+    out.sort((a, b) => a.at - b.at);
+    const nx = out.find((e) => !e.done); if (nx) nx.next = true;
+    return out;
+  }
   function stateFor(p) {
     const t = p.t, store = p.store, st = p.stores.find((s) => s.id === store);
     if (!st) throw err(404, 'no_store', '店舗が見つかりません');
@@ -428,6 +451,7 @@
       open: pr(open), next: pr(next), live: pr(live), last: pr(last), watch: pr(watch), upcoming,
     };
     out.current = out.open || out.next;
+    if (p.rules) out.today = todayRaces(p.rules, store, t, p.tuning); // 本日の出走時間（2026-10-27）。公開の時刻表を渡した呼び方だけ
     return out;
   }
 
@@ -651,7 +675,7 @@
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
     isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
-    tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, voteWindow, votingOpen, manualStages,
+    tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
