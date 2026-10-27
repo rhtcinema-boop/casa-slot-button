@@ -965,3 +965,18 @@ input.tm { font-variant-numeric: tabular-nums; text-align: center; }
 .pvhol .chip { margin: 0; }
 .hint.holhint { margin: 0 0 8px; color: var(--gold); font-weight: 700; }
 .hint.holnote { color: var(--sub); }
+
+/* ===== 2026-10-27 不正の見える化: 集計タブの「注意」（#abusePanel。v2/admin.js の viewAbuse・tests/v2-admin.plan.js） =====
+   オーナー用。気になる端末の行（tr.flag）は左に金の線・端末は等幅の末尾 6 文字・理由は橙の札（.chip.kind.warn）。何も無いときは緑の一文（.okline）。
+   スマホ幅は表がカード（table.cards）になる＝はみ出さない。「日ごと・店舗ごとの端末」は畳み */
+#abusePanel .dev { color: var(--gold3, #FFE9A8); font-size: 13px; letter-spacing: .02em; margin-left: 6px; }
+#abusePanel tr.flag td.head { border-left: 3px solid var(--gold2); padding-left: 8px; }
+#abusePanel td.why .chip { margin: 2px 4px 2px 0; }
+#abusePanel td.tops { font-size: 13px; line-height: 1.6; color: var(--sub); }
+#abusePanel td.tops .mono { color: var(--text); }
+#abusePanel .empty.okline { color: var(--ok); font-weight: 700; padding: 12px 0; }
+@media (max-width: 720px) {
+  #abusePanel tr.flag { border-left: 3px solid var(--gold2); padding-left: 8px; }
+  #abusePanel tr.flag td.head { border-left: 0; padding-left: 0; }
+  #abusePanel td.why { flex: 1 1 100%; }
+}
