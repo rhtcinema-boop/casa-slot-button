@@ -1,6 +1,6 @@
 /* casa DERBY v4: 次のレースの「投票の始まり」と「発走」を、公開の時刻表だけで求める小さな道具（2026-10-21）。
    casa SLOT のテレビ（casa-slot-button の js/tvswitch.js）が、SLOT を映している間も投票の始まりに DERBY へ移るために読む。
-   Core（v2/core.js）なしで動く。計算は Core.expandDate / Core.scheduleAround と同じ（tests/v2-next-open.test.js で同じ答えか確かめる）。
+   Core（v2/core.js）なしで動く。計算は Core.expandDate / Core.scheduleAround と同じ（tests/v2-next-open.test.js で同じ答えか確かめる）。祝日の決まり（kind 'holiday'。2026-10-27）も Core と同じ計算（isHoliday / holidayName）。
 
    読む場所: Firestore casa-derby の derbySchedule/public（ログインなしで読める。書くのは管理画面だけ）
      { rules: [時刻だけの決まり（目標額などは抜いてある。作るのは Core.publicSchedule）], voteSec, closeLeadSec, dayStartHour, updatedAt }
@@ -29,6 +29,37 @@
   const pad = (n) => String(n).padStart(2, '0');
   const arr = (v) => (Array.isArray(v) ? v : []);
 
+  /* 祝日（2026-10-27。時刻表の決まり kind 'holiday'）: Core.isHoliday / Core.holidayName と同じ計算の写し（Core なしで動くため）。
+     直すときは v2/core.js と両方を同じに（tests/v4-holiday.test.js が「ここから〜ここまで」の文字列と 2025〜2030 の毎日の答えを比べる） */
+  /* 祝日の計算ここから（v2/core.js と v2/next-open.js で同じ文字列） */
+  const HOLIDAY_FIXED = { '01-01': '元日', '02-11': '建国記念の日', '02-23': '天皇誕生日', '04-29': '昭和の日', '05-03': '憲法記念日', '05-04': 'みどりの日', '05-05': 'こどもの日', '08-11': '山の日', '11-03': '文化の日', '11-23': '勤労感謝の日' };
+  const HOLIDAY_MONDAY = [[1, 2, '成人の日'], [7, 3, '海の日'], [9, 3, '敬老の日'], [10, 2, 'スポーツの日']]; // [月, 第 n 月曜, 名前]
+  const ymd = (ds) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ds == null ? '' : ds)); return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null; };
+  const shiftDs = (ds, n) => { const p = ymd(ds); return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10); }; // n 日あと（負なら前）
+  const dowOf = (p) => new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); // 0 ＝ 日曜
+  const nthMonday = (y, mo, n) => 1 + ((8 - dowOf([y, mo, 1])) % 7) + (n - 1) * 7; // その月の第 n 月曜の日
+  const equinox = (y, base) => Math.floor(base + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4)); // 春分 base 20.8431・秋分 base 23.2488
+  // 法で日が決まっている祝日（振替休日・国民の休日は含まない）の名前。祝日でなければ null
+  function baseHoliday(ds) {
+    const p = ymd(ds); if (!p) return null;
+    const y = p[0], mo = p[1], d = p[2], fixed = HOLIDAY_FIXED[ds.slice(5)];
+    if (fixed) return fixed;
+    for (let i = 0; i < HOLIDAY_MONDAY.length; i++) { const h = HOLIDAY_MONDAY[i]; if (mo === h[0] && d === nthMonday(y, h[0], h[1])) return h[2]; }
+    if (mo === 3 && d === equinox(y, 20.8431)) return '春分の日';
+    if (mo === 9 && d === equinox(y, 23.2488)) return '秋分の日';
+    return null;
+  }
+  // 祝日の名前（振替休日・国民の休日も）。祝日でなければ null
+  function holidayName(ds) {
+    const p = ymd(ds); if (!p) return null;
+    const base = baseHoliday(ds); if (base) return base;
+    for (let b = shiftDs(ds, -1); baseHoliday(b); b = shiftDs(b, -1)) if (dowOf(ymd(b)) === 0) return '振替休日'; // 前へ祝日が続く限りさかのぼり、日曜の祝日に届けば振替休日
+    if (dowOf(p) !== 0 && baseHoliday(shiftDs(ds, -1)) && baseHoliday(shiftDs(ds, 1))) return '国民の休日';
+    return null;
+  }
+  const isHoliday = (ds) => holidayName(ds) != null;
+  /* 祝日の計算ここまで */
+
   function ruleMins(rule) {
     if (Array.isArray(rule.races)) return rule.races.map((x) => hhmm(x && x.time)).filter((x) => x != null);
     if (Array.isArray(rule.times)) return rule.times.map(hhmm).filter((x) => x != null);
@@ -41,16 +72,17 @@
     if (rule.enabled === false) return false;
     if (rule.kind === 'date') return rule.date === ds;
     if (rule.kind === 'weekday') return arr(rule.weekdays).map(Number).includes(weekday(ds));
+    if (rule.kind === 'holiday') return isHoliday(ds);
     return rule.kind === 'daily' || !rule.kind;
   }
-  // 1 日分（Core.expandDate と同じ: 店ごとのまとまりの中で 日付 > 曜日 > 毎日 の順に強い）
+  // 1 日分（Core.expandDate と同じ: 店ごとのまとまりの中で 日付 > 祝日 > 曜日 > 毎日 の順に強い。祝日は 2026-10-27）
   function expandDate(ds, rules) {
     const groups = {};
     arr(rules).forEach((r) => { if (!r || typeof r !== 'object') return; const g = r.storeId || ''; (groups[g] = groups[g] || []).push(r); });
     const out = {};
     Object.keys(groups).forEach((g) => {
       const rs = groups[g].filter((r) => ruleMatches(r, ds));
-      const pri = rs.some((r) => r.kind === 'date') ? 'date' : rs.some((r) => r.kind === 'weekday') ? 'weekday' : 'daily';
+      const pri = ['date', 'holiday', 'weekday'].find((k) => rs.some((r) => r.kind === k)) || 'daily';
       rs.filter((r) => (r.kind || 'daily') === pri).forEach((r) => {
         ruleMins(r).forEach((min) => {
           const at = dayStart(ds) + min * 60000, id = compact(ds) + '-' + pad(Math.floor(min / 60)) + pad(min % 60) + (g ? '-' + g : '');
@@ -79,5 +111,5 @@
   function next(schedule, nowMs, storeId) { return list(schedule, nowMs, storeId, 1)[0] || null; }
   function voting(schedule, nowMs, storeId) { const e = next(schedule, nowMs, storeId); return e && nowMs >= e.openAt && nowMs < e.closeAt ? e : null; }
 
-  return { next, list, voting, expandDate, LOOK_DAYS };
+  return { next, list, voting, expandDate, isHoliday, holidayName, LOOK_DAYS };
 });
