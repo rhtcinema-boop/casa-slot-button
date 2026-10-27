@@ -28,7 +28,7 @@
   /* 確定演出（店舗には見せない。v4 でも「1 着の馬だけ教える」）: 演出名 → [表示名, どう見えるか]。割合の初期値は v2/core.js の DEFAULT_CUES と同じ */
   const CUES = [['fruit', '木の実の色', 'コース脇の木の実が、その馬の枠の色になる'], ['crowd', '観客の服の色', '観客の服がその馬の枠の色に寄る'], ['sign', '看板の絵柄', '向こう正面の看板にその馬の枠の色が出る'], ['cloud', '雲の形', 'その馬の番号の形をした雲が浮かぶ'], ['gateLate', 'ゲートインで遅れた馬', 'その馬だけゲートに入るのをためらう'], ['eye', '最終コーナーで目が光る', '最終コーナーでその馬の目が光る']];
   const DEF_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
-  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES };
+  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4 };
   const TUNE_PRESETS = [['steady', '堅め', { volatility: 0.7, shiftUp: 0.05, shiftDown: 0.05 }, '人気の組み合わせが来やすい・倍率のずらしは小さめ'], ['normal', 'ふつう', { volatility: 1.0, shiftUp: 0.1, shiftDown: 0.1 }, '今の作り'], ['wild', '荒れやすい', { volatility: 1.5, shiftUp: 0.15, shiftDown: 0.15 }, '人気薄も来る・倍率のずらしは大きめ']];
   const BIG_SHIFT = 50; // ずらし幅がこれ（%）より大きいと「見た倍率と大きく変わります」
 
@@ -112,6 +112,7 @@
   let pvDate = '', pvSrc = 'local', pvServer = null;
   let raceDate = '', racesData = null, racesErr = '', racesTimer = 0;
   let stFrom = '', stTo = '', stStore = '', statsData = null, statsErr = '';
+  let abuseData = null, abuseErr = '', abuseOff = false; // 見える化（集計タブの「注意」。2026-10-27）: api('abuse') の答え／使えないサーバー（古い）なら出さない
   let logBill = '', logsData = null, logsErr = '';
   let raceAll = false, refundOpen = null; // 今日のレース: 全部を表示するか／その場で開いているレース取消（レース id）
   let pairData = null, pairErr = '', pairSeq = 0; // 進行役のテレビ: api('tvs') の答え { tvs, decider, lock, now }
@@ -1008,6 +1009,13 @@
     const tg = 30000, lo = Math.ceil(tg * (1 - below) - 1e-9), hi = Math.floor(tg * (1 + above) + 1e-9);
     return '目標 ' + ptT(tg) + ' なら <b>' + fmtN(lo) + '〜' + ptT(hi) + '</b> に入る組み合わせから、起きやすさで抽選。無ければいちばん近い組み合わせ（必ず誰かは当てる）';
   }
+  /* 1 台の会計番号の上限（2026-10-27）の例文。1 は使えない（全員の票が数えられなくなる） */
+  function billsExample(n) {
+    n = Math.round(Number(n) || 0);
+    if (!n) return '使っていません（1台で何個の会計番号を使っても、決め方は同じ）。';
+    if (n === 1) return '<span class="err" style="display:inline">1 は使えません（0 か 2〜99）</span>';
+    return '友だちの分を1台で入れる（' + (n - 1) + ' 個まで）はふつうどおり。' + n + ' 個以上は、決め方に数えず、管理の「集計」の「注意」に出ます（お客さん・スタッフの画面は変わりません）。';
+  }
   function viewTuning() {
     const T = cfg.tuning;
     const cur = TUNE_PRESETS.find((p) => Math.abs(p[2].volatility - T.volatility) < 1e-6 && Math.abs(p[2].shiftUp - T.shiftUp) < 1e-6 && Math.abs(p[2].shiftDown - T.shiftDown) < 1e-6);
@@ -1030,6 +1038,8 @@
       stepRow('払い出しの上限（1 レース）', '0 = なし。1 レースの当選額の合計', 'payoutCap', T.payoutCap || 0, 'pt', 0, 99999900, 100) +
       stepRow('払い出しの上限（1 日）', '0 = なし。全店の 1 日の当選額の合計', 'payoutCapDay', T.payoutCapDay || 0, 'pt', 0, 999999900, 100) +
       '<p class="hint capnote">上限は「必ず誰かは当てる」より<b>強い</b>決まりです。上限を超える組み合わせしかないときは<b>当たりなし</b>になります。</p>' +
+      stepRow('1台の会計番号の上限', '1台のスマホが1レースでこの数以上の会計番号を使うと、その票は「必ず誰かは当てる」に数えません（自然に当たれば払います）。0 = 使わない', 'maxBillsPerDevice', T.maxBillsPerDevice == null ? 4 : T.maxBillsPerDevice, '個', 0, 99, 1) +
+      '<p class="hint" id="billsEx">' + billsExample(T.maxBillsPerDevice == null ? 4 : T.maxBillsPerDevice) + '</p>' +
       '<details class="fold" id="explainFold"><summary>勝ち馬の決まり方（くわしく）</summary><div class="in explain">' + explainHtml(T) + '</div></details>' +
       '</div>' +
       viewHorseLook(T) +
@@ -1090,10 +1100,11 @@
     finally { btns.forEach((x) => { if (document.contains(x)) x.disabled = false; }); }
   }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
-  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
+  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
   function validateTuning() {
     if (!$('tumsg')) return 1;
-    const badKeys = TUN_KEYS.filter((k) => !numOk(k)), bad = badKeys.length;
+    const badKeys = TUN_KEYS.filter((k) => !numOk(k) || (k === 'maxBillsPerDevice' && $('n-' + k) && Number($('n-' + k).value) === 1)), bad = badKeys.length;
+    if ($('n-maxBillsPerDevice')) { const one = Number($('n-maxBillsPerDevice').value) === 1, inR = numOk('maxBillsPerDevice'); $('n-maxBillsPerDevice').classList.toggle('bad', one || !inR); if ($('billsEx') && inR) $('billsEx').innerHTML = billsExample(numOf('maxBillsPerDevice')); } // 1 は範囲の中でも赤（numOk は 1 回だけ。2 回目で赤が消えていた）
     if ($('voteEx') && numOk('voteSec')) $('voteEx').innerHTML = voteExample(numOf('voteSec'));
     if ($('bandEx') && numOk('bandBelow') && numOk('bandAbove')) $('bandEx').innerHTML = bandExample(numOf('bandBelow') / 100, numOf('bandAbove') / 100);
     if (numOk('shiftUp') && numOk('shiftDown')) {
@@ -1117,7 +1128,7 @@
       voteSec: Math.round(numOf('voteSec')),
       shiftUp: Math.round(numOf('shiftUp')) / 100, shiftDown: Math.round(numOf('shiftDown')) / 100,
       bandBelow: Math.round(numOf('bandBelow')) / 100, bandAbove: Math.round(numOf('bandAbove')) / 100,
-      payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')),
+      payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')), maxBillsPerDevice: Math.round(numOf('maxBillsPerDevice')),
       payoutRate: Math.round(numOf('payoutRate')) / 100, volatility: Math.round(numOf('volatility') * 10) / 10,
       resultSec: Math.round(numOf('resultSec')), gateSec: Math.round(numOf('gateSec')), postSec: Math.round(numOf('postSec')),
     };
@@ -1139,8 +1150,11 @@
   async function loadStats() {
     statsData = null; statsErr = ''; if (tab === 'stats') keepScroll(() => { main.innerHTML = viewStats(); });
     const my = (loadStats.seq = (loadStats.seq || 0) + 1); // 期間・店舗を続けて変えたとき、遅れて届いた前の答えで上書きしない
+    abuseData = null; abuseErr = '';
+    const ab = abuseOff ? Promise.resolve() : api('abuse', stFrom, stTo, stStore || undefined).then((x) => { if (my === loadStats.seq) abuseData = x; }, (e) => { if (my !== loadStats.seq) return; if (e && (e.code === 'not_supported' || e.status === 404)) abuseOff = true; else abuseErr = errText(e); }); // 注意（2026-10-27。古いサーバーなら出さない）
     try { const x = await api('stats', stFrom, stTo, stStore || undefined); if (my !== loadStats.seq) return; statsData = x; }
     catch (e) { if (my !== loadStats.seq) return; statsErr = errText(e); }
+    await ab; if (my !== loadStats.seq) return;
     if (tab === 'stats') keepScroll(() => { main.innerHTML = viewStats(); });
   }
   const SK = ['races', 'votes', 'players', 'target', 'paid', 'claimed', 'expired', 'unclaimed'];
@@ -1186,10 +1200,30 @@
           cell('渡した額', ptN(x.claimed), 1) + cell('期限切れ', ptN(x.expired), 1) + '</tr>').join('') + '</table></div>' : '') +
       '<div class="acts l"><button class="btn sm ghost" data-act="st-csv"' + (days.length ? '' : ' disabled') + '>CSV（Excel）に書き出す</button></div>' +
       '<details class="fold"><summary>言葉の意味</summary><div class="in"><p class="hint">票の数（参加人数）＝投票の数（1 人 1 レース 1 票なので参加人数と同じ）。会計番号＝その日に投票した会計番号の数。当選額の目標＝時刻表の目標の合計。当選額＝当たった人に渡す額の合計（100pt × 倍率を 100pt 単位に切り上げ）。渡した額＝お客さんのスマホのスライドかスタッフのスマホで「渡した」にした額。まだ渡していない額＝当たったのにまだ受け取っていない額（その日のうち）。期限切れ＝その日のうち（朝 5 時の区切りまで）に受け取られなかった額。テストのレースとテストモードの店舗の分は入りません。店舗ごとには目標を出しません（時刻表は全店同じ）。</p></div></details></div>' +
+      viewAbuse() +
       '<div class="panel"><h3>会計番号で探す</h3><p class="hint">期間と店舗は上と同じ。空のまま探すと全部出ます。</p>' +
       '<div class="range"><label class="f"><span>会計番号（2 桁）</span><input type="text" id="lbill" value="' + esc(logBill) + '" maxlength="4" placeholder="例: 12" inputmode="numeric" autocapitalize="off"></label><div class="quick" style="align-items:end;padding-bottom:10px"><button class="btn sm" data-act="log-search">探す</button><button class="btn sm ghost" data-act="log-csv"' + (L && L.logs.length ? '' : ' disabled') + '>CSV に書き出す</button></div></div>' +
       (logsErr ? '<div class="err">' + esc(logsErr) + '</div>' : '') +
       (L ? viewLogs(L) : '') + '</div>';
+  }
+  /* 注意（2026-10-27。オーナー用。1 台のスマホ（端末）で番号・当たり・ボーナスが多いもの）: Core.abuseReport の答え（模擬クラウド GET /api/admin/abuse・Firestore 版 admin.abuse）。
+     端末は末尾 6 文字だけ（…abc123）。お客さん・スタッフの画面には何も出さない（ここだけ） */
+  const ABUSE_WHY = { bills: (x, n) => '1レースで番号 ' + x.bills + ' 個（' + n + ' 個以上）', wins: (x) => '当たり ' + x.wins + ' 回', bonus: (x) => 'ボーナス ' + x.bonus + ' 回', flag: () => '決め方に数えていない当たり' };
+  function viewAbuse() {
+    if (abuseOff) return '';
+    const D = abuseData, n = (D && D.threshold) || 4, flags = (D && D.flags) || [];
+    const top = (list) => (list || []).slice(0, 3).map((x) => '<span class="mono">' + esc(x.dev) + '</span> ' + x.bills + '個' + (x.wins ? '・当たり' + x.wins + '回 ' + esc(ptT(x.pt)) : '')).join('<br>') || '—';
+    const dayRows = D ? [].concat.apply([], (D.days || []).map((d) => d.stores.map((s) => ({ date: d.date, s })))) : [];
+    return '<div class="panel" id="abusePanel"><h3>注意 <small class="qsub">オーナー用・1台のスマホで番号や当たりが多いもの</small></h3>' +
+      (abuseErr ? '<div class="err">' + esc(abuseErr) + '</div>' : '') +
+      (D == null && !abuseErr ? '<div class="empty">読み込み中…</div>' : !D ? '' :
+        (flags.length ? '<div class="tbl"><table class="cards" id="abuseFlags"><tr class="hd"><th>日付・端末</th><th>店舗</th><th class="n">番号（1レース）</th><th class="n">当たり</th><th class="n">額</th><th>気になる所</th></tr>' +
+          flags.slice(0, 100).map((x) => '<tr class="flag"><td class="head"><b>' + fmtDay(x.date) + '</b> <span class="mono dev">' + esc(x.dev) + '</span></td><td data-l="店舗">' + esc(x.stores.map(storeName).join('・')) + '</td><td class="n" data-l="番号">' + fmtN(x.bills) + '個</td><td class="n" data-l="当たり">' + fmtN(x.wins) + '回</td><td class="n" data-l="額">' + ptN(x.pt) + '</td><td class="full why">' + x.reasons.map((r) => '<span class="chip kind warn">' + esc((ABUSE_WHY[r] || (() => r))(x, n)) + '</span>').join('') + '</td></tr>').join('') + '</table></div>'
+          : '<div class="empty okline" id="abuseNone">気になる端末はありません</div>')) +
+      '<p class="hint">端末 ＝ お客さんのスマホ（ブラウザ）。履歴を消すと別の端末に見えます。1レースで ' + n + ' 個以上の会計番号を使った端末の票は、当たりの決め方に数えません（自然に当たったときは、ふつうに払います）。ボーナスは 1 台 1 日 1 回です。お客さん・スタッフの画面は変わりません。</p>' +
+      (dayRows.length ? '<details class="fold" id="abuseFold"><summary>日ごと・店舗ごとの端末</summary><div class="in"><div class="tbl"><table class="cards days" id="abuseDays"><tr class="hd"><th>日付・店舗</th><th class="n">ボーナス</th><th class="n">端末</th><th class="n">1台の番号（最大）</th><th>番号の多い端末</th></tr>' +
+        dayRows.map((r) => '<tr><td class="head"><b>' + fmtDay(r.date) + ' ' + esc(storeName(r.s.storeId)) + '</b></td><td class="n" data-l="ボーナス">' + fmtN(r.s.bonus) + '</td><td class="n" data-l="端末">' + fmtN(r.s.devices) + '台</td><td class="n" data-l="1台の番号">' + fmtN(r.s.maxBills) + '個</td><td class="full tops" data-l="多い端末">' + top(r.s.top) + '</td></tr>').join('') + '</table></div></div></details>' : '') +
+      '</div>';
   }
   const LOG_KIND = { vote: ['投票', 'info'], release: ['番号を空けた', ''], win: ['当たり', 'warn'], paid: ['受け取り', 'ok'], expired: ['期限切れ', ''] };
   const logKind = (x) => (x.type === 'paid' ? ['受け取り（' + (x.via === 'self' ? 'お客さんのスライド' : 'スタッフ') + '）', 'ok'] : LOG_KIND[x.type] || [x.type, '']);
@@ -1410,7 +1444,7 @@
 
   const TAB_ALIAS = { stores: 'tv', ops: 'tuning' }; // 以前のタブの名前（テスト・メモ用）
   window.DerbyAdmin = { // テスト用の入口（tests/v2-admin.plan.js）
-    get tt() { return tt; }, get cfg() { return cfg; }, get dirty() { return ttDirty; }, get tunDirty() { return tunDirty; }, get pair() { return pairData; }, get races() { return racesData; }, get stats() { return statsData; }, get tab() { return tab; }, loadPair, minGapSec: () => minGapSec().sec,
+    get tt() { return tt; }, get cfg() { return cfg; }, get abuse() { return abuseData; }, get dirty() { return ttDirty; }, get tunDirty() { return tunDirty; }, get pair() { return pairData; }, get races() { return racesData; }, get stats() { return statsData; }, get tab() { return tab; }, loadPair, minGapSec: () => minGapSec().sec,
     validate: () => (tt ? validateTT() : null), templatesToRules: () => templatesToRules(tt.tpls), daySchedule: (d, s) => daySchedule(tt.tpls, d, s || null).map((x) => ({ t: x.t, p: x.p, store: x.group, stores: x.s })),
     bizHM, normTime, // 営業日の時計（25:00）と時刻の整え（テスト用）
     holidayName, isHoliday, // 祝日の判定（core.js。無ければ null / false。2026-10-27）
