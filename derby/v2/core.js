@@ -728,9 +728,9 @@
   const TV_GAMES = ['slot', 'derby'];
   const tvGameOf = (settings) => (settings && settings.tvGame === 'derby' ? 'derby' : 'slot');
   function tvSwitchDoc(stores) { const o = {}; (stores || []).forEach((s) => { if (s && s.id) o[s.id] = tvGameOf(s.settings); }); return o; }
-  /* テレビの画質: '' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先 */
-  const TV_QUALITIES = ['auto', '', 'max'];
-  function tvQualityOf(settings) { const q = settings && settings.tvQuality; return q === 'auto' || q === 'max' ? q : ''; }
+  /* テレビの画質: 'lite' ＝さらになめらか（最軽量。2026-10-28 動きが重いテレビ向け）・'auto' ＝なめらか優先・'' ＝標準・'max' ＝きれい優先 */
+  const TV_QUALITIES = ['lite', 'auto', '', 'max'];
+  function tvQualityOf(settings) { const q = settings && settings.tvQuality; return q === 'lite' || q === 'auto' || q === 'max' ? q : ''; }
   const PW_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
   function genTvPassword(rand, len) {
     len = len || 20; const lim = 256 - (256 % PW_CHARS.length); let s = '';
