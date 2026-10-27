@@ -273,3 +273,38 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 
 /* ---------- 2026-10-26 オーナー「レースごとに投票できる店を選べる」: この店が投票できないレースの知らせ（待ち画面の上。文字 15px） ---------- */
 .note.watch { font-size: 15px; font-weight: 700; color: var(--cream); background: var(--card2); border: 1px solid var(--gold2); }
+
+/* ---------- 2026-10-27 オーナー「本日の出走時間を店ごとにテレビとスマホへ」: 本日のレースの時刻（bet.js todayRow。state.today ＝ この店が投票できる時刻表のレースだけ） ----------
+   待ち画面の「次のレース」の枠の下、投票済み・結果の画面の下に 1 行。小さな札を横に並べ、320px 幅では折り返す。
+   済み＝薄く ✓、次＝金の枠「次」、そのあと＝ふつう。文字は 12px 以上（DESIGN_SYSTEM_V4.md） */
+.today { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; padding: 10px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.today .tl { flex: none; font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: .08em; margin-right: 2px; }
+.today .none { font-size: 13px; font-weight: 700; color: var(--dim); }
+.today .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 6px; min-width: 0; }
+.today .rc { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 9px; border-radius: 8px; background: var(--card2); border: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
+.today .rc b { font-family: var(--display); font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums; }
+.today .rc i { font-style: normal; font-size: 12px; font-weight: 900; }
+.today .rc.done { opacity: .5; }
+.today .rc.nx { border: 2px solid var(--gold); background: var(--card2); color: var(--gold); padding: 0 8px; }
+.today .rc.nx b { color: var(--gold); }
+.today .more { font-family: var(--display); font-weight: 900; font-size: 15px; color: var(--dim); padding: 0 2px; } /* 8 つより多いときの前後の「…」 */
+
+/* デザイン審査（2026-10-27）の直し: 札は均等幅で横 1 列（320 幅でも折り返さない）。高さ 44px 以上・間 8px・中の余白 横 8px 上下 12px。
+   済み＝灰 #AEB8CB（✓ も灰・時刻の右 8px）、次＝金枠 2px #F5CB62＋「次」、これから＝白。ラベルは上に 1 行（12px）、カードの上下余白 20px */
+.today { flex-direction: column; align-items: stretch; gap: 8px; padding: 20px 10px; }
+.today .tl { align-self: center; font-size: 12px; margin: 0; }
+.today .chips { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; flex-wrap: nowrap; }
+.today .rc { min-height: 44px; height: auto; padding: 12px 8px; justify-content: center; gap: 8px; border-radius: 10px; min-width: 0; overflow: hidden; }
+.today .rc b { font-size: 14px; letter-spacing: -.02em; }
+.today .rc i { font-size: 12px; }
+.today .rc.done { opacity: 1; color: #aeb8cb; background: var(--card); }
+.today .rc.done b, .today .rc.done i { color: #aeb8cb; }
+.today .rc.nx { border: 2px solid #f5cb62; color: #f5cb62; padding: 10px 6px; }
+.today .rc.nx b { color: #f5cb62; }
+.today .more { align-self: center; }
+@media (max-width: 350px) { .today .rc { gap: 5px; padding: 12px 6px; } .today .rc.nx { padding: 10px 4px; } .today .rc b { font-size: 13px; } .today .chips { gap: 6px; } }
+/* 投票済み（初参加ボーナスの枠があるとき）でも開いた直後の画面に「本日のレース」が入るように、少し詰める（再審査 2026-10-27） */
+.scr.voted .today { padding: 14px 10px; margin-top: -6px; }
+.scr.voted .clock { padding-bottom: 0; }
+.scr.voted { gap: 12px; }
+.scr.voted .today { padding: 12px 10px; margin-top: -8px; }
