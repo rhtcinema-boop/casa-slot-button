@@ -374,6 +374,7 @@ details.fold > summary small { flex-basis: 100%; padding-left: 22px; margin-top:
 .tvqhint { margin: 8px 0 0; }
 h3 .qsub { font-size: 13px; font-weight: 400; color: var(--sub); margin-left: 6px; }
 .seg.q3 button { min-width: 140px; }
+.seg.q4 button { min-width: 120px; padding: 0 12px; } /* 2026-10-28: 4 択（さらになめらか（最軽量）を足した） */
 .qnotes { list-style: none; margin: 10px 0 4px; padding: 0; }
 .qnotes li { font-size: 13px; color: var(--sub); line-height: 1.7; }
 .qnotes li b { color: var(--text); margin-right: 8px; }
@@ -382,6 +383,7 @@ h3 .qsub { font-size: 13px; font-weight: 400; color: var(--sub); margin-left: 6p
   .tvrow .tvq .seg button { flex: 1 1 0; min-width: 0; padding: 0 4px; font-size: 12px; }
   .seg.q3 { display: flex; width: 100%; }
   .seg.q3 button { min-width: 0; font-size: 14px; }
+  .seg.q4 button { padding: 0 4px; font-size: 12px; line-height: 1.25; white-space: normal; }
 }
 
 /* 2026-10-20 オーナー決定: 金額の単位「pt」（数字のすぐ後ろ・数字より少し小さく） */
