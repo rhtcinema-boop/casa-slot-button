@@ -293,8 +293,8 @@
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 104792,
-   "sha256": "4e361d462bedd4445cfd88950fb74622c8c6d3d65e890f7a7a1ab05e2d2399d1"
+   "size": 104971,
+   "sha256": "7eb6d086613f4d7aef6ddfd6984ebcb6e2de73993dee415be79696669ec48de4"
   },
   {
    "path": "v2/client.js",
@@ -308,8 +308,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 63449,
-   "sha256": "c5e0aedea72909dc0de38b09904a0a3c38faf82b2fbbed0e5199a5fc371356ec"
+   "size": 68474,
+   "sha256": "af4fe4e22e63fb3efa43c7f76063730d806fcd418376505cc0b9cef05883348b"
   },
   {
    "path": "v2/form.js",
@@ -318,8 +318,8 @@
   },
   {
    "path": "v2/next-open.js",
-   "size": 6392,
-   "sha256": "8618b9e3d042e3a4e7cd0c77cc187b8b0c09d28749623727cfbec7572d93653f"
+   "size": 9431,
+   "sha256": "d56511f25a92a554b776c2c8c2215bcccde88cd8b7d685431d93acfb4f9866b5"
   },
   {
    "path": "v2/outcome.js",
