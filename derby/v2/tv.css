@@ -1385,3 +1385,53 @@
 #stage.v2.m-open.v2-watch .top .v2bonus { display: none; }
 .v2nx .cd .nv { font: 900 24px/1.1 var(--font-tv); color: #ffd54f; white-space: nowrap; }
 .v2nx .cd .nv:empty { display: none; }
+
+/* ---------- 2026-10-27 オーナー「本日の出走時間を店ごとにテレビとスマホへ」: 本日のレースの時刻の帯（tv.js renderToday。state.today ＝ この店が投票できる時刻表のレースだけ） ----------
+   待ち時間（m-wait）: 時計（.v2nx）のいちばん下に 44px の帯「本日のレース 13:00 ✓ 16:00 ✓ 19:00 次 22:00 25:00」。そのぶん上のカードを 10px 低く（y96〜652）、時計を y666〜880 に（時計の中身は上の 170px に寄せる）。
+   結果（m-result）: 下の帯（.foot）を 2 行に（1 行目は今までの次のレース・発走まで、2 行目が本日のレース）。行の高さを 74 → 110 にして、着順を 18・組み合わせの帯を 18 低く（右の列の止める位置 y553 は変えない）。
+   済み＝薄く ✓、次＝金の面で「次」、そのあと＝白。大きさは設計座標（1600）: 見出し 22px・時刻 26px・印 20px ＝ 1920 の画面で 26・31・24px（補助 22px 以上）。
+   帯に入りきらないときは tv.js が済みのものを古い順に「…」にまとめる（文字は小さくしない）。リプレイ（m-hl）の低い時計には出さない */
+.v2nx .today, .v2res .foot .today { display: none; align-items: center; gap: 14px; white-space: nowrap; overflow: hidden; font-family: var(--font-tv); }
+.v2nx .today[hidden], .v2res .foot .today[hidden] { display: none !important; }
+.v2nx .today .tl, .v2res .foot .today .tl { flex: none; font: 900 22px/1 var(--font-tv); color: #c9d6ee; letter-spacing: .04em; margin-right: 6px; }
+.v2nx .today .none, .v2res .foot .today .none { font: 900 22px/1 var(--font-tv); color: #c9d6ee; }
+.v2nx .today .more, .v2res .foot .today .more { font: 900 24px/1 var(--font-num); color: rgba(255, 255, 255, .45); }
+.v2nx .today .rc, .v2res .foot .today .rc { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; color: #fff; font-size: 26px; }
+.v2nx .today .rc b, .v2res .foot .today .rc b { font: 900 26px/1 var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.v2nx .today .rc i, .v2res .foot .today .rc i { font: 900 20px/1 var(--font-tv); font-style: normal; }
+.v2nx .today .rc.done, .v2res .foot .today .rc.done { color: rgba(255, 255, 255, .45); }
+.v2nx .today .rc.done i, .v2res .foot .today .rc.done i { color: rgba(255, 255, 255, .55); }
+.v2nx .today .rc.nx, .v2res .foot .today .rc.nx { background: rgba(255, 225, 77, .16); box-shadow: inset 0 0 0 2px rgba(255, 225, 77, .7); color: #ffe14d; }
+.v2nx .today .rc.nx i, .v2res .foot .today .rc.nx i { color: #ffe14d; }
+/* 待ち時間 */
+#stage.v2 .v2wait { height: 556px; }                                                                  /* y96〜652 */
+#stage.v2.m-wait .v2nx { top: 666px; height: 214px; padding: 0 36px 44px; }                            /* y666〜880。中身は上の 170px */
+#stage.v2.m-wait .v2nx .today { display: flex; position: absolute; left: 0; right: 0; bottom: 0; height: 44px; padding: 0 30px; border-top: 2px solid rgba(255, 255, 255, .14); border-radius: 0 0 22px 22px; background: rgba(0, 0, 0, .22); }
+#stage.v2.m-wait .v2nx .mh { bottom: 50px; }
+/* 結果 */
+#v2res { grid-template-rows: 60px 497px 132px 110px; }
+.v2res .r .v2wl { margin-bottom: 48px; }
+.v2res .ract { margin-bottom: 48px; }
+.v2res .rsub { margin-bottom: 48px; }
+.v2res.has-w:not(.sub-on) .r .v2wl { margin-bottom: 238px; }
+.v2res.sub-on .r .v2wl { margin-bottom: 294px; }
+.v2res.has-w:not(.sub-on) .rnote { align-self: end; height: 74px; }
+.v2res .foot { flex-wrap: wrap; align-content: center; row-gap: 6px; padding: 8px 24px; }
+.v2res .foot .today { flex: 1 0 100%; order: 9; display: flex; height: 36px; }
+
+/* デザイン審査（2026-10-27）の直し: 「本日のレース」のラベル 1920 で 28px・時刻 32px（結果 31px）。済み＝灰 #B8C2D6（✓ も灰・時刻の右 8px）、次＝金枠 2px #F5CB62＋「次」、これから＝白。帯は待ち時間 50px・結果の 2 行目 40px */
+.v2nx .today .tl, .v2res .foot .today .tl { font-size: 24px; color: #dfe7f3; }
+.v2nx .today .rc, .v2res .foot .today .rc { gap: 8px; height: 40px; padding: 0 12px; border-radius: 10px; font-size: 27px; }
+.v2nx .today .rc b, .v2res .foot .today .rc b { font-size: 27px; }
+.v2res .foot .today .rc b { font-size: 26px; }
+.v2nx .today .rc i, .v2res .foot .today .rc i { font-size: 22px; }
+.v2nx .today .rc.done, .v2res .foot .today .rc.done, .v2nx .today .rc.done i, .v2res .foot .today .rc.done i { color: #b8c2d6; }
+.v2nx .today .rc.nx, .v2res .foot .today .rc.nx { background: rgba(245, 203, 98, .12); box-shadow: inset 0 0 0 2px #f5cb62; color: #f5cb62; }
+.v2nx .today .rc.nx i, .v2res .foot .today .rc.nx i { color: #f5cb62; }
+#stage.v2.m-wait .v2nx { padding-bottom: 50px; }
+#stage.v2.m-wait .v2nx .today { height: 50px; }
+#stage.v2.m-wait .v2nx .mh { bottom: 56px; }
+#v2res { grid-template-rows: 60px 493px 132px 114px; }
+.v2res .foot .today { height: 40px; }
+.v2res .foot .today .rc b { color: inherit; } /* 済みの時刻も灰に（.v2res .foot b の金を打ち消す） */
+.v2res .foot .today .tl { margin-right: 16px; } /* 再審査: ラベルの右余白 +10px */
