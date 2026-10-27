@@ -12,7 +12,7 @@
      storeId を渡さないときは全店のレースだけ（v4 の時刻表は全店同じ）。渡すと、その店だけの決まりも入れる。
      テストレース（スタッフ・管理画面で作るもの）は時刻表に無いので入らない。時刻表が無い・空なら null。
      8 日先まで探す（曜日・日付の決まりで今日・明日に無いときも）。
-   DerbyNextOpen.list(schedule, nowMs[, storeId, n]) → この先 n 件（初期 5）
+   DerbyNextOpen.list(schedule, nowMs[, storeId, n, opts]) → この先 n 件（初期 5）。opts.votableOnly（2026-10-27）: その店が投票できるレース（storeIds）だけ
    DerbyNextOpen.voting(schedule, nowMs[, storeId]) → いま投票中（openAt ≤ now < closeAt）なら next と同じもの、でなければ null */
 (function (root, factory) {
   const api = factory();
@@ -94,7 +94,11 @@
   }
   const secs = (v, d) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) ? d : Math.max(0, n); };
 
-  function list(schedule, nowMs, storeId, n) {
+  /* n: 件数（初期 5）。opts.votableOnly（2026-10-27）: storeId を渡したとき、その店が投票できるレース（storeIds が無い＝全店、またはその店が入っている）だけにする
+     （初期は false ＝ 見るだけの店にも出す。casa SLOT のテレビは見るだけの店もレースの時刻に DERBY へ移るので今までどおり）。n の代わりに { n, votableOnly } でもよい */
+  function list(schedule, nowMs, storeId, n, opts) {
+    if (n && typeof n === 'object') { opts = n; n = opts.n; }
+    opts = opts || {};
     const sc = schedule || {}, rules = arr(sc.rules), t = Number(nowMs);
     if (!rules.length || !Number.isFinite(t)) return [];
     const voteSec = secs(sc.voteSec, VOTE_SEC_DEFAULT), lead = secs(sc.closeLeadSec, 0), want = n || 5, seen = {}, out = [];
@@ -102,6 +106,7 @@
     for (let d = -1; d <= LOOK_DAYS && out.length < want; d++) {
       for (const e of expandDate(dateStr(t + d * DAY), rules)) {
         if (e.at <= t || (e.storeId && e.storeId !== storeId)) continue;
+        if (opts.votableOnly && storeId && e.storeIds && !e.storeIds.includes(String(storeId))) continue;
         const k = (e.storeId || '') + '|' + e.at; if (seen[k]) continue; seen[k] = 1;
         out.push(Object.assign(e, { closeAt: e.at - lead * 1000, openAt: e.at - (lead + voteSec) * 1000 }));
       }
