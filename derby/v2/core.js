@@ -97,7 +97,48 @@
   // 受け取りの期限: 時刻 ms（発表した時刻とレースの時刻の遅いほう）が入る営業日の終わり（次の区切り h 時）
   const expireAtFor = (ms, h) => { h = h == null ? 5 : h; return dayStart(bizDate(ms, h)) + DAY + h * 3600000; };
 
-  /* ---------- 時刻表（時刻 ＝ レースが走り出す時刻。全店同じ） ---------- */
+  /* ---------- 祝日（2026-10-27 オーナー「時刻表に『祝日』の決まり。祝日かどうかは自動で」） ----------
+     日本の国民の祝日を計算で求める（表は持たない。2020〜2099 年で正しい。オリンピックの年だけの特別な移動（2019〜2021）は見ない＝今の決まりだけ）。
+     固定: 1/1 元日・2/11 建国記念の日・2/23 天皇誕生日・4/29 昭和の日・5/3 憲法記念日・5/4 みどりの日・5/5 こどもの日・8/11 山の日・11/3 文化の日・11/23 勤労感謝の日
+     月曜: 成人の日（1 月の第 2）・海の日（7 月の第 3）・敬老の日（9 月の第 3）・スポーツの日（10 月の第 2）。春分の日・秋分の日は近似式（1980〜2099 年で正しい）。
+     振替休日: 祝日が日曜なら、そのあと最初の祝日でない日（5/3 が日曜なら 5/6）。国民の休日: 前の日も次の日も祝日で、日曜でも祝日でもない日（9 月の敬老の日と秋分の日の間。2026-09-22）。
+     ds は 'YYYY-MM-DD'（日本時間のカレンダーの日付。営業日ではない）。形がちがえば null。
+     v2/next-open.js（Core なしで動く casa SLOT のテレビ用）にも同じものを置いてある。直すときは両方を同じに（tests/v4-holiday.test.js が 2025〜2030 の毎日と中身の文字列を比べる） */
+  /* 祝日の計算ここから（v2/core.js と v2/next-open.js で同じ文字列） */
+  const HOLIDAY_FIXED = { '01-01': '元日', '02-11': '建国記念の日', '02-23': '天皇誕生日', '04-29': '昭和の日', '05-03': '憲法記念日', '05-04': 'みどりの日', '05-05': 'こどもの日', '08-11': '山の日', '11-03': '文化の日', '11-23': '勤労感謝の日' };
+  const HOLIDAY_MONDAY = [[1, 2, '成人の日'], [7, 3, '海の日'], [9, 3, '敬老の日'], [10, 2, 'スポーツの日']]; // [月, 第 n 月曜, 名前]
+  const ymd = (ds) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ds == null ? '' : ds)); return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null; };
+  const shiftDs = (ds, n) => { const p = ymd(ds); return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10); }; // n 日あと（負なら前）
+  const dowOf = (p) => new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay(); // 0 ＝ 日曜
+  const nthMonday = (y, mo, n) => 1 + ((8 - dowOf([y, mo, 1])) % 7) + (n - 1) * 7; // その月の第 n 月曜の日
+  const equinox = (y, base) => Math.floor(base + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4)); // 春分 base 20.8431・秋分 base 23.2488
+  // 法で日が決まっている祝日（振替休日・国民の休日は含まない）の名前。祝日でなければ null
+  function baseHoliday(ds) {
+    const p = ymd(ds); if (!p) return null;
+    const y = p[0], mo = p[1], d = p[2], fixed = HOLIDAY_FIXED[ds.slice(5)];
+    if (fixed) return fixed;
+    for (let i = 0; i < HOLIDAY_MONDAY.length; i++) { const h = HOLIDAY_MONDAY[i]; if (mo === h[0] && d === nthMonday(y, h[0], h[1])) return h[2]; }
+    if (mo === 3 && d === equinox(y, 20.8431)) return '春分の日';
+    if (mo === 9 && d === equinox(y, 23.2488)) return '秋分の日';
+    return null;
+  }
+  // 祝日の名前（振替休日・国民の休日も）。祝日でなければ null
+  function holidayName(ds) {
+    const p = ymd(ds); if (!p) return null;
+    const base = baseHoliday(ds); if (base) return base;
+    for (let b = shiftDs(ds, -1); baseHoliday(b); b = shiftDs(b, -1)) if (dowOf(ymd(b)) === 0) return '振替休日'; // 前へ祝日が続く限りさかのぼり、日曜の祝日に届けば振替休日
+    if (dowOf(p) !== 0 && baseHoliday(shiftDs(ds, -1)) && baseHoliday(shiftDs(ds, 1))) return '国民の休日';
+    return null;
+  }
+  const isHoliday = (ds) => holidayName(ds) != null;
+  /* 祝日の計算ここまで */
+  // その日の種類（管理画面の予定の見出し「祝日（スポーツの日）」用）: { holiday: 名前 | null, weekday: 0（日）〜6（土） }
+  const dayKind = (ds) => ({ holiday: holidayName(ds), weekday: weekday(ds) });
+
+  /* ---------- 時刻表（時刻 ＝ レースが走り出す時刻。全店同じ） ----------
+     決まりの種類 kind: 'daily'（毎日）・'weekday'（曜日）・'holiday'（祝日。2026-10-27）・'date'（日付）。
+     同じ日に重なるときは店ごとのまとまりの中で 日付 > 祝日 > 曜日 > 毎日 の順に強い（月曜が祝日なら祝日の決まり。オーナー決定） */
+  const RULE_KINDS = ['daily', 'weekday', 'holiday', 'date'], RULE_PRIORITY = ['date', 'holiday', 'weekday'];
   function ruleTimes(rule) {
     if (Array.isArray(rule.times)) return rule.times.map(hhmm).filter((x) => x != null);
     const from = hhmm(rule.from), to = hhmm(rule.to), ev = Math.max(1, Number(rule.everyMin) || 0);
@@ -114,6 +155,7 @@
     if (rule.enabled === false) return false;
     if (rule.kind === 'date') return rule.date === ds;
     if (rule.kind === 'weekday') return Array.isArray(rule.weekdays) && rule.weekdays.map(Number).includes(weekday(ds));
+    if (rule.kind === 'holiday') return isHoliday(ds);
     return rule.kind === 'daily' || !rule.kind;
   }
   function expandDate(ds, rules) {
@@ -122,7 +164,7 @@
     const out = {};
     Object.keys(groups).forEach((g) => {
       const rs = groups[g].filter((r) => ruleMatches(r, ds));
-      const pri = rs.some((r) => r.kind === 'date') ? 'date' : rs.some((r) => r.kind === 'weekday') ? 'weekday' : 'daily';
+      const pri = RULE_PRIORITY.find((k) => rs.some((r) => r.kind === k)) || 'daily'; // 日付 > 祝日 > 曜日 > 毎日
       rs.filter((r) => (r.kind || 'daily') === pri).forEach((r) => {
         ruleSlots(r).forEach(({ min, payout }) => {
           const at = dayStart(ds) + min * 60000, h = Math.floor(min / 60), mm = min % 60;
@@ -158,7 +200,7 @@
     if (!Array.isArray(input)) throw err(400, 'bad_rules', '時刻表の決まりがありません');
     const h = dayStartHour == null ? 5 : Math.max(0, Math.min(12, Number(dayStartHour) || 0));
     const rules = input.map((r, i) => {
-      const kind = ['daily', 'weekday', 'date'].includes(r.kind) ? r.kind : 'daily';
+      const kind = RULE_KINDS.includes(r.kind) ? r.kind : 'daily'; // 'holiday'（祝日）は曜日も日付もいらない
       if (kind === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) throw err(400, 'bad_rule', '日付の形がちがいます（' + (i + 1) + ' 行目）');
       const rule = { id: String(r.id || 'r' + (i + 1)), enabled: r.enabled !== false, kind, payout: roundAmount(r.payout), scope: r.scope === 'store' ? 'store' : 'all', storeId: r.storeId || null, storeIds: null };
       if (!rule.storeId) rule.storeIds = cleanStoreIds(r.storeIds, Array.isArray(storeIds) ? storeIds : null, '（' + (i + 1) + ' 行目）');
@@ -180,7 +222,7 @@
     const seen = {};
     rules.forEach((r) => {
       if (!r.enabled) return;
-      const days = r.kind === 'date' ? ['D' + r.date] : r.kind === 'weekday' ? (r.weekdays || []).map((d) => 'W' + d) : ['daily'];
+      const days = r.kind === 'date' ? ['D' + r.date] : r.kind === 'weekday' ? (r.weekdays || []).map((d) => 'W' + d) : r.kind === 'holiday' ? ['H'] : ['daily']; // 祝日の決まり同士の同じ時刻だけ重なりと見る（毎日・曜日との重なりは祝日が勝つので可）
       ruleSlots(r).forEach(({ min }) => days.forEach((d) => {
         const k = (r.storeId || '') + '|' + d + '|' + min;
         if (seen[k] && seen[k] !== r.id) throw err(400, 'duplicate_time', '同じ時刻のレースが 2 つあります（' + String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0') + (r.storeId ? '・' + (storeName ? storeName(r.storeId) : r.storeId) : '') + '・' + (r.name || r.id) + ' と ' + seen[k] + '）');
@@ -195,7 +237,7 @@
      管理画面で時刻表・調整（投票の秒数など）を保存したときに書き直す */
   function publicRules(rules) {
     return (Array.isArray(rules) ? rules : []).map((r) => {
-      const o = { id: String(r.id || ''), enabled: r.enabled !== false, kind: ['daily', 'weekday', 'date'].includes(r.kind) ? r.kind : 'daily', storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds) }; /* storeIds: 投票できる店（null ＝ 全店。2026-10-26）。casa SLOT のテレビは見ない（見るだけの店もレースの時刻に DERBY へ移る） */
+      const o = { id: String(r.id || ''), enabled: r.enabled !== false, kind: RULE_KINDS.includes(r.kind) ? r.kind : 'daily', storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds) }; /* kind 'holiday'（祝日）もそのまま（casa SLOT のテレビは next-open.js で祝日を同じ計算で判定） */ /* storeIds: 投票できる店（null ＝ 全店。2026-10-26）。casa SLOT のテレビは見ない（見るだけの店もレースの時刻に DERBY へ移る） */
       if (o.kind === 'weekday') o.weekdays = (r.weekdays || []).map(Number);
       if (o.kind === 'date') o.date = String(r.date || '');
       if (Array.isArray(r.races)) o.races = r.races.map((x) => ({ time: String((x && x.time) || '') }));
@@ -607,6 +649,7 @@
 
   return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
+    isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
