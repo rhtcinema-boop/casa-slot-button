@@ -784,6 +784,7 @@ R3D.HorseReal = (function () {
   // 毛の材質: テクスチャは三方向から投影して混ぜる（休みの姿勢の位置で。継ぎ目や鼻先の渦が出ない）＋縁の明るさ
   function coatMaterial() {
     if (matCache.coat) return matCache.coat;
+    if (R3D.xlite) { const m = new THREE.MeshLambertMaterial({ vertexColors: true }); m.name = "horseFurLite"; matCache.coat = m; return m; } // テレビの画質「さらになめらか（最軽量）」（2026-10-28）: 毛の模様・つや・縁の明るさなしの軽い材質
     const m = new THREE.MeshStandardMaterial({ map: furTexture(), vertexColors: true, roughness: 0.5, metalness: 0.0 }); // B 案: 短い毛のつや（ぬいぐるみの 0.86 より滑らか）
     m.onBeforeCompile = (sh) => {
       sh.uniforms.rimK = { value: 0.1 }; sh.uniforms.triS = { value: 1 / TILE };
@@ -1246,8 +1247,8 @@ R3D.HorseReal = (function () {
     let geoKey = bodyMesh.geometry.userData.cacheKey; geoRef(geoKey, 1);
     let jockeyOn = opts.jockey !== false, disposed = false;
     const clothTex = atlasTexture(h);
-    const tMat = new THREE.MeshStandardMaterial({ map: clothTex, vertexColors: true, roughness: 0.68, metalness: 0.0, alphaTest: 0.5 });
-    addRim(tMat, 0.12);   // 勝負服: 布らしい柔らかい陰影（縁が少し明るい。講評 v2-1 の 2）
+    const tMat = R3D.xlite ? new THREE.MeshLambertMaterial({ map: clothTex, vertexColors: true, alphaTest: 0.5 }) : new THREE.MeshStandardMaterial({ map: clothTex, vertexColors: true, roughness: 0.68, metalness: 0.0, alphaTest: 0.5 }); // さらになめらか: 勝負服も軽い材質
+    if (!R3D.xlite) addRim(tMat, 0.12);   // 勝負服: 布らしい柔らかい陰影（縁が少し明るい。講評 v2-1 の 2）
     const tMesh = new THREE.SkinnedMesh(tackGeometry(S, quality, jockeyOn), tMat);
     [bodyMesh, tMesh].forEach((m) => { m.castShadow = true; m.receiveShadow = true; });
     lineMesh.castShadow = false; lineMesh.receiveShadow = false; lineMesh.visible = quality === "high" && opts.outline === true;
