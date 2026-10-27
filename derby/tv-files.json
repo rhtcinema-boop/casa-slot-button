@@ -188,8 +188,8 @@
   },
   {
    "path": "index.html",
-   "size": 22332,
-   "sha256": "73a365e289601016989c3b33b667587a0b318bf3bc23a43fac64c4b5e818d8e8"
+   "size": 22480,
+   "sha256": "2eb39a091cca18222c1c9333572095023724d58c0894551814ab7080d4bbdff7"
   },
   {
    "path": "js/audio.js",
@@ -238,23 +238,23 @@
   },
   {
    "path": "js/r3d/horse3d-real.js",
-   "size": 163946,
-   "sha256": "78dd56e548bdf5eda5629bb3c5efeb0cd6cb4fc83f871972964830dbfb62d91a"
+   "size": 164396,
+   "sha256": "ca349a113efc96ba3278a3e43fa5bfa3ece872a5938ef49e3ff36d62b0ac59a8"
   },
   {
    "path": "js/r3d/horse3d.js",
-   "size": 156078,
-   "sha256": "c0310a4be930ed7868cd814aa82b1192c10e6d1cb04bffbe965b075f78035817"
+   "size": 156528,
+   "sha256": "6b11bb5e70eb30055252961d7724dc7f12e2601f23e15c3d174938617ed94804"
   },
   {
    "path": "js/r3d/look3d.js",
-   "size": 52610,
-   "sha256": "093be6a26969bff93e1acddf9e480921e389ad83bc45c15c61600368dd1f6476"
+   "size": 52806,
+   "sha256": "e2f3d2e6e354eb114fb448c38f9d3863131999403a6d64622e447376027ebcb5"
   },
   {
    "path": "js/r3d/venue3d.js",
-   "size": 180758,
-   "sha256": "244102c32edb2329fd616c9979256a6f5a8623a423023329bbecd5d6e4521609"
+   "size": 181398,
+   "sha256": "aa462c20c0c946df498c2509fd3b8b764ae4ded13f8ac1de44f8d03c926f9a37"
   },
   {
    "path": "js/race.js",
@@ -263,8 +263,8 @@
   },
   {
    "path": "js/race3d.js",
-   "size": 210891,
-   "sha256": "99442d80c1e72bf49b4cb2adc65faeaf4f8d54088aa23de2be8dc514d5dfb111"
+   "size": 212644,
+   "sha256": "20fb1a6181bc07877e918db51f36e907d26f68c1209a7969cae82aad3a03ba64"
   },
   {
    "path": "js/splash3d.js",
@@ -293,8 +293,8 @@
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 112507,
-   "sha256": "d65b9ad9ffb7580c8a427a5534a033069019ab59a1351991c45014880973559b"
+   "size": 112531,
+   "sha256": "b72327022840ba8141130648cea6835fe55862e846ffd298c69d98306cd85b1d"
   },
   {
    "path": "v2/client.js",
@@ -308,8 +308,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 80491,
-   "sha256": "4ef7fd434c63768c3513146ea348ab03623f9d46ce82ad47e7ce3a0d0b88021d"
+   "size": 80608,
+   "sha256": "3bfb85a63569ecbb0fe535080948b8c40b8b9ce320853e0f27801181612cc31c"
   },
   {
    "path": "v2/form.js",
@@ -343,8 +343,8 @@
   },
   {
    "path": "v2/tvswitch.js",
-   "size": 27060,
-   "sha256": "1d29490b1355b53929fb08aeb91fed36f71db54b752a180ee8fef36f0bc67aa6"
+   "size": 27268,
+   "sha256": "013d538be7d8d5c7af6a0c651ac728feacaf33158fd024794890046a55f98ef9"
   }
  ]
 }
