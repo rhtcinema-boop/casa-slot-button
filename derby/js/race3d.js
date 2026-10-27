@@ -20,6 +20,12 @@ window.Race3D = (function () {
   const HD = Number((QS.match(/[?&]hd=([\d.]+)/) || [])[1] || 0), MAXK = Math.max(1, Math.min(2, HD || 1.5));
   const QMODE = (() => { try { return localStorage.getItem('casa.derby.q') || ''; } catch (e) { return ''; } })(); // 2026-10-19: 管理者が店舗の設定で選んだテレビの画質（v2/tvswitch.js）。'max'＝最高、'sharp'＝軽い描き方のまま細かさ 1.2 倍で固定
   const MAXQ = QMODE === 'max';
+  /* 2026-10-28 オーナー: 渋谷のテレビは「なめらか優先」でもカクカクする → 'lite' ＝さらになめらか（最軽量）。絵だけ軽くする（レースの進み・結果・時刻は同じ）:
+     3D の画面だけ細かさを下げて固定（XL_K。テロップ・文字の 2D のキャンバスは 1.2 倍のまま＝くっきり）・Fire TV 向けの描き方（影なし・ふちのなめらかなし・後処理なし）を必ず使う・
+     会場はさらに間引く（観客・木・旗。js/r3d/venue3d.js の XLQ）・馬は少し離れたらすぐ粗い形・土煙の粒と雨の粒を減らし水しぶきなし（js/r3d/look3d.js）。?q=xlite でも試せる。?xlk=0.7 で細かさを変えて測れる */
+  const XLITE = QMODE === 'lite' || /[?&]q=xlite\b/.test(QS);
+  const XL_K = Math.max(0.4, Math.min(1.2, Number((QS.match(/[?&]xlk=([\d.]+)/) || [])[1]) || 0.6));
+  if (XLITE) R3D.xlite = true;
   const ADAPT = !/[?&]adapt=0/.test(QS) && !MAXQ;                         // ?adapt=0 で自動の画質調整を止める（重さの測定用）
   const STD_CAM = /[?&]cam=std/.test(QS);
   const LAYOUT_OLD = /[?&]layout=old/.test(QS);
@@ -300,6 +306,7 @@ window.Race3D = (function () {
     this.lite = /[?&]lite=1/.test(QS);
     this.quality = R3D.quality = R3D.quality || guessQuality();
     R3D.inst = this; // 2026-10-19: テレビの「戻る」長押しの画面に、いまの 3D の細かさ・なめらかさを出すため（v2/tvswitch.js）
+    if (XLITE) { this.xlite = true; R3D.quality = 'tv'; this.quality = 'tv'; } // さらになめらか: どの機械でも Fire TV 向けの描き方から
     if (this.quality === 'tv' || R3D.tv) { this.tv = R3D.tv = true; this.quality = R3D.quality = 'low'; }
     if (this.quality === 'low') this.lite = true;
     this.cam = { p: { x: 0, y: 30, z: 120 }, t: { x: 0, y: 0, z: 0 }, fov: 60, mode: '' }; // fov は 2D 版と同じ横の画角（度）
@@ -325,7 +332,7 @@ window.Race3D = (function () {
     if (this.look && typeof this.look.placeDigit === 'function') { try { this.look.placeDigit(-1, 0.02, 7.2, 3.6); } catch (e) { warnOnce('look.placeDigit', e); } }
     this.director = null; this.makeDirector();
     this.horses3d = []; this.handlers = [];
-    this.dustFx = makeDust(this.scene, this.tv ? 40 : low ? 70 : 160);
+    this.dustFx = makeDust(this.scene, this.xlite ? 16 : this.tv ? 40 : low ? 70 : 160);
     if (this.tv) this.noShadows();
     // 残線（直線の残り 400・200・100m の白い線）
     this.remainMesh = {};
@@ -362,13 +369,14 @@ window.Race3D = (function () {
       this.resAt = now;
       const rw = (this.cv.getBoundingClientRect && this.cv.getBoundingClientRect().width) || W, dpr = window.devicePixelRatio || 1;
       const k = this.tv ? this.tvK(rw, dpr) : Math.round(Math.max(1, Math.min(this.lite ? 1 : Math.min(MAXK, this.kCap || 9), (rw || W) * Math.max(1, dpr) / W)) * 4) / 4;
-      if (k !== this.k || force) { this.k = k; this.cv.width = Math.round(W * k); this.cv.height = Math.round(H * k); this.renderer.setPixelRatio(k); this.renderer.setSize(W, H, false); }
+      const kg = this.xlite ? Math.min(k, XL_K) : k; // 3D の細かさ（さらになめらかのときだけテロップより粗く）
+      if (k !== this.k || kg !== this.kg || force) { this.k = k; this.kg = kg; this.cv.width = Math.round(W * k); this.cv.height = Math.round(H * k); this.renderer.setPixelRatio(kg); this.renderer.setSize(W, H, false); }
     }
     this.ctx.setTransform(this.k || 1, 0, 0, this.k || 1, 0, 0);
   };
   // Fire TV の解像度: 画面に映る大きさ × 画素密度（0.1 刻み、0.7〜1.2）。重さで下げた上限（tvCap）を超えない
   Race3D.prototype.tvK = function (rw, dpr) {
-    if (TV_K_FIX) return TV_K_FIX;
+    if (TV_K_FIX || this.xlite) return TV_K_FIX || 1.2;
     const want = Math.max(TV_K_MIN, Math.min(TV_K_MAX, Math.round((rw || W) * Math.max(1, dpr || 1) / W * 10) / 10));
     return this.tvCap ? Math.min(want, this.tvCap) : want;
   };
@@ -1582,7 +1590,7 @@ window.Race3D = (function () {
       if (pf.gap > 21 && this.k > 1) { this.kCap = Math.max(1, this.k - 0.25); pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: 解像度を ' + this.k + ' 倍に下げました'); }
       else if (pf.gap > 36 && this.k <= 1) this.goLite();
     } else if (ADAPT && this.lite && !this.tv && document.visibilityState === 'visible' && pf.frames > 120 && pf.gap > 36) this.goTv(); // 軽い描き方でも 28fps を下回る → Fire TV 向けへ
-    else if (ADAPT && this.tv && !TV_K_FIX && document.visibilityState === 'visible' && pf.frames > 90) { // Fire TV: 40fps を下回ったら 0.1 下げる。52fps を超えて 1 分たったら 0.1 戻す（2026-10-19: 45→40。細かさを優先）
+    else if (ADAPT && this.tv && !TV_K_FIX && !this.xlite && document.visibilityState === 'visible' && pf.frames > 90) { // Fire TV: 40fps を下回ったら 0.1 下げる。52fps を超えて 1 分たったら 0.1 戻す（2026-10-19: 45→40。細かさを優先）
       if (pf.gap > 25 && this.k > TV_K_MIN) { this.tvCap = Math.max(TV_K_MIN, Math.round((this.k - 0.1) * 10) / 10); this.tvDownAt = now; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に下げました'); }
       else if (this.tvCap && pf.gap < 19.2 && pf.frames > 600 && now - (this.tvDownAt || 0) > 60000) { this.tvCap = Math.round((this.tvCap + 0.1) * 10) / 10; if (this.tvCap >= TV_K_MAX) this.tvCap = 0; pf.frames = 0; pf.gap = 16.7; this.fitRes(true); console.info('casa DERBY 3D: Fire TV の解像度を ' + this.k + ' 倍に戻しました'); }
     }
@@ -1608,7 +1616,8 @@ window.Race3D = (function () {
       const hz = this.horses3d[i], o = hz && hz.object3d; if (!o || !hz.setQuality) continue;
       const bl = o.getObjectByName('blob'), rg = o.getObjectByName('ring'); if (bl) bl.visible = !(rg && rg.visible); // 足元の輪が出ている間はぼかした丸（影）を描かない（描く回数を 6 回へらす）
       const d = Math.max(0.5, cam.position.distanceTo(o.position)), frac = 1.62 / (2 * d * th);
-      const want = L[i] === 'far' ? (frac > 0.15 ? 'low' : 'far') : (frac < 0.11 ? 'far' : 'low');
+      const lo = this.xlite ? 0.2 : 0.11, hi = this.xlite ? 0.25 : 0.15; // さらになめらか: 体高が画面の 2 割より小さければ粗い形（ふつうの Fire TV は 1 割）
+      const want = L[i] === 'far' ? (frac > hi ? 'low' : 'far') : (frac < lo ? 'far' : 'low');
       if (want !== L[i]) { L[i] = want; try { hz.setQuality(want); } catch (e) { warnOnce('Horse.setQuality far', e); } }
     }
   };
@@ -1640,9 +1649,9 @@ window.Race3D = (function () {
       try { const gl = this.renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); P.gpu = e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); } catch (e) { }
     }
     const a = P.ft.slice().sort((x, y) => x - y), q = (f) => (a.length ? a[Math.min(a.length - 1, Math.floor(f * a.length))] : 0), mid = q(0.5), slow = q(0.95);
-    const fps = mid ? 1000 / mid : 0, tier = this.tv ? 'tv' : this.lite ? 'low' : 'high', pf = this.perf;
+    const fps = mid ? 1000 / mid : 0, tier = this.xlite ? 'xlite' : this.tv ? 'tv' : this.lite ? 'low' : 'high', pf = this.perf;
     const ok = slow <= 34 ? 'OK' : slow <= 50 ? '注意' : '重い';
-    P.el.textContent = '画質 ' + tier + '  解像度 ' + (this.k || 1) + '倍  影 ' + (this.renderer.shadowMap.enabled ? 'あり' : 'なし') + '\n' +
+    P.el.textContent = '画質 ' + tier + '  解像度 ' + (this.k || 1) + '倍' + (this.kg && this.kg !== this.k ? '（3D ' + this.kg + '倍）' : '') + '  影 ' + (this.renderer.shadowMap.enabled ? 'あり' : 'なし') + '\n' +
       fps.toFixed(0) + 'fps  1コマ ' + mid.toFixed(1) + 'ms  遅いコマ ' + slow.toFixed(1) + 'ms  → ' + ok + '\n' +
       '三角形 ' + Math.round(pf.tris / 1000) + 'k  描く回数 ' + pf.calls + '  場面 ' + this.phase + (this.gi ? '(ゲートイン)' : '') + '\n' + 'GPU ' + String(P.gpu).slice(0, 48);
   };
@@ -1921,7 +1930,8 @@ window.Race3D = (function () {
       const k = this.k || 1, cw = Math.max(1, Math.round(PH_SW * k)), ch = Math.max(1, Math.round(PH_SH * k)), rows = Math.max(2, pc.items.length);
       const cv = this.insetCv || (this.insetCv = document.createElement('canvas')); if (cv.width !== cw || cv.height !== ch * rows) { cv.width = cw; cv.height = ch * rows; }
       const g = cv.getContext('2d'); g.clearRect(0, 0, cw, ch * rows);
-      pc.items.forEach((it) => g.drawImage(this.glcv, it.sx * k, it.sy * k, PH_SW * k, PH_SH * k, 0, it.r * ch, cw, ch));
+      const kg = this.kg || k; // 3D のキャンバスの細かさ（さらになめらかではテロップより粗い）
+      pc.items.forEach((it) => g.drawImage(this.glcv, it.sx * kg, it.sy * kg, PH_SW * kg, PH_SH * kg, 0, it.r * ch, cw, ch));
       this.inset = { cv, ch, crops: pc };
     } finally { hide.forEach((o) => { o.visible = true; }); }
   };
