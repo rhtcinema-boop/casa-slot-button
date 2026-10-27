@@ -1062,7 +1062,7 @@
           await b.commit();
           return { ok: true, decider: id ? { id, store: tv.store || null, at: now() } : null };
         }),
-        preview: wrap(async (date, s) => { const sc = await secretConfig(), ds = date || Core.dateStr(now()); return { date: ds, races: Core.expandDate(ds, sc.timetable.rules || []).filter((e) => !s || !e.storeId || e.storeId === s) }; }),
+        preview: wrap(async (date, s) => { const sc = await secretConfig(), ds = date || Core.dateStr(now()); return { date: ds, holiday: Core.holidayName(ds), weekday: Core.weekday(ds), /* holiday: 祝日の名前 | null（模擬クラウドの GET /api/admin/timetable/preview と同じ。2026-10-27） */ races: Core.expandDate(ds, sc.timetable.rules || []).filter((e) => !s || !e.storeId || e.storeId === s) }; }),
         saveTuning: wrap(async (t) => {
           const sc = await secretConfig(), merged = Core.mergeTuning(sc.tuning, t || {}, now());
           const b = db.batch(); b.set(doc(COL.config, 'secret'), { tuning: merged }, { merge: true }); b.set(doc(COL.config, 'public'), Core.publicTuning(merged)); b.set(doc(COL.schedule, 'public'), Core.publicSchedule(sc.timetable.rules || [], merged, now())); for (const x of Core.revoteRaces(await getRaces(true), merged, now())) b.set(doc(COL.races, x.id), { openAt: x.openAt, openAtTs: Ts(x.openAt), voteSec: x.voteSec }, { merge: true }); /* まだ投票が始まっていないレースも新しい投票の秒数に */ await b.commit(); pubCache = null; secretCache = null;
