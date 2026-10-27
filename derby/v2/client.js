@@ -100,7 +100,7 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider'];
+    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider'];
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
@@ -216,6 +216,7 @@
           saveTuning: (t) => post('/api/admin/tuning', t, h),
           races: (date) => request('GET', '/api/admin/races?' + qs({ date }), undefined, h),
           stats: (from, to, s) => request('GET', '/api/admin/stats?' + qs({ from, to, store: s }), undefined, h),
+          abuse: (from, to, s) => request('GET', '/api/admin/abuse?' + qs({ from, to, store: s }), undefined, h), // 見える化（集計タブの「注意」。2026-10-27）
           logs: (o) => request('GET', '/api/admin/logs?' + qs(o || {}), undefined, h),
           refund: (raceId) => post('/api/admin/refund', { raceId }, h),
           reload: (storeId) => post('/api/admin/reload', { storeId: storeId || null }, h),
