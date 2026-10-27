@@ -193,6 +193,16 @@
       if (!force && pubCache && (local() - pubAt < 30000 || live.subs > 0)) return pubCache;
       const s = await doc(COL.config, 'public').get(); pubCache = Object.assign({}, Core.DEFAULT_TUNING, s.exists ? s.data() : {}); pubAt = local(); return pubCache;
     }
+    /* 公開の時刻表 derbySchedule/public（2026-10-27 本日の出走時間）: Core.stateFor に rules を渡して today（この営業日のこの店のレースの時刻）を付けるために読む。
+       ログインなしでも読める（ルール read: if true）のでスマホも読む。管理画面が保存したときだけ変わるので 5 分は読み直さない。レースの一覧が変わったとき（見張りで届いたとき）は次に読み直す。
+       読めなかったときは前の値（無ければ空の時刻表）で続ける＝today が空になるだけ */
+    let schedCache = null, schedAt = 0, schedDirty = false;
+    const SCHED_TTL = 5 * 60000;
+    async function getSchedule(force) {
+      if (!force && schedCache && !schedDirty && local() - schedAt < SCHED_TTL) return schedCache;
+      try { const s = await doc(COL.schedule, 'public').get(); schedCache = Object.assign({ rules: [] }, s.exists ? s.data() : {}); } catch (e) { schedCache = schedCache || { rules: [] }; }
+      schedAt = local(); schedDirty = false; return schedCache;
+    }
     const WINDOW = (role === 'tv' ? 120 : role === 'staff' ? 60 : 30) * 60000; // 見るレースの範囲（テレビは前のレースのハイライトがあるので 2 時間、スタッフ 1 時間、スマホ 30 分）
     async function getRaces(fresh) { if (!fresh && live.subs > 0 && live.races) return live.races; const q = await db.collection(COL.races).where('at', '>=', now() - WINDOW).orderBy('at').get(); return q.docs.map((d) => d.data()); }
     const resultCache = {};
@@ -212,7 +222,8 @@
     async function compose(s, races, stores, pub) {
       s = s || store;
       if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await doc(COL.counts, 'live').get(); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = {}; } } races = withCounts(races, countsCache); }
-      return Core.stateFor({ t: now(), store: s, role, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))) });
+      const sched = await getSchedule(); // 本日の出走時間（2026-10-27）: 公開の時刻表の決まり → state.today
+      return Core.stateFor({ t: now(), store: s, role, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [] });
     }
     // スマホ: 見張っていなければ「いまの状態」1 件を読む（レースの一覧を問い合わせない）
     async function phoneLive(storeId) { if (role !== 'phone') return null; try { return data(await doc(COL.live, storeId).get()); } catch (e) { return null; } }
@@ -886,7 +897,7 @@
       ready().then(() => {
         if (closed) return;
         live.subs++; unsubs.push(() => { live.subs--; });
-        const gotRaces = (list) => { races = list; live.races = races; raceHooks.forEach((f) => { try { f(); } catch (e) { /* noop */ } }); if (!opened) { opened = true; if (handlers.open) handlers.open(); if (handlers.hello) handlers.hello({ now: now(), store, role }); } soon(); };
+        const gotRaces = (list) => { races = list; live.races = races; schedDirty = true; /* レースの一覧が変わった → 公開の時刻表も次に読み直す（2026-10-27） */ raceHooks.forEach((f) => { try { f(); } catch (e) { /* noop */ } }); if (!opened) { opened = true; if (handlers.open) handlers.open(); if (handlers.hello) handlers.hello({ now: now(), store, role }); } soon(); };
         let full = false;
         const startFull = () => { // テレビ・スタッフ（とスマホの予備）: レースの一覧・店舗・設定を見張る
           if (full) return; full = true;
