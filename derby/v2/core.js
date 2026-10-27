@@ -440,7 +440,14 @@
     const next = list.find((r) => canVote(r, store) && r.status === 'upcoming' && r.closeAt > t && (!open || r.id !== open.id)) || null;
     // 見るだけのレース: この店は投票できないが、投票が始まっていて締切前（他店の投票中）。テレビはこれを映す
     const watch = list.find((r) => !canVote(r, store) && r.status === 'upcoming' && t >= voteWindow(r).openAt && t < r.closeAt) || null;
-    const up0 = p.upcoming || list.filter((r) => r.status === 'upcoming').map((r) => ({ id: r.id, at: r.at, storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds), openAt: voteWindow(r).openAt }));
+    let up0 = p.upcoming || list.filter((r) => r.status === 'upcoming').map((r) => ({ id: r.id, at: r.at, storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds), openAt: voteWindow(r).openAt }));
+    /* 2026-10-27: 時刻表（p.rules）を渡されたら、まだ作られていないレース（進行役のテレビは 15 分先までしか作らない）も予定に足す。
+       これが無いと、スマホ・スタッフが「本日のレースは終わりました」と出し、下の「本日のレース」の帯（22:00 次）と食い違っていた */
+    if (p.rules && !p.upcoming) {
+      const have = new Set(up0.map((e) => e.id));
+      scheduleAround(t, p.rules).forEach((e) => { if (e.at > t && !have.has(e.id)) up0.push({ id: e.id, at: e.at, storeId: e.storeId || null, storeIds: storeIdsOf(e.storeIds) }); });
+      up0 = up0.sort((a, b) => a.at - b.at);
+    }
     const upcoming = up0.filter((e) => e.at > t && (!e.storeId || e.storeId === store))
       .map((e) => Object.assign({}, e, { time: fmtBizTime(e.at, H), storeIds: storeIdsOf(e.storeIds), canVote: canVote({ storeId: e.storeId || null, storeIds: e.storeIds }, store), openAt: e.openAt != null ? e.openAt : e.at - T.closeLeadSec * 1000 - T.voteSec * 1000 }))
       .filter((e) => p.role !== 'phone' || e.canVote).slice(0, 5);
