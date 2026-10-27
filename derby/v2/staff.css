@@ -199,3 +199,27 @@ button { font-family: inherit; }
 /* 初参加ボーナスの 2 票目の当たり（2026-10-24。当たればそれぞれ払うので行が 2 つ）: 番号のそばに小さな札「2票目」（色だけでなく言葉で） */
 .win .meta .v2t { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--gold2, #c9a03e); color: #ffe9a8; font-size: 12px; font-weight: 700; line-height: 18px; white-space: nowrap; vertical-align: 1px; }
 .win.paid .meta .v2t, .win.expired .meta .v2t, .win.void .meta .v2t { border-color: #2c3a57; color: #b8beca; }
+
+/* ---------- 2026-10-27 オーナー「本日の出走時間を店ごとにテレビとスマホへ」: 上の段の 3 行目「本日のレース 13:00 ✓ 16:00 ✓ 19:00 次 22:00」（staff.js todayHtml。お客さんのスマホと同じ札） ---------- */
+.nextrow .nl3.today { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 6px; margin-top: 6px; }
+.nextrow .today .tl, .nextrow .today .none { font-size: 12px; font-weight: 700; color: var(--dim); letter-spacing: .06em; margin-right: 2px; }
+.nextrow .today .rc { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 7px; border-radius: 6px; background: var(--card2); border: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
+.nextrow .today .rc b { font-family: var(--display); font-weight: 900; font-size: 13px; font-variant-numeric: tabular-nums; margin: 0; color: var(--ink); }
+.nextrow .today .rc i { font-style: normal; font-size: 12px; font-weight: 900; }
+.nextrow .today .rc.done { opacity: .5; }
+.nextrow .today .rc.nx { border: 2px solid var(--gold); color: var(--gold); padding: 0 6px; }
+.nextrow .today .rc.nx b { color: var(--gold); }
+.nextrow .today .more { font-size: 13px; font-weight: 900; color: var(--dim); }
+
+/* デザイン審査（2026-10-27）の直し: 札は均等幅で横 1 列・高さ 44px 以上。済み＝灰 #AEB8CB、次＝金枠 2px #F5CB62＋「次」 */
+.nextrow .nl3.today { display: grid; grid-template-columns: 1fr; gap: 6px 8px; width: 100%; margin-top: 8px; }
+.nextrow .nl3.today .tl { grid-column: 1 / -1; text-align: center; margin: 0; }
+.nextrow .nl3.today .rcs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.nextrow .today .rc { min-height: 44px; height: auto; padding: 10px 6px; gap: 6px; justify-content: center; border-radius: 10px; min-width: 0; overflow: hidden; }
+.nextrow .today .rc b { font-size: 14px; letter-spacing: -.02em; }
+.nextrow .today .rc.done { opacity: 1; color: #aeb8cb; }
+.nextrow .today .rc.done b, .nextrow .today .rc.done i { color: #aeb8cb; }
+.nextrow .today .rc.nx { border: 2px solid #f5cb62; color: #f5cb62; padding: 8px 4px; }
+.nextrow .today .rc.nx b { color: #f5cb62; }
+@media (max-width: 350px) { .nextrow .today .rc b { font-size: 13px; } .nextrow .today .rc { gap: 4px; padding: 10px 4px; } .nextrow .nl3.today .rcs { gap: 6px; } }
+.nextrow .nl3.today { row-gap: 14px; } /* 再審査: ラベルと札の列の間 +8px */
