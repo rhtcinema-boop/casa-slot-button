@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 22332,
-   "sha256": "359d5d0edcc958da45873b4c006a1c7300da4ae7d4aed369aa0b84fd8f925784"
+   "sha256": "73a365e289601016989c3b33b667587a0b318bf3bc23a43fac64c4b5e818d8e8"
   },
   {
    "path": "js/audio.js",
@@ -308,8 +308,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 79800,
-   "sha256": "7bf79e6374a8a91a1bb1d942fd629af3833f8b4927e46ece14d2f9d7c524773c"
+   "size": 80491,
+   "sha256": "4ef7fd434c63768c3513146ea348ab03623f9d46ce82ad47e7ce3a0d0b88021d"
   },
   {
    "path": "v2/form.js",
