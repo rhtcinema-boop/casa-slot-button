@@ -375,6 +375,8 @@ details.fold > summary small { flex-basis: 100%; padding-left: 22px; margin-top:
 h3 .qsub { font-size: 13px; font-weight: 400; color: var(--sub); margin-left: 6px; }
 .seg.q3 button { min-width: 140px; }
 .seg.q4 button { min-width: 120px; padding: 0 12px; } /* 2026-10-28: 4 択（さらになめらか（最軽量）を足した） */
+.seg.q5 button { min-width: 112px; white-space: normal; line-height: 1.25; padding: 4px 10px; } /* 2026-10-28: 5 択。広い画面でも長い名前は折り返す */
+.seg.q5 { max-width: 100%; }
 .qnotes { list-style: none; margin: 10px 0 4px; padding: 0; }
 .qnotes li { font-size: 13px; color: var(--sub); line-height: 1.7; }
 .qnotes li b { color: var(--text); margin-right: 8px; }
@@ -384,6 +386,9 @@ h3 .qsub { font-size: 13px; font-weight: 400; color: var(--sub); margin-left: 6p
   .seg.q3 { display: flex; width: 100%; }
   .seg.q3 button { min-width: 0; font-size: 14px; }
   .seg.q4 button { padding: 0 4px; font-size: 12px; line-height: 1.25; white-space: normal; }
+  /* 2026-10-28: 5 択（最もなめらか（演出なし）を足した）。スマホは 1 列のまま 2〜3 行に折り返す */
+  .seg.q5 button { height: auto; min-height: 56px; padding: 4px 3px; font-size: 11px; line-height: 1.2; word-break: break-all; }
+  .tvrow .tvq .seg.q5r button { height: auto; min-height: 40px; padding: 3px 2px; font-size: 11px; line-height: 1.2; white-space: normal; word-break: break-all; }
 }
 
 /* 2026-10-20 オーナー決定: 金額の単位「pt」（数字のすぐ後ろ・数字より少し小さく） */
@@ -989,3 +994,23 @@ input.tm { font-variant-numeric: tabular-nums; text-align: center; }
 .pair .prow .nm { flex: 1 1 140px; }
 .pair .plock { margin: 2px 0 6px; font-size: 13px; }
 .pair .plock.warn { color: var(--warn, #ffb347); }
+
+/* 2026-10-29 オーナー: 最もなめらか（'min'）のときに会場から「削るもの」を店ごとに選ぶ（テレビのタブの店の行・店舗の編集） */
+.tvstrip { grid-column: 1 / -1; margin: 4px 0 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); min-width: 0; }
+.tvstrip[hidden] { display: none; }
+.tvstrip .sh { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 6px; }
+.tvstrip .sh b { font-size: 15px; }
+.tvstrip .sh small { color: var(--sub); font-size: 13px; }
+.tvstrip .ck { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.tvstrip .ck label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; font-size: 14px; cursor: pointer; }
+.tvstrip .ck input { width: 20px; height: 20px; flex: none; }
+.tvstrip .pre { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 6px; }
+.tvstrip .pre .btn { height: auto; min-height: 36px; padding: 4px 10px; white-space: normal; text-align: left; line-height: 1.3; }
+.tvstrip .pre .btn.on { background: var(--sel); color: var(--selText); border-color: transparent; }
+.tvstrip .hint { margin: 6px 0 0; }
+@media (max-width: 640px) {
+  .tvstrip { padding: 8px 10px; }
+  .tvstrip .ck { gap: 2px 12px; }
+  .tvstrip .ck label { font-size: 13px; }
+  .tvstrip .pre .btn { flex: 1 1 100%; font-size: 13px; }
+}
