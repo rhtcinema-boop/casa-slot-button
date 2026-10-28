@@ -223,3 +223,6 @@ button { font-family: inherit; }
 .nextrow .today .rc.nx b { color: #f5cb62; }
 @media (max-width: 350px) { .nextrow .today .rc b { font-size: 13px; } .nextrow .today .rc { gap: 4px; padding: 10px 4px; } .nextrow .nl3.today .rcs { gap: 6px; } }
 .nextrow .nl3.today { row-gap: 14px; } /* 再審査: ラベルと札の列の間 +8px */
+/* 進行役のテレビが止まっている知らせ（2026-10-28）: 上の段のいちばん上に赤い帯 */
+.stallrow { flex-basis: 100%; box-sizing: border-box; margin: 0 0 6px; padding: 8px 12px; border-radius: 12px; background: rgba(255, 70, 50, .18); border: 1px solid #ff6b57; color: #ffd2ca; font-weight: 700; font-size: 14px; line-height: 1.45; text-align: center; }
+.stallrow.hidden { display: none; }
