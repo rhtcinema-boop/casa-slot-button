@@ -104,7 +104,18 @@
 
   /* ---------- ブラウザ: SDK を読み込んでつなぐ（casa SLOT の js/cloud.js と同じやり方） ---------- */
   let connectP = null;
-  function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); }); }
+  /* スクリプトの読み込み（2026-10-28 速さの見直し）: 同じ URL は 1 回だけ（v2/client.js と同じ置き場所 window.__derbyScripts を使う）。
+     async=false: いくつ同時に読んでも、入れた順に実行される（並べて読む＝順番待ちしない）。
+     待つのは ms（既定 20 秒）まで。待ちきれなくても、読み込み中の要素は消さない（あとで届いて 2 回実行されると Firebase が壊れるため）。読めなかった（onerror）ときだけ忘れて、次に読み直せる */
+  function loadScript(src, ms) {
+    const M = window.__derbyScripts || (window.__derbyScripts = {});
+    let p = M[src];
+    if (!p) {
+      p = M[src] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = false; s.onload = res; s.onerror = () => { delete M[src]; try { s.remove(); } catch (e) { /* noop */ } rej(new Error('load ' + src)); }; document.head.appendChild(s); });
+      p.catch(() => {});
+    }
+    return Promise.race([p, new Promise((res, rej) => setTimeout(() => rej(new Error('timeout ' + src)), ms || 20000))]);
+  }
   /* App Check の下準備（2026-10-27。まだ「強制」はしない＝v2/FIREBASE_SETUP.md の「App Check」）:
      window.DERBY_APPCHECK_KEY（v2/config.prod.js。いまは null）があるときだけ、同じ版の compat の SDK（firebase-app-check-compat.js）を読み、
      reCAPTCHA v3（window.DERBY_APPCHECK_PROVIDER が 'enterprise' なら reCAPTCHA Enterprise）で有効にする。
@@ -121,16 +132,27 @@
     })().catch(() => false);
     return Promise.race([go, new Promise((res) => setTimeout(() => res(false), 3000))]);
   }
-  function connect(config) {
+  const SDK_FILES = ['firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js'];
+  /* o.role === 'phone'（お客さんのスマホ。2026-10-28 速さの見直し）:
+     - App Check（reCAPTCHA Enterprise。350KB ほど）を開くときに読まない。強制していないので、トークンなしでも読み書きできる。
+       env.fb.appCheck() を呼んだとき（client.js: 画面に初めてさわったとき・投票を送るとき）に 1 回だけ有効にする
+     - スマホのブラウザでは、Firebase のログインが最初に Google の別窓（apis.google.com の gapi と /__/auth/iframe）を読み終わるまで待つ（ポップアップ・転送ログインの準備）。
+       スマホは匿名ログインだけでポップアップも転送も使わないので、その準備だけを止める（使うときに読む元の動きは残る） */
+  function connect(config, o) {
     if (connectP) return connectP;
+    const phone = !!(o && o.role === 'phone');
     connectP = (async () => {
-      for (const f of ['firebase-app-compat.js', 'firebase-auth-compat.js', 'firebase-firestore-compat.js']) await loadScript(SDK + f);
       /* global firebase */
+      const need = SDK_FILES.filter((f, i) => !(typeof firebase !== 'undefined' && (i === 0 || (i === 1 ? firebase.auth : firebase.firestore))));
+      await Promise.all(need.map((f) => loadScript(SDK + f))); // 3 つを同時に読む（実行は app → auth → firestore の順）
       const app = firebase.apps.find((a) => a.name === 'derby') || firebase.initializeApp(config.firebase, 'derby'); // casa SLOT と同じページに入っても混ざらないよう名前つき
-      await appCheck(app); // App Check の下準備（2026-10-27。鍵があるときだけ・失敗しても止めない）
+      let acP = null; const ac = () => acP || (acP = appCheck(app));
+      if (!phone) await ac(); // App Check の下準備（2026-10-27。鍵があるときだけ・失敗しても止めない）。スマホはあとで（上）
       const db = app.firestore();
+      const auth = app.auth();
+      if (phone) { try { const rr = auth._delegate && auth._delegate._popupRedirectResolver; if (rr && rr._shouldInitProactively) Object.defineProperty(rr, '_shouldInitProactively', { value: false, configurable: true }); } catch (e) { /* noop: 版が変わって見つからなければ今までどおり */ } }
       const newApp = (name) => firebase.initializeApp(config.firebase, name); /* テレビ用アカウントを作るときの 2 つ目の app（マスターのログインを入れ替えない） */
-      return { fb: { db, auth: app.auth(), FieldValue: firebase.firestore.FieldValue, Timestamp: firebase.firestore.Timestamp, newApp }, config };
+      return { fb: { db, auth, FieldValue: firebase.firestore.FieldValue, Timestamp: firebase.firestore.Timestamp, newApp, appCheck: ac }, config };
     })().catch((e) => { connectP = null; throw e; });
     return connectP;
   }
@@ -150,7 +172,18 @@
     const data = (snap) => (snap && snap.exists ? Object.assign({ _id: snap.id }, snap.data()) : null);
 
     /* ---------- ログイン ---------- */
-    let readyP = null, mode = 'anon';
+    let readyP = null, mode = 'anon', clockP = null;
+    /* 匿名ログイン（2026-10-28）: LINE・Instagram などのアプリの中のブラウザで保存領域（IndexedDB・localStorage）が使えないと失敗することがある。
+       そのときは「このページの間だけ覚える」（none）に切り替えてもう一度（SDK も中で LOCAL → SESSION → メモリーの順に試すが、念のため）。
+       通信の失敗はそのまま投げる（呼ぶ側が自動でやり直す） */
+    async function signInAnon() {
+      try { return await auth.signInAnonymously(); } catch (e) {
+        const c = String((e && e.code) || '');
+        if (/network|timeout|too-many/.test(c) || typeof auth.setPersistence !== 'function') throw e;
+        try { await auth.setPersistence('none'); } catch (e2) { /* noop */ }
+        return auth.signInAnonymously();
+      }
+    }
     /* まとめた書き込みの大きさ（2026-10-19）: 進行役のテレビ（匿名ログイン＋derbyDeciders）は、ルールが 1 件ごとに derbyDeciders を 1 回読むので、
        1 回のまとめた書き込み（20 件まで読める）を 15 件以下に分ける。マスター・テレビ用アカウントはメールで決まる（読まない）ので今までどおり大きく */
     const cap = (big, small) => (mode === 'tv' || mode === 'master' ? big : small);
@@ -158,11 +191,14 @@
       if (!readyP) readyP = (async () => {
         if (!auth.currentUser) {
           const tvPass = role === 'tv' && cfg.tvEmail ? (opts.tvPassword || readTvPass()) : null;
-          if (tvPass) { try { await auth.signInWithEmailAndPassword(cfg.tvEmail, tvPass); mode = 'tv'; } catch (e) { await auth.signInAnonymously(); } }
-          else await auth.signInAnonymously();
+          if (tvPass) { try { await auth.signInWithEmailAndPassword(cfg.tvEmail, tvPass); mode = 'tv'; } catch (e) { await signInAnon(); } }
+          else await signInAnon();
         } else mode = auth.currentUser.email && auth.currentUser.email === cfg.tvEmail ? 'tv' : auth.currentUser.email ? 'master' : 'anon';
         try { await auth.currentUser.getIdToken(); } catch (e) { /* noop */ }
-        await syncClock(role === 'tv' ? 3 : 1).catch(() => {});
+        /* 時刻合わせ: スマホは待たない（2026-10-28。書いて読み戻す 2 往復ぶん画面が遅れていた）。合うまでは端末の時計。投票は合ってから（vote の clockP） */
+        watchUser();
+        clockP = syncClock(role === 'tv' ? 3 : 1).catch(() => {});
+        if (role !== 'phone') await clockP;
         if (mode === 'tv' && opts.decider !== false) startDecider();
         else if (mode === 'anon' && role === 'tv') startPair(); // 進行役のテレビ（管理画面の 1 タップ）: パスワードのないテレビは名乗って、選ばれたら決める係になる
       })().catch((e) => { readyP = null; throw e; });
@@ -175,11 +211,31 @@
       } catch (e) { return null; }
     }
     const uid = () => (auth.currentUser ? auth.currentUser.uid : null);
+    /* ログインが変わった（2026-10-28。ほかのタブでログアウト・保存領域が消えて匿名の uid が変わった など）: 票の持ち主は uid なので、
+       覚えていた端末のリスト・ボーナスの判定を捨て、onUser(cb) に { from, to } を知らせる（スマホの画面は自分の票を読み直す）。ログアウトされたら次の操作でもう一度匿名ログイン */
+    let lastUid = null, userWatch = false; const userCbs = [];
+    function watchUser() {
+      lastUid = uid();
+      if (userWatch || typeof auth.onAuthStateChanged !== 'function') return; userWatch = true;
+      auth.onAuthStateChanged((u) => {
+        const now2 = u ? u.uid : null;
+        if (!now2) { readyP = null; return; }
+        if (lastUid && now2 !== lastUid) {
+          const from = lastUid; lastUid = now2; devCache = undefined; Object.keys(bonusMemo).forEach((k) => { delete bonusMemo[k]; }); Object.keys(devDay).forEach((k) => { delete devDay[k]; }); Object.keys(live.votes).forEach((k) => { delete live.votes[k]; });
+          userCbs.slice().forEach((cb) => { try { cb({ from, to: now2 }); } catch (e) { /* noop */ } });
+        } else lastUid = now2;
+      });
+    }
+    function onUser(cb) { if (typeof cb === 'function') userCbs.push(cb); return () => { const i = userCbs.indexOf(cb); if (i >= 0) userCbs.splice(i, 1); }; }
     // Firestore の失敗を DerbyCloud と同じ形のエラーに
     function mapErr(e, permCode, permMsg, status) {
       if (e && e.status) return e;
       if (e && e.code === 'permission-denied') { if (role === 'staff') staffOk = null; return E(status || 403, permCode || 'permission', permMsg || '権限がありません'); } // スタッフ: PIN が変わったなど → 次の操作で登録し直す（以前は覚えたままで、ずっと「権限がありません」）
       if (e && (e.code === 'unavailable' || e.code === 'deadline-exceeded')) return E(0, 'network', '通信できません。電波を確認してください');
+      /* 2026-10-28 エラーの仕分け: 一時的なもの（503 busy＝画面が自動で送り直す）と、送り直しても変わらないもの（400・409＝送り直さない） */
+      if (e && ['aborted', 'internal', 'resource-exhausted', 'cancelled', 'unknown', 'unauthenticated'].indexOf(e.code) >= 0) return E(503, 'busy', '混み合っています。もう一度お試しください');
+      if (e && e.code === 'already-exists') return E(409, 'exists', 'もう登録されています');
+      if (e && ['failed-precondition', 'invalid-argument', 'out-of-range', 'not-found'].indexOf(e.code) >= 0) return E(400, 'bad_request', 'エラー: ' + (e.message || e.code));
       return E(500, 'server', 'エラー: ' + ((e && e.message) || e));
     }
 
@@ -251,6 +307,7 @@
 
     /* ---------- 共通 ---------- */
     async function state(s) { await ready(); try {
+      getSchedule().catch(() => {}); // 公開の時刻表を同時に読み始める（compose が待つ。順番に読むと 1 往復ぶん遅い。2026-10-28）
       if (role === 'phone' && !(live.subs > 0 && live.races)) { const d = await phoneLive(s || store); if (d) return compose(s, d.races || [], d.stores || [], Object.assign({}, Core.DEFAULT_TUNING, d.pub || {})); } const [stores, races, pub] = await Promise.all([getStores(), getRaces(), getPublic()]); return compose(s, races, stores, pub); } catch (e) { throw mapErr(e); } }
     async function race(id) {
       await ready();
@@ -269,11 +326,11 @@
        端末 ID ＝ 匿名ログインの uid。derbyDevices/<uid> はこのスマホだけが読み書きできる（ルール）。本物のレースの 1 票目を作ったあとに書く（失敗しても投票はそのまま）。
        2 票目（derbyVotes/<1 票目の id>~2）と使った印（derbyBonus/<営業日>~<店>~<会計番号>）は 1 回のまとめた書き込みで作る（ルールが印の有無・端末の初めてのレースを確かめる）。
        ルールを貼る前（古いルール）は端末のリストが読めない → ボーナスを出さない（投票はふつうにできる） */
-    let devCache; // undefined: まだ読んでいない / null: 無い / { ... } / 'err'（読めない＝古いルール）
+    let devCache, devP = null; // undefined: まだ読んでいない / null: 無い / { ... } / 'err'（読めない＝古いルール）。devP: 読んでいる途中（同時に呼ばれても 1 回だけ読む。2026-10-28）
     async function myDevice() {
       if (devCache !== undefined) return devCache;
-      try { devCache = data(await doc(COL.devices, uid()).get()); } catch (e) { devCache = 'err'; }
-      return devCache;
+      if (!devP) devP = (async () => { let d; try { d = data(await doc(COL.devices, uid()).get()); } catch (e) { d = 'err'; } devP = null; if (devCache === undefined) devCache = d; return devCache; })();
+      return devP;
     }
     async function touchDevice(r, sid, t) {
       const dev = await myDevice(); if (dev === 'err') return;
@@ -285,11 +342,21 @@
     const bonusMemo = {}; // 1 票目の vid → いま 2 票目を入れられるか（端末と印を 1 回だけ読む。2 票目を作った・番号を空けられたら消す）
     /* 同じ端末のボーナスは 1 日 1 回まで（2026-10-27）: derbyBonusDev/<営業日>~<uid>（自分の印は読める・まだ無い印は「無い」と読める）。
        devDay[営業日]: true（もう使った）| false（まだ）| 'err'（読めない＝新しいルールを貼る前。印を作らずに今までどおり＝古いルールは印を見ない） */
-    const devDay = {};
+    const devDay = {}, devDayP = {};
     async function bonusDevUsed(day) {
       if (devDay[day] !== undefined) return devDay[day];
-      try { devDay[day] = (await doc(COL.bonusDev, Core.bonusDevKey(day, uid())).get()).exists; } catch (e) { devDay[day] = 'err'; }
-      return devDay[day];
+      if (!devDayP[day]) devDayP[day] = (async () => { let x; try { x = (await doc(COL.bonusDev, Core.bonusDevKey(day, uid())).get()).exists; } catch (e) { x = 'err'; } delete devDayP[day]; if (devDay[day] === undefined) devDay[day] = x; return devDay[day]; })();
+      return devDayP[day];
+    }
+    /* 印（derbyBonus/<営業日>~<店>~<会計番号>）が有るかを、1 票目の書き込みと同時に読み始める（2026-10-28。書き込みのあとに順に読むと 1〜2 往復ぶん「投票しました」が遅れた）。
+       bonusCan が 1 回だけ使う（使ったら消す＝あとで確かめ直すときは今までどおり読み直す） */
+    const bonusDocP = {};
+    function bonusDocExists(key) { const x = bonusDocP[key]; delete bonusDocP[key]; if (x && local() - x.at < 30000) return x.p; return doc(COL.bonus, key).get().then((sn) => sn.exists); } // 30 秒より古い先読みは使わない
+    function bonusPrefetch(r, sid, bill, test) {
+      if (test) return Promise.resolve();
+      const day = raceDay(r), key = Core.bonusKey(day, sid, bill);
+      if (!bonusDocP[key] || local() - bonusDocP[key].at >= 30000) { const p = doc(COL.bonus, key).get().then((sn) => sn.exists); p.catch(() => {}); bonusDocP[key] = { p, at: local() }; }
+      return Promise.all([bonusDevUsed(day), bonusDocP[key].p.catch(() => null)]).catch(() => {});
     }
     async function bonusCan(v1, r, v2) {
       if (!v1 || v2 || !r || !Core.votingOpen(r, now())) return false;
@@ -298,18 +365,19 @@
       if (dev !== 'err' && Core.bonusDeviceOk(dev, r.id)) {
         if (v1.test) ok = true; // テストの票は印を見ない（本物の印を使い切らない）
         else if ((await bonusDevUsed(raceDay(r))) === true) ok = false; // この端末はこの営業日にもう使った（ほかの番号・ほかの店でも）＝「もう1票」を出さない
-        else { try { ok = !(await doc(COL.bonus, Core.bonusKey(raceDay(r), v1.storeId, v1.bill)).get()).exists; } catch (e) { ok = false; } } // 人の印は読めない（＝使われている）
+        else { try { ok = !(await bonusDocExists(Core.bonusKey(raceDay(r), v1.storeId, v1.bill))); } catch (e) { ok = false; } } // 人の印は読めない（＝使われている）
       }
       bonusMemo[v1.vid] = ok; return ok;
     }
     async function readVote(vid) { if (live.votes[vid]) return live.votes[vid]; try { return data(await doc(COL.votes, vid).get()); } catch (e) { return null; } }
     // スマホに返す票の組: { vote（1 票目）, vote2（2 票目 | null）, bonus（いま 2 票目を入れられる）, r（レース） }
-    async function pairOf(v1, v2) {
-      const b1 = await voteBundle(v1), b2 = v2 ? await voteBundle(v2) : null;
+    async function pairOf(v1, v2, rHint) { // rHint: 手元にあるそのレース（投票の直後。読み直さない）
+      const b1 = await voteBundle(v1, rHint), b2 = v2 ? await voteBundle(v2, rHint) : null;
       return { vote: Core.voteView(v1, b1.r, b1.p), vote2: v2 ? Core.voteView(v2, b2.r, b2.p) : null, bonus: await bonusCan(v1, b1.r, v2), r: b1.r };
     }
     async function vote(o) {
       await ready(); o = o || {};
+      if (clockP) await Promise.race([clockP, new Promise((res) => setTimeout(res, 2000))]); // 時刻合わせ（スマホは裏で）を 2 秒まで待つ
       const sid = (o && o.store) || store, pl = role === 'phone' && !(live.subs > 0 && live.races) ? await phoneLive(sid) : null;
       const races = pl ? pl.races || [] : await getRaces(), stores = pl ? pl.stores || [] : await getStores(), st = stores.find((x) => x.id === sid);
       if (!st) throw E(404, 'no_store', '店舗が見つかりません');
@@ -349,34 +417,52 @@
         return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
       }
       const vid = Core.voteId(r.id, sid, c.bill), ref = doc(COL.votes, vid);
-      let mine = null, taken = false, devSame = false;
-      try { mine = data(await ref.get()); } catch (e) { if (e && e.code === 'permission-denied') taken = true; else throw mapErr(e); }
-      if (taken) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill });
-      let v;
+      const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t };
+      const takenErr = () => E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill });
+      /* 2026-10-28 速さの見直し: 先に票を読んで確かめるのをやめた（1 往復ぶん「投票しました」が遅れていた）。
+         見張りで自分の票の写しがあれば選び直し、無ければ「新しい票」として書いてみて、ルールに断られたときだけ読んで確かめる:
+           読めない → ほかのスマホの票（bill_taken。締切のあとなら closed）／自分の票がある → 前の送信が届いていた（送り直し・開き直し）→ 選び直しとして書く（票は増えない）／無い → 今までどおり票だけを書く */
+      const lv = live.votes[vid];
+      if (lv && lv.owner !== uid()) throw takenErr();
+      let mine = lv && lv.owner === uid() ? lv : null, devSame = false, v;
+      const deniedCheck = async () => { const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) return takenErr(); return E(409, 'closed', '締め切りました', { openId: openId() }); };
       try {
-        if (mine) { const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t }; await ref.update(patch); v = Object.assign(mine, patch); }
+        if (mine) { await ref.update(patch); v = Object.assign(mine, patch); }
         else {
           v = { vid, raceId: r.id, storeId: sid, bill: c.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: !!(r.test || (st.settings && st.settings.test)) };
+          const pre = bonusPrefetch(r, sid, c.bill, v.test); // 「もう1票」が出せるかの読み取りを、書き込みと同時に
           /* 本物のレースの 1 票目は、端末のリスト（derbyDevices/<uid>）も同じ書き込みで（2026-10-27。端末のリストを作らないまま「初めて」でいる道をふさぐ＝ルールは 2 票目のときに端末のリストがあることを見る）。
              端末のリストの書き方が合わなかった（ほかのタブで書いた・古いルール）ときは、票だけを書いて、あとで今までどおり書く */
           const dev = v.test ? 'err' : await myDevice(), pl = dev === 'err' ? null : Core.devicePlan(dev, r.id, sid, t);
-          if (pl) {
-            const dref = doc(COL.devices, uid()), b = db.batch(); b.set(ref, v); if (pl.create) b.set(dref, pl.create); else b.update(dref, pl.update);
-            try { await b.commit(); devCache = pl.create ? pl.create : Object.assign({}, dev, pl.update); devSame = true; }
-            catch (e1) { if (!(e1 && e1.code === 'permission-denied')) throw e1; devCache = undefined; await ref.set(v); }
-          } else await ref.set(v);
+          let denied = false;
+          try {
+            if (pl) {
+              const dref = doc(COL.devices, uid()), b = db.batch(); b.set(ref, v); if (pl.create) b.set(dref, pl.create); else b.update(dref, pl.update);
+              try { await b.commit(); devCache = pl.create ? pl.create : Object.assign({}, dev, pl.update); devSame = true; }
+              catch (e1) { if (!(e1 && e1.code === 'permission-denied')) throw e1; devCache = undefined; await ref.set(v); }
+            } else await ref.set(v);
+          } catch (e2) { if (!(e2 && e2.code === 'permission-denied')) throw e2; denied = true; }
+          if (denied) { // 断られた: 読んで確かめる
+            let cur = null;
+            try { cur = data(await ref.get()); } catch (e3) { if (e3 && e3.code === 'permission-denied') throw await deniedCheck(); throw mapErr(e3); }
+            if (!cur || cur.owner !== uid()) throw await deniedCheck(); // 票が無いのに断られた（締切・投票の前など）
+            mine = cur;
+            try { await ref.update(patch); } catch (e4) { if (e4 && e4.code === 'permission-denied') throw await deniedCheck(); throw mapErr(e4); }
+            v = Object.assign(mine, patch);
+          } else await pre;
         }
       } catch (e) {
-        if (e && e.code === 'permission-denied') { const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill }); throw E(409, 'closed', '締め切りました', { openId: openId() }); }
+        if (e && e.status) throw e;
+        if (e && e.code === 'permission-denied') throw await deniedCheck();
         throw mapErr(e);
       }
       if (live.votes[vid]) live.votes[vid] = v; // 見張り中の写しだけ直す（見張っていない票は写しを持たない＝決める係の書いた当たりの印を見落とさない）
       if (!mine && !v.test && !devSame) await touchDevice(r, sid, t); // 端末のリスト（本物のレースの 1 票目だけ。同じ書き込みで書けなかったときだけ）
-      const pr = await pairOf(v, mine ? await readVote(vid + '~2') : null); // 新しい 1 票目に 2 票目は無い（番号を空けると両方消える）
+      const pr = await pairOf(v, mine ? await readVote(vid + '~2') : null, r); // 新しい 1 票目に 2 票目は無い（番号を空けると両方消える）
       return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
     }
-    async function voteBundle(v) {
-      const r = await raceFor(v.raceId);
+    async function voteBundle(v, rHint) {
+      const r = rHint && rHint.id === v.raceId && rHint.status === 'upcoming' ? rHint : await raceFor(v.raceId);
       let p = null;
       if (r && r.status === 'done' && v.payoutId) { p = live.payouts[v.payoutId] || null; if (!p) { try { p = data(await doc(COL.payouts, v.payoutId).get()); } catch (e) { p = null; } } }
       return { r, p: effPay(p) };
@@ -1207,7 +1293,9 @@
       pair: { get state() { return pairState(); }, on: onPair, hello: pairHello, get uid() { return uid(); } },
       // 決める係（テストと確認用）
       decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, get paired() { return pair.decider; }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, decideRace, revealRace, expirePayouts, voidRace },
-      ready,
+      ready, onUser,
+      /* スマホ（2026-10-28）: 画面に初めてさわったとき（client.js）に、投票で使う端末のリストを先に読み、App Check を有効にする。見るだけの人は読まない（読み取りの数を増やさない） */
+      warm: () => ready().then(() => { if (role === 'phone' && mode === 'anon') myDevice().catch(() => {}); if (fb.appCheck) fb.appCheck(); }).catch(() => {}),
     };
   }
 
