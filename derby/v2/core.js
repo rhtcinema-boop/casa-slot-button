@@ -430,6 +430,31 @@
     const nx = out.find((e) => !e.done); if (nx) nx.next = true;
     return out;
   }
+  /* 進行役のテレビが止まっている（2026-10-28 の事故: 進行役のテレビが止まり、その日のレースが 1 つも作られなかった）。スタッフの画面・管理画面の赤い知らせ。
+     p = { t: いま, lock: derbyLock/decider の中身（until・at・lastTickAt）| null, schedule: [{ id, at, openAt? }]（この営業日の時刻表のレース）, raceIds: [作ってあるレースの id], tuning }
+     止まっている ＝ ①鍵の期限（until）が 2 分より前に切れている（営業の時間＝最初のレースの投票の 10 分前〜最後のレースの発走のあいだ）
+                    ②時刻表のレースの投票の始まり（openAt）を 60 秒すぎても、そのレースがまだ無い（締切の前のあいだ）
+     返り値: null | { reason: 'lease' | 'missing', since（止まったころの時刻）, min（何分前から。1 以上）, raceId } */
+  const DECIDER_STALE_MS = 120000, DECIDER_MISS_MS = 60000;
+  function deciderStall(p) {
+    p = p || {}; const t = Number(p.t), T = tuningOf(p.tuning), lead = (T.closeLeadSec + T.voteSec) * 1000;
+    if (!Number.isFinite(t)) return null;
+    const sched = (p.schedule || []).filter((e) => e && Number.isFinite(Number(e.at))).map((e) => ({ id: e.id, at: Number(e.at), openAt: e.openAt != null ? Number(e.openAt) : Number(e.at) - lead, closeAt: Number(e.at) - T.closeLeadSec * 1000 })).sort((a, b) => a.at - b.at);
+    if (!sched.length) return null;
+    const have = new Set(p.raceIds || []);
+    let out = null;
+    const miss = sched.find((e) => !have.has(e.id) && t > e.openAt + DECIDER_MISS_MS && t < e.closeAt);
+    if (miss) out = { reason: 'missing', since: miss.openAt, raceId: miss.id };
+    const l = p.lock, until = l ? Number(l.until) || 0 : 0;
+    const active = t >= sched[0].openAt - 10 * 60000 && t < sched[sched.length - 1].at;
+    if (until && active && t - until > DECIDER_STALE_MS) {
+      const since = Number(l.lastTickAt) || Number(l.at) || until - 60000;
+      if (!out || since < out.since) out = { reason: 'lease', since, raceId: out ? out.raceId : null };
+    }
+    if (out) out.min = Math.max(1, Math.floor((t - out.since) / 60000));
+    return out;
+  }
+  const deciderStallText = (s) => (s ? '進行役のテレビが止まっています（' + s.min + '分前から）。テレビの電源と DERBY の画面を確認してください' : '');
   function stateFor(p) {
     const t = p.t, store = p.store, st = p.stores.find((s) => s.id === store);
     if (!st) throw err(404, 'no_store', '店舗が見つかりません');
@@ -746,7 +771,7 @@
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
-    effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan,
+    effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, PW_CHARS, genTvPassword };
 });
