@@ -1,9 +1,9 @@
 {
- "v": "b157",
+ "v": "b158",
  "files": [
   {
    "path": "index.html",
-   "sha256": "607729a041e0a5f4dd713312258b998cf2b1f0d1c7dd39ddab683b4a409c3f9c"
+   "sha256": "80281837ce76ce159643c9eb75b970b6f7f3ab61924169d7b6383dc9734a6b59"
   },
   {
    "path": "manifest.webmanifest",
@@ -247,7 +247,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "36ecf1cbdbc3902e734190486ce1615efe63a08752243f0ad877a6228fa638c5"
+   "sha256": "1ddfcbea76b6a6ebfedf672f252309058e1c44453bd3a773a3068501cb1a8598"
   },
   {
    "path": "derby/js/audio.js",
@@ -307,7 +307,7 @@
   },
   {
    "path": "derby/js/race3d.js",
-   "sha256": "c9cf221b7c6ebd9e1f693bd3d70d2ae7a9e9ac7e631553a8da136f7fbab995cf"
+   "sha256": "22e948ecffb76083d2994479166fc2ade1ddcb065a93c49b00f5952a8156e7c3"
   },
   {
    "path": "derby/js/splash3d.js",
@@ -343,7 +343,7 @@
   },
   {
    "path": "derby/v2/core.js",
-   "sha256": "8b6e24b9fe33ac144a141dd9ab134d07a01d9d6537b35fcb28ced92fed047b85"
+   "sha256": "eca6a29f85bd1e337d03a0d9e97d5cc785ee3715374cfdf672dfbf3f9cef33e8"
   },
   {
    "path": "derby/v2/form.js",
@@ -371,7 +371,7 @@
   },
   {
    "path": "derby/v2/tvswitch.js",
-   "sha256": "013d538be7d8d5c7af6a0c651ac728feacaf33158fd024794890046a55f98ef9"
+   "sha256": "e053a6ed0a66570deae177d8bef0a37cd999ec34677896dea1a800d787c294dc"
   }
  ]
 }
