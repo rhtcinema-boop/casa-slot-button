@@ -154,6 +154,17 @@
     const tv = '<span class="k">' + esc(TX.tv) + '</span><b class="g ' + (g || '') + '">' + (g ? NAMES[g] : '…') + '</b>' + (g ? '<button type="button" class="sw" data-act="tv" data-g="' + to + '">' + esc(to === 'slot' ? TX.toSlot : TX.toDerby) + '</button>' : '');
     if ($('tvRow').innerHTML !== tv) $('tvRow').innerHTML = tv;
     const nx = nextHtml() + todayHtml(); if ($('nextRow').innerHTML !== nx) $('nextRow').innerHTML = nx; // 3 行目: 本日のレースの時刻（2026-10-27）
+    const sr = $('stallRow'), stx = health && health.stall && health.text ? health.text : ''; // 進行役のテレビが止まっている（2026-10-28）
+    if (sr && sr.textContent !== stx) sr.textContent = stx;
+    if (sr) sr.classList.toggle('hidden', !stx);
+  }
+  /* 進行役のテレビが止まっていないか（2026-10-28。C.deciderHealth → { stall, text }）: 30 秒ごと（画面を見ているときだけ）。読めなければ前のまま */
+  let health = null, healthAt = 0;
+  async function loadHealth() {
+    if (!C || typeof C.deciderHealth !== 'function') return;
+    healthAt = Date.now();
+    try { health = await C.deciderHealth(); } catch (e) { return; }
+    drawTop();
   }
   /* いまのレース: 1 行目＝レースの状態、2 行目＝締切と票（2026-10-23 デザイン見直し 1 回目）。
      テストのレースのあいだ（準備中・投票中・レース中・結果画面）は 1 行目にいつも「テスト」の札 */
@@ -416,7 +427,7 @@
     showMain(true); wins = null; winsErr = ''; setWins.k = null; drawTop(); drawMain();
     C.syncClock().catch(() => {});
     C.state().then((d) => { st = d; online = true; drawTop(); }).catch(() => { online = false; drawTop(); });
-    loadWins();
+    loadWins(); health = null; loadHealth();
     if (unsub) unsub();
     unsub = C.subscribe({
       open() { online = true; drawTop(); },
@@ -438,11 +449,12 @@
     drawTop();
     if (sheet === 'test') paintTest();
     if (!document.hidden && Date.now() - winsAt > 20000) loadWins(); // 通知が届かない環境の保険
+    if (!document.hidden && Date.now() - healthAt > (qs.get('hsec') ? Number(qs.get('hsec')) * 1000 : 30000)) loadHealth(); // 進行役のテレビ（2026-10-28。?hsec= はテスト用）
   }, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && saved && C) { C.syncClock().catch(() => {}); loadWins(); } });
 
   window.STAFF = {
-    get saved() { return saved; }, get C() { return C; }, get st() { return st; }, get wins() { return wins; }, get sheet() { return sheet; },
+    get saved() { return saved; }, get C() { return C; }, get st() { return st; }, get health() { return health; }, loadHealth, get wins() { return wins; }, get sheet() { return sheet; },
     get sheetOpen() { return !!sheet || !!claiming || dragging || !!$('askBox'); }, // v2/staffswitch.js が見る（途中では画面を入れ替えない）
     gameNow, onGame() { drawTop(); }, loadWins, openSheet, closeSheet, TX, hhmm, canVote,
     test: { why: testWhy, hint: testHint, press: testPress, get s() { return trS; }, sec: TEST_SEC },
