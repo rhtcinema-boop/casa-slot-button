@@ -320,3 +320,8 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .scr.voted .clock { padding-bottom: 0; }
 .scr.voted { gap: 12px; }
 .scr.voted .today { padding: 12px 10px; margin-top: -8px; }
+/* 準備中（2026-10-28）: 投票の始まりを過ぎたのにレースがまだできていない（進行役のテレビを待っている）。0:00 のまま止まって見えないように */
+.waitbox .wv.prep { margin: 12px 0 6px; font-size: 18px; line-height: 1.5; color: var(--cream); }
+.waitbox .prepdot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--gold); vertical-align: middle; animation: prepblink 1.2s ease-in-out infinite; }
+@keyframes prepblink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+.waitbox .prepstaff { margin: 8px 0 0; font-size: 13px; color: var(--dim, #a89f89); }
