@@ -115,7 +115,8 @@
   let abuseData = null, abuseErr = '', abuseOff = false; // 見える化（集計タブの「注意」。2026-10-27）: api('abuse') の答え／使えないサーバー（古い）なら出さない
   let logBill = '', logsData = null, logsErr = '';
   let raceAll = false, refundOpen = null; // 今日のレース: 全部を表示するか／その場で開いているレース取消（レース id）
-  let pairData = null, pairErr = '', pairSeq = 0; // 進行役のテレビ: api('tvs') の答え { tvs, decider, lock, now }
+  let pairData = null, pairErr = '', pairSeq = 0; // 進行役のテレビ: api('tvs') の答え { tvs, decider, backups, fireTvs, lock, lockInfo, now }
+  let healthData = null, healthAt = 0; // 進行役のテレビが止まっていないか（2026-10-28）: api('health') の答え { lock, stall, text }
   let memoOn = false, connOpen = false; // memoOn: 勝ち馬の決まり方（オーナー用。最初は隠す）／connOpen: リンクの畳みを開いているか
   const tplOpen = new Set(); // 時刻表: 開いているテンプレート（id）
   const tplAll = new Set(); // 時刻表: 行を全部見せているテンプレート（id）。ふだんは最初の 10 行だけ
@@ -315,23 +316,54 @@
   }
   function viewPair() {
     if (!pairOk()) return '';
-    const P = pairData, head = '<div class="phd"><b>進行役のテレビ</b><small>結果を決めて進める役（1 台）</small><span class="sp"></span><button type="button" class="btn xs ghost" data-act="pair-reload">最新にする</button></div>';
-    if (!P) return '<div class="pair" id="pairBox">' + head + '<div class="hint">' + (pairErr ? esc(pairErr) : '読み込み中…') + '</div></div>';
+    const P = pairData, head = '<div class="phd"><b>進行役のテレビ</b><small>結果を決めて進める役（1 台）と予備</small><span class="sp"></span><button type="button" class="btn xs ghost" data-act="pair-reload">最新にする</button></div>';
+    if (!P) return '<div class="pair" id="pairBox">' + stallHtml() + head + '<div class="hint">' + (pairErr ? esc(pairErr) : '読み込み中…') + '</div></div>';
     const t = P.now || now(), tvs = P.tvs || [], lab = tvLabels(tvs), d = P.decider, STALE = 12 * 60000;
+    const bk = new Set((P.backups || []).map((x) => x.id)), canBk = Array.isArray(P.backups);
+    const fireNew = (P.fireTvs || []).filter((id) => !bk.has(id) && !(d && d.id === id)).length;
     const dName = d ? lab[d.id] || storeName(d.store) + 'のテレビ' : '';
     const nowLine = d
       ? '<div class="pnow">いま <b>' + esc(dName) + '</b> <small class="' + (d.seen && t - d.seen < STALE ? '' : 'warn') + '">' + (d.seen ? (t - d.seen < STALE ? (t - d.seen < 120000 ? '連絡あり' : agoTxt(t - d.seen) + 'に連絡') : '連絡がありません（' + agoTxt(t - d.seen) + '）') : '連絡がありません') + '</small><button type="button" class="btn xs ghost" data-act="pair-stop">やめる</button></div>'
       : '<div class="pnow">いま <b>なし</b>' + (P.lock && P.lock.kind === 'account' ? ' <small>パスワードのテレビ（' + esc(storeName(P.lock.store)) + '）が進めています</small>' : '') + '</div>';
     const rows = tvs.map((x) => {
-      const me = d && d.id === x.id, old = t - x.at >= STALE;
-      return '<div class="prow' + (me ? ' me' : '') + '" data-tv="' + esc(x.id) + '"><span class="nm">' + esc(lab[x.id]) + '<small' + (old ? ' class="old"' : '') + '>' + kindName(x.kind) + '・' + agoTxt(t - x.at) + '</small></span>' +
-        (me ? '<span class="chip on">進行役</span>' : '<button type="button" class="btn sm ghost" data-act="pair-set" data-id="' + esc(x.id) + '">進行役にする</button>') + '</div>';
+      const me = d && d.id === x.id, old = t - x.at >= STALE, isB = bk.has(x.id);
+      return '<div class="prow' + (me ? ' me' : '') + (isB ? ' bk' : '') + '" data-tv="' + esc(x.id) + '"><span class="nm">' + esc(lab[x.id]) + '<small' + (old ? ' class="old"' : '') + '>' + kindName(x.kind) + '・' + agoTxt(t - x.at) + '</small></span>' +
+        (isB ? '<span class="chip bkc">予備</span>' : '') +
+        (me ? '<span class="chip on">進行役</span>' : '<button type="button" class="btn sm ghost" data-act="pair-set" data-id="' + esc(x.id) + '">進行役にする</button>' +
+          (canBk ? '<button type="button" class="btn sm ghost" data-act="bk-set" data-id="' + esc(x.id) + '" data-on="' + (isB ? '0' : '1') + '">' + (isB ? '予備をやめる' : '予備にする') + '</button>' : '')) + '</div>';
     }).join('');
-    return '<div class="pair" id="pairBox">' + head + nowLine + (rows ? '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') +
-      '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。</p></div>';
+    /* いま進めているテレビ（鍵）と最後のエラー（2026-10-28） */
+    const li = P.lockInfo, liLine = li && (li.lastErr || (li.until && li.until <= t)) ? '<p class="hint plock">' + (li.until && li.until > t ? 'いま進めている: ' + esc(li.uid && lab[li.uid] ? lab[li.uid] : storeName(li.store) + 'のテレビ') + (li.role === 'backup' ? '（予備）' : '') : '最後に進めていた: ' + esc(li.uid && lab[li.uid] ? lab[li.uid] : li.store ? storeName(li.store) + 'のテレビ' : '—') + '（' + agoTxt(t - (li.lastTickAt || li.at || t)) + '）') + (li.lastErr ? '・最後のエラー ' + esc(String(li.lastErr).slice(0, 80)) + (li.lastErrAt ? '（' + hms(li.lastErrAt).slice(0, 5) + '）' : '') : '') + '</p>' : '';
+    const liveB = li && li.until > t && li.role === 'backup' ? '<p class="hint plock warn">いまは予備のテレビが進めています（進行役のテレビが戻ると自動で替わります）</p>' : '';
+    return '<div class="pair" id="pairBox">' + stallHtml() + head + nowLine + liveB + liLine + (rows ? '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') +
+      (canBk && fireNew ? '<div class="acts l"><button type="button" class="btn sm ghost" data-act="bk-all">全店の Fire TV を予備にする（' + fireNew + ' 台）</button></div>' : '') +
+      '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。' + (canBk ? '予備のテレビは、進行役が止まると 1〜2 分で自動で代わりに進めます。' : '') + '</p></div>';
+  }
+  /* 進行役のテレビが止まっている知らせ（2026-10-28）: 今日のタブの見出しの下と、テレビのタブの進行役の枠の上。赤い帯 */
+  function stallHtml() { const h = healthData; return h && h.stall && h.text ? '<div class="err stallmsg" id="stallMsg" role="alert">' + esc(h.text) + '</div>' : ''; }
+  async function loadHealth() {
+    if (!pairOk() || typeof A.health !== 'function') return;
+    const before = JSON.stringify(healthData && healthData.text);
+    try { healthData = await api('health'); healthAt = Date.now(); } catch (e) { return; }
+    if (JSON.stringify(healthData && healthData.text) === before) return;
+    const el = $('stallMsg'), html = stallHtml();
+    if (tab === 'races') { if (el) { if (html) el.outerHTML = html; else el.remove(); } else if (html) { const h = document.querySelector('#racePanel > h3'); if (h) h.insertAdjacentHTML('afterend', html); } }
+    if (tab === 'tv' && !editStore) { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); }
+  }
+  async function bkSet(btn) {
+    const id = btn.dataset.id, on = btn.dataset.on === '1', name = tvLabels((pairData && pairData.tvs) || [])[id] || 'テレビ';
+    btn.disabled = true;
+    try { await api('setBackup', id, on); toast(name + (on ? 'を予備にしました' : 'の予備をやめました')); } catch (e) { toast('失敗しました: ' + errText(e)); }
+    pairData = null; loadPair();
+  }
+  async function bkAll(btn) {
+    btn.disabled = true;
+    try { const r = await api('setBackupsAll'); toast(r && r.added && r.added.length ? 'Fire TV ' + r.added.length + ' 台を予備にしました' : '予備にする Fire TV はありませんでした'); } catch (e) { toast('失敗しました: ' + errText(e)); }
+    pairData = null; loadPair();
   }
   async function loadPair() {
     const my = ++pairSeq;
+    loadHealth();
     try { const r = await api('tvs'); if (my !== pairSeq) return; pairData = r || { tvs: [] }; pairErr = ''; }
     catch (e) { if (my !== pairSeq) return; pairErr = errText(e); pairData = null; }
     if (tab === 'tv' && !editStore) { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); }
@@ -876,6 +908,7 @@
     const sig = () => JSON.stringify([racesData, racesErr, (racesData || []).map((r) => statusOf(r) + (r.endAt && r.endAt < now() ? 'p' : ''))]), before = sig();
     // 読んでいる間に日付を変えたら、古い日付の答えで上書きしない
     const d = raceDate, my = (loadRaces.seq = (loadRaces.seq || 0) + 1);
+    if (d === bizToday()) loadHealth(); // 進行役のテレビが止まっていないか（2026-10-28。10 秒ごとの読み直しと一緒に）
     try { const r = await api('races', d); if (my !== loadRaces.seq || d !== raceDate) return; racesData = (r && r.races) || []; racesErr = ''; }
     catch (e) { if (my !== loadRaces.seq || d !== raceDate) return; racesErr = errText(e); if (!quiet) racesData = []; }
     if (quiet && sig() === before) return; // 10 秒ごとの読み直しで何も変わっていなければ描き直さない（日付の入力・ボタンを押している途中を消さない）
@@ -954,6 +987,7 @@
     /* 祝日（2026-10-27）: 見出しの日付の横に「祝日・文化の日」の金の札。保存済みの決まりでその日に祝日の予定を使うなら一文 */
     const holUsed = isHoliday(raceDate) && usesHoliday(tplsFromRules(cfg.rules), raceDate);
     return '<div class="panel" id="racePanel"><h3>' + (isToday ? '今日のレース' : esc(fmtDay(raceDate)) + 'のレース') + holidayChip(raceDate, 'hd') + '<span class="sp"></span>' + (isToday ? '<small class="auto">自動で更新</small>' : '') + '</h3>' +
+      (isToday ? stallHtml() : '') + /* 進行役のテレビが止まっている（2026-10-28） */
       (holUsed ? '<p class="hint holhint">祝日の決まりを使っています</p>' : '') +
       (isToday ? tvStrip() : '') +
       nowCard(list, isToday) +
@@ -1357,6 +1391,8 @@
         case 'cfg-reload': await reloadCfg(); render(); toast('最新の情報にしました'); return;
         case 'tvacct-new': return createTvAccount(b);
         case 'pair-set': return pairStart(b);
+        case 'bk-set': return bkSet(b);
+        case 'bk-all': return bkAll(b);
         case 'pair-stop': return pairStop();
         case 'pair-reload': pairData = null; { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); } return loadPair();
         case 'tvkey-new': if (!confirm('テレビのリンクを作り直します（リンクが漏れたときに使います）。\n今のテレビは、新しいリンクで開き直すまで結果を受け取れなくなります。')) return; await api('tvKey', {}); await reloadCfg(); render(); toast('作り直しました。各店のテレビを新しいリンクで開き直してください'); return;
