@@ -173,7 +173,7 @@
       window.__derbyPair = p; // テスト用（window.DERBY.pair）
       clearTimeout(msgT);
       if (p.asking && p.code) show('進行役の確認', p.code);
-      else if (was !== null && p.decider !== was) { show(p.decider ? '進行役になりました' : '進行役を外れました', '', 'msg'); msgT = setTimeout(hide, 8000); }
+      else if (was !== null && p.decider !== was) { show(p.decider ? (p.role === 'backup' ? '予備の進行役になりました' : '進行役になりました') : '進行役を外れました', '', 'msg'); msgT = setTimeout(hide, 8000); }
       else hide();
       was = !!p.decider;
     });
@@ -1012,8 +1012,9 @@
         const opened = !N.openAt || N.openAt <= t, target = opened ? N.at : N.openAt;
         $('v2nxL').textContent = '次のレース'; $('v2nxAt').textContent = hhmm(N.at); $('v2nxAtU').textContent = '発走';
         $('v2nxOpen').textContent = N.openAt ? '投票は ' + hhmm(N.openAt) + ' から' : '';
-        $('v2nxLeftL').textContent = opened ? '発走まで あと' : '投票開始まで あと';
-        setFit('v2nxLeft', fmtLeft(target - t), '.v2nx');
+        const prep = opened && !N.status && !!N.openAt; // 2026-10-28: 投票の始まりを過ぎたのにレースがまだできていない（時刻表の予定だけ）→ 準備中（自動で始まる）
+        $('v2nxLeftL').textContent = prep ? '準備中です。少しお待ちください' : opened ? '発走まで あと' : '投票開始まで あと';
+        setFit('v2nxLeft', prep ? '' : fmtLeft(target - t), '.v2nx');
         nx.classList.toggle('hot', !opened && target - t < 60000);
         const nvt = canVote(N) ? '' : '（' + storeNames(N.storeIds) + ' のみ投票）'; if ($('v2nxNv').textContent !== nvt) $('v2nxNv').textContent = nvt; // 次のレースがこの店で投票できないとき（2026-10-26）
       } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = ''; /* 2026-10-24 文字帳 w0232: 「ご参加ありがとうございました」を消す */ $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; $('v2nxNv').textContent = ''; }
