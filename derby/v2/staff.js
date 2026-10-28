@@ -26,7 +26,7 @@
     pinChanged: 'PIN が変わりました。ログインし直してください', badPin: 'PIN が正しくありません', pinHead: '店舗の PIN（スタッフ用）', chooseStore: 'このスマホで使う店舗を選んでください', back: '戻る', login: 'ログイン', loadingStores: '店舗の一覧を読み込んでいます…', noCloud: 'クラウドに接続できません。通信を確認してください。', retry: '再試行', noStores: '店舗が登録されていません。', logoutAsk: 'この店舗からログアウトしますか？',
   };
   const QS3 = [['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
-  const QN = { lite: 'さらになめらか（最軽量）', auto: 'なめらか優先', '': '標準', max: 'きれい優先' }; // lite（2026-10-28）は管理画面だけで選べる。ここでは今の値として出すだけ（ボタンは 3 つのまま）
+  const QN = { min: '最もなめらか（演出なし）', lite: 'さらになめらか（最軽量）', auto: 'なめらか優先', '': '標準', max: 'きれい優先' }; // lite（2026-10-28）は管理画面だけで選べる。ここでは今の値として出すだけ（ボタンは 3 つのまま）
   const NAMES = { slot: 'casa SLOT', derby: 'casa DERBY' };
   const fill = (s, o) => String(s).replace(/\{(\w+)\}/g, (m, k) => (o && o[k] != null ? o[k] : ''));
 
@@ -51,7 +51,7 @@
   const ptT = (n) => amt(n) + 'pt';
   const nwrap = (t) => esc(t).replace(/^(.+?)(（.+）)$/, '<span class="nw">$1</span><span class="nw">$2</span>'); // 「店舗を変える／（ログアウト）」の所でだけ折り返す
   const qs = new URLSearchParams(location.search);
-  const qNorm = (v) => (v === 'auto' || v === 'max' || v === 'lite' ? v : '');
+  const qNorm = (v) => (v === 'auto' || v === 'max' || v === 'lite' || v === 'min' ? v : ''); // 'min'（2026-10-28）も今の値として出すだけ
 
   let saved = null; // { store, name, pin }
   let C = null, st = null, online = false, unsub = null, wins = null, winsErr = '', sheet = null, busy = false, claiming = null;
