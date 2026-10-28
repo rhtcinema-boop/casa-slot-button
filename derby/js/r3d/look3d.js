@@ -282,7 +282,7 @@ R3D.Look = (function () {
     [1.55, 0.11, 0.7, 1.0, 0.22, 0.35, 0.7], /* 中景 */
     [1.05, 0.06, 0.3, 0.6, 0.10, 0.50, 1.0], /* 遠景: 細く短くゆっくり */
   ];
-  const RAIN_N = { high: 650, low: 480, xlite: 180 }; // xlite: テレビの画質「さらになめらか（最軽量）」（R3D.xlite。2026-10-28）
+  const RAIN_N = { high: 650, low: 480, xlite: 0 }; // xlite: テレビの画質「さらになめらか（最軽量）」（R3D.xlite。2026-10-28）。lite2（同日）: 雨の粒なし（空の暗さ・濡れた馬場で雨と分かる）
   const RAIN_COLOR = '#c4dae5';
   const RAIN_SLANT = [Math.tan(8 * Math.PI / 180), Math.tan(14 * Math.PI / 180)];
   /* 足元の水しぶき（雨の日だけ）: 蹄が着いた所から小さな白い粒が跳ねる。全体で 36 粒まで・寿命 0.25〜0.45 秒・1 回の描画（点） */
@@ -565,7 +565,7 @@ R3D.Look = (function () {
       skyU.uCover.value = P.cover; skyU.uSoft.value = P.soft || 0.22; D(skyU.uCloudLit.value, P.cloudLit); D(skyU.uCloudShade.value, P.cloudShade); skyU.uCloudA.value = P.cloudA;
       D(scene.fog.color, P.fog || P.horizon);   /* P.fog: 空気遠近の色（遠くの木・建物を寄せる色。無ければ地平線の色） */
       renderer.setClearColor(scene.fog.color, 1);
-      rain.visible = P.rain > 0; rainU.uAlpha.value = P.rain;   /* 層ごとの不透明度は RAIN_LAYERS */
+      rain.visible = P.rain > 0 && !R3D.xlite; rainU.uAlpha.value = P.rain;   /* 層ごとの不透明度は RAIN_LAYERS */
       if (!rain.visible) { splashPts.visible = false; for (let i = 0; i < SPLASH_MAX; i++) spT[i] = spL[i]; }
       postU.uVig.value = P.vignette; postU.uTint.value.set(P.tint[0], P.tint[1], P.tint[2]);
       buildEnv(P);
