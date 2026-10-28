@@ -6,28 +6,47 @@
 <meta name="theme-color" content="#0b101b">
 <meta name="format-detection" content="telephone=no">
 <meta name="robots" content="noindex">
+<meta name="description" content="casa DERBY の投票ページ（テレビの QR から開きます）">
 <title>casa DERBY 投票</title>
+<!-- 2026-10-28 速さの見直し: 先につないでおく先（Firebase の SDK・ログイン・Firestore・文字） -->
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="dns-prefetch" href="https://securetoken.googleapis.com">
+<link rel="dns-prefetch" href="https://fonts.gstatic.com">
 <link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
 <link rel="icon" href="../icon-derby-180.png" sizes="180x180" type="image/png">
 <link rel="apple-touch-icon" href="../icon-derby-180.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap"><!-- casa DERBY の文字（2026-10-21 オーナー: ゲーム全体を Noto Sans JP に統一。読めなければ端末の文字のまま） -->
-<link rel="stylesheet" href="bet.css?v=v4f">
+<link rel="stylesheet" href="bet.css?v=v4p">
+<link rel="preload" as="script" href="core.js?v=v4p">
+<link rel="preload" as="script" href="client-firestore.js?v=v4p">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js">
+<link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"><!-- 公開版だけ（tools/build-derby-deploy.js が足した先読み） -->
+<script src="config.js?v=v4p"></script><!-- つなぎ先（公開版は本番の Firebase。client.js より先に・document.write なし） -->
+<script>/* 2026-10-28: Firebase のときは、つなぎの部品を最初から同時に読み始める（client.js が同じ URL を使う＝2 回読まない）。
+   文字（Noto Sans JP）: 前に読めた端末だけすぐ読む（キャッシュにある）。初めての端末は画面が出たあと bet.js が読む（読めるまでは端末の文字）。保存領域が使えなくても止まらない */
+(function () { var c = window.DERBY_FIREBASE, V = '?v=v4p', S = 'https://www.gstatic.com/firebasejs/10.12.2/', h = document.head;
+  function pre(u) { var l = document.createElement('link'); l.rel = 'preload'; l.as = 'script'; l.href = u; h.appendChild(l); }
+  if (c && c.firebase && !/[?&]cloud=mock\b/.test(location.search)) { pre('core.js' + V); pre('client-firestore.js' + V); pre(S + 'firebase-app-compat.js'); pre(S + 'firebase-auth-compat.js'); pre(S + 'firebase-firestore-compat.js'); }
+  var f = false; try { f = localStorage.getItem('casa.derby.font') === '1'; } catch (e) { f = false; }
+  if (f) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap'; l.id = 'webfont'; h.appendChild(l); }
+})();</script>
+<script src="client.js?v=v4p" defer></script>
+<script src="form.js?v=v4a" defer></script><!-- 脚質・近走・倍率・当選額（テレビと同じ） -->
+<script src="bet.js?v=v4p" defer></script>
 </head>
 <body>
-<div id="app">
+<div id="app" class="booting">
   <header class="top">
     <div class="crest"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="98" height="32" alt="casa DERBY" draggable="false"></div>
     <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
     <div class="race" id="raceChip"></div>
   </header>
   <div class="net hidden" id="net" role="alert">通信が切れています</div>
-  <main id="main"></main>
+  <main id="main"><div class="scr mid splash" data-slow="false"><h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="280" height="91" alt="casa DERBY" draggable="false" fetchpriority="high"></h1><p class="lead" id="bootMsg" role="status">読み込み中…</p></div></main><!-- すぐに出す画面（bet.js が来る前・通信の前。bet.js の R.boot と同じ形） -->
   <div class="toast hidden" id="toast" role="status"></div>
 </div>
-<script src="client.js?v=v4g"></script>
-<script src="form.js?v=v4a"></script><!-- 脚質・近走・倍率・当選額（テレビと同じ） -->
-<script src="bet.js?v=v4g"></script>
+<noscript><p style="color:#fff;text-align:center;padding:24px">JavaScript をオンにしてください</p></noscript>
 </body>
 </html>
