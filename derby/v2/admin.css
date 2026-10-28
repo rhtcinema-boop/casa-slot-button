@@ -982,3 +982,10 @@ input.tm { font-variant-numeric: tabular-nums; text-align: center; }
   #abusePanel tr.flag td.head { border-left: 0; padding-left: 0; }
   #abusePanel td.why { flex: 1 1 100%; }
 }
+/* 進行役のテレビが止まっている知らせ・予備（2026-10-28） */
+.err.stallmsg { margin: 8px 0 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255, 70, 50, .16); border: 1px solid #ff6b57; color: #ffd2ca; font-weight: 700; font-size: 15px; line-height: 1.5; }
+.pair .prow .chip.bkc { background: rgba(124, 196, 255, .14); color: var(--info, #7cc4ff); border: 1px solid rgba(124, 196, 255, .4); }
+.pair .prow { flex-wrap: wrap; }
+.pair .prow .nm { flex: 1 1 140px; }
+.pair .plock { margin: 2px 0 6px; font-size: 13px; }
+.pair .plock.warn { color: var(--warn, #ffb347); }
