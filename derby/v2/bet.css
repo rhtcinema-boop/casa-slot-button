@@ -46,10 +46,21 @@ main { padding: 16px 16px 0; max-width: 520px; margin: 0 auto; }
 .scr h1 { margin: 2px 0 0; font-family: var(--body); font-weight: 900; font-size: 24px; color: var(--gold); text-align: center; letter-spacing: .06em; }
 .scr h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--gold); text-align: center; letter-spacing: .06em; }
 .logo-h1 { text-align: center; } .logo-h1 img { width: 148px; height: 48px; }
+/* 起動の画面（2026-10-28 速さの見直し）: HTML に最初から入っていて、通信の前にすぐ出る。ロゴを大きく・上の帯の小さいロゴはその間だけ隠す（場所はそのまま＝画面がずれない） */
+.booting .top .crest { visibility: hidden; }
+.splash { gap: 18px; }
+.splash .logo-h1 { margin: 0; line-height: 0; }
+.splash .logo-h1 img { width: min(380px, 92vw); height: auto; aspect-ratio: 1842 / 599; }
+.splash .lead { min-height: 1.7em; }
+.splash .slow { margin: -6px 0 0; color: var(--dim); font-size: 14px; text-align: center; line-height: 1.6; }
+.splash .btn { align-self: center; width: auto; min-width: 200px; }
 .lead { margin: 0; color: var(--ink); font-size: 16px; text-align: center; line-height: 1.7; }
 .sub { margin: 0; color: var(--dim); font-size: 13px; text-align: center; line-height: 1.6; }
 .err { color: var(--err); font-size: 14px; min-height: 20px; text-align: center; margin: 0; }
 .err:empty { min-height: 0; }
+/* 投票を送っている途中の知らせ（2026-10-28: 自動で送り直している・電波が戻ったら送る） */
+.vstat { color: var(--cream); font-size: 14px; text-align: center; margin: 0; line-height: 1.6; word-break: auto-phrase; text-wrap: balance; }
+.vstat:empty { display: none; }
 .note { background: var(--card2); border: 1px solid var(--gold2); color: var(--cream); border-radius: 12px; padding: 12px 16px; font-size: 14px; line-height: 1.6; text-align: center; }
 .note b { display: block; font-size: 17px; }
 .note.red { background: #2a1210; border-color: #8a3a32; color: #ffd0c6; }
@@ -233,8 +244,9 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
   .top { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; column-gap: 14px; padding: calc(var(--sat) + 4px) 16px 4px; } /* ロゴ・店名・締切を 1 行に（上の帯を低く） */
   .race { margin-top: 0; }
   .scr h1 { font-size: 22px; }
-  .dock { flex-direction: row-reverse; }
+  .dock { flex-direction: row-reverse; flex-wrap: wrap; }
   .dock .btn { flex: 1 1 0; min-height: 50px; }
+  .dock .vstat { flex-basis: 100%; } /* 送っている途中の知らせは 1 行ぜんぶ使う（2026-10-28） */
 }
 
 /* 2026-10-24 文字帳 w0030: 「番号が使われています」の説明を 2 行で */
