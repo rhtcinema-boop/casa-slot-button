@@ -259,14 +259,33 @@
       modeDefault: st.modeDefault || 'auto',
       test: !!st.test,
       tvGame: st.tvGame === 'derby' ? 'derby' : 'slot', /* テレビのゲーム: casa SLOT のテレビがこれを見て切り替わる */
-      tvQuality: qOf(st), /* テレビの画質: 'lite' ＝さらになめらか（最軽量）・'auto' ＝なめらか優先・'' ＝標準・'max' ＝きれい優先 */
+      tvStrip: stripOf(st), /* 最もなめらか（'min'）のときに会場から削るもの（2026-10-29）。true ＝削る */
+      tvQuality: qOf(st), /* テレビの画質: 'min' ＝最もなめらか（演出なし）・'lite' ＝さらになめらか（最軽量）・'auto' ＝なめらか優先・'' ＝標準・'max' ＝きれい優先 */
     };
   }
   const gameName = (g) => (g === 'derby' ? 'casa DERBY' : 'casa SLOT');
+  /* 最もなめらか（'min'）の「削るもの」（2026-10-29 オーナー: 店ごとに選ぶ）。settings.tvStrip = { crowd, signs, props, trees, buildings, backdrop }（true ＝削る）。
+     v2/core.js の tvStripOf と同じ（無い・変な値は A 案）。テレビは v2/tvswitch.js が 1 分ほどで読み直す（レース中は終わってから）。書くのはマスター（店舗の保存）だけ */
+  const STRIPS = [['crowd', '観客'], ['signs', '看板'], ['props', '小物（パラソル・旗・のぼり・飾り）'], ['trees', '木'], ['buildings', '建物・スタンド'], ['backdrop', '背景（観覧車・飛行船・遠くの景色）']];
+  const STRIP_A = { crowd: true, signs: true, props: true, trees: false, buildings: false, backdrop: false };
+  const STRIP_B = { crowd: true, signs: true, props: true, trees: true, buildings: true, backdrop: true };
+  const stripOf = (st) => { const v = st && st.tvStrip, o = {}; STRIPS.forEach(([k]) => { o[k] = v && typeof v === 'object' && !Array.isArray(v) && typeof v[k] === 'boolean' ? v[k] : STRIP_A[k]; }); return o; };
+  const sameStrip = (a, b) => STRIPS.every(([k]) => !!a[k] === !!b[k]);
+  const stripName = (o) => (sameStrip(o, STRIP_A) ? 'A案' : sameStrip(o, STRIP_B) ? 'B案' : 'カスタム');
+  const STRIP_NOTE = '削ると、その場所を使う演出は出ません（結果は変わりません）';
+  /* 削るものの欄: where = 'row'（テレビのタブの店の行。押すとすぐ保存）／'edit'（店舗の編集。保存ボタンで） */
+  function stripBox(id, name, o, where) {
+    const row = where === 'row', pre = (p, label, cur) => '<button type="button" class="btn xs ghost' + (cur ? ' on' : '') + '" data-act="' + (row ? 'strip-preset' : 'sstrip-preset') + '" data-id="' + esc(id) + '" data-p="' + p + '" aria-pressed="' + cur + '">' + label + '</button>';
+    return '<div class="tvstrip" data-strip="' + esc(id) + '"' + (where === 'edit-hidden' ? ' hidden' : '') + ' role="group" aria-label="' + esc(name) + 'の最もなめらかで削るもの"><div class="sh"><b>削るもの</b><small>最もなめらか のとき・いま ' + stripName(o) + '</small></div>' +
+      '<div class="ck">' + STRIPS.map(([k, nm]) => '<label><input type="checkbox" ' + (row ? 'data-strip-ck="' + esc(id) + '"' : 'id="sstrip-' + k + '"') + ' data-k="' + k + '"' + (o[k] ? ' checked' : '') + '><span>' + esc(nm) + '</span></label>').join('') + '</div>' +
+      '<div class="pre">' + pre('a', 'A案（観客と看板と小物を削る・建物は残す）', sameStrip(o, STRIP_A)) + pre('b', 'B案（全部削る）', sameStrip(o, STRIP_B)) + '</div>' +
+      '<p class="hint">' + STRIP_NOTE + '</p></div>';
+  }
   /* [値, 名前, ひとこと, テレビの行の短い名前]。'lite'（2026-10-28 オーナー: 渋谷のテレビは「なめらか優先」でもカクカクする）は管理画面だけで選べる（スタッフのスマホ・casa SLOT のスタッフの画面は 3 択のまま） */
-  const QUALS = [['lite', 'さらになめらか（最軽量）', '動きが重いテレビ向け。画面は少し粗くなります', 'さらになめらか'], ['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ。細かさはそのまま'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
-  const qOf = (st) => (st && (st.tvQuality === 'lite' || st.tvQuality === 'auto' || st.tvQuality === 'max') ? st.tvQuality : '');
-  const qName = (q) => (q === 'lite' ? 'さらになめらか（最軽量）' : q === 'auto' ? 'なめらか優先' : q === 'max' ? 'きれい優先' : '標準');
+  /* 'min'（2026-10-28 オーナー: さらになめらかでもカクカクする弱い Fire TV 向け）も管理画面だけ */
+  const QUALS = [['min', '最もなめらか（演出なし）', '会場の飾り・観客・看板をなくして一番軽く。木や旗の演出は出ません', '最もなめらか'], ['lite', 'さらになめらか（最軽量）', '動きが重いテレビ向け。画面は少し粗くなります', 'さらになめらか'], ['auto', 'なめらか優先', '重いときは自動で少し粗くして、動きをなめらかに'], ['', '標準', 'ふだんはこれ。細かさはそのまま'], ['max', 'きれい優先', '影までくっきり。動きがカクカクすることがあります']];
+  const qOf = (st) => (st && (st.tvQuality === 'min' || st.tvQuality === 'lite' || st.tvQuality === 'auto' || st.tvQuality === 'max') ? st.tvQuality : '');
+  const qName = (q) => (q === 'min' ? '最もなめらか（演出なし）' : q === 'lite' ? 'さらになめらか（最軽量）' : q === 'auto' ? 'なめらか優先' : q === 'max' ? 'きれい優先' : '標準');
   function viewStores() {
     const S = cfg.stores;
     return '<div class="panel" id="storePanel"><h3>店舗（名前・暗証番号）<span class="sp"></span><button class="btn sm ghost" data-act="cfg-reload">最新の情報にする</button></h3>' +
@@ -286,12 +305,13 @@
       '<p class="hint">ふだんは DERBY のまま。SLOT にしていても、<b>投票が始まると自動で DERBY</b> になります（遊んでいる途中なら終わってから）。</p>' +
       (S.length ? S.map((s) => {
         const g = sset(s).tvGame;
-        return '<div class="tvrow" data-store="' + esc(s.id) + '"><button type="button" class="nm" data-act="store-edit" data-id="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'の設定を開く" title="店舗の設定を開く">' + esc(s.name) + '<i aria-hidden="true">›</i>' + (sset(s).test ? '<span class="chip test">テスト</span>' : '') + '<span class="tvnow" data-g="' + g + '">テレビ: ' + gameName(g) + '</span></button>' +
+        const x0 = sset(s);
+        return '<div class="tvrow' + (x0.tvQuality === 'min' ? ' hasstrip' : '') + '" data-store="' + esc(s.id) + '"><button type="button" class="nm" data-act="store-edit" data-id="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'の設定を開く" title="店舗の設定を開く">' + esc(s.name) + '<i aria-hidden="true">›</i>' + (sset(s).test ? '<span class="chip test">テスト</span>' : '') + '<span class="tvnow" data-g="' + g + '">テレビ: ' + gameName(g) + '</span></button>' +
           '<div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビに映すゲーム">' + ['slot', 'derby'].map((v) => '<button type="button" data-act="tvgame-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (g === v ? 'on' : '') + '" aria-pressed="' + (g === v) + '">' + (v === 'derby' ? 'DERBY' : 'SLOT') + '</button>').join('') + '</div>' +
           '<button class="btn sm ghost" data-act="tv-reload" data-store="' + esc(s.id) + '" aria-label="' + esc(s.name) + 'のテレビを読み込み直す">読み込み直す</button>' +
-          '<div class="tvq"><span>画質</span><div class="seg" role="group" aria-label="' + esc(s.name) + 'のテレビの画質">' + QUALS.map(([v, nm, , short]) => '<button type="button" data-act="tvq-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (sset(s).tvQuality === v ? 'on' : '') + '" aria-pressed="' + (sset(s).tvQuality === v) + '"' + (short ? ' title="' + nm + '" aria-label="' + nm + '"' : '') + '>' + (short || nm) + '</button>').join('') + '</div></div></div>';
+          '<div class="tvq"><span>画質</span><div class="seg q5r" role="group" aria-label="' + esc(s.name) + 'のテレビの画質">' + QUALS.map(([v, nm, , short]) => '<button type="button" data-act="tvq-set" data-id="' + esc(s.id) + '" data-v="' + v + '" class="' + (sset(s).tvQuality === v ? 'on' : '') + '" aria-pressed="' + (sset(s).tvQuality === v) + '"' + (short ? ' title="' + nm + '" aria-label="' + nm + '"' : '') + '>' + (short || nm) + '</button>').join('') + '</div></div>' + (x0.tvQuality === 'min' ? stripBox(s.id, s.name, x0.tvStrip, 'row') : '') + '</div>';
       }).join('') : '<div class="empty">まだ店舗がありません（下の「＋ 店舗を追加」）</div>') +
-      (S.length ? '<p class="hint tvqhint">画質は casa DERBY を映しているときのもの。さらになめらか＝動きが重いテレビ向け。画面は少し粗くなります／なめらか優先＝重いときは自動で少し粗く／きれい優先＝動きがカクカクすることがあります。1 分ほどで反映（レース中は終わってから）。</p>' : '') +
+      (S.length ? '<p class="hint tvqhint">画質は casa DERBY を映しているときのもの。最もなめらか＝さらになめらかでも重いテレビ向け。会場の飾り・観客・看板なし（木や旗の演出も出ません）／さらになめらか＝動きが重いテレビ向け。画面は少し粗くなります／なめらか優先＝重いときは自動で少し粗く／きれい優先＝動きがカクカクすることがあります。1 分ほどで反映（レース中は終わってから）。</p>' : '') +
       (S.length > 1 ? '<div class="acts l tvall"><button class="btn sm ghost" data-act="tv-reload" data-store="">全店舗のテレビを読み込み直す</button></div>' : '') +
       viewPair() +
       '<details class="fold conn" id="connFold"' + (connOpen ? ' open' : '') + '><summary>テレビ・スマホ・スタッフ画面のリンク</summary><div class="in">' +
@@ -408,11 +428,21 @@
     finally { editStore = null; keepScroll(render); }
   }
   /* テレビの画質: 書き込みは店舗の編集の「保存」と同じ（saveStore。tvQuality だけ変えて保存） */
+  /* 削るもの（テレビのタブの店の行）: チェック・A案・B案を押すとすぐ保存（店舗の保存と同じ saveStore。tvStrip だけ変える） */
+  async function quickTvStrip(id, o) {
+    const s = cfg.stores.find((x) => x.id === id); if (!s) return;
+    if (sameStrip(sset(s).tvStrip, o)) return;
+    if (!/^\d{4,8}$/.test(s.pin)) { toast('この店舗の暗証番号を直してから変えてください（店名を押すと開きます）'); return keepScroll(render); }
+    main.querySelectorAll('[data-strip="' + id + '"] input, [data-strip="' + id + '"] button').forEach((x) => { x.disabled = true; });
+    editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s), quick: true }; editStore.x.tvStrip = Object.assign({}, o);
+    try { await saveStore(); toast(s.name + 'の削るものを「' + stripName(o) + '」にしました（1 分ほどで反映。レース中は終わってから）'); }
+    finally { editStore = null; keepScroll(render); }
+  }
   async function quickTvQuality(b) {
     const s = cfg.stores.find((x) => x.id === b.dataset.id), v = qOf({ tvQuality: b.dataset.v });
     if (!s || sset(s).tvQuality === v) return;
     if (!/^\d{4,8}$/.test(s.pin)) { toast('この店舗の暗証番号を直してから変えてください（店名を押すと開きます）'); return; }
-    if (!confirm(s.name + 'のテレビの画質を「' + qName(v) + '」にします。\n1 分ほどでテレビに反映されます（レース中は終わってから）。' + (v === 'max' ? '\nきれい優先は動きがカクカクすることがあります。' : v === 'lite' ? '\nさらになめらかは画面が少し粗くなります。' : ''))) return;
+    if (!confirm(s.name + 'のテレビの画質を「' + qName(v) + '」にします。\n1 分ほどでテレビに反映されます（レース中は終わってから）。' + (v === 'max' ? '\nきれい優先は動きがカクカクすることがあります。' : v === 'lite' ? '\nさらになめらかは画面が少し粗くなります。' : v === 'min' ? '\n最もなめらかは会場の飾り・観客・看板が消え、木や旗の演出は出ません。' : ''))) return;
     main.querySelectorAll('[data-act="tvq-set"][data-id="' + s.id + '"]').forEach((x) => { x.disabled = true; });
     editStore = { isNew: false, id: s.id, name: s.name, pin: s.pin, orig: s.settings, x: sset(s), quick: true }; editStore.x.tvQuality = v;
     try { await saveStore(); toast(s.name + 'のテレビの画質を「' + qName(v) + '」にしました（1 分ほどで反映。レース中は終わってから）'); }
@@ -458,10 +488,11 @@
       '<div class="seg big" id="stvseg" role="group" aria-label="テレビに映すゲーム">' + ['slot', 'derby'].map((v) => '<button type="button" data-act="sg-tv" data-v="' + v + '" class="' + (x.tvGame === v ? 'on' : '') + '" aria-pressed="' + (x.tvGame === v) + '">' + gameName(v) + '</button>').join('') + '</div>' +
       '<select id="stvgame" class="vh" aria-hidden="true" tabindex="-1"><option value="slot"' + (x.tvGame !== 'derby' ? ' selected' : '') + '>casa SLOT</option><option value="derby"' + (x.tvGame === 'derby' ? ' selected' : '') + '>casa DERBY</option></select>' +
       '<p class="hint" style="margin-bottom:0">保存すると約 30 秒で切り替わります。投票が始まると自動で casa DERBY になります。</p></div>' +
-      /* テレビの画質。見えるのは 4 択のボタン、保存される値は下の select（#stvq） */
+      /* テレビの画質。見えるのは 5 択のボタン、保存される値は下の select（#stvq） */
       '<div class="panel"><h3>テレビの画質 <small class="qsub">casa DERBY を映しているとき</small></h3>' +
-      '<div class="seg big q3 q4" id="stvqseg" role="group" aria-label="テレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="sg-q" data-v="' + v + '" class="' + (x.tvQuality === v ? 'on' : '') + '" aria-pressed="' + (x.tvQuality === v) + '">' + nm + '</button>').join('') + '</div>' +
+      '<div class="seg big q3 q4 q5" id="stvqseg" role="group" aria-label="テレビの画質">' + QUALS.map(([v, nm]) => '<button type="button" data-act="sg-q" data-v="' + v + '" class="' + (x.tvQuality === v ? 'on' : '') + '" aria-pressed="' + (x.tvQuality === v) + '">' + nm + '</button>').join('') + '</div>' +
       '<select id="stvq" class="vh" aria-hidden="true" tabindex="-1">' + QUALS.map(([v, nm]) => '<option value="' + v + '"' + (x.tvQuality === v ? ' selected' : '') + '>' + nm + '</option>').join('') + '</select>' +
+      stripBox(s.id || 'new', s.name || '新しい店舗', x.tvStrip, x.tvQuality === 'min' ? 'edit' : 'edit-hidden') +
       '<ul class="qnotes">' + QUALS.map(([, nm, note]) => '<li><b>' + nm + '</b>' + note + '</li>').join('') + '</ul>' +
       '<p class="hint" style="margin-bottom:0">保存すると 1 分ほどでテレビに反映されます（レース中は終わってから）。</p></div>' +
       '<div class="panel"><h3>名前と暗証番号</h3>' +
@@ -490,7 +521,8 @@
       '<button class="btn ghost" data-act="store-cancel">戻る</button><button class="btn" data-act="store-save" id="ssave">保存</button></div>';
   }
   // テレビのゲーム・画質の選択ボタンを select に合わせて塗り直す
-  function paintQSeg() { const sel = $('stvq'); if (!sel) return; main.querySelectorAll('[data-act="sg-q"]').forEach((b) => { const on = b.dataset.v === sel.value; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
+  function paintStripEdit() { const box = main.querySelector('#stvqseg ~ .tvstrip'); if (!box) return; const o = {}; STRIPS.forEach(([k]) => { o[k] = !!($('sstrip-' + k) || {}).checked; }); const sm = box.querySelector('.sh small'); if (sm) sm.textContent = '最もなめらか のとき・いま ' + stripName(o); box.querySelectorAll('[data-act="sstrip-preset"]').forEach((b) => { const on = sameStrip(o, b.dataset.p === 'b' ? STRIP_B : STRIP_A); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
+  function paintQSeg() { const sel = $('stvq'); if (!sel) return; { const sb = main.querySelector('#stvqseg ~ .tvstrip'); if (sb) sb.hidden = sel.value !== 'min'; } main.querySelectorAll('[data-act="sg-q"]').forEach((b) => { const on = b.dataset.v === sel.value; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
   function paintTvSeg() { const sel = $('stvgame'); if (!sel) return; main.querySelectorAll('[data-act="sg-tv"]').forEach((b) => { const on = b.dataset.v === sel.value; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
   // 画面の入力を editStore に読み込む（行の追加・削除で作り直す前と、保存の前）。「テレビ」の 1 タップの切り替え（quick）は画面に欄がないので読まない
   function captureStore() {
@@ -506,6 +538,7 @@
     if ($('stest')) x.test = $('stest').checked;
     if ($('stvgame')) x.tvGame = $('stvgame').value === 'derby' ? 'derby' : 'slot';
     if ($('stvq')) x.tvQuality = qOf({ tvQuality: $('stvq').value });
+    if ($('sstrip-crowd')) { const o = {}; STRIPS.forEach(([k]) => { o[k] = !!($('sstrip-' + k) || {}).checked; }); x.tvStrip = o; }
   }
   function validateStore() {
     if (!editStore) return [];
@@ -555,6 +588,7 @@
     });
     if (!s.quick) ['exchangeSec', 'voteSec', 'betSec'].forEach((k) => { delete settings[k]; }); // v4: 店ごとの参加受付・投票の秒数はなくした（投票の時間は全店同じ＝調整）
     if (x.tvQuality !== qOf(s.orig)) settings.tvQuality = x.tvQuality; // 変えたときだけ書く（前の値 'sharp' などはそのまま）
+    if (x.tvStrip && !sameStrip(x.tvStrip, stripOf(s.orig))) settings.tvStrip = Object.assign({}, x.tvStrip); // 削るもの（2026-10-29）も変えたときだけ
     const one = { id: s.id, name: s.name.trim(), pin: s.pin, settings };
     // 店舗の保存は「一覧を丸ごと置き換え」なので、保存の直前にサーバーの最新を読み直して、この店舗だけ差し替える
     // （別のタブ・別の人が足した店舗や変えた設定を、古い画面の内容で消さない）
@@ -564,6 +598,7 @@
       const keep = (k) => { if (Object.prototype.hasOwnProperty.call(cs, k)) settings[k] = cs[k]; else delete settings[k]; };
       if (cs && x.tvGame === (os.tvGame === 'derby' ? 'derby' : 'slot')) keep('tvGame');
       if (cs && x.tvQuality === qOf(os)) keep('tvQuality');
+      if (cs && x.tvStrip && sameStrip(x.tvStrip, stripOf(os))) keep('tvStrip');
     }
     if (s.isNew && cfg.stores.some((y) => y.id === s.id)) { toast('その店舗ID は、ほかの画面でもう作られています'); return; }
     if (!s.isNew && !cfg.stores.some((y) => y.id === s.id)) { toast('この店舗は、ほかの画面で削除されています'); editStore = null; return render(); }
@@ -1353,6 +1388,8 @@
     }
     if (el.id === 'stvgame') { paintTvSeg(); return; }
     if (el.id === 'stvq') { paintQSeg(); return; }
+    if (el.dataset && el.dataset.stripCk) { const id = el.dataset.stripCk, o = {}; main.querySelectorAll('[data-strip-ck="' + id + '"]').forEach((c) => { o[c.dataset.k] = c.checked; }); quickTvStrip(id, o); return; }
+    if (el.id && el.id.indexOf('sstrip-') === 0) { paintStripEdit(); return validateStore(); }
     if (el.id === 'rdate') { raceDate = el.value || bizToday(); racesData = null; refundOpen = null; raceAll = false; render(); return; }
     if (el.id === 'stfrom' || el.id === 'stto' || el.id === 'ststore') {
       stFrom = $('stfrom').value || stFrom; stTo = $('stto').value || stTo; stStore = $('ststore').value;
@@ -1405,6 +1442,8 @@
         case 'mode-del': { captureStore(); editStore.x.modes = editStore.x.modes.filter((m) => m.k !== b.dataset.k); keepScroll(() => { main.innerHTML = viewStoreEdit(); }); return validateStore(); }
         case 'tvgame-set': return await quickTvGame(b);
         case 'tvq-set': return await quickTvQuality(b);
+        case 'strip-preset': return await quickTvStrip(b.dataset.id, Object.assign({}, b.dataset.p === 'b' ? STRIP_B : STRIP_A));
+        case 'sstrip-preset': { const o = b.dataset.p === 'b' ? STRIP_B : STRIP_A; STRIPS.forEach(([k]) => { const c = $('sstrip-' + k); if (c) c.checked = o[k]; }); paintStripEdit(); return validateStore(); }
         case 'copy': { const v = b.dataset.copy || ''; try { await navigator.clipboard.writeText(v); b.textContent = 'コピーしました'; setTimeout(() => { if (document.contains(b)) b.textContent = 'コピー'; }, 1500); } catch (err) { toast('コピーできませんでした。リンクを長押ししてコピーしてください'); } return; }
         case 'sg-q': { const sel = $('stvq'); if (!sel) return; sel.value = qOf({ tvQuality: b.dataset.v }); paintQSeg(); return validateStore(); }
         case 'sg-tv': { const sel = $('stvgame'); if (!sel) return; sel.value = b.dataset.v === 'derby' ? 'derby' : 'slot'; paintTvSeg(); return validateStore(); }
