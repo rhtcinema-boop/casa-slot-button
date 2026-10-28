@@ -48,10 +48,13 @@
      localStorage 'casa.derby.vote.<レース id>' = { vid, key, at }。会計番号は vid の中に入るが、次のレースの入力には使わない（画面が毎回入れてもらう）。
      2 日より古いものは消す。Firestore 版の key は 'uid'（持ち主は匿名ログインの uid でルールが確かめる）。 */
   const VKEY = 'casa.derby.vote.';
+  /* 2026-10-28: 保存領域が使えないブラウザ（LINE などのアプリの中・シークレットの一部）では、このページを開いている間だけメモリーに持つ
+     （以前は覚えられず、投票しても「投票しました」の画面に移れなかった） */
+  const vMem = {};
   const myVotes = {
-    get(raceId) { try { const v = JSON.parse(localStorage.getItem(VKEY + raceId) || 'null'); return v && v.vid && v.key ? v : null; } catch (e) { return null; } },
-    set(raceId, vid, key) { try { localStorage.setItem(VKEY + raceId, JSON.stringify({ vid, key, at: Date.now() })); } catch (e) { /* noop */ } },
-    clear(raceId) { try { localStorage.removeItem(VKEY + raceId); } catch (e) { /* noop */ } },
+    get(raceId) { let v = null; try { v = JSON.parse(localStorage.getItem(VKEY + raceId) || 'null'); } catch (e) { v = null; } if (!(v && v.vid && v.key)) v = vMem[raceId] || null; return v && v.vid && v.key ? v : null; },
+    set(raceId, vid, key) { const v = { vid, key, at: Date.now() }; vMem[raceId] = v; try { localStorage.setItem(VKEY + raceId, JSON.stringify(v)); } catch (e) { /* noop: メモリーのほうは残る */ } },
+    clear(raceId) { delete vMem[raceId]; try { localStorage.removeItem(VKEY + raceId); } catch (e) { /* noop */ } },
     prune(ms) { try { const lim = Date.now() - (ms || 2 * 86400000); for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.indexOf(VKEY) === 0) { let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch (e) { v = null; } if (!v || !(v.at > lim)) localStorage.removeItem(k); } } } catch (e) { /* noop */ } },
   };
 
@@ -66,7 +69,18 @@
   }
 
   /* ---------- Firestore 版（v2/config.js に Firebase の設定があるとき） ---------- */
-  function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); }); }
+  const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // v2/client-firestore.js の SDK と同じ（同じ URL なら 1 回だけ読む）
+  /* スクリプトの読み込み（2026-10-28 速さの見直し。v2/client-firestore.js と同じ置き場所 window.__derbyScripts）: 同じ URL は 1 回だけ。
+     async=false で、同時に読んでも入れた順に実行する。待つのは 20 秒まで（読み込み中の要素は消さない＝2 回実行しない）。読めなかったときだけ忘れて読み直せる */
+  function loadScript(src, ms) {
+    const M = window.__derbyScripts || (window.__derbyScripts = {});
+    let p = M[src];
+    if (!p) {
+      p = M[src] = new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = false; s.onload = res; s.onerror = () => { delete M[src]; try { s.remove(); } catch (e) { /* noop */ } rej(new Error('load ' + src)); }; document.head.appendChild(s); });
+      p.catch(() => {});
+    }
+    return Promise.race([p, new Promise((res, rej) => setTimeout(() => rej(new Error('timeout ' + src)), ms || 20000))]);
+  }
   // オッズの計算（重い）は Worker で（Fire TV の絵が止まらないように）。使えなければ null（その場で計算）
   function oddsWorker() {
     if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || !DIR) return null;
@@ -87,14 +101,25 @@
     let implP = null, impl = null; const adm = {};
     function getImpl() {
       if (!implP) implP = (async () => {
-        if (!window.Engine) await loadScript(DIR + '../js/engine.js');
-        if (!window.Outcome) await loadScript(DIR + 'outcome.js' + VQ); // 2026-10-20: 当選額の切り上げ（roundPay）が入ったので版の印を付ける（古い控えを使わない）
-        if (!window.DerbyCore) await loadScript(DIR + 'core.js' + VQ);
-        if (!window.DerbyFirestore) await loadScript(DIR + 'client-firestore.js' + VQ);
-        const env = await window.DerbyFirestore.connect(cfg);
+        /* 2026-10-28 速さの見直し: 順番待ちせずに同時に読む（実行は入れた順）。Firebase の SDK もここで同時に読み始める（connect は読み終わりを待つだけ）。
+           お客さんのスマホ（phone）はレースを決めないので、エンジン（engine.js）と結果の計算（outcome.js）を読まない（決めるのはテレビ・管理だけ） */
+        const L = [];
+        if (opt.role !== 'phone') {
+          if (!window.Engine) L.push(DIR + '../js/engine.js');
+          if (!window.Outcome) L.push(DIR + 'outcome.js' + VQ); // 2026-10-20: 当選額の切り上げ（roundPay）が入ったので版の印を付ける（古い控えを使わない）
+        }
+        if (!window.DerbyCore) L.push(DIR + 'core.js' + VQ);
+        if (!window.DerbyFirestore) L.push(DIR + 'client-firestore.js' + VQ);
+        if (typeof window.firebase === 'undefined') L.push(SDK + 'firebase-app-compat.js', SDK + 'firebase-auth-compat.js', SDK + 'firebase-firestore-compat.js');
+        await Promise.all(L.map((u) => loadScript(u)));
+        const env = await window.DerbyFirestore.connect(cfg, { role: opt.role });
         impl = window.DerbyFirestore.create(opt, Object.assign({}, env, { Engine: window.Engine, Outcome: window.Outcome, Core: window.DerbyCore, oddsAsync: opt.role === 'tv' ? oddsWorker() : null }));
         if (!activeImpl) activeImpl = impl;
         await impl.ready();
+        if (opt.role === 'phone' && HAS_DOC && impl.warm) { // 画面に初めてさわったら、投票の下準備（端末のリスト・App Check）
+          const w = () => { ['pointerdown', 'keydown'].forEach((t) => document.removeEventListener(t, w, true)); impl.warm(); };
+          ['pointerdown', 'keydown'].forEach((t) => document.addEventListener(t, w, true));
+        }
         return impl;
       })().catch((e) => { implP = null; const er = new Error('通信できません。電波を確認してください'); er.code = 'network'; er.status = 0; er.cause = e; throw er; });
       return implP;
@@ -112,8 +137,11 @@
       // 進行役のテレビ（2026-10-19）: cb({ on, code, asking, decider, account })。返り値で止める
       onPair(cb) { let un = null, closed = false; getImpl().then((i) => { if (!closed && i.pair) un = i.pair.on(cb); }).catch(() => {}); return () => { closed = true; if (un) un(); }; },
       get pairState() { return impl && impl.pair ? impl.pair.state : null; },
+      // ログイン（匿名の uid）が変わった（2026-10-28）: cb({ from, to })
+      onUser(cb) { let un = null, closed = false; getImpl().then((i) => { if (!closed && i.onUser) un = i.onUser(cb); }).catch(() => {}); return () => { closed = true; if (un) un(); }; },
       admin(password) { const m = {}; ADMIN.forEach((k) => { m[k] = async (...a) => { const i = await getImpl(); const ad = adm[password] || (adm[password] = i.admin(password)); return ad[k](...a); }; }); return m; },
-      subscribe(handlers, o) { let un = null, closed = false; getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); }); return () => { closed = true; if (un) un(); }; },
+      /* スマホ（2026-10-28）: 最初につなげなかった（SDK が読めない・ログインできない）ときは 1 → 2 → 4 … 15 秒あけて自動でつなぎ直す（以前は 6 秒ごとの読み直しだけで、見張りは止まったままだった） */
+      subscribe(handlers, o) { let un = null, closed = false, n = 0; const go = () => getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); if (!closed && opt.role === 'phone') setTimeout(go, Math.min(15000, 1000 * 2 ** n++)); }); go(); return () => { closed = true; if (un) un(); }; },
       get decider() { return impl ? impl.decider : null; },
     };
     getImpl().catch(() => {}); // 早めにつなぐ（テレビは決める係の取り合いを始める）
@@ -147,12 +175,14 @@
       pairSt.asking = asking; pairSt.decider = dec; pairEmit();
     }
 
-    async function request(method, p, body, headers) {
+    async function request(method, p, body, headers, ms) {
       const init = { method, headers: Object.assign({}, headers || {}), cache: 'no-store' };
       if (body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(body); }
-      let res;
+      let res, tm = null;
+      if (ms && typeof AbortController !== 'undefined') { const ac = new AbortController(); init.signal = ac.signal; tm = setTimeout(() => ac.abort(), ms); } // 返事が来ないまま待ち続けない（投票。2026-10-28）
       try { res = await fetch(base + p, init); }
       catch (e) { const err = new Error('通信できません。電波を確認してください'); err.code = 'network'; err.status = 0; throw err; }
+      finally { clearTimeout(tm); }
       let data = null; try { data = await res.json(); } catch (e) { data = null; }
       if (!res.ok) { const err = new Error((data && data.message) || ('HTTP ' + res.status)); err.code = (data && data.error) || 'http_' + res.status; err.status = res.status; err.body = data; throw err; }
       return data;
@@ -185,7 +215,7 @@
       vote: async (o) => {
         o = o || {}; const mine = o.raceId ? myVotes.get(o.raceId) : null, bill = o.bill != null ? String(o.bill).trim().padStart(2, '0') : '';
         const key = o.key || (mine && mine.vid && mine.vid.slice(-2) === bill ? mine.key : undefined);
-        const r = await post('/api/vote', { store, raceId: o.raceId, bill: o.bill, nick: o.nick, first: o.first, second: o.second, key, device: o.device || deviceId(), n: Number(o.n) === 2 ? 2 : undefined });
+        const r = await request('POST', '/api/vote', { store, raceId: o.raceId, bill: o.bill, nick: o.nick, first: o.first, second: o.second, key, device: o.device || deviceId(), n: Number(o.n) === 2 ? 2 : undefined }, undefined, 15000);
         if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key);
         return r;
       },
@@ -202,6 +232,7 @@
       tvQuality: (pin, quality) => post('/api/staff/tvquality', { store, pin, quality }), // テレビの画質（2026-10-19。その店のスタッフ。'' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先）
       testRace: (pin, startIn, o) => post('/api/staff/testrace', { store, pin, startIn, switchTv: !!(o && o.switchTv) }), // この店だけテストレース（2026-10-19。switchTv: その 3＝SLOT なら DERBY にして、終わったら戻す）
       testRaceStatus: (pin) => post('/api/staff/testrace/status', { store, pin }),
+      onUser: () => () => {}, // 模擬クラウドは端末 ID とキーで持ち主を決める（ログインは無い）
       onPair(cb) { if (typeof cb !== 'function') return () => {}; pairCbs.push(cb); try { cb(Object.assign({}, pairSt)); } catch (e) { /* noop */ } return () => { const i = pairCbs.indexOf(cb); if (i >= 0) pairCbs.splice(i, 1); }; },
       get pairState() { return Object.assign({}, pairSt); },
       logs: (pin, o) => post('/api/staff/logs', Object.assign({ store, pin }, o || {})),
