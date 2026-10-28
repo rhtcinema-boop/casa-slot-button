@@ -12,6 +12,7 @@
     noStore: 'テレビの QR から開いてください', badStore: 'お店が見つかりません', loading: '読み込み中…',
     test: 'テストレース',
     waitHead: '次のレース', waitVoteFrom: '投票は {t} から', waitLeft: '投票の始まりまで', dayOver: '本日のレースは終わりました',
+    prep: '準備中です。少しお待ちください（自動で始まります）', prepStaff: 'スタッフにお知らせください', /* 2026-10-28: 投票の始まりを過ぎたのにレースがまだできていない（0:00 のまま止まって見えた） */
     billHead: '会計番号', billSub: '伝票の番号（2けた）', nickHead: 'ニックネーム', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
     errBill: '会計番号を 2 けたで入れてください', errNick: 'ニックネームを入れてください',
     pickHead: '1着と2着をえらぶ', pickAxis: '縦が1着・横が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
@@ -192,11 +193,23 @@
   R.boot = () => '<div class="scr mid splash" data-slow="' + bootSlow + '"><h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="280" height="91" alt="casa DERBY" draggable="false"></h1><p class="lead" role="status">' + esc(TX.loading) + '</p>' +
     (bootSlow ? '<p class="slow">' + esc(TX.bootSlow) + '</p><button class="btn ghost" data-act="reload">' + esc(TX.reload) + '</button>' : '') + '</div>';
 
+  /* 準備中（2026-10-28）: 作ってあるレース（st.current）が無く、時刻表の次のレースの投票の始まりを過ぎている＝進行役のテレビがまだ作っていない。
+     '' ＝ふつう／'prep' ＝準備中／'late' ＝ 3 分たっても始まらない（「スタッフにお知らせください」）。レースが届けば st.current ができて投票の画面へ */
+  function prepKey() {
+    if (!st || st.current) return '';
+    const n = now(), nx = ((st.upcoming || []).filter((x) => x && x.at > n && canVote(x))[0]) || null;
+    if (!nx) return '';
+    const open = nx.openAt || nx.at;
+    return open > n ? '' : n - open > 180000 ? 'late' : 'prep';
+  }
   /* ① 待ち: 次のレースは 21:00・投票は 20:57 から・残り */
   R.wait = () => {
     const c = st && st.current, nx = c || ((st && st.upcoming) || []).filter((x) => x.at > now() && canVote(x))[0] || null; // この店が投票できるレースだけ（2026-10-26）
     if (!nx) return '<div class="scr mid">' + unpaidNote() + watchNote() + '<div class="waitbox"><p class="wk">' + esc(TX.dayOver) + '</p></div>' + todayRow() + '</div>';
     const open = nx.openAt || nx.at;
+    const pk = prepKey();
+    if (pk) return '<div class="scr mid">' + unpaidNote() + watchNote() + '<div class="waitbox prep" id="prepBox"><p class="wk">' + esc(TX.waitHead) + '</p><p class="wt">' + hhmm(nx.at) + '</p>' +
+      '<p class="wv prep" role="status"><i class="prepdot" aria-hidden="true"></i>' + esc(TX.prep) + '</p>' + (pk === 'late' ? '<p class="prepstaff">' + esc(TX.prepStaff) + '</p>' : '') + '</div>' + todayRow() + '</div>';
     return '<div class="scr mid">' + unpaidNote() + watchNote() + testTag(nx) +
       '<div class="waitbox"><p class="wk">' + esc(TX.waitHead) + '</p><p class="wt">' + hhmm(nx.at) + '</p>' +
       '<p class="wv">' + esc(fill(TX.waitVoteFrom, { t: hhmm(open) })) + '</p>' +
@@ -726,7 +739,7 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden && C) { C.syncClock().catch(() => {}); refreshState(); loadMine(true); flushResend(true); } });
 
   // 1 秒ごと: 残りの数字。投票の始まり・締切・発表の時刻をまたいだら行き先を決め直す
-  let lastPh = '';
+  let lastPh = '', lastPrep = ''; // lastPrep: 準備中の印（待ちの画面は 6 秒ごとにも読み直す＝下の見回り）
   setInterval(() => {
     if (!C) return;
     const n = now();
@@ -734,6 +747,7 @@
     const c = st && st.current, r = my && my.race;
     const ph = [c && c.id, c && stageOf(c), r && r.id, r && n >= r.closeAt, r && r.revealAt && n >= r.revealAt].join('|');
     if (ph !== lastPh) { const first = !lastPh; lastPh = ph; if (!first) { refreshState(); if (my) loadMine(true); } }
+    if (screen === 'wait') { const pk = prepKey(); if (pk !== lastPrep) { const was = lastPrep; lastPrep = pk; draw(); if (pk && !was) refreshState(); } } // 準備中に入った・3 分たった・レースが届いた（2026-10-28）
     drawTop();
   }, 1000);
   // 通知が届かない環境の保険
@@ -745,7 +759,7 @@
     flushResend(false); // 送れなかった投票は 15 秒ごとにも（Wi-Fi はつながっているのに外へ出られないとき）
   }, 6000);
 
-  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote };
+  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, prepKey, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote };
 
   /* ================= 起動 ================= */
   /* 2026-10-28 速さの見直し: 時刻合わせ・状態・見張りを同時に始める（以前は時刻合わせ → 状態 → 見張りの順で待っていた）。
