@@ -37,6 +37,11 @@
     times: '{a} × {n}票', hitMark: '当たり', missMark: 'はずれ', slideAll: 'スライドして2票分受け取り',
     /* この店は投票できないレース（2026-10-26 オーナー: レースごとに投票できる店を選べる）。待ち画面の上の知らせと、送ってしまったときのお知らせ */
     watchOnly: 'いまの {t} のレースは {s} だけの開催です', notMyStore: 'このレースはこの店では投票できません',
+    /* 2026-10-28 速さと「必ず開ける・必ず投票できる」: つながるまでの知らせと、投票の自動の送り直し */
+    bootSlow: '通信に時間がかかっています。自動でつなぎ直しています', reload: '読み込み直す',
+    sendSlow: '時間がかかっています。このままお待ちください', sendRetry: '通信が不安定です。自動で送り直しています（{n}回目）',
+    checking: '最新状況を確認中…', closedSend: '受付できませんでした（締め切りました）', ownerChanged: 'この端末の記録が変わったため、ここからは選び直せません。変更はスタッフにお伝えください',
+    sendQueued: '電波が戻ったら自動で送ります（締切 {t} まで）', sendFail: '送れませんでした。電波が戻ると自動で送ります', resend: 'もう一度送る',
   };
   const fill = (s, o) => String(s).replace(/\{(\w+)\}/g, (m, k) => (o && o[k] != null ? o[k] : ''));
 
@@ -182,7 +187,10 @@
   const LOGO = '<h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="148" height="48" alt="casa DERBY" draggable="false"></h1>';
   R.noStore = () => '<div class="scr mid">' + LOGO + '<p class="lead">' + esc(TX.noStore) + '</p></div>';
   R.badStore = () => '<div class="scr mid">' + LOGO + '<p class="lead">' + esc(TX.badStore) + '</p></div>';
-  R.boot = () => '<div class="scr mid"><p class="lead">' + esc(TX.loading) + '</p></div>';
+  /* 起動（2026-10-28）: bet.html に最初から入っている画面と同じ形（ロゴを大きく・読み込み中…）。時間がかかったら知らせと「読み込み直す」 */
+  let bootSlow = false;
+  R.boot = () => '<div class="scr mid splash" data-slow="' + bootSlow + '"><h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="280" height="91" alt="casa DERBY" draggable="false"></h1><p class="lead" role="status">' + esc(TX.loading) + '</p>' +
+    (bootSlow ? '<p class="slow">' + esc(TX.bootSlow) + '</p><button class="btn ghost" data-act="reload">' + esc(TX.reload) + '</button>' : '') + '</div>';
 
   /* ① 待ち: 次のレースは 21:00・投票は 20:57 から・残り */
   R.wait = () => {
@@ -195,11 +203,13 @@
       '<div class="clock"><div class="k">' + esc(TX.waitLeft) + '</div><div class="v">' + cd(open) + '</div></div></div>' + todayRow() + '</div>'; // 本日のレースの時刻（2026-10-27）は枠の下
   };
 
+  /* 覚えていた状態で開いて、最新の状況がまだ届いていない間（2026-10-28）: 入力はできる・送るのは届いて確かめてから（submitVote） */
+  const checkNote = () => (stLive ? '' : '<div class="note" role="status">' + esc(TX.checking) + '</div>');
   /* ② 会計番号（数字のボタン）＋ニックネーム */
   R.entry = () => {
     const d = draft, b = d.bill || '';
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clr', '0', 'del'];
-    return '<div class="scr entry">' + (notice ? '<div class="note" role="status">' + esc(notice) + '</div>' : '') + unpaidNote() + testTag(st && st.current) +
+    return '<div class="scr entry">' + checkNote() + (notice ? '<div class="note" role="status">' + esc(notice) + '</div>' : '') + unpaidNote() + testTag(st && st.current) +
       (d.err === 'bill_taken' ? '<div class="note red" role="alert"><b>' + esc(TX.billTaken) + '</b>' + TX.billTakenSub.split('\n').map((s) => '<span class="ln">' + esc(s) + '</span>').join('') + '</div>' : '') +
       '<div class="sec"><h1>' + esc(TX.billHead) + '</h1><p class="sub">' + esc(TX.billSub) + '</p>' +
       '<div class="digits' + (b ? '' : ' empty') + '" id="digits" aria-live="polite" aria-label="会計番号 ' + esc(b) + '">' + digitsHtml(b) + '</div>' +
@@ -232,7 +242,7 @@
       });
     });
     g += '</div>';
-    return '<div class="scr pickscr">' + testTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1><p class="sub b2sub">' + esc(TX.pick2Sub) + '</p>' : '<h1>' + esc(TX.pickHead) + '</h1>') + info +
+    return '<div class="scr pickscr">' + checkNote() + testTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1><p class="sub b2sub">' + esc(TX.pick2Sub) + '</p>' : '<h1>' + esc(TX.pickHead) + '</h1>') + info +
       '<p class="axis">' + esc(TX.pickAxis) + '・' + esc(TX.pickTap) + '</p>' + g +
       (d.redo || d.n === 2 ? '<button class="btn ghost" data-act="cancelRedo">' + esc(TX.back) + '</button>' :'<button class="link" data-act="toEntry"><span class="nw">' + esc(bill2(d.bill)) + '番・' + esc(d.nick) + '</span>　<span class="nw">' + esc(TX.back) + '</span></button>') + '</div>';
   };
@@ -241,12 +251,12 @@
   R.confirm = () => {
     const r = st && st.current, d = draft; if (!r || d.first == null) return R.pick();
     const o = exOdds(r, d.first, d.second);
-    return '<div class="scr confirm">' + testTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(TX.bonusTag) + '・' + esc(TX.vote2) + '</div>' : '') + '<h1>' + esc(TX.confHead) + '</h1>' + pickCard(r, d.first, d.second, 'big') + /* 組み合わせの文は出さない（2026-10-21 文字帳 w0052） */
+    return '<div class="scr confirm">' + checkNote() + testTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(TX.bonusTag) + '・' + esc(TX.vote2) + '</div>' : '') + '<h1>' + esc(TX.confHead) + '</h1>' + pickCard(r, d.first, d.second, 'big') + /* 組み合わせの文は出さない（2026-10-21 文字帳 w0052） */
       '<div class="ifwin"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(o ? payFor(o) : 0, 'n') + '</b></div>' +
       (shiftOn() ? '<p class="sub shift">' + esc(TX.shiftNote) + '</p>' : '') +
       whoLine(bill2(d.bill), d.nick) +
       '<p class="err" id="err" role="alert">' + esc(d.err && d.err !== 'bill_taken' ? d.err : '') + '</p>' +
-      '<div class="dock"><button class="btn" data-act="vote">' + esc(d.redo ? TX.changeBtn : d.n === 2 ? TX.vote2Btn : TX.voteBtn) + '</button><button class="btn ghost" data-act="toPick2">' + esc(TX.back) + '</button></div></div>';
+      '<div class="dock"><p class="vstat" id="vstat" role="status">' + esc(d.sendMsg || '') + '</p><button class="btn" data-act="vote"' + (d.sendDis ? ' disabled' : '') + '>' + esc(d.sendLabel || (d.redo ? TX.changeBtn : d.n === 2 ? TX.vote2Btn : TX.voteBtn)) + '</button><button class="btn ghost" data-act="toPick2">' + esc(TX.back) + '</button></div></div>'; // 送っている途中も描き直しで消えない（d.sendLabel・d.sendMsg。2026-10-28）
   };
 
   /* ⑤ 投票済み: あなたの予想・締切まで・選び直す */
@@ -258,14 +268,15 @@
       (o ? '<div class="ifwin sm"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(payFor(o), 'n') + '</b></div>' : '') + (who ? whoLine(v.bill, v.nick) : '') + '</div>';
   }
   const bonusBox = () => '<div class="bonusbox"><b>' + esc(TX.bonusHead) + '</b><span>' + esc(TX.bonusSub) + '</span><button class="btn" data-act="bonus">' + esc(TX.bonusBtn) + '</button></div>';
+  let ownerChanged = false; // 匿名ログインの uid が変わった（client-firestore.js の onUser）
   R.voted = () => {
     const v = my && my.vote, v2 = my && my.vote2, r = (st && st.current && my && st.current.id === my.raceId ? st.current : my && my.race) || null;
     if (!v || !r) return R.boot();
-    const can = !v2 && !!my.bonus && stageOf(r) === 'vote'; // 初参加ボーナス: 1 票目のすぐ下に「もう1票」
+    const lost = !!my.lost, can = !lost && !v2 && !!my.bonus && stageOf(r) === 'vote'; // 初参加ボーナス: 1 票目のすぐ下に「もう1票」。lost: ログインが変わって自分の票として読めない（選び直しは出さない）
     return '<div class="scr voted">' + testTag(r) + '<h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' +
       mineCard(r, v, v2 ? 1 : 0, true, true) + (can ? bonusBox() : '') + (v2 ? mineCard(r, v2, 2, true, false) : '') +
       '<div class="clock"><div class="k">' + esc(TX.closeIn) + '</div><div class="v">' + cd(r.closeAt) + '</div></div>' + todayRow() + /* 本日のレースの時刻（2026-10-27）: 締切の時計の下・「選び直す」の上（開いた直後の画面に入る位置。デザイン審査） */
-      (v2 ? '<div class="redo2"><button class="btn ghost" data-act="redo">' + esc(TX.redo1) + '</button><button class="btn ghost" data-act="redo2">' + esc(TX.redo2) + '</button></div>'
+      (lost ? '<div class="note" role="status">' + esc(TX.ownerChanged) + '</div>' : v2 ? '<div class="redo2"><button class="btn ghost" data-act="redo">' + esc(TX.redo1) + '</button><button class="btn ghost" data-act="redo2">' + esc(TX.redo2) + '</button></div>'
         : '<button class="btn ghost" data-act="redo">' + esc(TX.redo) + '</button>') + '</div>';
   };
 
@@ -312,6 +323,8 @@
   function draw() {
     if (dragging) { drawLater = true; return; } // スライドを動かしている途中は描き直さない
     drawLater = false;
+    if (screen === 'boot') { const f = $('main').firstElementChild; if (f && f.classList.contains('splash') && f.dataset.slow === String(bootSlow)) { drawn = 'boot'; return drawTop(); } } // 起動の画面がもう出ている（bet.html の中）なら作り直さない（ちらつかない）
+    else { const a = $('app'); if (a && a.classList.contains('booting')) a.classList.remove('booting'); }
     $('main').innerHTML = (R[screen] || R.boot)();
     if (drawn !== screen) { const f = $('main').firstElementChild; if (f) f.classList.add('in'); drawn = screen; }
     drawTop(); fitText($('main'));
@@ -337,6 +350,13 @@
   let fitT = 0;
   window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(() => fitText($('main')), 120); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitText($('main'))); // 文字（Noto Sans JP）が届いたら測り直す
+  /* 文字（Noto Sans JP。2026-10-28）: 画面を止めないように、最初の中身が届いたあとで読む（それまでは端末の日本語の文字）。前に読めた端末は bet.html がすぐ読む（キャッシュ） */
+  function loadFont() {
+    if ($('webfont')) return;
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'webfont'; l.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap';
+    l.onload = () => { const done = () => { try { localStorage.setItem('casa.derby.font', '1'); } catch (e) { /* noop */ } fitText($('main')); }; if (document.fonts && document.fonts.ready) document.fonts.ready.then(done); else done(); };
+    document.head.appendChild(l);
+  }
   /* 会計番号の 2 つの枠: 1 けただけなら右の枠に入れて左は薄い 0（07 の 7 と同じに見える） */
   function digitsHtml(b) { return b.length === 2 ? '<span class="dg">' + esc(b[0]) + '</span><span class="dg">' + esc(b[1]) + '</span>' : b.length === 1 ? '<span class="dg ph">0</span><span class="dg">' + esc(b) + '</span>' : '<span class="dg"></span><span class="dg"></span>'; }
   function drawDigits() { const d = $('digits'); if (!d) return draw(); const b = draft.bill || ''; d.innerHTML = digitsHtml(b); d.classList.toggle('empty', !b); d.setAttribute('aria-label', '会計番号 ' + b); }
@@ -428,7 +448,7 @@
     go('wait'); lastSig = sigOf();
   }
   let lastSig = '';
-  function sigOf() { const v = my && my.vote, v2 = my && my.vote2, r = my && my.race, p = v && v.result && v.result.payout, p2 = v2 && v2.result && v2.result.payout; return [my && my.vid, v && v.combo, v && v.updatedAt, v2 && v2.combo, v2 && v2.updatedAt, my && my.bonus, r && r.status, v && v.result && v.result.combo, p && p.status, p2 && p2.status, (st && st.current && st.current.id) || '', (st && st.watch && st.watch.id) || '' /* 他店だけのレースが始まった・終わった（2026-10-26） */, unpaidList.length,
+  function sigOf() { const v = my && my.vote, v2 = my && my.vote2, r = my && my.race, p = v && v.result && v.result.payout, p2 = v2 && v2.result && v2.result.payout; return [my && my.vid, my && my.lost ? 'lost' : '', v && v.combo, v && v.updatedAt, v2 && v2.combo, v2 && v2.updatedAt, my && my.bonus, r && r.status, v && v.result && v.result.combo, p && p.status, p2 && p2.status, (st && st.current && st.current.id) || '', (st && st.watch && st.watch.id) || '' /* 他店だけのレースが始まった・終わった（2026-10-26） */, unpaidList.length,
     st && Array.isArray(st.today) ? st.today.map((x) => x.at).join() + '|' + st.today.filter((x) => x.at <= now()).length : '' /* 本日のレースの時刻が変わった・済みが増えた（2026-10-27。時刻表を直したときも待ち画面を描き直す） */].join('|'); }
 
   /* 自分の票を読む（myVote → { vote, vote2, bonus, race }）。無い（番号を空けられた・ほかのスマホ）なら覚えを消す */
@@ -442,7 +462,7 @@
       my.vote = d.vote; my.vote2 = d.vote2 || null; my.bonus = !!d.bonus; if (d.race) my.race = d.race; online = up(); route();
     }).catch((e) => {
       if (my !== m) return;
-      if (e && (e.status === 404 || e.code === 'no_vote')) return gone(m);
+      if (e && (e.status === 404 || e.code === 'no_vote')) { if (ownerChanged && m.vote) { m.lost = true; return route(); } return gone(m); } // ログインが変わって自分の票として読めない: 覚えていた票を出したまま（番号を空けられたのとは別）
       if (e && !e.status) { online = false; drawTop(); }
     }).then(() => { loading = null; });
     return loading;
@@ -510,33 +530,127 @@
       return go('pick');
     }
     if (a === 'vote') {
-      if (busy || !draft) return;
-      const d = draft; busy = true; if (el) { el.disabled = true; el.textContent = TX.sending; }
-      try {
-        const r = await C.vote({ raceId: d.raceId, bill: d.bill, nick: d.nick, first: d.first, second: d.second, n: d.n === 2 ? 2 : undefined });
-        busy = false; draft = null; notice = '';
-        const raceId = r.vote.raceId; if (MV && !MV.get(raceId)) MV.set(raceId, r.vote.vid, r.key);
-        my = { raceId, vid: r.vote.vid, key: r.key, vote: r.vote, vote2: r.vote2 || null, bonus: !!r.bonus, race: r.race || (st && st.current) || null, kind: 'cur' }; resubscribe();
-        lastSig = ''; return route();
-      } catch (e) {
-        busy = false;
-        const code = e && e.code;
-        if (code === 'no_bonus') { toast(TX.noBonus, true, 5000); draft = null; if (my) my.bonus = false; lastSig = ''; return route(); } // 2 票目は使えなかった（ほかで使われた・端末の 2 レース目）
-        if (code === 'bill_taken') { d.err = 'bill_taken'; d.redo = false; d.n = undefined; return go('entry'); }
-        if (code === 'closed' || code === 'no_open_race' || code === 'not_open') { toast(code === 'not_open' ? TX.notOpen : code === 'no_open_race' ? TX.noOpen : TX.closed, true, 5000); draft = null; await refreshState(); return route(); }
-        if (code === 'not_my_store') { toast((e.body && e.body.message) || TX.notMyStore, true, 5000); draft = null; await refreshState(); return route(); } // この店は投票できないレース（2026-10-26）→ お知らせして待ち画面へ
-        if (code === 'no_store') return badStore();
-        d.err = !e || !e.status ? TX.netErr : (e.body && e.body.message) || TX.retry;
-        if (code === 'bad_bill' || code === 'bad_nick') return go('entry');
-        draw();
-      }
-      return;
+      if (!draft) return;
+      return submitVote(draft); // 同じ予想を送っている途中なら何もしない（submitVote の中）
     }
+    if (a === 'reload') { try { location.reload(); } catch (e) { /* noop */ } return; }
     if (a === 'dismiss') { if (my) dismissed.add(my.raceId); if (pinned && my && pinned.vid === my.vid) pinned = null; my = null; resubscribe(); lastSig = ''; route(); return scanUnpaid(); }
     if (a === 'openUnpaid') {
       const u = unpaidList.find((x) => x.vid === (el && el.dataset.vid)); if (!u) return;
       pinned = { raceId: u.raceId, vid: u.vid, key: u.key, race: null }; dismissed.delete(u.raceId); my = null; lastSig = ''; return route();
     }
+  }
+
+  /* ---------- 投票を送る（2026-10-28「誰でも必ず投票できる」） ----------
+     押したらすぐ「送っています…」。届いたら「投票しました」。
+     通信の失敗（返事が無い・つながらない・サーバーの一時的なエラー 502/503/504）は自動で送り直す（0.8 → 1.6 → 3.2 秒あけて 4 回まで）。電波が無いときは戻るのを待って送る。
+     それでも送れなければ「もう一度送る」（電波が戻ったとき・画面に戻ったとき・15 秒ごとに自動でも送る）。どれも締切まで（サーバーの時計）。
+     送り直さないもの: 番号が使われている（bill_taken）・締切（closed）・権限・形のまちがい（400・403・409）＝すぐその知らせ。
+     票の id は レース~店~会計番号 で決まるので、何度送っても票は 1 つ。送れたか分からない失敗のあとは、送り直す前に保存された自分の票を読んで、
+     押した予想と同じなら「投票しました」にする（同じでなければ、いちばん新しい予想だけを送る）。
+     予想ごとに番号（intent）を付ける: 送っている途中に選び直したら、前の送信が終わるのを待ってから新しい予想を送る（古い送信があとから上書きしない）。古い予想の返事は使わない。
+     最新の状況がまだ届いていない（覚えていた状態で開いた）ときは、届くのを待ってから、そのレースがまだ投票中か確かめて送る。 */
+  const RETRY_MS = [800, 1600, 3200], SEND_WAIT_MS = 20000, RESEND_EVERY_MS = 15000;
+  const retryable = (e) => !e || !e.status || [502, 503, 504].indexOf(e.status) >= 0;
+  const closeAtOf = (d) => { const c = st && st.current; if (c && c.id === d.raceId) return c.closeAt; if (my && my.race && my.race.id === d.raceId) return my.race.closeAt; return Infinity; };
+  const onConfirm = (d) => draft === d && screen === 'confirm';
+  const argsOf = (d) => ({ raceId: d.raceId, bill: d.bill, nick: d.nick, first: d.first, second: d.second, n: d.n === 2 ? 2 : undefined });
+  const sameArgs = (x, y) => !!x && !!y && x.raceId === y.raceId && x.bill === y.bill && x.nick === y.nick && x.first === y.first && x.second === y.second && x.n === y.n;
+  let sendSeq = 0, inflight = null, wake = null, resendAt = 0;
+  const kick = () => { const w = wake; wake = null; if (w) w(); }; // 待っているところを起こす（画面に戻った・電波が戻った）
+  const nap = (ms) => new Promise((r) => { const t = setTimeout(() => { wake = null; r(); }, ms); wake = () => { clearTimeout(t); r(); }; });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function setSend(d, I, label, msg, dis) {
+    if (I && d.intent !== I) return; // 古い予想の送信は画面を変えない
+    d.sendLabel = label; d.sendMsg = msg || ''; d.sendDis = !!dis;
+    if (!onConfirm(d)) return;
+    const b = document.querySelector('[data-act=vote]'), s = $('vstat');
+    if (b) { b.textContent = label || (d.redo ? TX.changeBtn : d.n === 2 ? TX.vote2Btn : TX.voteBtn); b.disabled = !!dis; }
+    if (s) s.textContent = d.sendMsg;
+  }
+  async function waitUntil(d, I, ok, every) { while (!ok()) { if (d.done || d.intent !== I || now() >= closeAtOf(d)) return false; await nap(every || 1000); } return true; }
+  /* 送れたか分からないとき: 保存された自分の票（Firestore 版は匿名ログインの持ち主・模擬クラウドはキーがあるとき）を読んで、押した予想と同じか */
+  async function storedMatches(I) {
+    const A = I.args, m = MV && MV.get(A.raceId), key = (m && m.key) || (C.backend === 'firestore' ? 'uid' : null);
+    if (!key) return null;
+    const vid = A.raceId + '~' + STORE + '~' + bill2(A.bill) + (A.n === 2 ? '~2' : '');
+    try {
+      const x = await Promise.race([C.myVote(vid, key), nap(6000).then(() => null)]); if (!x) return null;
+      const v = A.n === 2 ? x.vote2 : x.vote;
+      if (v && v.first === A.first && v.second === A.second && v.nick === A.nick) return { vote: x.vote, vote2: x.vote2 || null, bonus: !!x.bonus, key: key === 'uid' ? 'uid' : key, race: x.race || null };
+    } catch (e) { /* 読めない（無い・通信）→ 送り直す */ }
+    return null;
+  }
+  async function submitVote(d) {
+    const A = argsOf(d);
+    if (d.intent && sameArgs(d.intent.args, A) && busy && !d.waitResend) return; // 同じ予想をもう送っている
+    const I = d.intent = { seq: ++sendSeq, args: A };
+    d.done = false; busy = true; d.err = null; d.tries = 0; d.waitResend = false; d.sent = false;
+    const e0 = $('err'); if (e0) e0.textContent = '';
+    setSend(d, I, TX.sending, stLive ? '' : TX.checking, true);
+    for (;;) {
+      if (d.done || d.intent !== I) return;
+      if (!stLive) { // 覚えていた状態で開いた: 最新の状況が届くまで待つ（届いたら、まだ投票中か確かめる）
+        if (!(await waitUntil(d, I, () => stLive, 500))) { if (d.intent !== I || d.done) return; busy = false; return voteFailed(d, { code: 'closed', status: 409 }); }
+        const c = st && st.current;
+        if (!c || c.id !== A.raceId || stageOf(c) !== 'vote') { busy = false; return voteFailed(d, { code: 'closed', status: 409 }); }
+        setSend(d, I, TX.sending, '', true);
+      }
+      if (inflight) await Promise.race([inflight, nap(SEND_WAIT_MS)]); // 前の送信が終わってから（順番を守る）
+      if (d.done || d.intent !== I) return;
+      d.tries++; d.sent = true;
+      const res = await new Promise((resolve) => {
+        let fin = false; const out = (x) => { if (!fin) { fin = true; resolve(x); } };
+        const slow = setTimeout(() => { if (!d.done && d.tries <= 1) setSend(d, I, TX.sending, TX.sendSlow, true); }, 4000);
+        const to = setTimeout(() => out({ err: { code: 'network', status: 0, timeout: true } }), SEND_WAIT_MS);
+        const call = C.vote(A); inflight = call.then(() => {}, () => {});
+        call.then((r) => { clearTimeout(slow); clearTimeout(to); if (!d.done && d.intent === I) { d.done = true; voted(d, r, I); } out({ ok: true }); }, // 古い予想の返事は使わない
+          (e) => { clearTimeout(slow); clearTimeout(to); out({ err: e }); });
+      });
+      if (res.ok || d.done || d.intent !== I) return;
+      const e = res.err;
+      if (retryable(e) && now() < closeAtOf(d)) {
+        const got = await storedMatches(I); // 届いていたか確かめる
+        if (d.done || d.intent !== I) return;
+        if (got) { d.done = true; return voted(d, got, I); }
+        if (!onConfirm(d)) { busy = false; return; }
+        if (!up()) { setSend(d, I, TX.sending, fill(TX.sendQueued, { t: hhmm(closeAtOf(d)) }), true); await waitUntil(d, I, up, 2000); if (!onConfirm(d)) { busy = false; return; } continue; }
+        if (d.tries < 4) { setSend(d, I, TX.sending, fill(TX.sendRetry, { n: d.tries + 1 }), true); await nap(RETRY_MS[d.tries - 1]); if (!onConfirm(d)) { busy = false; return; } continue; }
+        busy = false; d.waitResend = true; resendAt = Date.now(); setSend(d, I, TX.resend, TX.sendFail, false); online = false; drawTop(); return; // 「もう一度送る」（自動でも: flushResend）
+      }
+      busy = false; d.sendLabel = d.sendMsg = ''; d.sendDis = false;
+      return voteFailed(d, e);
+    }
+  }
+  /* 送れなかった投票を送る（電波が戻った・画面に戻った・15 秒ごと）。Wi-Fi はつながっているのに外へ出られないときも、これで締切まで送り続ける */
+  function flushResend(force) {
+    kick();
+    const d = draft;
+    if (!d || !d.waitResend || screen !== 'confirm' || busy || d.done) return;
+    if (now() >= closeAtOf(d)) { d.waitResend = false; return voteFailed(d, { code: 'closed', status: 409 }); }
+    if (force || Date.now() - resendAt >= RESEND_EVERY_MS) submitVote(d);
+  }
+  function voted(d, r, I) {
+    /* 届いた。けれど、その間に「戻る」で選び直している（予想の表・ちがう予想の確認）なら画面はそのまま（票は覚える。続きは選び直しとして送る）。2026-10-28 */
+    const rechoosing = draft === d && I && (screen === 'pick' || (screen === 'confirm' && !sameArgs(argsOf(d), I.args)));
+    busy = false; notice = ''; if (!rechoosing && draft === d) draft = null;
+    const raceId = r.vote.raceId; if (MV && !MV.get(raceId)) MV.set(raceId, r.vote.vid, r.key);
+    my = { raceId, vid: r.vote.vid, key: r.key, vote: r.vote, vote2: r.vote2 || null, bonus: !!r.bonus, race: r.race || (st && st.current) || null, kind: 'cur' }; resubscribe();
+    online = up(); lastSig = '';
+    if (rechoosing) { d.redo = true; d.done = false; d.sendLabel = d.sendMsg = ''; d.sendDis = false; return drawTop(); }
+    route();
+  }
+  async function voteFailed(d, e) { // 送り直しても変わらない答え（今までと同じ動き）
+    const code = e && e.code;
+    if (code === 'no_bonus') { toast(TX.noBonus, true, 5000); draft = null; if (my) my.bonus = false; lastSig = ''; return route(); } // 2 票目は使えなかった（ほかで使われた・端末の 2 レース目）
+    if (code === 'bill_taken') { d.err = 'bill_taken'; d.redo = false; d.n = undefined; return go('entry'); }
+    if (code === 'closed' || code === 'no_open_race' || code === 'not_open') { toast(code === 'not_open' ? TX.notOpen : code === 'no_open_race' ? TX.noOpen : d.sent ? TX.closedSend : TX.closed, true, 5000); draft = null; await refreshState(); return route(); } // 送ったのに締切だった → 「受付できませんでした（締め切りました）」
+    if (code === 'not_my_store') { toast((e.body && e.body.message) || TX.notMyStore, true, 5000); draft = null; await refreshState(); return route(); } // この店は投票できないレース（2026-10-26）→ お知らせして待ち画面へ
+    if (code === 'no_store') return badStore();
+    d.err = !e || !e.status ? TX.netErr : (e.body && e.body.message) || TX.retry;
+    if (code === 'bad_bill' || code === 'bad_nick') return go('entry');
+    if (retryable(e) && now() >= closeAtOf(d)) { toast(d.sent ? TX.closedSend : TX.closed, true, 5000); draft = null; await refreshState(); return route(); } // 送れないまま締切を過ぎた
+    draw();
   }
   function key(k) {
     if (!draft) return;
@@ -551,7 +665,7 @@
     const b = e.target.closest('[data-act],[data-key],.cell');
     if (!b || b.disabled) return;
     if (b.dataset.key) { e.preventDefault(); return key(b.dataset.key); }
-    if (b.classList.contains('cell')) { if (!draft) return; draft.first = Number(b.dataset.a); draft.second = Number(b.dataset.b); draft.err = null; shownAt = performance.now(); return go('confirm'); }
+    if (b.classList.contains('cell')) { if (!draft) return; draft.first = Number(b.dataset.a); draft.second = Number(b.dataset.b); draft.err = null; draft.sendLabel = draft.sendMsg = ''; draft.sendDis = false; draft.waitResend = false; /* 選び直した: 前の送信の知らせは消す（前の送信の返事は使わない＝submitVote） */ shownAt = performance.now(); return go('confirm'); }
     e.preventDefault();
     if (b.dataset.act === 'vote' && e.isTrusted && performance.now() - shownAt < 500) return; // マスの 2 度押しが「投票する」に当たらないように
     act(b.dataset.act, b);
@@ -566,7 +680,7 @@
     unsub = C.subscribe({
       open() { if (!online && up()) { online = true; drawTop(); } },
       error() { online = false; drawTop(); },
-      state(s) { st = s; online = up(); route(); },
+      state(s) { gotState(s); },
       vote(d) {
         if (!my || !d) return;
         if (d.vote && d.vote.vid === my.vid) { my.vote = d.vote; my.vote2 = d.vote2 || null; my.bonus = !!d.bonus; if (d.vote.result && my.race && my.race.status !== 'done') loadMine(true); else route(); if (d.vote.result) setTimeout(scanUnpaid, 500); return; }
@@ -575,10 +689,41 @@
     }, my ? { vid: my.vid, key: my.key } : undefined);
   }
   function badStore() { if (unsub) { try { unsub(); } catch (e) { /* noop */ } unsub = null; } go('badStore'); }
-  function refreshState() { return C.state().then((d) => { st = d; online = up(); }).catch((e) => { if (e && e.code === 'no_store') return badStore(); online = false; }).then(() => { if (screen !== 'badStore') route(); }); }
-  window.addEventListener('online', () => { refreshState(); loadMine(true); });
+  function refreshState() { return C.state().then((d) => { gotState(d, true); }).catch((e) => { if (e && e.code === 'no_store') return badStore(); online = false; }).then(() => { if (screen !== 'badStore') route(); }); }
+  /* 届いた状態（2026-10-28）: 画面を決め直し、この店の最後の状態をスマホに覚える（次に開いたとき、通信の前にすぐ出す＝stale-while-revalidate）。
+     覚えるのはレースの時刻・馬・倍率などの公開の中身だけ（会計番号・ニックネーム・当たった人の名前は入れない）。6 時間より古いものは使わない */
+  const SKEY = 'casa.derby.st.' + STORE, ST_MAX_AGE = 6 * 3600e3;
+  let stLive = false, stSavedAt = 0, stSavedSig = '', firstLive = true;
+  function stripSt(s) {
+    const cut = (r) => { if (!r || typeof r !== 'object') return r; const o = Object.assign({}, r); delete o.winners; return o; };
+    const o = Object.assign({}, s); ['current', 'live', 'last', 'watch'].forEach((k) => { if (o[k]) o[k] = cut(o[k]); }); if (Array.isArray(o.upcoming)) o.upcoming = o.upcoming.map(cut); delete o.winners;
+    return o;
+  }
+  function saveSt() {
+    if (!st) return;
+    const c = st.current, sig = [c && c.id, c && c.status, c && c.closeAt, st.live && st.live.id, st.last && st.last.id, (st.upcoming || []).length, (st.today || []).length].join('|');
+    if (sig === stSavedSig && Date.now() - stSavedAt < 60000) return;
+    try { localStorage.setItem(SKEY, JSON.stringify({ at: Date.now(), st: stripSt(st) })); stSavedSig = sig; stSavedAt = Date.now(); } catch (e) { /* noop: 保存できなくても続ける */ }
+  }
+  function loadSt() { try { const x = JSON.parse(localStorage.getItem(SKEY) || 'null'); if (x && x.st && typeof x.st === 'object' && Date.now() - x.at < ST_MAX_AGE && x.at <= Date.now() + 60000 && (!x.st.store || !x.st.store.id || x.st.store.id === STORE)) return x.st; } catch (e) { /* noop */ } return null; }
+  function gotState(s, noRoute) {
+    if (!s) return;
+    const was = stLive; st = s; stLive = true; online = up(); saveSt();
+    if (firstLive) { firstLive = false; setTimeout(afterLive, 400); }
+    if (!noRoute) route();
+    if (!was && ['entry', 'pick', 'confirm'].indexOf(screen) >= 0) { const nk = $('nick'); if (nk && draft) draft.nick = nk.value; draw(); } // 「最新状況を確認中…」を消す
+    if (!was) kick(); // 確かめるのを待っている投票を起こす
+  }
+  function afterLive() { // 最初の中身が届いたあと（画面が使えるようになってから）: 文字
+    loadFont();
+  }
+  window.addEventListener('online', () => {
+    refreshState(); loadMine(true);
+    flushResend(true); // 送れなかった投票: 電波が戻ったら自動で送る（待っている送信も起こす）
+  });
   window.addEventListener('offline', () => { online = false; drawTop(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && C) { C.syncClock().catch(() => {}); refreshState(); loadMine(true); } });
+  /* 画面に戻ったとき（2026-10-28）: 裏ではタイマーが止まることがあるので、すぐ時刻・状況・自分の票（ほかのタブ・2 回読んだ QR で変えた予想もここで出る）を読み直し、送れていない投票を送る */
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && C) { C.syncClock().catch(() => {}); refreshState(); loadMine(true); flushResend(true); } });
 
   // 1 秒ごと: 残りの数字。投票の始まり・締切・発表の時刻をまたいだら行き先を決め直す
   let lastPh = '';
@@ -597,20 +742,34 @@
     if (my && ['voted', 'race', 'result'].indexOf(screen) >= 0 && !(my.vote && my.vote.result && [my.vote, my.vote2].every((x) => !x || !x.result || !x.result.win || (x.result.payout && x.result.payout.status !== 'unpaid')))) loadMine();
     if (!online || ['wait', 'boot'].indexOf(screen) >= 0) refreshState();
     if (Date.now() - scanAt > 60000) scanUnpaid();
+    flushResend(false); // 送れなかった投票は 15 秒ごとにも（Wi-Fi はつながっているのに外へ出られないとき）
   }, 6000);
 
   window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote };
 
   /* ================= 起動 ================= */
+  /* 2026-10-28 速さの見直し: 時刻合わせ・状態・見張りを同時に始める（以前は時刻合わせ → 状態 → 見張りの順で待っていた）。
+     前に開いたことがあれば、覚えていた状態ですぐ画面を出し、届いたら差し替える。届かないときは 1 → 2 → 4 → 8 秒あけて自動で読み直す
+     （6 秒ごとの見回りも続く）。6 秒たっても起動の画面のままなら「通信に時間がかかっています」と「読み込み直す」を出す */
   async function boot() {
     if (!STORE || !C) return go('noStore');
-    go('boot');
+    screen = 'boot'; draw(); // bet.html の中の起動の画面をそのまま使う
     try { if (MV) MV.prune(); } catch (e) { /* noop */ }
     try { localStorage.removeItem('casa.derby.bet.v3'); } catch (e) { /* noop */ } // 以前の版の覚え（会計番号・ニックネーム）は消す
-    try { await C.syncClock(); } catch (e) { online = false; }
-    try { st = await C.state(); online = up(); } catch (e) { online = false; if (e && e.code === 'no_store') return go('badStore'); }
+    const cached = loadSt();
+    if (cached) { st = cached; route(); }
+    setTimeout(() => { if (screen === 'boot' && !bootSlow) { bootSlow = true; draw(); } }, Math.max(1000, 6000 - ((typeof performance !== 'undefined' && performance.now) ? performance.now() : 0))); // 開いてから 6 秒（このファイルが届くまでの時間も入れる）
+    C.syncClock().catch(() => {});
+    if (C.onUser) C.onUser(() => { ownerChanged = true; if (my) loadMine(true); }); // ログインが変わった → 自分の票を読み直す
     resubscribe();
-    route();
+    for (let i = 0; !stLive; i++) {
+      try { gotState(await C.state()); break; } catch (e) {
+        if (e && e.code === 'no_store') return badStore();
+        if (stLive) break;
+        online = false; drawTop();
+        await sleep(Math.min(8000, 1000 * 2 ** Math.min(i, 3)));
+      }
+    }
     scanUnpaid();
   }
   boot();
