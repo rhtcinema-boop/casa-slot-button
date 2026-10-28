@@ -322,7 +322,7 @@
       scenes: Object.assign({}, T.scenes, s.scenes || {}), sceneSec: Object.assign({ gate: T.gateSec, replay: T.postSec }, s.sceneSec || {}),
       modes: Array.isArray(s.modes) ? s.modes : [], modeDefault: s.modeDefault || 'auto', mode: modeNow(s, t), test: !!s.test, dayStartHour: T.dayStartHour,
       horseLook: T.horseLook || 'cute', horseLookPrev: T.horseLookPrev || 'cute', horseLookAt: Number(T.horseLookAt) || 0, horseLookFrom: (Number(T.horseLookAt) || 0) ? Number(T.horseLookAt) + HORSE_LOOK_GRACE_MS : 0,
-      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, tvQuality: tvQualityOf(s), tvGame: tvGameOf(s) };
+      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, tvQuality: tvQualityOf(s), tvStrip: tvStripOf(s), tvGame: tvGameOf(s) };
   }
 
   /* ---------- レースを作る ---------- */
@@ -753,9 +753,16 @@
   const TV_GAMES = ['slot', 'derby'];
   const tvGameOf = (settings) => (settings && settings.tvGame === 'derby' ? 'derby' : 'slot');
   function tvSwitchDoc(stores) { const o = {}; (stores || []).forEach((s) => { if (s && s.id) o[s.id] = tvGameOf(s.settings); }); return o; }
-  /* テレビの画質: 'lite' ＝さらになめらか（最軽量。2026-10-28 動きが重いテレビ向け）・'auto' ＝なめらか優先・'' ＝標準・'max' ＝きれい優先 */
-  const TV_QUALITIES = ['lite', 'auto', '', 'max'];
-  function tvQualityOf(settings) { const q = settings && settings.tvQuality; return q === 'lite' || q === 'auto' || q === 'max' ? q : ''; }
+  /* テレビの画質: 'min' ＝最もなめらか（演出なし。2026-10-28 さらになめらかでもカクカクするテレビ向け）・'lite' ＝さらになめらか（最軽量。2026-10-28 動きが重いテレビ向け）・'auto' ＝なめらか優先・'' ＝標準・'max' ＝きれい優先 */
+  const TV_QUALITIES = ['min', 'lite', 'auto', '', 'max'];
+  function tvQualityOf(settings) { const q = settings && settings.tvQuality; return q === 'min' || q === 'lite' || q === 'auto' || q === 'max' ? q : ''; }
+  /* 最もなめらか（'min'）のときに会場から削るもの（2026-10-29 オーナー: 店ごとに管理画面で選ぶ）: settings.tvStrip = { crowd, signs, props, trees, buildings, backdrop }（true ＝削る）。
+     無い・形がちがうときは A 案（観客・看板・小物を削る。木・建物・背景は残す）。テレビへは 1 文字ずつの記号で渡す（c s p t b k。何も削らないときは '-'） */
+  const TV_STRIP_KEYS = ['crowd', 'signs', 'props', 'trees', 'buildings', 'backdrop'], TV_STRIP_CH = { crowd: 'c', signs: 's', props: 'p', trees: 't', buildings: 'b', backdrop: 'k' };
+  const TV_STRIP_A = { crowd: true, signs: true, props: true, trees: false, buildings: false, backdrop: false };
+  const TV_STRIP_B = { crowd: true, signs: true, props: true, trees: true, buildings: true, backdrop: true };
+  function tvStripOf(settings) { const v = settings && settings.tvStrip, o = {}; TV_STRIP_KEYS.forEach((k) => { o[k] = v && typeof v === 'object' && !Array.isArray(v) && typeof v[k] === 'boolean' ? v[k] : TV_STRIP_A[k]; }); return o; }
+  function tvStripCode(strip) { const o = tvStripOf({ tvStrip: strip }); return TV_STRIP_KEYS.filter((k) => o[k]).map((k) => TV_STRIP_CH[k]).join('') || '-'; }
   const PW_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
   function genTvPassword(rand, len) {
     len = len || 20; const lim = 256 - (256 % PW_CHARS.length); let s = '';
@@ -773,5 +780,5 @@
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
-    TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, PW_CHARS, genTvPassword };
+    TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, TV_STRIP_KEYS, TV_STRIP_A, TV_STRIP_B, tvStripOf, tvStripCode, PW_CHARS, genTvPassword };
 });
