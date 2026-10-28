@@ -23,9 +23,25 @@ window.Race3D = (function () {
   /* 2026-10-28 オーナー: 渋谷のテレビは「なめらか優先」でもカクカクする → 'lite' ＝さらになめらか（最軽量）。絵だけ軽くする（レースの進み・結果・時刻は同じ）:
      3D の画面だけ細かさを下げて固定（XL_K。テロップ・文字の 2D のキャンバスは 1.2 倍のまま＝くっきり）・Fire TV 向けの描き方（影なし・ふちのなめらかなし・後処理なし）を必ず使う・
      会場はさらに間引く（観客・木・旗。js/r3d/venue3d.js の XLQ）・馬は少し離れたらすぐ粗い形・土煙の粒と雨の粒を減らし水しぶきなし（js/r3d/look3d.js）。?q=xlite でも試せる。?xlk=0.7 で細かさを変えて測れる */
-  const XLITE = QMODE === 'lite' || /[?&]q=xlite\b/.test(QS);
-  const XL_K = Math.max(0.4, Math.min(1.2, Number((QS.match(/[?&]xlk=([\d.]+)/) || [])[1]) || 0.5)); // 2026-10-28 lite2: 0.6 → 0.5
+  /* 2026-10-28 オーナー: 弱い Fire TV は「さらになめらか」でもカクカクする → 'min' ＝最もなめらか（演出なし）。'lite' の軽くする所は全部そのまま使い、さらに:
+     空は 1 色（空の絵・雲なし）・3D の細かさ 0.4・馬はいつもいちばん粗い形・足元のぼかした丸（影）なし・パドックは 3D を描かず 2D の札だけ（drawMinPaddock）・
+     会場から「削るもの」を外す（2026-10-29 オーナー: 店ごとに管理画面で選ぶ。店舗の設定 settings.tvStrip → v2/tvswitch.js が 'casa.derby.strip' に 1 文字ずつの記号で覚える）:
+       c 観客（人形・パドックの観客。建物を残すときはスタンドの段の観客の絵を無地に）／s 看板（広告・掲示板）／p 小物（パラソル・旗・のぼり・花壇・生け垣・支柱）／
+       t 木（木・丸い木・植え込み・木の実）／b 建物・スタンド（スタンド・ガラス・審判台・ターフビジョン・内馬場の道と池）／k 背景（街並み・丘・観覧車・飛行船）
+       A 案 = 'csp'（無いときの既定）・B 案 = 'csptbk'（芝・ダート・ラチ・ハロン棒とゴール板・発走ゲート・地面だけ）。?minv=a / ?minv=b / ?strip=cs などで試せる（測る・写真用）
+     レースの進み・結果・時刻は同じ（絵だけ）。削った場所を使う確定演出は出ない: 木の実（fruit）＝t、観客・旗・のぼりの枠色（crowd）＝c か p、看板の絵柄（sign）＝s、空の数字の雲（cloud）＝いつも（空が 1 色）。
+     ゲートでためらう（gateLate）・目が光る（eye）はいつも出る。?q=xmin でも試せる */
+  const XMIN = QMODE === 'min' || /[?&]q=xmin\b/.test(QS);
+  const XMIN_S = !XMIN ? '' : (() => {
+    const v = (QS.match(/[?&]minv=([ab])\b/) || [])[1], q = (QS.match(/[?&]strip=([csptbk-]+)/) || [])[1];
+    if (q) return q; if (v) return v === 'b' ? 'csptbk' : 'csp';
+    try { const x = localStorage.getItem('casa.derby.strip'); if (x && /^[csptbk-]+$/.test(x)) return x; } catch (e) { }
+    return 'csp';
+  })();
+  const XLITE = QMODE === 'lite' || /[?&]q=xlite\b/.test(QS) || XMIN;
+  const XL_K = Math.max(0.4, Math.min(1.2, Number((QS.match(/[?&]xlk=([\d.]+)/) || [])[1]) || (XMIN ? 0.4 : 0.5))); // 2026-10-28 lite2: 0.6 → 0.5（最もなめらかは 0.4）
   if (XLITE) R3D.xlite = true;
+  if (XMIN) R3D.xmin = XMIN_S;
   /* 2026-10-28 lite2（さらになめらか の見直し）: コマの間隔をそろえる。ばらばらの 40〜50 コマ/秒より、いつも同じ 30 コマ/秒のほうがなめらかに見える。
      描くのは前に描いてから 1/30 秒たった画面の更新のときだけ（60Hz の画面なら 2 回に 1 回）。30 を保てない（平均 38ms を超える）状態が 2 秒続いたら 20 コマ/秒（3 回に 1 回）に下げ、
      30 秒たったら 30 を試し直す（だめならまた 20、次に試すまでの間を倍に）。動きの量は実際の経過時間で進めるので、レースの進み・時刻は同じ。?pace=0 で止める（測定用） */
@@ -34,6 +50,7 @@ window.Race3D = (function () {
   function pacerNote(now) {
     const P = pacer, g = P.lastAt ? now - P.lastAt : 0; P.lastAt = now; if (!g || g > 400) return;
     P.ema += (g - P.ema) * 0.1;
+    if (P.grace && now < P.grace) { P.bad = 0; P.ema = Math.min(P.ema, P.iv); return; } // 最もなめらか: パドックの札から 3D に戻った直後の 3 秒は数えない（最初の数コマの重さで 20 コマ/秒に落ちない）
     if (P.iv < 40) { if (P.ema > 38) { if (!P.bad) P.bad = now; else if (now - P.bad > 2000) { P.iv = 50; P.at = now; P.bad = 0; P.ema = 50; } } else P.bad = 0; }
     else if (now - P.at > P.retry) { P.iv = 1000 / 30; P.ema = P.iv; P.bad = 0; P.tryAt = now; }
     if (P.tryAt && P.iv === 50 && P.at > P.tryAt) { P.retry = Math.min(240000, P.retry * 2); P.tryAt = 0; } else if (P.tryAt && now - P.tryAt > 20000) { P.retry = 30000; P.tryAt = 0; }
@@ -324,7 +341,7 @@ window.Race3D = (function () {
     this.lite = /[?&]lite=1/.test(QS);
     this.quality = R3D.quality = R3D.quality || guessQuality();
     R3D.inst = this; // 2026-10-19: テレビの「戻る」長押しの画面に、いまの 3D の細かさ・なめらかさを出すため（v2/tvswitch.js）
-    if (XLITE) { this.xlite = true; R3D.quality = 'tv'; this.quality = 'tv'; } // さらになめらか: どの機械でも Fire TV 向けの描き方から
+    if (XLITE) { this.xlite = true; R3D.quality = 'tv'; this.quality = 'tv'; } if (XMIN) this.xmin = XMIN_S; // さらになめらか: どの機械でも Fire TV 向けの描き方から
     if (this.quality === 'tv' || R3D.tv) { this.tv = R3D.tv = true; this.quality = R3D.quality = 'low'; }
     if (this.quality === 'low') this.lite = true;
     this.cam = { p: { x: 0, y: 30, z: 120 }, t: { x: 0, y: 0, z: 0 }, fov: 60, mode: '' }; // fov は 2D 版と同じ横の画角（度）
@@ -354,6 +371,7 @@ window.Race3D = (function () {
     this.dustFx = makeDust(this.scene, this.xlite ? 0 : this.tv ? 40 : low ? 70 : 160);
     if (this.tv) this.noShadows();
     if (this.xlite) { this.dustFx.max = 0; this.trimVenue(); }
+    if (this.xmin) { const sk = this.scene.getObjectByName('look-sky'); if (sk) sk.visible = false; } // 最もなめらか: 空の絵（雲・数字の雲）を描かない＝霧の色 1 色（look3d.js が天気ごとに setClearColor）
     // 残線（直線の残り 400・200・100m の白い線）
     this.remainMesh = {};
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
@@ -362,9 +380,28 @@ window.Race3D = (function () {
   }
   /* lite2（2026-10-28）: 会場の飾りを外す（描く回数・三角形を減らす）。確定演出に使う物（木・丸い木・植え込み・生け垣・旗・のぼり・観客・看板）は残す */
   const XL_DROP = ['parasols', 'posts', 'treesConifer', 'treesPoplar', 'flowers', 'crowdBlobs', 'ferrisWheel', 'blimp'];
+  /* 最もなめらか（'min'）の「削るもの」（記号 → 会場の部品の名前。js/r3d/venue3d.js の mk(…, name)）。全部削るときは MIN_KEEP 以外を全部外す（発走ゲート＝Group は残す） */
+  const MIN_STRIP = {
+    c: ['crowdStandingFar', 'crowdStandingNear', 'crowdStanding', 'crowdSeated', 'crowdPaddock', 'crowdBlobs'],
+    s: ['signs', 'scoreBoard'],
+    p: ['parasols', 'flags', 'nobori', 'flowers', 'hedges', 'posts'],
+    t: ['trees', 'treesRound', 'bushes', 'treesConifer', 'treesPoplar', 'fruit0', 'fruit1', 'fruit2', 'fruit3', 'fruit4', 'fruit5'],
+    b: ['concrete', 'glass', 'crowdTiers', 'judgeBox', 'judgeBoxGlass', 'turfVision', 'pave', 'water'],
+    k: ['city', 'hills', 'ferrisWheel', 'blimp'],
+  };
+  const MIN_KEEP = ['grass', 'ground', 'track', 'innerTrack', 'rails', 'railsTurf', 'railsInner', 'plates'];
   Race3D.prototype.trimVenue = function () {
     const g = this.venue && this.venue.group; if (!g || !g.getObjectByName) return;
-    XL_DROP.forEach((nm) => { const o = g.getObjectByName(nm); if (o && o.parent) { o.parent.remove(o); try { if (o.geometry) o.geometry.dispose(); } catch (e) { } } });
+    const drop = (o) => { if (o && o.parent) { o.parent.remove(o); try { if (o.geometry) o.geometry.dispose(); } catch (e) { } } };
+    XL_DROP.forEach((nm) => drop(g.getObjectByName(nm)));
+    const st = this.xmin; if (!st) return;
+    const has = (c) => st.indexOf(c) >= 0, all = 'csptbk'.split('').every(has), names = [];
+    'csptbk'.split('').forEach((c) => { if (has(c)) names.push.apply(names, MIN_STRIP[c]); });
+    g.children.slice().forEach((o) => {
+      if (o.isGroup) return; // 発走ゲート
+      if (all ? MIN_KEEP.indexOf(o.name) < 0 : names.indexOf(o.name) >= 0 || (has('c') && /^crowd/.test(o.name) && o.name !== 'crowdTiers')) drop(o);
+    });
+    if (has('c') && !has('b')) { const ct = g.getObjectByName('crowdTiers'); if (ct) ct.material = this._minTierMat || (this._minTierMat = new THREE.MeshLambertMaterial({ color: 0xb7b4ac })); } // スタンドの段の観客の絵 → 無地
   };
   // 部品を作る（無い・失敗したら代わりの部品）
   Race3D.prototype.part = function (name, make, stub) {
@@ -1598,6 +1635,12 @@ window.Race3D = (function () {
     const race = this.race; if (!race) return;
     const dt = adt || 0, t0 = performance.now();
     this.fitRes();
+    if (this.xmin && this.inPaddock() && !this.gi) { // 最もなめらか: パドックは 3D を描かない（2D の札だけ）
+      if (!this.minPadWarm) { this.minPadWarm = true; try { this.updateWorld(dt); this.applyCamera(); this.lodHorses(); this.renderer.render(this.scene, this.camera); } catch (e) { warnOnce('パドックの下ごしらえ', e); } } // 最初の 1 コマだけ 3D を描いておく（馬の粗い形・シェーダを先に作る＝パドックのあとのゲートイン・発走で止まらない）
+      try { this.drawMinPaddock(this.ctx); } catch (e) { warnOnce('パドックの札', e); }
+      return;
+    }
+    if (this.minPadWarm) { this.minPadWarm = false; this.minPadKey = ''; if (PACE) { pacer.bad = 0; pacer.ema = pacer.iv; pacer.lastAt = 0; pacer.grace = performance.now() + 3000; } } // パドックの札から 3D に戻った最初のコマ: コマの間隔の見張りをやり直す（札の間の測り方を持ち越さない）
     try { this.updateWorld(dt); } catch (e) { warnOnce('updateWorld', e); }
     this.applyCamera();
     if (this.tv) this.lodHorses();
@@ -1646,10 +1689,10 @@ window.Race3D = (function () {
     const cam = this.camera, th = Math.tan(cam.fov * Math.PI / 360), L = this.lodQ || (this.lodQ = []);
     for (let i = 0; i < this.horses3d.length; i++) {
       const hz = this.horses3d[i], o = hz && hz.object3d; if (!o || !hz.setQuality) continue;
-      const bl = o.getObjectByName('blob'), rg = o.getObjectByName('ring'); if (bl) bl.visible = !(rg && rg.visible); // 足元の輪が出ている間はぼかした丸（影）を描かない（描く回数を 6 回へらす）
+      const bl = o.getObjectByName('blob'), rg = o.getObjectByName('ring'); if (bl) bl.visible = !this.xmin && !(rg && rg.visible); // 最もなめらか: 足元のぼかした丸（影）も描かない // 足元の輪が出ている間はぼかした丸（影）を描かない（描く回数を 6 回へらす）
       const d = Math.max(0.5, cam.position.distanceTo(o.position)), frac = 1.62 / (2 * d * th);
       const lo = this.xlite ? 0.28 : 0.11, hi = this.xlite ? 0.34 : 0.15; // lite2: 0.2/0.25 → 0.28/0.34 // さらになめらか: 体高が画面の 2 割より小さければ粗い形（ふつうの Fire TV は 1 割）
-      const want = L[i] === 'far' ? (frac > hi ? 'low' : 'far') : (frac < lo ? 'far' : 'low');
+      const want = this.xmin ? 'far' : L[i] === 'far' ? (frac > hi ? 'low' : 'far') : (frac < lo ? 'far' : 'low'); // 最もなめらか: いつもいちばん粗い形
       if (want !== L[i]) { L[i] = want; try { hz.setQuality(want); } catch (e) { warnOnce('Horse.setQuality far', e); } }
     }
   };
@@ -1681,7 +1724,7 @@ window.Race3D = (function () {
       try { const gl = this.renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); P.gpu = e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); } catch (e) { }
     }
     const a = P.ft.slice().sort((x, y) => x - y), q = (f) => (a.length ? a[Math.min(a.length - 1, Math.floor(f * a.length))] : 0), mid = q(0.5), slow = q(0.95);
-    const fps = mid ? 1000 / mid : 0, tier = this.xlite ? 'xlite' : this.tv ? 'tv' : this.lite ? 'low' : 'high', pf = this.perf;
+    const fps = mid ? 1000 / mid : 0, tier = this.xmin ? 'xmin-' + this.xmin : this.xlite ? 'xlite' : this.tv ? 'tv' : this.lite ? 'low' : 'high', pf = this.perf;
     const ok = slow <= 34 ? 'OK' : slow <= 50 ? '注意' : '重い';
     P.el.textContent = '画質 ' + tier + '  解像度 ' + (this.k || 1) + '倍' + (this.kg && this.kg !== this.k ? '（3D ' + this.kg + '倍）' : '') + '  影 ' + (this.renderer.shadowMap.enabled ? 'あり' : 'なし') + '\n' +
       fps.toFixed(0) + 'fps  1コマ ' + mid.toFixed(1) + 'ms  遅いコマ ' + slow.toFixed(1) + 'ms  → ' + ok + '\n' +
@@ -1818,6 +1861,34 @@ window.Race3D = (function () {
     if (!this.vig) { this.vig = c.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.62); this.vig.addColorStop(0, 'rgba(0,0,0,0)'); this.vig.addColorStop(1, 'rgba(0,0,0,.2)'); }
     if (!this.xlite) { c.fillStyle = this.vig; c.fillRect(0, 0, W, H); } // lite2: 画面全体の暗いふち取りなし（毎コマの全画面の塗りが重い）
     if (this.cut > 0) { c.fillStyle = 'rgba(255,255,255,' + Math.min(1, this.cut * 1.6).toFixed(2) + ')'; c.fillRect(0, 0, W, H); }
+  };
+  /* 最もなめらか（'min'。2026-10-28）のパドック: 3D の場面の代わりに、いま紹介している馬の札（馬番・名前・脚質と調子・近走）と 6 頭の並びを 2D で描く。
+     中身が変わったとき（紹介する馬・文字・細かさ）と 1 秒ごとだけ描き直す（ほかのコマは何もしない＝いちばん軽い） */
+  Race3D.prototype.drawMinPaddock = function (c) {
+    const race = this.race, n = race.horses.length, i = this.paddockIdx(), h = race.horses[i], inf = (this.info && this.info(i)) || {}, now = performance.now();
+    const key = i + '|' + (inf.line1 || '') + '|' + (inf.line2 || '') + '|' + this.k + '|' + n;
+    if (key === this.minPadKey && now - (this.minPadAt || 0) < 1000) return;
+    this.minPadKey = key; this.minPadAt = now;
+    if (!this.minPadBg) { const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#16213a'); g.addColorStop(1, '#0b101b'); this.minPadBg = g; }
+    c.fillStyle = this.minPadBg; c.fillRect(0, 0, W, H);
+    c.textBaseline = 'middle';
+    c.fillStyle = '#e9c25e'; c.font = '900 26px ' + NOTO; c.textAlign = 'left'; c.fillText('パドック', 40, 42);
+    c.fillStyle = '#ffffff'; c.font = '700 22px ' + NOTO; c.textAlign = 'right'; c.fillText((i + 1) + ' / ' + n, W - 40, 42);
+    c.fillStyle = 'rgba(255,255,255,.08)'; roundRect(c, 40, 76, W - 80, 236, 14); c.fill();
+    c.fillStyle = h.color; roundRect(c, 40, 76, 200, 236, 14); c.fill();
+    c.fillStyle = h.ink; c.font = '900 128px ' + NOTO; c.textAlign = 'center'; c.fillText(String(h.no), 140, 196);
+    c.textAlign = 'left'; c.fillStyle = '#ffffff'; c.font = '900 56px ' + NOTO; c.fillText(h.name, 272, 140, W - 80 - 260);
+    c.fillStyle = '#ffd54f'; c.font = '700 30px ' + NOTO; c.fillText(inf.line1 || '', 272, 214, W - 80 - 260);
+    c.fillStyle = '#e8e8e8'; c.font = '700 28px ' + NOTO; c.fillText(inf.line2 || '', 272, 268, W - 80 - 260);
+    const gw = (W - 80 - (n - 1) * 10) / n;
+    for (let j = 0; j < n; j++) {
+      const hj = race.horses[j], x = 40 + j * (gw + 10), on = j === i;
+      c.fillStyle = on ? 'rgba(233,194,94,.28)' : 'rgba(255,255,255,.07)'; roundRect(c, x, 340, gw, 104, 10); c.fill();
+      if (on) { c.strokeStyle = '#e9c25e'; c.lineWidth = 3; roundRect(c, x + 1.5, 341.5, gw - 3, 101, 9); c.stroke(); }
+      c.fillStyle = hj.color; roundRect(c, x + 10, 352, 44, 44, 8); c.fill();
+      c.fillStyle = hj.ink; c.font = '900 28px ' + NOTO; c.textAlign = 'center'; c.fillText(String(hj.no), x + 32, 375);
+      c.fillStyle = '#ffffff'; c.font = '700 18px ' + NOTO; c.textAlign = 'left'; c.fillText(hj.name, x + 10, 420, gw - 20);
+    }
   };
   Race3D.prototype.drawHud = function (c) {
     const race = this.race, run = this.run;
