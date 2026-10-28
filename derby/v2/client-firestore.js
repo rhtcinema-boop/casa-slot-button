@@ -3,6 +3,8 @@
    - サーバーはない。結果を決めるのは「決める係のテレビ」（方式 B・オーナー決定 2026-10-14）:
      テレビ用のアカウントでログインしたテレビが derbyLock/decider をトランザクションで取り合い（60 秒の期限を、残り 40 秒を切ったら延長。見回りは 2 秒ごと）、
      持っている 1 台だけが レースを作る・締切で決める・発表・期限切れ・参加人数 を書く。止まったら期限切れで別のテレビが引き継ぐ。
+     2026-10-28: 進行役（primary）と予備（backup。derbyDeciders/<uid>.role）。予備は期限が切れて 60 秒たってから引き継ぎ、進行役が戻ると取り返す（heartbeat）。
+     見回りに時間の上限・見張り番（watchdog: つなぎ直し・読み込み直し）・最後のエラーを鍵に（lastErr・lastTickAt）。
      決める処理は何度やっても同じ結果（seed・払い戻しの id は salt とレース id から決まる。状態はトランザクションで 1 回だけ進める）。
    - 結果（seed）は derbyResults に分けて置き、ルールでゲートが開く時刻（runAt）まで読めない。払い戻しの設定額は derbyRaceSecrets（マスターと決める係だけ）。
    - データの形・ルールは v2/FIRESTORE_PLAN.md と v2/firestore.rules。テストは tests/v2-firestore.test.js（にせ Firestore: v2/fake-firestore.js）。
@@ -796,19 +798,54 @@
     }
 
     /* ---------- 決める係のテレビ（方式 B） ---------- */
-    const decider = { running: false, leader: false, until: 0, nextTry: 0, me: randId('tv-', 8), lastBeat: 0, timer: null, ticketUnsubs: {}, participantsAt: {}, pending: {}, flushT: {}, lastExpire: 0, errors: 0, log: [] };
+    const decider = { running: false, leader: false, until: 0, nextTry: 0, me: randId('tv-', 8), lastBeat: 0, timer: null, wdTimer: null, ticketUnsubs: {}, participantsAt: {}, pending: {}, flushT: {}, lastExpire: 0, errors: 0, log: [],
+      okAt: 0, startedAt: 0, tickSeq: 0, inTick: false, inTickAt: 0, lastErr: '', lastErrAt: 0, wdResetAt: 0, wdResets: 0, reloadAsked: 0 };
     const logD = (x) => { decider.log.push(x); if (decider.log.length > 200) decider.log.splice(0, decider.log.length - 200); }; // つけっぱなしのテレビで増え続けないように
+    /* 止まらない決める係（2026-10-28 の事故: 進行役のテレビの画面は動いているのに、決める係が止まっていた＝鍵の延長も名乗りも来ない）:
+       Firestore の書き込み・取引は、通信が切れていると返事が来ないまま待ち続ける（エラーにならない）。1 回の見回りの中で 1 つでも待ち続けると、次の見回りが二度と始まらなかった。
+       → 1 回の見回りと鍵の取引に時間の上限をつける（上限を過ぎたら失敗として次へ）。見回りは必ず次を予約する（finally）。
+       → 見張り番（watchdog）: うまくいった見回りが 60 秒ない → 見張り（onSnapshot）を作り直し、Firestore の通信を切ってつなぎ直す。3 分ない → レースの最中でなければページを読み込み直す。
+       → 最後のエラーと最後にうまくいった時刻を鍵（derbyLock/decider の lastErr・lastErrAt・lastTickAt）に書く（管理画面で見える） */
+    const TICK_TIMEOUT_MS = opts.tickTimeoutMs || 30000, OP_TIMEOUT_MS = opts.opTimeoutMs || 15000, WD_RESET_MS = opts.wdResetMs || 60000, WD_RELOAD_MS = opts.wdReloadMs || 180000;
+    function withTimeout(p, ms, label) {
+      let h = null;
+      const to = new Promise((res, rej) => { h = setTimeout(() => { const e = new Error('timeout ' + label); e.code = 'deadline-exceeded'; rej(e); }, ms); });
+      return Promise.race([Promise.resolve(p), to]).then((v) => { clearTimeout(h); return v; }, (e) => { clearTimeout(h); throw e; });
+    }
+    function noteErr(e, where) {
+      const c = e && e.code, msg = e && e.message, m = String((where ? where + ': ' : '') + (c && msg && msg !== c ? c + ' ' + msg : c || msg || e)).slice(0, 160);
+      decider.lastErr = m; decider.lastErrAt = now(); logD([now(), 'error ' + m]);
+    }
+    /* 進行役と予備（2026-10-28 自動の引き継ぎ）: derbyDeciders/<uid>.role が 'backup' なら予備、それ以外（role なし＝前からの進行役）は進行役（primary）。
+       進行役: 生きていればいつでも鍵を取る（予備が持っていても取り返す。取り返した見回りでは何もしない＝同じ見回りで 2 台が動かない）。
+       予備: 鍵の期限が切れて 60 秒たってから取る（進行役が止まると 1〜2 分で引き継ぐ）。予備が鍵を持っている間は、見回りのたびに鍵を読み直す（取り返されたらすぐやめる）。
+       テレビ用アカウント・マスター: 今までどおり（期限が切れたら取る） */
+    const BACKUP_GRACE_MS = 60000;
+    const myRole = () => (mode === 'tv' ? 'account' : mode === 'master' ? 'master' : pair.role === 'backup' ? 'backup' : 'primary');
     async function heartbeat(force) {
-      const t = now();
-      if (!force && decider.leader && decider.until - t > RENEW_MS) return true; // まだ期限に余裕がある（読み書きしない）
+      const t = now(), role = myRole();
+      if (!force && decider.leader && role !== 'backup' && decider.until - t > RENEW_MS) return true; // まだ期限に余裕がある（読み書きしない）
       if (!force && !decider.leader && t < decider.nextTry) return false;          // ほかのテレビが持っている: 期限が切れるころまで待つ
       const ref = doc(COL.lock, 'decider');
-      const got = await db.runTransaction(async (tx) => {
-        const l = data(await tx.get(ref));
-        if (!l || l.until < t || l.holder === decider.me) { tx.set(ref, { holder: decider.me, until: t + LEASE_MS, at: t, store: store || null, uid: uid(), kind: mode === 'tv' ? 'account' : mode === 'master' ? 'master' : 'paired' }); return true; } // uid・kind: 管理画面の「いま進めているテレビ」と、進行役を替えたときに鍵を外すため（2026-10-19）
-        decider.nextTry = Math.min(l.until + 500, t + 20000); return false;
-      });
-      if (got) decider.until = t + LEASE_MS;
+      const out = await withTimeout(db.runTransaction(async (tx) => {
+        const l = data(await tx.get(ref)), mine = !!(l && l.holder === decider.me), expired = !l || l.until < t;
+        const take = mine || (role === 'primary' ? expired || l.role === 'backup' : role === 'backup' ? !l || l.until < t - BACKUP_GRACE_MS : expired);
+        if (!take) return { got: false, l };
+        if (!mine || force || l.until - t <= RENEW_MS) {
+          tx.set(ref, { holder: decider.me, until: t + LEASE_MS, at: t, store: store || null, uid: uid(), kind: mode === 'tv' ? 'account' : mode === 'master' ? 'master' : 'paired', role, // uid・kind: 管理画面の「いま進めているテレビ」と、進行役を替えたときに鍵を外すため（2026-10-19）。role: 進行役・予備（2026-10-28）
+            lastTickAt: t, lastErr: decider.lastErr || null, lastErrAt: decider.lastErrAt || null });
+          return { got: true, l, until: t + LEASE_MS, pre: !mine && !expired };
+        }
+        return { got: true, l, until: l.until, pre: false };
+      }), OP_TIMEOUT_MS, 'lock');
+      let got = out.got;
+      if (got) { decider.until = out.until; decider.nextTry = 0; }
+      else {
+        const l = out.l;
+        decider.nextTry = role === 'backup' ? Math.min(l.until + BACKUP_GRACE_MS + 500 + Math.floor(Math.random() * 3000), t + 5 * 60000) // 予備: 引き継げる時刻まで読まない（同時に取り合わないように少しずらす）
+          : role === 'primary' && l.role === 'backup' ? 0 : Math.min(l.until + 500, t + 20000);
+      }
+      if (got && out.pre) { logD([t, 'reclaim']); got = false; decider.nextTry = 0; } // 予備から取り返した: この見回りでは何もしない（予備は次の見回りで鍵を読んでやめる）
       if (got !== decider.leader) logD([t, got ? 'leader' : 'follower']);
       decider.leader = got; decider.lastBeat = t;
       return got;
@@ -824,7 +861,7 @@
         if (!fe) return null;
         sc = fresh; e = fe;
         let odds = null;
-        if (env.oddsAsync) { try { const base = Core.raceBase(Engine, Outcome, sc.salt, e.id, sc.tuning); odds = await env.oddsAsync(base, Outcome.hash(sc.salt, e.id, 'odds'), sc.tuning.oddsSims); } catch (err) { odds = null; } } // Worker が使えなければその場で計算
+        if (env.oddsAsync) { try { const base = Core.raceBase(Engine, Outcome, sc.salt, e.id, sc.tuning); odds = await withTimeout(env.oddsAsync(base, Outcome.hash(sc.salt, e.id, 'odds'), sc.tuning.oddsSims), Math.max(TICK_TIMEOUT_MS / 2, Math.min(45000, TICK_TIMEOUT_MS - 5000)), 'odds'); } catch (err) { odds = null; } } // Worker が使えない・返事が来ない（2026-10-28 上限つき）ならその場で計算
         await writeRace(e, sc, { odds });
         return e.id; // 1 回に 1 レース（オッズの計算が重い）
       }
@@ -851,19 +888,73 @@
       live.subs++;
       deciderWatch = db.collection(COL.races).where('at', '>=', now() - WINDOW).orderBy('at').onSnapshot((q) => { live.races = q.docs.map((d) => d.data()); }, () => { live.subs--; deciderWatch = null; });
     }
-    async function deciderTick() {
+    /* 1 回の見回り（中身）。seq: この見回りの番号。時間切れで見捨てられた見回りが、あとで返事をもらって続きを走らないように、区切りごとに確かめる（live） */
+    async function deciderTick0(seq) {
+      const live0 = () => { if (seq != null && seq !== decider.tickSeq) { const e = new Error('stale tick'); e.code = 'stale'; throw e; } };
       if (typeof setTimeout !== 'undefined' && opts.deciderAuto !== false) { ensureRaceWatch(); ensureTestWatch(); }
       if (!(await heartbeat())) { Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; return { leader: false }; }
+      live0();
       const sc = await secretConfig(), races = await getRaces(), t = now(), did = [];
-      for (const r of races.filter((x) => (x.status === 'upcoming' && x.closeAt <= t) || (x.status === 'closing' && (x.closingAt || 0) < t - CLOSING_STALE_MS)).sort((a, b) => a.closeAt - b.closeAt)) { if (await decideRace(r.id, decider.me)) did.push('decide ' + r.id); }
-      for (const r of races.filter((x) => x.status === 'decided' && x.revealAt <= t)) { if (await revealRace(r.id)) did.push('reveal ' + r.id); }
-      (await tvAuto(races)).forEach((x) => did.push(x)); // 投票が始まったら店のテレビを DERBY に（v4）
-      (await processTestReqs(sc, races)).forEach((x) => did.push(x)); // この店だけテストレース（2026-10-19）
-      const made = await materialize(sc, races); if (made) did.push('create ' + made);
+      live0();
+      for (const r of races.filter((x) => (x.status === 'upcoming' && x.closeAt <= t) || (x.status === 'closing' && (x.closingAt || 0) < t - CLOSING_STALE_MS)).sort((a, b) => a.closeAt - b.closeAt)) { live0(); if (await decideRace(r.id, decider.me)) did.push('decide ' + r.id); }
+      for (const r of races.filter((x) => x.status === 'decided' && x.revealAt <= t)) { live0(); if (await revealRace(r.id)) did.push('reveal ' + r.id); }
+      live0(); (await tvAuto(races)).forEach((x) => did.push(x)); // 投票が始まったら店のテレビを DERBY に（v4）
+      live0(); (await processTestReqs(sc, races)).forEach((x) => did.push(x)); // この店だけテストレース（2026-10-19）
+      live0(); const made = await materialize(sc, races); if (made) did.push('create ' + made);
+      live0();
       watchParticipants(races);
       if (!did.length) await publishLive(live.races || races).catch(() => {}); // 何かした回は、その場でもう書いてある（はじめに読んだ古い一覧で上書きしない）
       /* 期限切れの見回りは 15 分に 1 回と、営業日の区切り（5 時）を越えたとき */ const dayNow = Core.bizDate(t, sc.tuning.dayStartHour); if (t - decider.lastExpire > 15 * 60000 || decider.lastExpireDay !== dayNow) { decider.lastExpire = t; decider.lastExpireDay = dayNow; const n = await expirePayouts(); if (n) did.push('expire ' + n); }
       return { leader: true, did };
+    }
+    /* 1 回の見回り（外側）: 時間の上限・例外は中で受け止めて、いつも { leader, did?, error? } を返す（投げない）。
+       前の見回りがまだ終わっていなければ重ねない（上限を過ぎたものは見捨てて次を始める） */
+    async function deciderTick() {
+      if (decider.inTick && local() - decider.inTickAt < TICK_TIMEOUT_MS) return { leader: decider.leader, busy: true };
+      const seq = ++decider.tickSeq; decider.inTick = true; decider.inTickAt = local();
+      try {
+        const r = await withTimeout(deciderTick0(seq), TICK_TIMEOUT_MS, 'tick');
+        if (seq === decider.tickSeq) { decider.okAt = local(); decider.errors = 0; }
+        return r;
+      } catch (e) {
+        if (seq !== decider.tickSeq) return { leader: false, error: 'stale' };
+        decider.errors++; noteErr(e, 'tick');
+        if (e && e.code === 'deadline-exceeded') { decider.leader = false; decider.until = 0; decider.nextTry = 0; decider.tickSeq++; decider.inTick = false; } // 返事の来ない見回りは見捨てる（鍵は次の見回りで読み直す）
+        return { leader: false, error: decider.lastErr };
+      } finally { if (seq === decider.tickSeq) decider.inTick = false; }
+    }
+    /* 見張り番（2026-10-28）: 10 秒ごと（見回りとは別のタイマー）。うまくいった見回りが WD_RESET_MS（60 秒）ない → 見張りを作り直し、Firestore の通信を切ってつなぎ直す。
+       WD_RELOAD_MS（3 分）ない → レースの最中（締切の 15 秒前〜結果の画面の終わり）でなければページを読み込み直す（テレビだけ。env.reload があればそれ） */
+    function raceOnScreen() {
+      const t = now();
+      return (live.races || []).some((r) => r && r.status !== 'void' && !r.refunded && r.closeAt - 15000 <= t && t < (r.endAt || (r.revealAt || r.closeAt) + 60000));
+    }
+    async function resetNet() {
+      decider.wdResetAt = local(); decider.wdResets++; logD([now(), 'watchdog reset']);
+      if (deciderWatch) { try { deciderWatch(); } catch (e) { /* noop */ } live.subs = Math.max(0, live.subs - 1); deciderWatch = null; }
+      if (testWatch) { try { testWatch(); } catch (e) { /* noop */ } testWatch = null; }
+      Object.values(decider.ticketUnsubs).forEach((u) => { try { u(); } catch (e) { /* noop */ } }); decider.ticketUnsubs = {};
+      storesCache = null; pubCache = null; secretCache = null;
+      const raw = fb.db && fb.db._derbyRaw ? fb.db._derbyRaw : fb.db;
+      try { if (raw && typeof raw.disableNetwork === 'function') { await withTimeout(raw.disableNetwork(), 10000, 'disableNetwork'); await withTimeout(raw.enableNetwork(), 10000, 'enableNetwork'); } } catch (e) { noteErr(e, 'reset'); }
+      decider.inTick = false; decider.nextTry = 0;
+      if (pair.on) pairHello().catch(() => {});
+    }
+    async function watchdog() {
+      if (!decider.running) return 'off';
+      const L = local(), since = L - (decider.okAt || decider.startedAt || L);
+      if (since < WD_RESET_MS) return 'ok';
+      if (since >= WD_RELOAD_MS) {
+        const reload = env.reload || (role === 'tv' && typeof location !== 'undefined' && location.reload ? () => location.reload() : null);
+        if (!reload) return 'stuck';
+        if (raceOnScreen()) return 'wait';
+        if (decider.reloadAsked && L - decider.reloadAsked < 60000) return 'reloading';
+        decider.reloadAsked = L; logD([now(), 'watchdog reload']);
+        try { reload(); } catch (e) { /* noop */ }
+        return 'reload';
+      }
+      if (!decider.wdResetAt || L - decider.wdResetAt >= WD_RESET_MS) { await resetNet(); return 'reset'; }
+      return 'waiting';
     }
     /* 投票が始まったら、そのレースが見える店のテレビのゲームを DERBY に（2026-10-20 オーナー決定。Core.tvAutoPlan。1 レース 1 回＝レースに tvAutoAt の印）。
        店の settings.tvGame と derbySwitch/tv を同じ書き込みで（casa SLOT のテレビは derbySwitch/tv を見て、遊んでいる途中なら終わってから移る）。
@@ -926,6 +1017,17 @@
       return Core.testTvWait(q.docs.map((d) => { const x = d.data() || {}; return { store: x.store, kind: x.kind, at: msOf(x.at) }; }), sid, reqAt, t);
     }
     // スタッフ: 進行役のテレビがいるか（決める係の鍵の期限。鍵は 20 秒ごとに延ばすので、止まると 60 秒以内に切れる）
+    /* 進行役のテレビが止まっていないか（2026-10-28。スタッフの画面・管理画面の赤い知らせ。Core.deciderStall）: 鍵 1 件＋レース（見張りがあれば読まない）＋公開の時刻表（5 分のキャッシュ）。
+       sid: この店（スタッフ）／null: 全店（管理画面） → { lock: { until, at, lastTickAt, store, kind, role, lastErr, lastErrAt } | null, stall: null | { reason, since, min, raceId }, text, now } */
+    async function deciderHealth(sid) {
+      await ready();
+      const [l, races, sched, pub, stores] = await Promise.all([doc(COL.lock, 'decider').get().then(data).catch(() => null), getRaces().catch(() => []), getSchedule(), getPublic().catch(() => Core.DEFAULT_TUNING), sid ? Promise.resolve(null) : getStores().catch(() => [])]);
+      const t = now(), rules = Array.isArray(sched.rules) ? sched.rules : [], ids = sid ? [sid] : (stores || []).map((s) => s.id), seen = {}, list = [];
+      ids.forEach((s) => Core.todayRaces(rules, s, t, pub).forEach((e) => { if (!seen[e.id]) { seen[e.id] = 1; list.push(e); } }));
+      const lock = l ? { until: l.until || 0, at: l.at || 0, lastTickAt: l.lastTickAt || null, store: l.store || null, kind: l.kind || 'account', role: l.role || null, uid: l.uid || null, lastErr: l.lastErr || null, lastErrAt: l.lastErrAt || null } : null;
+      const stall = Core.deciderStall({ t, lock, schedule: list, raceIds: races.map((r) => r.id), tuning: pub });
+      return { lock, stall, text: Core.deciderStallText(stall), now: t };
+    }
     async function deciderAlive() { const l = data(await doc(COL.lock, 'decider').get()); return !!(l && l.until > now()); }
     /* スタッフ: テストレースの前の様子。鍵（derbyLock/decider）には最後の決める係の店 store が残る。進行役を替える・やめると管理画面が鍵を消すので、
        鍵が残っていて期限が切れている＝選ばれた進行役のテレビがいま DERBY を映していない（その店が SLOT になっているだけ） */
@@ -970,9 +1072,9 @@
        パスワードのないテレビ（匿名ログイン）は derbyTvs/<uid> に名乗る（店舗・端末の種類・連絡の時刻・画面に出す 4 けたの数字）。書くのは起動時と 5 分ごとだけ。
        自分の 2 件だけを見張る: derbyTvs/<uid> の ask（管理画面が「進行役にする」を押した＝数字を出す）と、derbyDeciders/<uid>（選ばれた＝決める係になる・消えたら止める） */
     const PAIR_BEAT_MS = 5 * 60000, PAIR_ASK_MS = 3 * 60000;
-    const pair = { on: false, code: null, askAt: 0, decider: false, cbs: [], unsubs: [], timer: null, askT: null, err: '' };
+    const pair = { on: false, code: null, askAt: 0, decider: false, role: null, cbs: [], unsubs: [], timer: null, askT: null, err: '' }; // role: 'primary' | 'backup'（2026-10-28 予備）
     const canDecide = () => mode === 'tv' || pair.decider;
-    function pairState() { const asking = !pair.decider && pair.askAt > 0 && now() - pair.askAt < PAIR_ASK_MS; return { on: pair.on, code: pair.code, asking, decider: pair.decider, account: mode === 'tv' }; }
+    function pairState() { const asking = !pair.decider && pair.askAt > 0 && now() - pair.askAt < PAIR_ASK_MS; return { on: pair.on, code: pair.code, asking, decider: pair.decider, role: pair.decider ? pair.role || 'primary' : null, account: mode === 'tv' }; }
     function pairEmit() {
       clearTimeout(pair.askT); const s = pairState();
       if (s.asking && typeof setTimeout !== 'undefined') pair.askT = setTimeout(pairEmit, Math.max(500, PAIR_ASK_MS - (now() - pair.askAt) + 200)); // 3 分たったら数字を消す
@@ -980,7 +1082,8 @@
     }
     function newCode() { let n; try { const a = new Uint32Array(1); globalThis.crypto.getRandomValues(a); n = a[0] % 10000; } catch (e) { n = Math.floor(Math.random() * 10000); } return String(n).padStart(4, '0'); }
     const tvKind = () => (typeof navigator !== 'undefined' && /casaTV/.test(navigator.userAgent || '') ? 'casatv' : 'browser');
-    async function pairHello() { if (!pair.on) return; await doc(COL.tvs, uid()).set({ store, kind: tvKind(), at: FieldValue.serverTimestamp(), code: pair.code }, { merge: true }); }
+    /* 名乗り（derbyTvs.at）は決める係の見回りとは別のタイマー（5 分ごと）。返事が来なくても次の名乗りは止まらない（上限 15 秒。2026-10-28） */
+    async function pairHello() { if (!pair.on) return; await withTimeout(doc(COL.tvs, uid()).set({ store, kind: tvKind(), at: FieldValue.serverTimestamp(), code: pair.code }, { merge: true }), OP_TIMEOUT_MS, 'hello'); }
     function startPair() {
       if (pair.on || role !== 'tv' || mode !== 'anon' || !store || !/^[a-z0-9_-]{1,32}$/.test(store) || opts.pair === false) return;
       pair.on = true; pair.code = opts.pairCode || newCode(); // 数字は起動のたびに作り直す（5 分ごとの連絡では変えない＝確認の途中で変わらない）
@@ -988,8 +1091,9 @@
       if (typeof setInterval !== 'undefined' && opts.deciderAuto !== false) pair.timer = setInterval(() => pairHello().catch(() => {}), PAIR_BEAT_MS);
       pair.unsubs.push(doc(COL.tvs, uid()).onSnapshot((s) => { const d = data(s), a = d && typeof d.ask === 'number' ? d.ask : 0; if (a !== pair.askAt) { pair.askAt = a; pairEmit(); } }, () => {}));
       pair.unsubs.push(doc(COL.deciders, uid()).onSnapshot((s) => {
-        const on = !!(s && s.exists); if (on === pair.decider) return;
-        pair.decider = on; logD([now(), on ? 'paired' : 'unpaired']);
+        const on = !!(s && s.exists), d = on && typeof s.data === 'function' ? s.data() || {} : {}, rl = on ? (d.role === 'backup' ? 'backup' : 'primary') : null;
+        if (on === pair.decider) { if (rl !== pair.role) { pair.role = rl; logD([now(), 'role ' + rl]); decider.nextTry = 0; pairEmit(); } return; } // 進行役 ⇔ 予備が変わった: 次の見回りで鍵を読み直す
+        pair.decider = on; pair.role = rl; logD([now(), on ? 'paired ' + rl : 'unpaired']);
         if (on) { if (opts.decider !== false) startDecider(); }
         else { stopDecider(); decider.leader = false; decider.until = 0; }
         pairEmit();
@@ -1000,11 +1104,13 @@
 
     function startDecider() {
       if (decider.running || typeof setTimeout === 'undefined' || opts.deciderAuto === false) return;
-      decider.running = true;
-      const loop = async () => { if (!decider.running) return; try { await deciderTick(); decider.errors = 0; } catch (e) { decider.errors++; logD([now(), 'error ' + ((e && e.message) || e)]); } decider.timer = setTimeout(loop, BEAT_MS); };
+      decider.running = true; decider.startedAt = local();
+      /* 見回りは必ず次を予約する（2026-10-28: 中で待ち続けると次が始まらなかった。deciderTick は時間の上限つきで投げない。念のため finally でも） */
+      const loop = async () => { if (!decider.running) return; try { await deciderTick(); } catch (e) { noteErr(e, 'loop'); } finally { if (decider.running) { clearTimeout(decider.timer); decider.timer = setTimeout(loop, BEAT_MS); } } };
       loop();
+      clearInterval(decider.wdTimer); decider.wdTimer = setInterval(() => { watchdog().catch((e) => noteErr(e, 'watchdog')); }, 10000); // 見張り番は見回りとは別のタイマー
     }
-    function stopDecider() { decider.running = false; clearTimeout(decider.timer); Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; }
+    function stopDecider() { decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; }
 
     /* ---------- リアルタイム（onSnapshot → state / race / vote / next / reload / payout） ---------- */
     function subscribe(handlers, o) {
@@ -1175,10 +1281,16 @@
         }),
         /* 進行役のテレビ（2026-10-19）: 名乗っているテレビ（7 日以内に連絡）・いまの進行役・いま進めているテレビ（決める係の鍵） */
         tvs: wrap(async () => {
-          const [q, dq, lk] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 7 * 86400000)).get(), db.collection(COL.deciders).get(), doc(COL.lock, 'decider').get()]);
-          const tvs = q.docs.map((d) => { const x = d.data(); return { id: d.id, store: x.store, kind: x.kind, at: msOf(x.at), code: x.code, ask: Number(x.ask) || 0 }; }).sort((a, b) => b.at - a.at);
-          const dd = dq.docs.map((d) => Object.assign({ id: d.id }, d.data())).sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null, l = data(lk);
-          return { tvs, decider: dd ? { id: dd.id, store: dd.store || null, at: dd.at || null, seen: (tvs.find((x) => x.id === dd.id) || {}).at || null } : null, lock: l && l.until > now() ? { store: l.store || null, kind: l.kind || 'account', uid: l.uid || null, at: l.at || null } : null, now: now() };
+          /* 2026-10-28: 予備（derbyDeciders の role 'backup'）も。一覧は 7 日以内に連絡のあったテレビ（予備にしたテレビは 14 日まで）。fireTvs: 「全店の Fire TV を予備にする」の候補（14 日以内の Fire TV） */
+          const [q, dq, lk] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get(), doc(COL.lock, 'decider').get()]);
+          const all = q.docs.map((d) => { const x = d.data(); return { id: d.id, store: x.store, kind: x.kind, at: msOf(x.at), code: x.code, ask: Number(x.ask) || 0 }; }).sort((a, b) => b.at - a.at);
+          const ds = dq.docs.map((d) => Object.assign({ id: d.id }, d.data())), bset = new Set(ds.filter((d) => d.role === 'backup').map((d) => d.id));
+          const tvs = all.filter((x) => now() - x.at < 7 * 86400000 || bset.has(x.id) || ds.some((d) => d.id === x.id));
+          const dd = ds.filter((d) => d.role !== 'backup').sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null, l = data(lk);
+          const backups = ds.filter((d) => d.role === 'backup').map((d) => ({ id: d.id, store: d.store || null, at: d.setAt || d.at || null, seen: (all.find((x) => x.id === d.id) || {}).at || null }));
+          return { tvs, decider: dd ? { id: dd.id, store: dd.store || null, at: dd.at || null, seen: (all.find((x) => x.id === dd.id) || {}).at || null } : null, backups, fireTvs: all.filter((x) => x.kind === 'casatv').map((x) => x.id),
+            lock: l && l.until > now() ? { store: l.store || null, kind: l.kind || 'account', role: l.role || null, uid: l.uid || null, at: l.at || null } : null,
+            lockInfo: l ? { store: l.store || null, kind: l.kind || 'account', role: l.role || null, uid: l.uid || null, at: l.at || null, until: l.until || 0, lastTickAt: l.lastTickAt || null, lastErr: l.lastErr || null, lastErrAt: l.lastErrAt || null } : null, now: now() };
         }),
         // 「進行役にする」を押した: そのテレビに数字を出してもらう（on=false で消す）。答えはそのテレビの数字（管理画面の確認に出す）
         tvAsk: wrap(async (id, on) => {
@@ -1189,16 +1301,36 @@
         }),
         // 進行役を決める（id）・やめる（null）。1 台だけ: ほかは消す。前の進行役のテレビが鍵を持っていたら外す（新しいテレビがすぐ続ける）
         setDecider: wrap(async (id) => {
+          // 2026-10-28: 進行役（primary）は 1 台。前の進行役は外す。予備（role 'backup'）はそのまま（選んだテレビが予備だったら進行役になる）
           const [dq, l] = await Promise.all([db.collection(COL.deciders).get(), doc(COL.lock, 'decider').get().then(data)]);
           const tv = id ? data(await doc(COL.tvs, id).get()) : null;
           if (id && !tv) throw E(404, 'no_tv', 'テレビが見つかりません');
-          const b = db.batch();
-          dq.docs.forEach((d) => { if (d.id !== id) b.delete(doc(COL.deciders, d.id)); });
-          if (id) { b.set(doc(COL.deciders, id), { store: tv.store || null, at: now() }); b.update(doc(COL.tvs, id), { ask: FieldValue.delete() }); }
-          if (l && l.kind === 'paired' && l.uid !== id) b.delete(doc(COL.lock, 'decider'));
+          const b = db.batch(), keep = new Set();
+          dq.docs.forEach((d) => { const x = d.data() || {}; if (d.id === id) return; if (x.role === 'backup') keep.add(d.id); else b.delete(doc(COL.deciders, d.id)); });
+          if (id) { b.set(doc(COL.deciders, id), { role: 'primary', store: tv.store || null, setAt: now(), at: now() }); b.update(doc(COL.tvs, id), { ask: FieldValue.delete() }); }
+          if (l && l.kind === 'paired' && l.uid !== id && !keep.has(l.uid)) b.delete(doc(COL.lock, 'decider'));
           await b.commit();
           return { ok: true, decider: id ? { id, store: tv.store || null, at: now() } : null };
         }),
+        // 予備にする（on）・予備をやめる（2026-10-28）。進行役のテレビは予備にしない（先に別のテレビを進行役に）
+        setBackup: wrap(async (id, on) => {
+          if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(id || ''))) throw E(400, 'bad_tv', 'テレビの指定がちがいます');
+          const cur = data(await doc(COL.deciders, id).get());
+          if (cur && cur.role !== 'backup') throw E(409, 'is_primary', 'このテレビは進行役です');
+          if (!on) { if (cur) await doc(COL.deciders, id).delete(); return { ok: true, id, backup: false }; }
+          const tv = data(await doc(COL.tvs, id).get()); if (!tv) throw E(404, 'no_tv', 'テレビが見つかりません');
+          await doc(COL.deciders, id).set({ role: 'backup', store: tv.store || null, setAt: now(), at: now() });
+          return { ok: true, id, backup: true };
+        }),
+        // 全店の Fire TV（14 日以内に連絡）を予備にする。進行役・もう予備のテレビはそのまま → { ok, added: [id] }
+        setBackupsAll: wrap(async () => {
+          const [q, dq] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get()]);
+          const have = new Set(dq.docs.map((d) => d.id)), b = db.batch(), added = [];
+          q.docs.forEach((d) => { const x = d.data() || {}; if (x.kind !== 'casatv' || have.has(d.id)) return; b.set(doc(COL.deciders, d.id), { role: 'backup', store: x.store || null, setAt: now(), at: now() }); added.push(d.id); });
+          if (added.length) await b.commit();
+          return { ok: true, added };
+        }),
+        health: wrap(async () => deciderHealth(null)),
         preview: wrap(async (date, s) => { const sc = await secretConfig(), ds = date || Core.dateStr(now()); return { date: ds, holiday: Core.holidayName(ds), weekday: Core.weekday(ds), /* holiday: 祝日の名前 | null（模擬クラウドの GET /api/admin/timetable/preview と同じ。2026-10-27） */ races: Core.expandDate(ds, sc.timetable.rules || []).filter((e) => !s || !e.storeId || e.storeId === s) }; }),
         saveTuning: wrap(async (t) => {
           const sc = await secretConfig(), merged = Core.mergeTuning(sc.tuning, t || {}, now());
@@ -1288,11 +1420,12 @@
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
       state, race, vote, myVote, claimSelf,
       staffLogin, release, wins, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
+      deciderHealth: (sid) => deciderHealth(sid === undefined ? store : sid), // 進行役のテレビが止まっていないか（2026-10-28）
       admin, subscribe,
       // 進行役のテレビ（2026-10-19）: state = { on, code, asking, decider, account }・on(cb) で変わるたびに
       pair: { get state() { return pairState(); }, on: onPair, hello: pairHello, get uid() { return uid(); } },
       // 決める係（テストと確認用）
-      decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, get paired() { return pair.decider; }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, decideRace, revealRace, expirePayouts, voidRace },
+      decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, watchdog, resetNet, get paired() { return pair.decider; }, get role() { return pair.decider ? pair.role || 'primary' : myRole(); }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, get state() { return { okAt: decider.okAt, errors: decider.errors, lastErr: decider.lastErr, lastErrAt: decider.lastErrAt, wdResets: decider.wdResets, running: decider.running, tickSeq: decider.tickSeq }; }, decideRace, revealRace, expirePayouts, voidRace },
       ready, onUser,
       /* スマホ（2026-10-28）: 画面に初めてさわったとき（client.js）に、投票で使う端末のリストを先に読み、App Check を有効にする。見るだけの人は読まない（読み取りの数を増やさない） */
       warm: () => ready().then(() => { if (role === 'phone' && mode === 'anon') myDevice().catch(() => {}); if (fb.appCheck) fb.appCheck(); }).catch(() => {}),
