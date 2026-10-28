@@ -24,8 +24,26 @@ window.Race3D = (function () {
      3D の画面だけ細かさを下げて固定（XL_K。テロップ・文字の 2D のキャンバスは 1.2 倍のまま＝くっきり）・Fire TV 向けの描き方（影なし・ふちのなめらかなし・後処理なし）を必ず使う・
      会場はさらに間引く（観客・木・旗。js/r3d/venue3d.js の XLQ）・馬は少し離れたらすぐ粗い形・土煙の粒と雨の粒を減らし水しぶきなし（js/r3d/look3d.js）。?q=xlite でも試せる。?xlk=0.7 で細かさを変えて測れる */
   const XLITE = QMODE === 'lite' || /[?&]q=xlite\b/.test(QS);
-  const XL_K = Math.max(0.4, Math.min(1.2, Number((QS.match(/[?&]xlk=([\d.]+)/) || [])[1]) || 0.6));
+  const XL_K = Math.max(0.4, Math.min(1.2, Number((QS.match(/[?&]xlk=([\d.]+)/) || [])[1]) || 0.5)); // 2026-10-28 lite2: 0.6 → 0.5
   if (XLITE) R3D.xlite = true;
+  /* 2026-10-28 lite2（さらになめらか の見直し）: コマの間隔をそろえる。ばらばらの 40〜50 コマ/秒より、いつも同じ 30 コマ/秒のほうがなめらかに見える。
+     描くのは前に描いてから 1/30 秒たった画面の更新のときだけ（60Hz の画面なら 2 回に 1 回）。30 を保てない（平均 38ms を超える）状態が 2 秒続いたら 20 コマ/秒（3 回に 1 回）に下げ、
+     30 秒たったら 30 を試し直す（だめならまた 20、次に試すまでの間を倍に）。動きの量は実際の経過時間で進めるので、レースの進み・時刻は同じ。?pace=0 で止める（測定用） */
+  const PACE = XLITE && !/[?&]pace=0\b/.test(QS);
+  const pacer = { iv: 1000 / 30, ema: 1000 / 30, bad: 0, at: 0, retry: 30000, lastAt: 0 }, paceLast = new WeakMap();
+  function pacerNote(now) {
+    const P = pacer, g = P.lastAt ? now - P.lastAt : 0; P.lastAt = now; if (!g || g > 400) return;
+    P.ema += (g - P.ema) * 0.1;
+    if (P.iv < 40) { if (P.ema > 38) { if (!P.bad) P.bad = now; else if (now - P.bad > 2000) { P.iv = 50; P.at = now; P.bad = 0; P.ema = 50; } } else P.bad = 0; }
+    else if (now - P.at > P.retry) { P.iv = 1000 / 30; P.ema = P.iv; P.bad = 0; P.tryAt = now; }
+    if (P.tryAt && P.iv === 50 && P.at > P.tryAt) { P.retry = Math.min(240000, P.retry * 2); P.tryAt = 0; } else if (P.tryAt && now - P.tryAt > 20000) { P.retry = 30000; P.tryAt = 0; }
+  }
+  function raf(cb) {
+    if (!PACE) return requestAnimationFrame(cb);
+    const tick = (now) => { const lp = paceLast.get(cb) || 0; if (lp && now - lp < pacer.iv - 5 && now >= lp) { requestAnimationFrame(tick); return; } paceLast.set(cb, now); pacerNote(now); cb(now); };
+    return requestAnimationFrame(tick);
+  }
+  R3D.pacer = pacer;
   const ADAPT = !/[?&]adapt=0/.test(QS) && !MAXQ;                         // ?adapt=0 で自動の画質調整を止める（重さの測定用）
   const STD_CAM = /[?&]cam=std/.test(QS);
   const LAYOUT_OLD = /[?&]layout=old/.test(QS);
@@ -321,6 +339,7 @@ window.Race3D = (function () {
     const low = this.quality === 'low';
     this.renderer = new THREE.WebGLRenderer({ canvas: gl, antialias: !low, powerPreference: 'high-performance', alpha: false, stencil: false });
     this.renderer.setSize(W, H, false);
+    if (XLITE) this.renderer.debug.checkShaderErrors = false; // lite2: シェーダの確認で毎回待たない（レースの準備の止まりを短く）
     this.renderer.info.autoReset = false; // 後処理で何回描いても 1 コマ分の合計を数える
     this.k = 1; this.fitRes(true);
     gl.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('casa DERBY 3D: WebGL のコンテキストが失われました'); }, false);
@@ -332,14 +351,21 @@ window.Race3D = (function () {
     if (this.look && typeof this.look.placeDigit === 'function') { try { this.look.placeDigit(-1, 0.02, 7.2, 3.6); } catch (e) { warnOnce('look.placeDigit', e); } }
     this.director = null; this.makeDirector();
     this.horses3d = []; this.handlers = [];
-    this.dustFx = makeDust(this.scene, this.xlite ? 16 : this.tv ? 40 : low ? 70 : 160);
+    this.dustFx = makeDust(this.scene, this.xlite ? 0 : this.tv ? 40 : low ? 70 : 160);
     if (this.tv) this.noShadows();
+    if (this.xlite) { this.dustFx.max = 0; this.trimVenue(); }
     // 残線（直線の残り 400・200・100m の白い線）
     this.remainMesh = {};
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     [400, 200, 100].forEach((m) => { const a = pointAt(FINISH_S - m, RI), b = pointAt(FINISH_S - m, RO), len = Math.hypot(b.x - a.x, b.z - a.z); const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.36, len), lineMat); mesh.rotation.x = -Math.PI / 2; mesh.position.set((a.x + b.x) / 2, 0.04, (a.z + b.z) / 2); mesh.visible = false; mesh.renderOrder = 2; this.scene.add(mesh); this.remainMesh[m] = mesh; });
     this.gateState = ''; this.boardText = null;
   }
+  /* lite2（2026-10-28）: 会場の飾りを外す（描く回数・三角形を減らす）。確定演出に使う物（木・丸い木・植え込み・生け垣・旗・のぼり・観客・看板）は残す */
+  const XL_DROP = ['parasols', 'posts', 'treesConifer', 'treesPoplar', 'flowers', 'crowdBlobs', 'ferrisWheel', 'blimp'];
+  Race3D.prototype.trimVenue = function () {
+    const g = this.venue && this.venue.group; if (!g || !g.getObjectByName) return;
+    XL_DROP.forEach((nm) => { const o = g.getObjectByName(nm); if (o && o.parent) { o.parent.remove(o); try { if (o.geometry) o.geometry.dispose(); } catch (e) { } } });
+  };
   // 部品を作る（無い・失敗したら代わりの部品）
   Race3D.prototype.part = function (name, make, stub) {
     if (R3D[name]) { try { const o = make(); if (o) { this.parts[name] = 'real'; return o; } } catch (e) { warnOnce(name + ' の作成', e); } }
@@ -406,6 +432,7 @@ window.Race3D = (function () {
     this.makeDirector();
     this.cam.mode = ''; this.placeCamera(0, true); this.draw(0);
     this.prewarm();
+    if (this.oldHorses) { const o = this.oldHorses; this.oldHorses = null; o.forEach((hz) => { try { hz.dispose(); } catch (e) {} }); }
     this.startIdle();
   };
   // 賭けている馬の足元の輪を明るく（game.js の DERBY.bets を読むだけ）
@@ -536,7 +563,8 @@ window.Race3D = (function () {
     return { M, look: M && M === R3D.HorseReal ? 'real' : 'cute' };
   };
   Race3D.prototype.buildHorses = function (race) {
-    this.horses3d.forEach((hz) => { this.scene.remove(hz.object3d); try { hz.dispose(); } catch (e) {} });
+    // lite2: 前の馬の片付けは新しい馬のシェーダを作ったあと（prewarm の後）に。先に捨てると同じシェーダを毎回作り直して 0.5 秒ほど止まっていた
+    const oldH = this.horses3d; oldH.forEach((hz) => { this.scene.remove(hz.object3d); }); if (this.xlite) this.oldHorses = (this.oldHorses || []).concat(oldH); else oldH.forEach((hz) => { try { hz.dispose(); } catch (e) {} });
     this.handlers.forEach((o) => { this.scene.remove(o); if (o.userData.rope) this.scene.remove(o.userData.rope); if (o.userData.dispose) o.userData.dispose(); });
     if (this.handBatch) { this.handBatch.dispose(); this.handBatch = null; }
     this.horses3d = []; this.handlers = []; this.handler2 = null; this.lodQ = []; this.betKey = null; this.portraits = {}; // 出馬表などの馬の絵もレースごとに撮り直す
@@ -584,10 +612,12 @@ window.Race3D = (function () {
       // v2（全店同時）: ゲートインの時計をサーバーの時刻に合わせる（gateIn({ clock }) の秒。遅れていたら追いつき、進みすぎなら待つ）
       if (self.gi && self.gi.clock && !self.gi.finished) { let c = NaN; try { c = self.gi.clock(); } catch (e) { } if (isFinite(c)) sdt = clamp(c - self.gi.t, 0, 30); }
       if (self.gi) { try { self.giStep(sdt); } catch (e) { console.error(e); self.giFinish(); } }
+      if (self.offscreen && !self.gi && self.xlite) { self.offWas = true; raf(frame); return; } // lite2: 映像が画面に出ていない間（結果・遊び方の画面。v2/tv.js が立てる）は描かない
+      if (self.offWas) { self.offWas = false; self.cam.mode = ''; }
       try { self.placeCamera(sdt, false); if (self.cut > 0) self.cut -= dt; self.draw(sdt); } catch (e) { console.error(e); }
-      requestAnimationFrame(frame);
+      raf(frame);
     }
-    requestAnimationFrame(frame);
+    raf(frame);
   };
   // パドックの長さ: ふつうは 18 秒。v2 のテレビ（v2/tv.js）は受付の間ずっとパドックにするため paddockSec を大きくし、締切の少し前に今の t へ下げて「まもなく発走」へ移る
   Race3D.prototype.padSec = function () { return this.paddockSec != null ? this.paddockSec : PADDOCK_SEC; };
@@ -916,7 +946,7 @@ window.Race3D = (function () {
       function frame(now) {
         if (self.runSeq !== seq) return; // setRace で別のレースに切り替わった
         // ゴール後に止めている間（講評 r3 の 2: ゴール後 0.5〜0.8 秒静止してから再生）
-        if (self.endHold) { if (now - self.endHold < 650 / Math.max(1, self.timeScale || 1)) { last = now; self.draw(0); requestAnimationFrame(frame); return; } self.endHold = 0; startReplay(); return; }
+        if (self.endHold) { if (now - self.endHold < 650 / Math.max(1, self.timeScale || 1)) { last = now; self.draw(0); raf(frame); return; } self.endHold = 0; startReplay(); return; }
         let real = Math.min(0.05, Math.max(0.001, (now - last) / 1000)); last = now;
         let ended = false, snap = false;
         if (clock) {
@@ -938,11 +968,11 @@ window.Race3D = (function () {
         self.draw(dt);
         if (opt.onTick) opt.onTick({ t: run.t, leader: self.leaderNow != null ? self.leaderNow : self.leaderIdx(), remain: self.remainNow || 0, pos: run.pos, finish: run.finish, slow: self.slow });
         if (ended) { // ゴール後 0.6 秒は生の絵（E）を続け、0.65 秒止めてから再生へ（ref/STRAIGHT_STUDY.md 3-1・講評 r3 の 2）
-          self.endHold = now; requestAnimationFrame(frame); return;
+          self.endHold = now; raf(frame); return;
         }
-        requestAnimationFrame(frame);
+        raf(frame);
       }
-      requestAnimationFrame(frame);
+      raf(frame);
     });
   };
   /* ゴール後の再生（ref/STRAIGHT_STUDY.md 3-1・3-2）: テープ（1 コマずつの記録）を区間ごとに再生する。
@@ -1003,9 +1033,9 @@ window.Race3D = (function () {
           const span = tape[k + 1] ? tape[k + 1].t - tape[k].t : 0; apply(!span ? 0 : (acc - (tape[k].t - tape[0].t)) / span); self.placeCamera(real, false); if (self.cut > 0) self.cut -= real; self.draw(real * g.rate);
           if (k >= tape.length - 1 && hold <= 0 && !next()) return;
         }
-        requestAnimationFrame(frame);
+        raf(frame);
       }
-      requestAnimationFrame(frame);
+      raf(frame);
     });
   };
   /* 勝ち馬のアップ（講評 r2 の 7「手前に別の馬がかぶらない」）: カットの最初のコマで、カメラから見て主役より手前〜横（主役の距離 + 4m まで）にいて
@@ -1077,9 +1107,9 @@ window.Race3D = (function () {
         self.advanceOverrun(real); self.updateLanes(real); self.winSpread(real); self.placeCamera(real, false); if (self.cut > 0) self.cut -= real; self.draw(real);
         // opt.hold()（v2）: 結果発表の時刻まで最後の絵（2 頭いっしょ）を続ける（残り秒が 0 より大きい間）
         if (el >= TE && !(self.holdFn && self.holdFn() > 0)) { self.label = ''; self.phase = 'run'; self.winStage = ''; self.winHide = []; resolve(); return; }
-        requestAnimationFrame(frame);
+        raf(frame);
       }
-      requestAnimationFrame(frame);
+      raf(frame);
     });
   };
 
@@ -1573,8 +1603,9 @@ window.Race3D = (function () {
     if (this.tv) this.lodHorses();
     if (this.handBatch) { try { updateHandBatch(this.handBatch, this.scene, this.handlers); } catch (e) { warnOnce('係員のまとめ', e); } }
     try { this.look.update(dt, this.camera, { slow: this.slow, remain: this.run && this.phase === 'run' ? this.remainNow : null }); } catch (e) { warnOnce('look.update', e); } /* 3 つ目: ゴール前に雨を薄くする目安（スローの倍率・先頭の残り m） */
-    this.inset = null;
-    if (this.phase === 'replay' && this.photoHold > 0 && this.run) { try { this.renderInset(); } catch (e) { this.inset = null; warnOnce('写真判定の小窓', e); } }
+    this.inset = null; if (!(this.photoHold > 0)) this.insetKeep = null;
+    if (this.xlite && this.phase === 'replay' && this.photoHold > 0 && this.insetKeep) this.inset = this.insetKeep; // lite2: 止めている間の写真判定の小窓は最初の 1 回だけ撮る（毎コマ 2 回描かない）
+    else if (this.phase === 'replay' && this.photoHold > 0 && this.run) { try { this.renderInset(); this.insetKeep = this.xlite ? this.inset : null; } catch (e) { this.inset = null; warnOnce('写真判定の小窓', e); } }
     this.renderer.info.reset();
     try { this.look.render(this.renderer, this.scene, this.camera); }
     catch (e) { warnOnce('look.render', e); try { this.renderer.render(this.scene, this.camera); } catch (e2) { warnOnce('renderer.render', e2); } }
@@ -1610,13 +1641,14 @@ window.Race3D = (function () {
      形は最初に作ると使い回し（setQuality の中でキャッシュ）。アップ（パドック・勝ち馬・ゲートの近く）はいつもの軽い形 */
   Race3D.prototype.lodHorses = function () {
     let pc = this._padCrowd; if (!pc || !pc.parent) pc = this._padCrowd = this.scene.getObjectByName('crowdPaddock');
-    if (pc) pc.visible = this.phase === 'idle' && !this.gateShot; // パドックの観客はパドックの場面だけ（レース中は映らない）
+    if (pc) pc.visible = this.phase === 'idle' && !this.gateShot;
+    if (this.xlite) { let hd = this._hDust; if (!hd || !hd.parent) hd = this._hDust = this.scene.getObjectByName('horseDust'); if (hd) hd.visible = false; } // lite2: 土煙の粒なし // パドックの観客はパドックの場面だけ（レース中は映らない）
     const cam = this.camera, th = Math.tan(cam.fov * Math.PI / 360), L = this.lodQ || (this.lodQ = []);
     for (let i = 0; i < this.horses3d.length; i++) {
       const hz = this.horses3d[i], o = hz && hz.object3d; if (!o || !hz.setQuality) continue;
       const bl = o.getObjectByName('blob'), rg = o.getObjectByName('ring'); if (bl) bl.visible = !(rg && rg.visible); // 足元の輪が出ている間はぼかした丸（影）を描かない（描く回数を 6 回へらす）
       const d = Math.max(0.5, cam.position.distanceTo(o.position)), frac = 1.62 / (2 * d * th);
-      const lo = this.xlite ? 0.2 : 0.11, hi = this.xlite ? 0.25 : 0.15; // さらになめらか: 体高が画面の 2 割より小さければ粗い形（ふつうの Fire TV は 1 割）
+      const lo = this.xlite ? 0.28 : 0.11, hi = this.xlite ? 0.34 : 0.15; // lite2: 0.2/0.25 → 0.28/0.34 // さらになめらか: 体高が画面の 2 割より小さければ粗い形（ふつうの Fire TV は 1 割）
       const want = L[i] === 'far' ? (frac > hi ? 'low' : 'far') : (frac < lo ? 'far' : 'low');
       if (want !== L[i]) { L[i] = want; try { hz.setQuality(want); } catch (e) { warnOnce('Horse.setQuality far', e); } }
     }
@@ -1663,6 +1695,7 @@ window.Race3D = (function () {
       this.venue = R3D.Venue.build(this.scene, { quality: q });
       const race = this.race; if (race) this.venue.setRace({ dist: race.dist, surface: race.surface, weather: race.weather });
       if (THEME && this.venue.setTheme) this.venue.setTheme(THEME);
+      if (this.xlite) this.trimVenue();
       const g = this.gateState; this.gateState = ''; this.setGate(g || 'closed'); this.boardText = null; this.rearKey = null;
       this.forwardCues();
       const d = this.director; this.makeDirectorOcc(d);
@@ -1783,7 +1816,7 @@ window.Race3D = (function () {
     if (!this.grain) { const g = document.createElement('canvas'); g.width = g.height = 128; const gc = g.getContext('2d'), id = gc.createImageData(128, 128); for (let i = 0; i < id.data.length; i += 4) { const v = Math.random() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 10; } gc.putImageData(id, 0, 0); this.grain = c.createPattern(g, 'repeat'); }
     if (!this.lite) { c.fillStyle = this.grain; c.fillRect(0, 0, W, H); }
     if (!this.vig) { this.vig = c.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.62); this.vig.addColorStop(0, 'rgba(0,0,0,0)'); this.vig.addColorStop(1, 'rgba(0,0,0,.2)'); }
-    c.fillStyle = this.vig; c.fillRect(0, 0, W, H);
+    if (!this.xlite) { c.fillStyle = this.vig; c.fillRect(0, 0, W, H); } // lite2: 画面全体の暗いふち取りなし（毎コマの全画面の塗りが重い）
     if (this.cut > 0) { c.fillStyle = 'rgba(255,255,255,' + Math.min(1, this.cut * 1.6).toFixed(2) + ')'; c.fillRect(0, 0, W, H); }
   };
   Race3D.prototype.drawHud = function (c) {
