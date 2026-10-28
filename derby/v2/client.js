@@ -125,7 +125,7 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider'];
+    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'health']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
@@ -134,6 +134,7 @@
       vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'),
       staffLogin: call('staffLogin'), release: call('release'), wins: call('wins'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
       testRace: call('testRace'), testRaceStatus: call('testRaceStatus'), // この店だけテストレース（2026-10-19）
+      deciderHealth: call('deciderHealth'), // 進行役のテレビが止まっていないか（2026-10-28）→ { lock, stall, text }
       // 進行役のテレビ（2026-10-19）: cb({ on, code, asking, decider, account })。返り値で止める
       onPair(cb) { let un = null, closed = false; getImpl().then((i) => { if (!closed && i.pair) un = i.pair.on(cb); }).catch(() => {}); return () => { closed = true; if (un) un(); }; },
       get pairState() { return impl && impl.pair ? impl.pair.state : null; },
@@ -232,6 +233,7 @@
       tvQuality: (pin, quality) => post('/api/staff/tvquality', { store, pin, quality }), // テレビの画質（2026-10-19。その店のスタッフ。'' ＝標準・'auto' ＝なめらか優先・'max' ＝きれい優先）
       testRace: (pin, startIn, o) => post('/api/staff/testrace', { store, pin, startIn, switchTv: !!(o && o.switchTv) }), // この店だけテストレース（2026-10-19。switchTv: その 3＝SLOT なら DERBY にして、終わったら戻す）
       testRaceStatus: (pin) => post('/api/staff/testrace/status', { store, pin }),
+      deciderHealth: (s) => get('/api/decider/health?' + qs({ store: s === undefined ? store : s || '' })), // 進行役のテレビが止まっていないか（2026-10-28）
       onUser: () => () => {}, // 模擬クラウドは端末 ID とキーで持ち主を決める（ログインは無い）
       onPair(cb) { if (typeof cb !== 'function') return () => {}; pairCbs.push(cb); try { cb(Object.assign({}, pairSt)); } catch (e) { /* noop */ } return () => { const i = pairCbs.indexOf(cb); if (i >= 0) pairCbs.splice(i, 1); }; },
       get pairState() { return Object.assign({}, pairSt); },
@@ -261,6 +263,9 @@
           tvs: () => request('GET', '/api/admin/tvs', undefined, h), // 進行役のテレビ（2026-10-19）
           tvAsk: (id, on) => post('/api/admin/tvask', { id, on: !!on }, h),
           setDecider: (id) => post('/api/admin/decider', { id: id || null }, h),
+          setBackup: (id, on) => post('/api/admin/backup', { id, on: !!on }, h), // 予備の進行役（2026-10-28）
+          setBackupsAll: () => post('/api/admin/backups/all', {}, h),
+          health: () => request('GET', '/api/decider/health', undefined, h),
         };
       },
       /* リアルタイム: handlers = { state, race, vote, payout, next, reload, hello, open, error }。o = { vid, key }（スマホの自分の票。vote は { vote } か消えたとき { vote: null, released: true }）
