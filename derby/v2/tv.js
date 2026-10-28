@@ -454,7 +454,17 @@
     if (skip) TV.skipped[R.id] = true; else delete TV.skipped[R.id];
     return skip;
   }
-  setInterval(() => { try { decide(); tickLabels(); } catch (e) { console.error(e); } }, 250);
+  /* 2026-10-28 lite2（テレビの画質「さらになめらか（最軽量）」のときだけ）: 映像が画面に出ていない間（結果の画面・待ち時間の遊び方／前のレースの当たった人のページ）は 3D を描かない。
+     消えていく 0.6 秒は描き続け、映像が出る場面になったらすぐ描き直す（js/race3d.js の startIdle が offscreen を見る） */
+  let offSince = 0;
+  function liteOffscreen() {
+    if (!window.R3D || !R3D.xlite || !raceView) return;
+    const hid = TV.mode === 'result' || (TV.mode === 'wait' && stageEl.dataset.wp && stageEl.dataset.wp !== 'pad');
+    if (!hid) { offSince = 0; raceView.offscreen = false; return; }
+    if (!offSince) offSince = performance.now();
+    raceView.offscreen = performance.now() - offSince > 600;
+  }
+  setInterval(() => { try { decide(); tickLabels(); liteOffscreen(); } catch (e) { console.error(e); } }, 250);
 
   // ---------- 投票（openAt 〜 closeAt） ----------
   function showOpen(R) {
@@ -708,7 +718,7 @@
       if (late < 1.5) Sfx.play('gate');
       raceView.gateShot = false;
       if (window.Commentary && late < 20) Commentary.begin(raceView, R, { tansho: res.finalOdds }); // 実況（途中から見始めたときは 20 秒まで）
-      let hoof = 0, saidGoal = false;
+      let hoof = 0, saidGoal = false, uiAt = -1; const liteUi = !!(window.R3D && R3D.xlite);
       const rsec = sceneSec('replay');
       // 結果発表（revealAt。スマホに結果が出る時刻）にちょうど着順掲示板が出るよう、勝ち馬のアップをそれまで続ける
       const revealMs = () => (cache[id] && cache[id].revealAt) || R.revealAt || 0;
@@ -719,9 +729,11 @@
         onEvent: (text) => announce(text),
         onPhase: bcPhase,
         onTick: (st) => {
-          renderRank(st);
+          // lite2: さらになめらか のときは順位の札・倍率の列の見た目の更新を 1 秒に 10 回まで（毎コマ DOM を触らない）。ゴール・字幕・音は毎コマ
+          const uiNow = !liteUi || st.t - uiAt >= 0.1 || st.t < uiAt || st.finish.some((f) => f > 0); if (uiNow) uiAt = st.t;
+          if (uiNow) renderRank(st);
           // 右の確定オッズ: 発走から 5 秒はそのまま → 道中は小さく → ゴール前（.bc-final）は薄く → 1 着が決まったら戻す（REVIEW_TODO 3）
-          if (!$('v2odds').classList.contains('won')) oddsState(stageEl.classList.contains('bc-final') ? 'fade' : st.t > 5 ? 'cmp' : '');
+          if (uiNow && !$('v2odds').classList.contains('won')) oddsState(stageEl.classList.contains('bc-final') ? 'fade' : st.t > 5 ? 'cmp' : '');
           if (!stageEl.classList.contains('bc-final') && raceView.glcv && (Math.max.apply(null, st.pos) > 1 - 70 / R.dist || st.finish.some((f) => f > 0))) { stageEl.classList.add('bc-final'); $('rankPanel').classList.remove('show'); }
           if (st.t - hoof > 0.18 && !st.finish[st.leader]) { hoof = st.t; Sfx.play('hoof'); }
           if (!saidGoal && st.finish.some((x) => x > 0)) {
