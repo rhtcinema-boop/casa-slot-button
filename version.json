@@ -1,9 +1,9 @@
 {
- "v": "b159",
+ "v": "b160",
  "files": [
   {
    "path": "index.html",
-   "sha256": "eca426bd4ebd0311229429a692fd7958fce26a4e59e259ff71e3c47055a93d55"
+   "sha256": "738152bf0bfbf55718c94173306c2a0d39dc3d8d2b9ea476af675d2f3c520e7c"
   },
   {
    "path": "manifest.webmanifest",
@@ -247,7 +247,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "197fe7c0b18211729b6654e7f0afd111b0fff10e510c77cdf135742bf42eef6e"
+   "sha256": "3911a2b3ed08832ffdfd1b4cf8c792cd377bd478546ea742fe55d850d0cce432"
   },
   {
    "path": "derby/js/audio.js",
@@ -287,11 +287,11 @@
   },
   {
    "path": "derby/js/r3d/horse3d-real.js",
-   "sha256": "643a661649d7bc65bd96fa08f14d7b4044eef9713906f0492384e088bfe23e6b"
+   "sha256": "ddaa24a8c7f2f75c71d7c54880711feda4b04feebf74b2e81eca1b2879e06b8b"
   },
   {
    "path": "derby/js/r3d/horse3d.js",
-   "sha256": "d8e6808339fd0f0d4c72fb68768418278b2d2e1f7b436dd9fa16afed1c2527fe"
+   "sha256": "0379daf0d466c06c4ad710e971757ae15d6899265849c7879fcb5a97f5c4ef02"
   },
   {
    "path": "derby/js/r3d/look3d.js",
@@ -299,7 +299,7 @@
   },
   {
    "path": "derby/js/r3d/venue3d.js",
-   "sha256": "160549dfd5fa3ed42b5de9fc11f902344197a522733321fea9ac2c5e464fb2c8"
+   "sha256": "75fb2886941191010df315b430a81a67be66d674cc1d5674ef5cc313e8c9a42b"
   },
   {
    "path": "derby/js/race.js",
@@ -307,7 +307,7 @@
   },
   {
    "path": "derby/js/race3d.js",
-   "sha256": "65b52f1eb71780e0c0746feb7f935f2f64de38071d05cbc7fd4e3388900d1b03"
+   "sha256": "8d1b4692910dbfdef5b1ec8e98b764af839c1573ff3d36d8b2627b241f6e3122"
   },
   {
    "path": "derby/js/splash3d.js",
@@ -331,11 +331,11 @@
   },
   {
    "path": "derby/v2/client-firestore.js",
-   "sha256": "f2f625657a300b719f7b1e954266e67da07f4807719106c0aa6f95cd3d2c3a67"
+   "sha256": "af7c9bc8d5e456e7590357e2a9485be7bd0a65c2d2f772d6b6cd5e2d0febb412"
   },
   {
    "path": "derby/v2/client.js",
-   "sha256": "15ea7ee5a19373358bcaefd2235deef143a4015dfc8e5ea5f7ea6a860b20d2e5"
+   "sha256": "9eaed4f29c44e00fae167d69a088dc41669f03c746323a94267677706a6beda1"
   },
   {
    "path": "derby/v2/config.js",
@@ -363,15 +363,15 @@
   },
   {
    "path": "derby/v2/tv.css",
-   "sha256": "c9564802044d81ee3989ce14f2955c46aaebdcf890669ba11bd0ca37d3c0ac41"
+   "sha256": "c811ba088a2d412a2b340e98d5013b4dbae3ab80102724fb1ecb91a705ca0e16"
   },
   {
    "path": "derby/v2/tv.js",
-   "sha256": "4e3f7c7f27ab3e4a168781b0a4215affdf8e28c944bfa903d3d0a1868d37bddf"
+   "sha256": "52008b194bc2ede36fbc051d40aa6fc3fe3afd37cca48f458d5e80f9cf962b41"
   },
   {
    "path": "derby/v2/tvswitch.js",
-   "sha256": "e053a6ed0a66570deae177d8bef0a37cd999ec34677896dea1a800d787c294dc"
+   "sha256": "d425e65e083822f5398cae5f3dc20f9d0f0169b64d72b6b65502ee3a10530520"
   }
  ]
 }
