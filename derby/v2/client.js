@@ -191,7 +191,11 @@
       if (!res.ok) { const err = new Error((data && data.message) || ('HTTP ' + res.status)); err.code = (data && data.error) || 'http_' + res.status; err.status = res.status; err.body = data; throw err; }
       return data;
     }
-    const get = (p) => request('GET', p, undefined, undefined, role === 'tv' ? 15000 : undefined); // テレビ（2026-10-29）: 読み取りも 15 秒まで（返事が来ないまま 10 秒ごとの読み直しが積み重ならない）
+    /* テレビの調子（2026-10-29。v2/tvhealth.js・Firestore 版と同じ）: テレビの読み取りの返事までの時間を数える（通信は増やさない）。つながらない・返事なし＝失敗 */
+    const HEALTH = role === 'tv' && opt.health && typeof opt.health.note === 'function' ? opt.health : null;
+    const timedGet = (p, q) => { if (!HEALTH) return q; const t0 = Date.now(); return q.then((v) => { try { HEALTH.note('get', Date.now() - t0, true); } catch (e) { /* noop */ } return v; }, (e) => { try { HEALTH.note('get', Date.now() - t0, !!(e && e.status > 0)); } catch (x) { /* noop */ } throw e; }); };
+    const get = (p) => timedGet(p, get0(p));
+    const get0 = (p) => request('GET', p, undefined, undefined, role === 'tv' ? 15000 : undefined); // テレビ（2026-10-29）: 読み取りも 15 秒まで（返事が来ないまま 10 秒ごとの読み直しが積み重ならない）
     const post = (p, b, h) => request('POST', p, b || {}, h);
     const qs = (o) => Object.keys(o).filter((k) => o[k] != null && o[k] !== '').map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(o[k])).join('&');
 
@@ -294,8 +298,9 @@
         return function () { closed = true; clearTimeout(retry); if (es) es.close(); };
       },
     };
+    const healthNow = () => { try { return opt.health && opt.health.summary ? opt.health.summary() : undefined; } catch (e) { return undefined; } }; // テレビの調子（2026-10-29）
     if (pairOn) { // 名乗る（起動時と 5 分ごと）
-      const hello = () => post('/api/tv/hello', { tvid, store, code: pairSt.code, kind: /casaTV/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '') ? 'casatv' : 'browser' }).then(pairSet, () => {});
+      const hello = () => post('/api/tv/hello', { tvid, store, code: pairSt.code, h: healthNow(), kind: /casaTV/.test((typeof navigator !== 'undefined' && navigator.userAgent) || '') ? 'casatv' : 'browser' }).then(pairSet, () => {});
       hello(); setInterval(hello, 5 * 60000);
     }
     return api;
