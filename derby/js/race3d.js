@@ -61,6 +61,8 @@ window.Race3D = (function () {
     return requestAnimationFrame(tick);
   }
   R3D.pacer = pacer;
+  // 軽い 3D（2026-10-29）: 最もなめらかでは、ここで作る係員・綱・ニンジンなどの材質も軽い光の計算（Lambert。つや・金属の計算なし）にする＝シェーダの種類も減る
+  const stdM = (o) => (XMIN ? new THREE.MeshLambertMaterial(Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'roughness' && k !== 'metalness'))) : new THREE.MeshStandardMaterial(o));
   const ADAPT = !/[?&]adapt=0/.test(QS) && !MAXQ;                         // ?adapt=0 で自動の画質調整を止める（重さの測定用）
   const STD_CAM = /[?&]cam=std/.test(QS);
   const LAYOUT_OLD = /[?&]layout=old/.test(QS);
@@ -213,7 +215,7 @@ window.Race3D = (function () {
       G.cap = new THREE.SphereGeometry(0.207, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2); G.brim = new THREE.CylinderGeometry(0.12, 0.12, 0.02, 14); G.brim.translate(0.17, 0, 0);
       G.bib = new THREE.PlaneGeometry(0.26, 0.24); G.shoe = new THREE.BoxGeometry(0.2, 0.07, 0.1); G.shoe.translate(0.04, 0, 0);
     }
-    const mats = [new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: 0x2b2d42, roughness: 0.8 }), new THREE.MeshStandardMaterial({ color: 0xe8c3a0, roughness: 0.7 }), new THREE.MeshStandardMaterial({ color: 0x1d2a44, roughness: 0.6 }), new THREE.MeshStandardMaterial({ color: h.color || '#ffffff', roughness: 0.7 }), new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 })];
+    const mats = [stdM({ color: 0xf4f4f2, roughness: 0.8 }), stdM({ color: 0x2b2d42, roughness: 0.8 }), stdM({ color: 0xe8c3a0, roughness: 0.7 }), stdM({ color: 0x1d2a44, roughness: 0.6 }), stdM({ color: h.color || '#ffffff', roughness: 0.7 }), stdM({ color: 0x222222, roughness: 0.5 })];
     const o = new THREE.Group(), add = (geo, mat, x, y, z, parent) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; (parent || o).add(m); return m; };
     const legs = [-0.1, 0.1].map((z) => { const lg = add(G.leg, mats[1], 0, 0.86, z); add(G.shoe, mats[5], 0, -0.74, 0, lg); return lg; });
     add(G.body, mats[0], 0, 1.2, 0);
@@ -238,7 +240,7 @@ window.Race3D = (function () {
   }
   // 引き綱（手から馬の頭まで。細い円柱を 2 本つないで少したるませる）
   const ROPE_GEO = new THREE.CylinderGeometry(0.018, 0.018, 1, 6, 1); ROPE_GEO.translate(0, 0.5, 0);
-  const ROPE_MAT = new THREE.MeshStandardMaterial({ color: 0x6b3a1e, roughness: 0.8 });
+  const ROPE_MAT = stdM({ color: 0x6b3a1e, roughness: 0.8 });
   function makeRope() { const g = new THREE.Group(); g.add(new THREE.Mesh(ROPE_GEO, ROPE_MAT), new THREE.Mesh(ROPE_GEO, ROPE_MAT)); g.visible = false; g.userData.isRope = true; return g; }
   const _ha = new THREE.Vector3(), _hb = new THREE.Vector3(), _hm = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _dv = new THREE.Vector3();
   function seg(mesh, a, b) { _dv.subVectors(b, a); const len = _dv.length() || 1e-3; mesh.position.copy(a); mesh.scale.set(1, len, 1); mesh.quaternion.setFromUnitVectors(_up, _dv.divideScalar(len)); }
@@ -266,9 +268,9 @@ window.Race3D = (function () {
     const torso = mergeGeo([{ g: G.body, m: T4(0, 1.2, 0), c: 0xf4f4f2 }, { g: G.head, m: T4(0, 1.74, 0), c: 0xe8c3a0 }, { g: G.cap, m: T4(0, 1.77, 0), c: 0x1d2a44 }, { g: G.brim, m: T4(0, 1.78, 0), c: 0x1d2a44 }]);
     const leg = mergeGeo([{ g: G.leg, m: new THREE.Matrix4(), c: 0x2b2d42 }, { g: G.shoe, m: T4(0, -0.74, 0), c: 0x222222 }]);
     const bibG = G.bib.clone(); bibG.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(0.2, 1.22, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2), new THREE.Vector3(1, 1, 1)));
-    const vc = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 });
+    const vc = stdM({ vertexColors: true, roughness: 0.75 });
     const mk = (geo, mat, max) => { const m = new THREE.InstancedMesh(geo, mat, max); m.frustumCulled = false; m.count = 0; m.visible = false; m.name = 'handBatch'; scene.add(m); return m; };
-    const B = { torso: mk(torso, vc, n), leg: mk(leg, vc, n * 2), arm: mk(G.arm, new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.8 }), n * 2), bib: mk(bibG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 }), n), rope: mk(ROPE_GEO, ROPE_MAT, n * 2), own: [torso, leg, bibG, vc] };
+    const B = { torso: mk(torso, vc, n), leg: mk(leg, vc, n * 2), arm: mk(G.arm, stdM({ color: 0xf4f4f2, roughness: 0.8 }), n * 2), bib: mk(bibG, stdM({ color: 0xffffff, roughness: 0.7 }), n), rope: mk(ROPE_GEO, ROPE_MAT, n * 2), own: [torso, leg, bibG, vc] };
     B.cols = handlers.map((hd) => new THREE.Color(hd.userData.color || '#ffffff'));
     for (let i = 0; i < n; i++) B.bib.setColorAt(i, B.cols[i]);
     handlers.forEach((hd) => { hd.traverse((m) => { if (m.isMesh) m.visible = false; }); const r = hd.userData.rope; if (r) r.children.forEach((m) => { m.visible = false; }); });
@@ -370,7 +372,7 @@ window.Race3D = (function () {
     this.horses3d = []; this.handlers = [];
     this.dustFx = makeDust(this.scene, this.xlite ? 0 : this.tv ? 40 : low ? 70 : 160);
     if (this.tv) this.noShadows();
-    if (this.xlite) { this.dustFx.max = 0; this.trimVenue(); }
+    if (this.xlite) { this.dustFx.max = 0; this.trimVenue(); if (this.xmin) this.chunkVenue(); }
     if (this.xmin) { const sk = this.scene.getObjectByName('look-sky'); if (sk) sk.visible = false; } // 最もなめらか: 空の絵（雲・数字の雲）を描かない＝霧の色 1 色（look3d.js が天気ごとに setClearColor）
     // 残線（直線の残り 400・200・100m の白い線）
     this.remainMesh = {};
@@ -402,6 +404,85 @@ window.Race3D = (function () {
       if (all ? MIN_KEEP.indexOf(o.name) < 0 : names.indexOf(o.name) >= 0 || (has('c') && /^crowd/.test(o.name) && o.name !== 'crowdTiers')) drop(o);
     });
     if (has('c') && !has('b')) { const ct = g.getObjectByName('crowdTiers'); if (ct) ct.material = this._minTierMat || (this._minTierMat = new THREE.MeshLambertMaterial({ color: 0xb7b4ac })); } // スタンドの段の観客の絵 → 無地
+  };
+  /* 軽い 3D（2026-10-29 オーナー: 渋谷のテレビは最も軽い画質でもカクカク。解像度を下げても変わらない＝GPU の頂点の仕事が重い）:
+     会場は材質ごとに 1 つにまとめてあるので、いつもコース全体（ラチ・広場・建物・木立・観客）を GPU が計算していた。レース中の望遠のカメラに入るのはその 1〜5% だけ。
+     → 最もなめらか（オーナー 2026-10-29: 見た目が変わりうる軽くする所は最もなめらかだけ。さらになめらかはシェーダの下ごしらえだけ）では、大きい部品を CHUNK_M m 四方の区画ごとに分け、区画ごとに画面に入るかを調べる（入らない区画は描かない）。見た目は同じ。
+     元の部品は残して描かない（layers 31）。演出や天気で元の部品の材質・見える見えない・色（観客の服など）が変わったら、毎コマ区画へ写す（syncChunks） */
+  const CHUNK_M = Number((QS.match(/[?&]chunkm=(\d+)/) || [])[1]) || 160, CHUNK_MIN = 1200, CHUNK_SMALL = 300, CHUNK_LAYER = 31; // CHUNK_SMALL: 三角形がこれより少ない区画は 1 つにまとめる（描く回数を増やしすぎない）。?chunkm= は測定用
+  Race3D.prototype.chunkVenue = function () {
+    const g = this.venue && this.venue.group; if (!g || !g.children) return;
+    this.syncChunks(); // 前の区画（作り直す前の会場）を片付ける
+    const list = this._chunks || (this._chunks = []);
+    g.updateMatrixWorld(true);
+    const cellOf = (x, z) => Math.floor(x / CHUNK_M) + ',' + Math.floor(z / CHUNK_M), v = new THREE.Vector3(), m4 = new THREE.Matrix4();
+    const mergeSmall = (cells, min) => { const rest = []; cells.forEach((a, key) => { if (a.length < min) { rest.push.apply(rest, a); cells.delete(key); } }); if (rest.length) cells.set('rest', rest); return cells; };
+    g.children.slice().forEach((src) => {
+      if (!src.isMesh || src.isGroup || !src.geometry || src.userData.chunked || src.layers.mask !== 1) return;
+      const geo = src.geometry, kids = [];
+      try {
+        if (src.isInstancedMesh) {
+          const n = src.count, idx = geo.index, per = idx ? idx.count / 3 : geo.attributes.position.count / 3; if (n < 24 || n * per < CHUNK_MIN) return;
+          const cells = new Map(); for (let k = 0; k < n; k++) { src.getMatrixAt(k, m4); v.setFromMatrixPosition(m4).applyMatrix4(src.matrixWorld); const key = cellOf(v.x, v.z); (cells.get(key) || cells.set(key, []).get(key)).push(k); }
+          mergeSmall(cells, Math.ceil(CHUNK_SMALL / per)); if (cells.size < 2) return;
+          if (!geo.boundingSphere) geo.computeBoundingSphere();
+          cells.forEach((ids) => {
+            const cg = new THREE.BufferGeometry(), inst = [];
+            for (const nm in geo.attributes) { const a = geo.attributes[nm]; if (a.isInstancedBufferAttribute) { const b = new THREE.InstancedBufferAttribute(new a.array.constructor(ids.length * a.itemSize), a.itemSize, a.normalized, a.meshPerAttribute); cg.setAttribute(nm, b); inst.push([a, b]); } else cg.setAttribute(nm, a); }
+            if (geo.index) cg.setIndex(geo.index);
+            const im = new THREE.InstancedMesh(cg, src.material, ids.length);
+            if (src.instanceColor) im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(ids.length * 3), 3);
+            inst.push([src.instanceMatrix, im.instanceMatrix]); if (src.instanceColor) inst.push([src.instanceColor, im.instanceColor]);
+            const sp = new THREE.Sphere(), bs = new THREE.Sphere(); let first = true;
+            ids.forEach((k) => { src.getMatrixAt(k, m4); bs.copy(geo.boundingSphere).applyMatrix4(m4); if (first) { sp.copy(bs); first = false; } else sp.union(bs); });
+            cg.boundingSphere = sp;
+            im.userData.ids = ids; im.userData.inst = inst; kids.push(im);
+          });
+        } else {
+          const idx = geo.index, P = geo.attributes.position; if (!idx || idx.count / 3 < CHUNK_MIN) return;
+          const cells = new Map(), I = idx.array;
+          for (let t = 0; t < I.length; t += 3) { v.set(0, 0, 0); for (let j = 0; j < 3; j++) { v.x += P.getX(I[t + j]); v.z += P.getZ(I[t + j]); } v.multiplyScalar(1 / 3).applyMatrix4(src.matrixWorld); const key = cellOf(v.x, v.z); (cells.get(key) || cells.set(key, []).get(key)).push(t); }
+          mergeSmall(cells, CHUNK_SMALL); if (cells.size < 2) return;
+          cells.forEach((tris) => {
+            const map = new Map(), order = [], ni = new (P.count > 65535 ? Uint32Array : Uint16Array)(tris.length * 3);
+            tris.forEach((t, q) => { for (let j = 0; j < 3; j++) { const o = I[t + j]; let w = map.get(o); if (w === undefined) { w = order.length; map.set(o, w); order.push(o); } ni[q * 3 + j] = w; } });
+            if (order.length > 65535 && ni instanceof Uint16Array) return;
+            const cg = new THREE.BufferGeometry();
+            for (const nm in geo.attributes) { const a = geo.attributes[nm], sz = a.itemSize, arr = new a.array.constructor(order.length * sz); order.forEach((o, w) => { for (let c = 0; c < sz; c++) arr[w * sz + c] = a.array[o * sz + c]; }); cg.setAttribute(nm, new THREE.BufferAttribute(arr, sz, a.normalized)); }
+            cg.setIndex(new THREE.BufferAttribute(ni.length && order.length > 65535 ? new Uint32Array(ni) : ni, 1)); cg.computeBoundingSphere();
+            kids.push(new THREE.Mesh(cg, src.material));
+          });
+        }
+      } catch (e) { kids.forEach((k) => k.geometry.dispose()); warnOnce('会場の区画分け（' + src.name + '）', e); return; }
+      kids.forEach((k, i) => {
+        k.name = src.name + '#' + i; k.castShadow = src.castShadow; k.receiveShadow = src.receiveShadow; k.renderOrder = src.renderOrder;
+        k.matrixAutoUpdate = false; k.matrix.copy(src.matrix); k.frustumCulled = true; src.parent.add(k); k.updateMatrixWorld(true);
+      });
+      src.userData.chunked = true; src.layers.set(CHUNK_LAYER); // 元の部品は描かない（名前で探す・材質を変える・見える見えないを決めるのは今までどおり元の部品）
+      const e = { src, kids, ver: {} }; list.push(e); this.syncChunk(e, true);
+    });
+  };
+  // 区画へ元の部品の状態を写す（毎コマ。変わった所だけ）
+  Race3D.prototype.syncChunk = function (e, force) {
+    const src = e.src;
+    for (const k of e.kids) {
+      k.visible = src.visible; if (k.material !== src.material) k.material = src.material;
+      const inst = k.userData.inst; if (!inst) continue;
+      for (const [a, b] of inst) {
+        const key = a.id != null ? a.id : (a.__cid || (a.__cid = Math.random())); if (!force && e.ver[k.id + ':' + key] === a.version) continue;
+        e.ver[k.id + ':' + key] = a.version; const sz = a.itemSize, A = a.array, B = b.array, ids = k.userData.ids;
+        for (let q = 0; q < ids.length; q++) { const o = ids[q] * sz, w = q * sz; for (let c = 0; c < sz; c++) B[w + c] = A[o + c]; }
+        b.needsUpdate = true;
+      }
+    }
+  };
+  Race3D.prototype.syncChunks = function () {
+    const list = this._chunks; if (!list || !list.length) return;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i];
+      if (!e.src.parent) { e.kids.forEach((k) => { if (k.parent) k.parent.remove(k); try { k.geometry.dispose(); } catch (er) { } }); list.splice(i, 1); continue; }
+      this.syncChunk(e, false);
+    }
   };
   // 部品を作る（無い・失敗したら代わりの部品）
   Race3D.prototype.part = function (name, make, stub) {
@@ -485,6 +566,14 @@ window.Race3D = (function () {
       const tmp = [makeFood('carrot'), makeFood('corn')]; tmp.forEach((o) => { o.position.set(0, -50, 0); this.scene.add(o); });
       const hidden = []; this.scene.traverse((o) => { if (o.isObject3D && !o.visible) { hidden.push(o); o.visible = true; } });
       this.renderer.compile(this.scene, this.camera);
+      if (this.xlite && !this.warmDrawn) { this.warmDrawn = true; /* 1 回目のレースの準備のときだけ（2 回目からはシェーダも仕上がっていて、毎回やると準備の止まりが 0.4 秒ほど延びるだけ）。軽い 3D（2026-10-29）: compile だけでは弱い GPU（と測定用の SwiftShader）は最初に描くときにまだ止まる（シェーダの仕上げ・絵と形の転送・係員やゲートなど
+           あとで出る物）。光の数は変えずに、隠れている物も含めて全部を画面の隅の 4×4 画素に 1 回描いておく＝ゲートイン・発走・再生の最初のコマで止まらない */
+        const R = this.renderer, cull = [], vp = R.getViewport(new THREE.Vector4());
+        hidden.forEach((o) => { if (o.isLight) o.visible = false; });
+        const zero = []; // 係員のまとめ（InstancedMesh）は出番まで 0 人＝描かれないので、1 人にしておく
+        this.scene.traverse((o) => { if (o.frustumCulled && (o.isMesh || o.isPoints || o.isLine || o.isSprite)) { cull.push(o); o.frustumCulled = false; } if (o.isInstancedMesh && o.count === 0) { zero.push(o); o.count = 1; } });
+        try { R.setViewport(0, 0, 4, 4); R.render(this.scene, this.camera); } finally { R.setViewport(vp); cull.forEach((o) => (o.frustumCulled = true)); zero.forEach((o) => (o.count = 0)); }
+      }
       hidden.forEach((o) => (o.visible = false)); tmp.forEach((o) => this.scene.remove(o));
     } catch (e) { warnOnce('prewarm', e); }
   };
@@ -1159,7 +1248,7 @@ window.Race3D = (function () {
       G.carrot = new THREE.ConeGeometry(0.34, 1.3, 14, 1); G.carrot.rotateZ(Math.PI); G.leaf = new THREE.ConeGeometry(0.07, 0.55, 6); G.leaf.translate(0, 0.27, 0);
       G.corn = new THREE.CapsuleGeometry(0.28, 0.8, 6, 12); G.husk = new THREE.SphereGeometry(0.3, 10, 8, 0, Math.PI, 0, Math.PI); G.husk.scale(0.5, 2.0, 1);
       G.ring = new THREE.TorusGeometry(0.9, 0.05, 6, 32);
-      G.mat = { carrot: new THREE.MeshStandardMaterial({ color: 0xf07a1a, roughness: 0.55, emissive: 0x401800 }), leaf: new THREE.MeshStandardMaterial({ color: 0x3daa3a, roughness: 0.7 }), corn: new THREE.MeshStandardMaterial({ color: 0xf2d23a, roughness: 0.5, emissive: 0x302400 }), glow: new THREE.MeshBasicMaterial({ color: 0xfff2a0, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }) };
+      G.mat = { carrot: stdM({ color: 0xf07a1a, roughness: 0.55, emissive: 0x401800 }), leaf: stdM({ color: 0x3daa3a, roughness: 0.7 }), corn: stdM({ color: 0xf2d23a, roughness: 0.5, emissive: 0x302400 }), glow: new THREE.MeshBasicMaterial({ color: 0xfff2a0, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }) };
     }
     const o = new THREE.Group(), M = G.mat, add = (geo, m, x, y, z, rz, rx) => { const me = new THREE.Mesh(geo, m); me.position.set(x, y, z); me.rotation.z = rz || 0; me.rotation.x = rx || 0; me.castShadow = true; o.add(me); return me; };
     if (kind === 'corn') { add(G.corn, M.corn, 0, 0, 0); add(G.husk, M.leaf, 0, -0.25, 0.12, 0, 0.25); add(G.husk, M.leaf, 0, -0.25, -0.12, 0, -0.25 + Math.PI); }
@@ -1685,14 +1774,16 @@ window.Race3D = (function () {
   Race3D.prototype.lodHorses = function () {
     let pc = this._padCrowd; if (!pc || !pc.parent) pc = this._padCrowd = this.scene.getObjectByName('crowdPaddock');
     if (pc) pc.visible = this.phase === 'idle' && !this.gateShot;
+    if (this._chunks) this.syncChunks(); // 軽い 3D: 会場の区画へ元の部品の状態を写す
     if (this.xlite) { let hd = this._hDust; if (!hd || !hd.parent) hd = this._hDust = this.scene.getObjectByName('horseDust'); if (hd) hd.visible = false; } // lite2: 土煙の粒なし // パドックの観客はパドックの場面だけ（レース中は映らない）
     const cam = this.camera, th = Math.tan(cam.fov * Math.PI / 360), L = this.lodQ || (this.lodQ = []);
     for (let i = 0; i < this.horses3d.length; i++) {
       const hz = this.horses3d[i], o = hz && hz.object3d; if (!o || !hz.setQuality) continue;
-      const bl = o.getObjectByName('blob'), rg = o.getObjectByName('ring'); if (bl) bl.visible = !this.xmin && !(rg && rg.visible); // 最もなめらか: 足元のぼかした丸（影）も描かない // 足元の輪が出ている間はぼかした丸（影）を描かない（描く回数を 6 回へらす）
+      const ud = o.userData, bl = ud.lodBl !== undefined ? ud.lodBl : (ud.lodBl = o.getObjectByName('blob') || null), rg = ud.lodRg !== undefined ? ud.lodRg : (ud.lodRg = o.getObjectByName('ring') || null); if (bl) bl.visible = !this.xmin && !(rg && rg.visible); // 最もなめらか: 足元のぼかした丸（影）も描かない // 足元の輪が出ている間はぼかした丸（影）を描かない（描く回数を 6 回へらす）
       const d = Math.max(0.5, cam.position.distanceTo(o.position)), frac = 1.62 / (2 * d * th);
       const lo = this.xlite ? 0.28 : 0.11, hi = this.xlite ? 0.34 : 0.15; // lite2: 0.2/0.25 → 0.28/0.34 // さらになめらか: 体高が画面の 2 割より小さければ粗い形（ふつうの Fire TV は 1 割）
-      const want = this.xmin ? 'far' : L[i] === 'far' ? (frac > hi ? 'low' : 'far') : (frac < lo ? 'far' : 'low'); // 最もなめらか: いつもいちばん粗い形
+      const FAR = this.xmin ? 'xfar' : 'far'; // 軽い 3D（2026-10-29）: 最もなめらかの遠くの馬は、さらに粗い 'xfar'（js/r3d/horse3d.js。三角形 約 4 割）
+      const want = this.xmin ? FAR : L[i] === FAR ? (frac > hi ? 'low' : FAR) : (frac < lo ? FAR : 'low'); // 最もなめらか: いつもいちばん粗い形
       if (want !== L[i]) { L[i] = want; try { hz.setQuality(want); } catch (e) { warnOnce('Horse.setQuality far', e); } }
     }
   };
@@ -1738,7 +1829,7 @@ window.Race3D = (function () {
       this.venue = R3D.Venue.build(this.scene, { quality: q });
       const race = this.race; if (race) this.venue.setRace({ dist: race.dist, surface: race.surface, weather: race.weather });
       if (THEME && this.venue.setTheme) this.venue.setTheme(THEME);
-      if (this.xlite) this.trimVenue();
+      if (this.xlite) { this.trimVenue(); if (this.xmin) this.chunkVenue(); }
       const g = this.gateState; this.gateState = ''; this.setGate(g || 'closed'); this.boardText = null; this.rearKey = null;
       this.forwardCues();
       const d = this.director; this.makeDirectorOcc(d);
