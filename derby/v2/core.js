@@ -32,7 +32,7 @@
   const CUE_KEYS = ['fruit', 'crowd', 'sign', 'cloud', 'gateLate', 'eye'];
   const DEFAULT_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
   /* 調整の初期値（ver: 4 ＝ v4 の形。ver のない以前の保存データは、投票の秒数の意味が違う＝2 段の 2 段目だったので初期値 180 秒に読み替える） */
-  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, maxBillsPerDevice: 4 }; /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
+  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, maxBillsPerDevice: 4 }; /* payoutSpread（配当のぶれ。2026-10-29）: レースごとに目標を ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）でばらつかせる（0 ＝ 目標ちょうどのまわり・0〜0.8。裏の設定）。v2/outcome.js の spreadFactor */ /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
   const PUBLIC_TUNING_KEYS = ['ver', 'shiftUp', 'shiftDown', 'voteSec', 'resultSec', 'gateSec', 'postSec', 'photoExtraSec', 'closeLeadSec', 'scenes', 'dayStartHour', 'horizonMin', 'horseLook', 'horseLookPrev', 'horseLookAt']; /* cues（演出の割合）・当たりの幅・上限・払い戻し率は裏＝入れない */
   const LEGACY_TUNING_KEYS = ['exchangeSec', 'betSec', 'bountyPerTicket', 'shiftWidth']; // 以前の形の項目（読むときに捨てる）
   const SHIFT_UP_MAX = 10000, SHIFT_DOWN_MAX = 1; // 締切のあとの倍率のずらし幅（2026-10-20「上限なしで管理画面から全部決められる」）: 上げ幅は事実上上限なし・下げ幅は 100% まで（倍率は 1.0 倍より下げない）
@@ -281,7 +281,7 @@
     num('payoutRate', 0.3, 1.2); num('volatility', 0.2, 3); num('payoutCap', 0, 1e11); num('payoutCapDay', 0, 1e12);
     if (b.shiftWidth != null && b.shiftUp == null && b.shiftDown == null) { const w = Number(b.shiftWidth); if (!Number.isFinite(w) || w < 0 || w > SHIFT_DOWN_MAX) throw err(400, 'bad_tuning', 'shiftWidth は 0〜' + SHIFT_DOWN_MAX + ' です'); t.shiftUp = w; t.shiftDown = w; }
     num('shiftUp', 0, SHIFT_UP_MAX); num('shiftDown', 0, SHIFT_DOWN_MAX);
-    num('bandBelow', 0, 0.5); num('bandAbove', 0, 0.5);
+    num('bandBelow', 0, 0.5); num('bandAbove', 0, 0.5); num('payoutSpread', 0, 0.8); // 配当のぶれ（2026-10-29）
     num('maxBillsPerDevice', 0, 99); if (b.maxBillsPerDevice != null && b.maxBillsPerDevice !== '' && (Number(b.maxBillsPerDevice) === 1 || !Number.isInteger(Number(b.maxBillsPerDevice)))) throw err(400, 'bad_tuning', 'maxBillsPerDevice は 0（使わない）か 2〜99 です'); // 1 台の番号の上限（2026-10-27）
     num('voteSec', VOTE_SEC_MIN, VOTE_SEC_MAX); num('resultSec', 0, 3600); num('gateSec', 0, 60); num('postSec', 0, 120); num('photoExtraSec', 0, 60); num('closeLeadSec', 0, 600); num('oddsSims', 100, 10000); num('horizonMin', 1, 120); num('dayStartHour', 0, 12);
     if (b.scenes && typeof b.scenes === 'object') t.scenes = Object.assign({}, t.scenes, b.scenes);
@@ -629,12 +629,13 @@
     const t0 = Date.now(), cap = real.length ? effectiveCap(T, usedToday) : 0, er = engineRace(race); // テストの票だけのときは払わないので上限は見ない
     const vin = (v) => ({ first: v.first, second: v.second, group: v.storeId });
     const input = { exacta: race.exacta, comboProb: secret.comboProb, n: (race.horses || []).length || 6, votes: honest.map(vin), target: secret.payoutTarget, scope: secret.scope, up: T.shiftUp, down: T.shiftDown, bandBelow: T.bandBelow, bandAbove: T.bandAbove, cap, seed: Outcome.hash(salt, race.id, 'decide') };
+    const spread = Number(T.payoutSpread) || 0; if (spread > 0) input.spread = spread; // 配当のぶれ（2026-10-29）。0 なら入れない＝目標ちょうどのまわり
     if (extra.length) input.extra = extra.map(vin); // 多いスマホが無いレースは今までとまったく同じ入力
     const res = Outcome.resolveExacta(Engine, er, input);
     const run = Engine.replayRun(er, res.seed, { order: res.order });
     const cues = cuesFor(Outcome, salt, race.id, res.first, T, (race.horses || []).length || 6);
     const result = { winner: res.first, second: res.second, combo: res.combo, comboOdds: res.comboOdds, order: res.order, finalExacta: res.finalExacta, finalOdds: race.odds, seed: res.seed, finishTimes: run.finishTimes.map((x) => Math.round(x * 1000) / 1000), winTime: Math.round(run.winTime * 1000) / 1000, natural: res.natural, cues };
-    const decision = { target: res.target, scope: res.scope, payout: res.payout, perGroup: res.perGroup, reason: res.reason, band: res.band || null, tries: res.tries, swapsNeeded: res.swapsNeeded, swaps: run.swaps || null, noWinner: res.noWinner, ms: Date.now() - t0, cap, cues, combo: res.combo, comboOdds: res.comboOdds,
+    const decision = { target: res.target, targetEff: res.targetEff != null ? res.targetEff : res.target, spreadF: res.spreadF != null ? res.spreadF : 1, scope: res.scope, /* target: 時刻表の目標（集計はこれ）・targetEff: このレースで寄せた額（目標 × spreadF。2026-10-29） */ payout: res.payout, perGroup: res.perGroup, reason: res.reason, band: res.band || null, tries: res.tries, swapsNeeded: res.swapsNeeded, swaps: run.swaps || null, noWinner: res.noWinner, ms: Date.now() - t0, cap, cues, combo: res.combo, comboOdds: res.comboOdds,
       cands: res.cands.map((c) => ({ combo: c.combo, votes: c.votes, odds: c.odds, payout: c.payout, dist: c.dist, inBand: !!c.inBand })) };
     let runAt = race.runAt, revealAt, shift = Math.max(0, t + RUN_LEAD_MS - race.runAt), late = false;
     if (shift > LATE_CAP_MS) { shift = 0; late = true; } else runAt = race.runAt + shift;
