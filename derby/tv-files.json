@@ -188,8 +188,8 @@
   },
   {
    "path": "index.html",
-   "size": 23041,
-   "sha256": "1ddfcbea76b6a6ebfedf672f252309058e1c44453bd3a773a3068501cb1a8598"
+   "size": 23287,
+   "sha256": "197fe7c0b18211729b6654e7f0afd111b0fff10e510c77cdf135742bf42eef6e"
   },
   {
    "path": "js/audio.js",
@@ -238,13 +238,13 @@
   },
   {
    "path": "js/r3d/horse3d-real.js",
-   "size": 164396,
-   "sha256": "ca349a113efc96ba3278a3e43fa5bfa3ece872a5938ef49e3ff36d62b0ac59a8"
+   "size": 164550,
+   "sha256": "643a661649d7bc65bd96fa08f14d7b4044eef9713906f0492384e088bfe23e6b"
   },
   {
    "path": "js/r3d/horse3d.js",
-   "size": 156528,
-   "sha256": "6b11bb5e70eb30055252961d7724dc7f12e2601f23e15c3d174938617ed94804"
+   "size": 158594,
+   "sha256": "d8e6808339fd0f0d4c72fb68768418278b2d2e1f7b436dd9fa16afed1c2527fe"
   },
   {
    "path": "js/r3d/look3d.js",
@@ -253,8 +253,8 @@
   },
   {
    "path": "js/r3d/venue3d.js",
-   "size": 181398,
-   "sha256": "aa462c20c0c946df498c2509fd3b8b764ae4ded13f8ac1de44f8d03c926f9a37"
+   "size": 183523,
+   "sha256": "160549dfd5fa3ed42b5de9fc11f902344197a522733321fea9ac2c5e464fb2c8"
   },
   {
    "path": "js/race.js",
@@ -263,8 +263,8 @@
   },
   {
    "path": "js/race3d.js",
-   "size": 224868,
-   "sha256": "22e948ecffb76083d2994479166fc2ade1ddcb065a93c49b00f5952a8156e7c3"
+   "size": 234269,
+   "sha256": "65b52f1eb71780e0c0746feb7f935f2f64de38071d05cbc7fd4e3388900d1b03"
   },
   {
    "path": "js/splash3d.js",
