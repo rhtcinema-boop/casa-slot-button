@@ -176,12 +176,12 @@ window.addEventListener('error', function (e) {
 <script src="js/vendor/three.min.js"></script><!-- three r149（2026-10-19: CDN から同梱へ。ネットなしでも 3D が出る） -->
 <script src="js/r3d/course.js?v=k3d"></script>
 <script src="js/r3d/look3d.js?v=k3h"></script>
-<script src="js/r3d/horse3d.js?v=k3p"></script>
+<script src="js/r3d/horse3d.js?v=k3q"></script>
 <!-- 本物寄りの馬（R3D.HorseReal）: 管理画面で「本物寄り」にしたときだけ js/race3d.js があとから読む（Fire TV のメモリの節約）。?horse=real なら最初から読む（確認用） -->
-<script>window.R3D_LAZY = { HorseReal: 'js/r3d/horse3d-real.js?v=r10' }; if (/[?&]horse=real\b/.test(location.search)) document.write('<script src="' + window.R3D_LAZY.HorseReal + '"><\/script>');</script>
-<script src="js/r3d/venue3d.js?v=k3i"></script>
+<script>window.R3D_LAZY = { HorseReal: 'js/r3d/horse3d-real.js?v=r11' }; if (/[?&]horse=real\b/.test(location.search)) document.write('<script src="' + window.R3D_LAZY.HorseReal + '"><\/script>');</script>
+<script src="js/r3d/venue3d.js?v=k3j"></script>
 <script src="js/r3d/director3d.js?v=v4r2"></script>
-<script src="js/race3d.js?v=v4r6"></script>
+<script src="js/race3d.js?v=v4r7"></script>
 <script src="js/bonus.js?v=k3"></script>
 <script src="js/voice.js?v=k5"></script>
 <script src="js/commentary.js?v=v4r2"></script>
@@ -191,7 +191,7 @@ window.addEventListener('error', function (e) {
 <script>
 (function () {
   // _r＝管理画面の「テレビを読み込み直す」で付く印。v2 のファイルの版に足して、古いファイル（キャッシュ）を使わない
-  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't41' + (r ? '-' + r : ''); // t41: 2026-10-28 テレビの画質に「最もなめらか（演出なし）」（'min'。core.js・tvswitch.js・js/race3d.js）。 t40: 2026-10-28 進行役の予備（自動の引き継ぎ）・止まらない決める係（見回りの上限・見張り番）・待ち時間の「準備中」（client-firestore.js・core.js・tv.js）。t39: 2026-10-28 スマホの投票ページの速さの見直し（client.js・client-firestore.js。テレビの動きは同じ・部品を同時に読む）。t38 は公開していない（取り消した作業）。t37: 2026-10-28 テレビの画質「さらになめらか（最軽量）」（core.js・tvswitch.js・client-firestore.js）。t36 以前は略。t35: 2026-10-27 不正の守り（core.js・outcome.js・client-firestore.js）。t34: 2026-10-27 本日の出走時間（core.js・client-firestore.js・tv.js・tv.css）。t33: 2026-10-27 祝日の決まり（core.js・next-open.js）。t32: 2026-10-26 25 時表記・他店だけのレース（t31: 10-24 初参加ボーナス）
+  var r = (location.search.match(/[?&]_r=(\w+)/) || [])[1], v = 't42' + (r ? '-' + r : ''); // t42: 2026-10-29 軽い 3D（最もなめらか: 会場の区画分け・粗い馬・小さい絵。さらになめらか・最もなめらか: シェーダの下ごしらえ。js/race3d.js・js/r3d/horse3d.js・horse3d-real.js・venue3d.js）。 t41: 2026-10-28 テレビの画質に「最もなめらか（演出なし）」（'min'。core.js・tvswitch.js・js/race3d.js）。 t40: 2026-10-28 進行役の予備（自動の引き継ぎ）・止まらない決める係（見回りの上限・見張り番）・待ち時間の「準備中」（client-firestore.js・core.js・tv.js）。t39: 2026-10-28 スマホの投票ページの速さの見直し（client.js・client-firestore.js。テレビの動きは同じ・部品を同時に読む）。t38 は公開していない（取り消した作業）。t37: 2026-10-28 テレビの画質「さらになめらか（最軽量）」（core.js・tvswitch.js・client-firestore.js）。t36 以前は略。t35: 2026-10-27 不正の守り（core.js・outcome.js・client-firestore.js）。t34: 2026-10-27 本日の出走時間（core.js・client-firestore.js・tv.js・tv.css）。t33: 2026-10-27 祝日の決まり（core.js・next-open.js）。t32: 2026-10-26 25 時表記・他店だけのレース（t31: 10-24 初参加ボーナス）
   if (/[?&]store=[^&]/.test(location.search)) document.write('<link rel="stylesheet" href="v2/tv.css?v=' + v + '"><script src="v2/client.js?v=' + v + '"><\/script><script src="v2/qr.js?v=' + v + '"><\/script><script src="v2/form.js?v=' + v + '"><\/script><script src="v2/tv.js?v=' + v + '"><\/script><script src="v2/tvswitch.js?v=' + v + '"><\/script>');
   else document.write('<script src="js/game.js?v=k11"><\/script>');
 })();
