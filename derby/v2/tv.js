@@ -122,7 +122,10 @@
   stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2><span class="v2testtag" id="v2resTest" hidden>テストレース</span></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div><div class="today" id="v2resToday" hidden></div></div></div>' + /* v2resToday: 下の帯の 2 行目「本日のレース 13:00 ✓ …」（2026-10-27） */
     '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b id="v2resActB">当たった方は</b><span id="v2resAct1">スマホの画面を</span><span id="v2resAct2">スタッフへ見せてください</span></div></div><div class="rnote" id="v2resNote">本日中に リングチップでお渡し</div><div class="rsub" id="v2resSub"></div></div></div>'));
   // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
-  stageEl.appendChild(el('<div class="v2down" id="v2down"><b>通信が切れています</b><span>自動でつなぎ直します</span></div>'));
+  // 2026-10-29 電波の悪い店: 大きな帯は「まだ何も映せない」ときだけ（起動・読み込み直しで通信がつながらず、手元の写しも無い）。映せている間は右上の小さな「通信中…」だけ。文言もおだやかに
+  stageEl.appendChild(el('<div class="v2down" id="v2down"><b>まもなく始まります</b><span>通信をつないでいます</span></div>'));
+  // 発走の時刻を過ぎても結果（seed）がまだ届かないとき（電波が悪い）: 映像の上に小さく。届いたら消えて、その時刻のところから走りを見せる（結果はいつも本物）
+  stageEl.appendChild(el('<div class="v2hold" id="v2hold"><b>まもなく スタート</b><span>そのまま お待ちください</span></div>'));
   stageEl.appendChild(el('<div class="v2net" id="v2net">通信中…</div>'));
   stageEl.appendChild(el('<div class="v2net v2key" id="v2key"><b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）テレビの合言葉がありません。\n管理画面のテレビの URL で開き直すか、管理画面の「進行役にする」で選んでください</small></div>'));
   stageEl.appendChild(el('<div class="v2snd" id="v2snd">決定ボタン（OK）を押すと音が出ます</div>'));
@@ -186,6 +189,7 @@
   const runMode = () => ST().mode || 'auto';
   const cache = {};                // レース id → Race（state・race イベントで更新）
   let lastOk = performance.now(), sseErr = false;
+  let link = null;                 // Firestore 版: つながっているか（{ up, at }。2026-10-29 下の「通信の印」）
   let seenSeq = null;              // store.nextSeq（スタッフの「次へ」）
   let seenReload = null;           // store.reloadSeq（管理画面の「テレビを読み込み直す」）
   // 管理画面からの読み込み直し: アドレスに _r=（時刻）を付けて開き直す（index.html が v2 のファイルの版にも使う＝古いファイルを使わない）
@@ -212,10 +216,14 @@
     TV.nextAt = performance.now();
   }
   let badStore = false; // URL の store= が登録にない（打ちまちがい・削除した店舗）: 「通信中…」のままにせず、直し方を出す
+  let refreshing = 0; // 読み直しの途中（2026-10-29: 返事が遅いときに 10 秒ごとの読み直しを重ねない。30 秒たったら次を始める）
   async function refresh() {
     if (!C) return;
+    if (refreshing && performance.now() - refreshing < 30000) return;
+    refreshing = performance.now();
     try { applyState(await C.state()); badStore = false; }
     catch (e) { sseErr = true; badStore = !!(e && e.code === 'no_store'); if (badStore) { const n = $('v2net'); n.classList.add('show', 'full'); n.innerHTML = '<b>このテレビは設定が必要です</b><span>スタッフにお知らせください</span><small>（スタッフの方へ）店舗「' + esc(STORE) + '」が見つかりません。<br>管理画面のテレビの URL で開き直してください</small>'; } } // 画面全体を覆う（ふつうの画面や QR を出さない）
+    finally { refreshing = 0; }
   }
   // 古いレースは捨てる（何日もつけっぱなしのテレビでメモリが増え続けないように）
   function pruneCache() {
@@ -225,7 +233,7 @@
     Object.keys(cache).forEach((id) => { const r = cache[id]; if (!keep[id] && r && (r.endAt || r.at || 0) < lim) { delete cache[id]; delete TV.done[id]; delete TV.dismissed[id]; delete TV.skipped[id]; delete missing[id]; } });
   }
   const missing = {};
-  async function getRace(id) { if (!C || !id || missing[id] > performance.now()) return null; try { return keepRace(await C.race(id)); } catch (e) { if (e && e.status === 404) missing[id] = performance.now() + 60000; return null; } }
+  async function getRace(id) { if (!C || !id || missing[id] > performance.now()) return null; const q = C.race(id); q.then(keepRace, () => {}); /* 10 秒を過ぎてから届いた返事も覚える */ try { const r = await Promise.race([q, sleep(10000).then(() => null)]); return r ? cache[r.id] || r : null; } catch (e) { if (e && e.status === 404) missing[id] = performance.now() + 60000; return null; } } // 2026-10-29: 返事が来なくても 10 秒で戻る（結果を待つ間に止まらない）
   if (C) {
     (async () => { try { await C.syncClock(); } catch (e) { } await refresh(); })();
     setInterval(() => { if (C.syncClock) C.syncClock().catch(() => {}); }, 5 * 60 * 1000);
@@ -240,12 +248,23 @@
         next(n) { lastOk = performance.now(); if (!n || !n.store || n.store === STORE) { if (n && n.nextSeq != null) seenSeq = n.nextSeq; onNext(); } },
         reload(x) { lastOk = performance.now(); if (!x || !x.store || x.store === STORE) reloadWithUpdate(); },
         error() { sseErr = true; },
+        link(l) { link = l; }, // Firestore 版: つながっているか（2026-10-29）
       });
     } catch (e) { console.error(e); }
   }
   // 通信の印: 15 秒以上なにも届かない、または接続が切れている
   // 2026-10-19: 段階的に。切れてすぐ〜15 秒は右下の小さな「通信中…」、15 秒以上なにも届かなければ上に大きな帯（#v2down）
-  setInterval(() => { const quiet = performance.now() - lastOk, bad = !C || sseErr || badStore || quiet > 15000; $('v2net').classList.toggle('show', bad); if (!badStore && $('v2net').textContent !== '通信中…') { $('v2net').textContent = '通信中…'; $('v2net').classList.remove('full'); } $('v2down').classList.toggle('show', !badStore && (!C || quiet > 15000)); stageEl.classList.toggle('v2bad', badStore || tvAuth === false); $('v2key').classList.toggle('show', tvAuth === false && !badStore); }, 1000);
+  /* 2026-10-29 電波の悪い店（オーナー「電波が悪くても行けるようにしといて」）: お客さんに怖い表示を見せない。
+     - 小さな「通信中…」（右上）: 模擬クラウドは今までどおり（つながりのエラー・15 秒なにも届かない）。Firestore 版は SDK が「手元の写し」になった（link.up === false）・端末がオフライン。
+       Firestore 版は毎秒の画面の更新が手元の写しでも続くので「なにも届かない」では分からない → 見張りの知らせ（client-firestore.js の link）で見る
+     - 大きな帯（#v2down）: まだ何も映せない（最初の状態が無い）まま 15 秒たったときだけ。レース・投票・待ち時間を映している間は出さない */
+  setInterval(() => {
+    const quiet = performance.now() - lastOk, fs = !!(C && C.backend === 'firestore'), lk = fs ? link || C.link : null;
+    const off = (typeof navigator !== 'undefined' && navigator.onLine === false) || (lk && lk.up === false) || !!(S && S.fromSnap); // fromSnap: 手元の写しだけで映している（まだつながっていない）
+    const bad = !C || badStore || off || (fs ? !S && quiet > 5000 : sseErr || quiet > 15000);
+    $('v2net').classList.toggle('show', bad); if (!badStore && $('v2net').textContent !== '通信中…') { $('v2net').textContent = '通信中…'; $('v2net').classList.remove('full'); }
+    $('v2down').classList.toggle('show', !badStore && (!C || (!S && quiet > 15000))); stageEl.classList.toggle('v2bad', badStore || tvAuth === false); $('v2key').classList.toggle('show', tvAuth === false && !badStore);
+  }, 1000);
 
   // ---------- レース映像 ----------
   const raceView = new Race($('race'));
@@ -685,7 +704,9 @@
       // 結果（seed）を待つ（ふつうは締切の直後に決まる）
       // 結果が来ないまま返還された・決定が止まった（結果なしで発表）レースで、ここを回り続けて次のレースに進めなかった → 発表＋30 秒で諦める（コードレビュー 2026-10-14）
       const giveUp = () => { const c = cache[id] || R0; return !!c && ((c.status === 'done' || c.refunded) && !c.result || now() > (c.revealAt || c.runAt + 120000) + 30000); };
-      const needResult = async () => { while (!(cache[id] && cache[id].result && cache[id].result.seed != null)) { await getRace(id); if (cache[id] && cache[id].result) break; if (giveUp()) throw new Error('casa DERBY v2: 結果が届かない ' + id); await sleep(700); } return cache[id]; };
+      /* 2026-10-29 電波の悪い店: 読み直しは返事が来なくても 10 秒で戻り（getRace）、間は 0.7 秒から少しずつ 2 秒まで広げる。結果はいつも本物（決める係が決めたもの）を待つ */
+      const haveRes = () => !!(cache[id] && cache[id].result && cache[id].result.seed != null);
+      const needResult = async () => { let n = 0; while (!haveRes()) { await getRace(id); if (haveRes()) break; if (giveUp()) throw new Error('casa DERBY v2: 結果が届かない ' + id); await sleep(Math.min(2000, 700 + 150 * n++)); } return cache[id]; };
       const resP = needResult();
       const prepP = resP.then((r) => { applyCues(r); /* 確定演出（ふつうは keepRace で渡し済み。ここは念のため） */ const rs = r.result, run = Engine.replayRun(r, rs.seed, { order: rs.order }); const tl = is3D() ? Race3D.timeline(r, Engine.replayRun(r, rs.seed, { order: rs.order })) : null; return { run, tl }; });
       resP.catch(() => {}); prepP.catch(() => {}); // 諦めたときの失敗は下の await で受ける（ここでは「受け手なし」の警告を出さない）
@@ -698,7 +719,9 @@
           await raceView.gateIn({ onEvent: () => {}, clock: () => (now() - gateStart) / 1000 });
         }
       } else { await until(() => now() >= R.runAt - 1200); raceView.gateShot = true; } // ゲートインなし: 発走の直前まで今の絵のまま → 枠の中
-      R = await resP;
+      // 発走の時刻を 1.5 秒過ぎても結果が届かない（電波が悪い）: 映像の上に小さく「まもなく スタート」（届いたら消す）
+      const holdT = setInterval(() => { $('v2hold').classList.toggle('show', !haveRes() && now() >= R.runAt + 1500 && TV.playing === id); }, 250);
+      try { R = await resP; } finally { clearInterval(holdT); $('v2hold').classList.remove('show'); }
       const res = R.result;
       viewOdds = res.finalOdds; renderHorses(); renderOddsCol(R);
       const { run, tl } = await prepP;
