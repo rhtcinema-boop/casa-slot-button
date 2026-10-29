@@ -334,6 +334,25 @@
     tvs.forEach((x) => { seen[x.store] = (seen[x.store] || 0) + 1; out[x.id] = storeName(x.store) + 'のテレビ' + (n[x.store] > 1 ? ' ' + seen[x.store] : ''); });
     return out;
   }
+  /* テレビの調子（2026-10-29。v2/tvhealth.js の label）: テレビ 1 台ぶん。大きな点数（電波・なめらかさ）＋言葉＋小さな細かい数字。
+     悪い＝赤・ふつう＝黄。h が無い（古い版のテレビ）は「情報なし（古い版）」 */
+  const TH = () => window.DerbyTvHealth || null;
+  function healthHtml(x) {
+    const T = TH(); if (!T) return '';
+    const L = T.label(x.h);
+    if (!L.has) return '<div class="tvh none"><small>' + esc(L.text) + '</small></div>';
+    const big = (lv, n, word, name, title) => '<span class="sc lv-' + lv + '"' + (title ? ' title="' + esc(title) + '"' : '') + '><b>' + (n == null ? '—' : n) + '<i>点</i></b><small>' + esc(name) + ' ' + esc(word) + '</small></span>';
+    const r = L.race;
+    return '<div class="tvh">' + big(L.sig.lv, L.sig.score, L.sig.word, '電波', '直近 5 分') + (L.sig.cut ? '<span class="chip cut">切れていた</span>' : '') +
+      (r ? big(r.lv, r.score, r.word, 'なめらかさ', '直近のレース') + (r.avgN > 1 ? '<span class="avg">直近 ' + r.avgN + ' レースの平均 <b>' + r.avg + '点</b></span>' : '') : '<span class="sc lv-none"><b>—</b><small>なめらかさ まだレースなし</small></span>') +
+      '<small class="hd">' + esc(L.net) + (r ? '<br>' + esc(r.text) + (r.last.off ? '・レース中に切れていた ' + r.last.off + '秒' : '') : '') + '<br>' + esc(L.vid) + '</small></div>';
+  }
+  function healthStores(tvs) { // 店ごとの 1 行（いちばん悪いテレビに合わせる）
+    const T = TH(); if (!T) return '';
+    const by = {}; tvs.forEach((x) => { (by[x.store] = by[x.store] || []).push(x.h); });
+    const rows = Object.keys(by).map((sid) => { const s = T.storeLine(by[sid]); if (!s) return ''; return '<div class="hsrow"><b>' + esc(storeName(sid)) + '</b><span class="lv-' + s.sigLv + '">電波 ' + (s.sig == null ? '—' : s.sig + '点 ' + s.sigWord) + '</span>' + (s.cut ? '<span class="lv-bad">切れていた</span>' : '') + '<span class="lv-' + s.smoothLv + '">なめらかさ ' + (s.smooth == null ? '—' : s.smooth + '点 ' + s.smoothWord) + '</span></div>'; }).join('');
+    return rows ? '<div class="hstores"><small>店ごとの調子（いちばん悪いテレビ）</small>' + rows + '</div>' : '';
+  }
   function viewPair() {
     if (!pairOk()) return '';
     const P = pairData, head = '<div class="phd"><b>進行役のテレビ</b><small>結果を決めて進める役（1 台）と予備</small><span class="sp"></span><button type="button" class="btn xs ghost" data-act="pair-reload">最新にする</button></div>';
@@ -347,7 +366,7 @@
       : '<div class="pnow">いま <b>なし</b>' + (P.lock && P.lock.kind === 'account' ? ' <small>パスワードのテレビ（' + esc(storeName(P.lock.store)) + '）が進めています</small>' : '') + '</div>';
     const rows = tvs.map((x) => {
       const me = d && d.id === x.id, old = t - x.at >= STALE, isB = bk.has(x.id);
-      return '<div class="prow' + (me ? ' me' : '') + (isB ? ' bk' : '') + '" data-tv="' + esc(x.id) + '"><span class="nm">' + esc(lab[x.id]) + '<small' + (old ? ' class="old"' : '') + '>' + kindName(x.kind) + '・' + agoTxt(t - x.at) + '</small></span>' +
+      return '<div class="prow' + (me ? ' me' : '') + (isB ? ' bk' : '') + '" data-tv="' + esc(x.id) + '"><span class="nm">' + esc(lab[x.id]) + '<small' + (old ? ' class="old"' : '') + '>' + kindName(x.kind) + '・' + agoTxt(t - x.at) + '</small>' + healthHtml(x) + '</span>' +
         (isB ? '<span class="chip bkc">予備</span>' : '') +
         (me ? '<span class="chip on">進行役</span>' : '<button type="button" class="btn sm ghost" data-act="pair-set" data-id="' + esc(x.id) + '">進行役にする</button>' +
           (canBk ? '<button type="button" class="btn sm ghost" data-act="bk-set" data-id="' + esc(x.id) + '" data-on="' + (isB ? '0' : '1') + '">' + (isB ? '予備をやめる' : '予備にする') + '</button>' : '')) + '</div>';
@@ -355,7 +374,7 @@
     /* いま進めているテレビ（鍵）と最後のエラー（2026-10-28） */
     const li = P.lockInfo, liLine = li && (li.lastErr || (li.until && li.until <= t)) ? '<p class="hint plock">' + (li.until && li.until > t ? 'いま進めている: ' + esc(li.uid && lab[li.uid] ? lab[li.uid] : storeName(li.store) + 'のテレビ') + (li.role === 'backup' ? '（予備）' : '') : '最後に進めていた: ' + esc(li.uid && lab[li.uid] ? lab[li.uid] : li.store ? storeName(li.store) + 'のテレビ' : '—') + '（' + agoTxt(t - (li.lastTickAt || li.at || t)) + '）') + (li.lastErr ? '・最後のエラー ' + esc(String(li.lastErr).slice(0, 80)) + (li.lastErrAt ? '（' + hms(li.lastErrAt).slice(0, 5) + '）' : '') : '') + '</p>' : '';
     const liveB = li && li.until > t && li.role === 'backup' ? '<p class="hint plock warn">いまは予備のテレビが進めています（進行役のテレビが戻ると自動で替わります）</p>' : '';
-    return '<div class="pair" id="pairBox">' + stallHtml() + head + nowLine + liveB + liLine + (rows ? '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') +
+    return '<div class="pair" id="pairBox">' + stallHtml() + head + nowLine + liveB + liLine + (rows ? healthStores(tvs) + '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') +
       (canBk && fireNew ? '<div class="acts l"><button type="button" class="btn sm ghost" data-act="bk-all">全店の Fire TV を予備にする（' + fireNew + ' 台）</button></div>' : '') +
       '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。' + (canBk ? '予備のテレビは、進行役が止まると 1〜2 分で自動で代わりに進めます。' : '') + '</p></div>';
   }
