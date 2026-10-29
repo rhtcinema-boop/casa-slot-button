@@ -260,7 +260,7 @@
        まだ合わせていないときも 8 秒を超える往復は使わない（端末の時計のまま。次の時刻合わせで）。全店のレースの映像をそろえるため */
     let clockRtt = null;
     const CLOCK_OP_MS = opts.clockOpMs || 10000;
-    function clockOp(p) { let h = null; return Promise.race([p, new Promise((res, rej) => { h = setTimeout(() => { const e = new Error('timeout clock'); e.code = 'deadline-exceeded'; rej(e); }, CLOCK_OP_MS); })]).finally(() => clearTimeout(h)); }
+    function clockOp(p0) { let h = null; const p = timed(p0, 'clock'); return Promise.race([p, new Promise((res, rej) => { h = setTimeout(() => { const e = new Error('timeout clock'); e.code = 'deadline-exceeded'; rej(e); }, CLOCK_OP_MS); })]).finally(() => clearTimeout(h)); }
     async function syncClock(n) {
       n = n || 3; let best = null, lastErr = null;
       for (let i = 0; i < n; i++) {
@@ -860,8 +860,17 @@
        → 見張り番（watchdog）: うまくいった見回りが 60 秒ない → 見張り（onSnapshot）を作り直し、Firestore の通信を切ってつなぎ直す。3 分ない → レースの最中でなければページを読み込み直す。
        → 最後のエラーと最後にうまくいった時刻を鍵（derbyLock/decider の lastErr・lastErrAt・lastTickAt）に書く（管理画面で見える） */
     const TICK_TIMEOUT_MS = opts.tickTimeoutMs || 30000, OP_TIMEOUT_MS = opts.opTimeoutMs || 15000, WD_RESET_MS = opts.wdResetMs || 60000, WD_RELOAD_MS = opts.wdReloadMs || 180000;
-    function withTimeout(p, ms, label) {
-      let h = null;
+    /* テレビの調子（2026-10-29。v2/tvhealth.js）: もうしている読み書き・時刻合わせ・名乗り・鍵の返事までの時間を数える（通信は増やさない）。
+       返事なし・つながらない・手元の写し（fromCache）で返った ＝ 失敗。ルールで断られた（permission-denied など）は返事が来たので成功として時間だけ */
+    const HEALTH = role === 'tv' && opts.health && typeof opts.health.note === 'function' ? opts.health : null, NET_LABELS = { schedule: 1, counts: 1, race: 1, hello: 1, lock: 1, clock: 1 };
+    function timed(p, label) {
+      if (!HEALTH || !NET_LABELS[label]) return p;
+      const t0 = local(), bad = (e) => !!e && (e.code === 'deadline-exceeded' || e.code === 'unavailable');
+      return Promise.resolve(p).then((v) => { try { HEALTH.note(label, local() - t0, !(v && v.metadata && v.metadata.fromCache)); } catch (e) { /* noop */ } return v; },
+        (e) => { try { HEALTH.note(label, local() - t0, !bad(e)); } catch (x) { /* noop */ } throw e; });
+    }
+    function withTimeout(p0, ms, label) {
+      let h = null; const p = timed(p0, label);
       const to = new Promise((res, rej) => { h = setTimeout(() => { const e = new Error('timeout ' + label); e.code = 'deadline-exceeded'; rej(e); }, ms); });
       return Promise.race([Promise.resolve(p), to]).then((v) => { clearTimeout(h); return v; }, (e) => { clearTimeout(h); throw e; });
     }
@@ -1147,7 +1156,7 @@
     function newCode() { let n; try { const a = new Uint32Array(1); globalThis.crypto.getRandomValues(a); n = a[0] % 10000; } catch (e) { n = Math.floor(Math.random() * 10000); } return String(n).padStart(4, '0'); }
     const tvKind = () => (typeof navigator !== 'undefined' && /casaTV/.test(navigator.userAgent || '') ? 'casatv' : 'browser');
     /* 名乗り（derbyTvs.at）は決める係の見回りとは別のタイマー（5 分ごと）。返事が来なくても次の名乗りは止まらない（上限 15 秒。2026-10-28） */
-    async function pairHello() { if (!pair.on) return; await withTimeout(doc(COL.tvs, uid()).set({ store, kind: tvKind(), at: FieldValue.serverTimestamp(), code: pair.code }, { merge: true }), OP_TIMEOUT_MS, 'hello'); }
+    async function pairHello() { if (!pair.on) return; const d = { store, kind: tvKind(), at: FieldValue.serverTimestamp(), code: pair.code }; if (HEALTH && HEALTH.summary) { try { d.h = HEALTH.summary(); } catch (e) { /* 付けない */ } } await withTimeout(doc(COL.tvs, uid()).set(d, { merge: true }), OP_TIMEOUT_MS, 'hello'); } // h: テレビの調子（2026-10-29。v2/tvhealth.js・ルールの tvHealthOk）
     function startPair() {
       if (pair.on || role !== 'tv' || mode !== 'anon' || !store || !/^[a-z0-9_-]{1,32}$/.test(store) || opts.pair === false) return;
       pair.on = true; pair.code = opts.pairCode || newCode(); // 数字は起動のたびに作り直す（5 分ごとの連絡では変えない＝確認の途中で変わらない）
@@ -1410,7 +1419,7 @@
         tvs: wrap(async () => {
           /* 2026-10-28: 予備（derbyDeciders の role 'backup'）も。一覧は 7 日以内に連絡のあったテレビ（予備にしたテレビは 14 日まで）。fireTvs: 「全店の Fire TV を予備にする」の候補（14 日以内の Fire TV） */
           const [q, dq, lk] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get(), doc(COL.lock, 'decider').get()]);
-          const all = q.docs.map((d) => { const x = d.data(); return { id: d.id, store: x.store, kind: x.kind, at: msOf(x.at), code: x.code, ask: Number(x.ask) || 0 }; }).sort((a, b) => b.at - a.at);
+          const all = q.docs.map((d) => { const x = d.data(); return { id: d.id, store: x.store, kind: x.kind, at: msOf(x.at), code: x.code, ask: Number(x.ask) || 0, h: x.h && typeof x.h === 'object' ? x.h : null }; }).sort((a, b) => b.at - a.at);
           const ds = dq.docs.map((d) => Object.assign({ id: d.id }, d.data())), bset = new Set(ds.filter((d) => d.role === 'backup').map((d) => d.id));
           const tvs = all.filter((x) => now() - x.at < 7 * 86400000 || bset.has(x.id) || ds.some((d) => d.id === x.id));
           const dd = ds.filter((d) => d.role !== 'backup').sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null, l = data(lk);
