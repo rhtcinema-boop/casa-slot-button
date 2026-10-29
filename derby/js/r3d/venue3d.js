@@ -158,10 +158,19 @@ R3D.Venue = (function () {
   function cv(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
   function tex(c, o) {
     o = o || {};
-    const t = new T.CanvasTexture(c);
+    const sm = XMQ ? shrinkCv(c) : c, t = new T.CanvasTexture(sm);
     t.wrapS = t.wrapT = o.clamp ? T.ClampToEdgeWrapping : T.RepeatWrapping;
-    t.anisotropy = 16; t.encoding = T.sRGBEncoding;
+    t.anisotropy = XMQ ? 2 : 16; t.encoding = T.sRGBEncoding;
+    if (sm !== c) Object.defineProperty(t, 'needsUpdate', { set(v) { if (v === true) { shrinkCv(c, sm); this.version++; this.source.needsUpdate = true; } } }); // 元の絵（c）を描き直したら（看板・掲示板・観客の絵の演出）、小さい写しも描き直す
     return t;
+  }
+  /* 軽い 3D（2026-10-29。最もなめらか＝XMQ。オーナー: 見た目が変わりうる軽くする所は最もなめらかだけ）: GPU に送る絵は長い辺 XL_TEX 画素まで（大きい絵は半分・4 分の 1 に縮めた写し）。
+     映像の細かさ 0.4〜0.5 倍では大きい絵の細かさは見えない。GPU のメモリと最初に送る時間（場面の切り替えの止まり）が減る */
+  const XL_TEX = 512;
+  function shrinkCv(c, dst) {
+    const k = Math.min(1, XL_TEX / Math.max(c.width || 1, c.height || 1)); if (k >= 1 && !dst) return c;
+    const d = dst || cv(Math.max(1, Math.round(c.width * k)), Math.max(1, Math.round(c.height * k))), g = d.getContext('2d');
+    g.clearRect(0, 0, d.width, d.height); g.imageSmoothingQuality = 'high'; g.drawImage(c, 0, 0, d.width, d.height); return d;
   }
   // 画素ごとのざらつき
   function grain(g, w, h, amt, seed, chroma) {
@@ -653,9 +662,10 @@ R3D.Venue = (function () {
   /* ================= 形 ================= */
   // ラチ: 上の横木（白い樹脂の丸みのある角材）と、外へ斜めに立つ支柱
   const RAIL_PROF = [[-0.05, 0.92], [0.05, 0.92], [0.075, 0.97], [0.075, 1.05], [0.05, 1.1], [-0.05, 1.1], [-0.075, 1.05], [-0.075, 0.97], [-0.05, 0.92]];
+  const RAIL_PROF_XL = [[0.07, 0.93], [0.07, 1.08], [-0.07, 1.08], [-0.07, 0.93]]; // 軽い 3D: 外・上・内の 3 面だけ（下の面は見えない。8 面 → 3 面）
   function addRail(g, posts, r, side, col, step, sRange) {
     const s0 = sRange ? sRange[0] : 0, s1 = sRange ? sRange[1] : L;
-    sweep(g, cpath(r, s0, s1, TVQ ? 4 : 1.5, 25), RAIL_PROF, col);
+    sweep(g, cpath(r, s0, s1, XMQ ? 7 : TVQ ? 4 : 1.5, 25), XMQ ? RAIL_PROF_XL : RAIL_PROF, col);
     for (let s = s0; s < s1 - 0.1; s += step) {
       const p = CO.pointAt(s, r), o = outAt(s);
       posts.push({ x0: p.x + o.x * side * 0.42, z0: p.z + o.z * side * 0.42, x1: p.x, z1: p.z, y1: 0.98 });
@@ -770,7 +780,7 @@ R3D.Venue = (function () {
      ゴール前（先頭の馬が最後の直線の残り約 480m 以内。uCheer）だけ、先頭の馬の近く（uLeadX）ほど応援する。前列（ラチ際）は 2 割、ほかは 1 割が両手を上げて跳ね、3 割前後が手をたたく */
   const PT = (part, ck) => part * 8 + ck;
   // Fire TV 向けのさらに軽い描き方（R3D.tv。js/race3d.js の ?q=tv）: 観客は板の人、木・支柱・街を間引き、ラチを粗く。build のたびに決める
-  let TVQ = false, XLQ = false;
+  let TVQ = false, XLQ = false, XMQ = false;
   const CROWD_U = { uTime: { value: 0 }, uCheer: { value: 0 }, uLeadX: { value: -1e4 }, uRain: { value: 0 } };
   /* 2026-10-14（講評 92→95 の 3「観客・背景・建物の統一」）: 馬・騎手と同じ「おもちゃの人形」の体つきに。
      頭を大きめ（半径 0.2）、胴は丸い豆形（回転体）、手は丸いミトン、髪は頭にかぶせた殻、顔に小さな目（パドック用はほっぺも。騎手と同じ色）。
@@ -954,6 +964,7 @@ R3D.Venue = (function () {
     const low = (opts.quality || R3D.quality || 'high') === 'low';
     TVQ = low && !!(opts.tv || R3D.tv);
     XLQ = TVQ && !!(opts.xlite || R3D.xlite);   /* テレビの画質「さらになめらか（最軽量）」（2026-10-28）: 観客・木・旗をさらに間引く */
+    XMQ = XLQ && !!R3D.xmin;   /* 軽い 3D（2026-10-29）: テレビの画質「最もなめらか」だけ。絵の大きさ・ラチと生け垣の断面・ハロン棒の円柱・木の葉の房・観客の数を軽く */
     const root = new T.Group(); root.name = 'venue'; scene.add(root);
     const crowdCv = cv(2048, 512), cueCrowd0 = cueHorse(CUES, 'crowd'); crowdTex(crowdCv, cueCrowd0 >= 0 ? CUE_CLOTH[cueCrowd0] : null);
     const TX = { blob: blobTex(), flower: flowerTex(), turf: turfTex(), dirt: dirtTex(), grass: grassTex(), ground: grassTex(true), leaf: leafTex(), crowd: tex(crowdCv), glass: glassTex(), win: winTex(), plate: plateTex(), sign: signTex(), score: scoreTex() };
@@ -1008,7 +1019,7 @@ R3D.Venue = (function () {
     // 外ラチの外の生け垣（向正面とコーナー。スタンド前は花壇）
     const sA = LS + 1.0 * RC, sB = 2 * LS + CUR + (Math.PI - 1.0) * RC;
     const hedgeCol = (x, y) => C('#5a9244').clone().multiplyScalar(0.66 + 0.4 * y);
-    sweep(G.hedge, cpath(RO + 1.9, LS + 0.25 * RC, 2 * LS + CUR + (Math.PI - 0.25) * RC, 2, 20), [[-0.5, 0], [0.5, 0], [0.5, 1.0], [0.35, 1.2], [-0.35, 1.2], [-0.5, 1.0], [-0.5, 0]], hedgeCol, (P, q) => [P.s / 3, q[1] + q[0]]);
+    sweep(G.hedge, cpath(RO + 1.9, LS + 0.25 * RC, 2 * LS + CUR + (Math.PI - 0.25) * RC, 2, 20), XMQ ? [[0.5, 0], [0.5, 1.1], [-0.5, 1.1], [-0.5, 0]] : [[-0.5, 0], [0.5, 0], [0.5, 1.0], [0.35, 1.2], [-0.35, 1.2], [-0.5, 1.0], [-0.5, 0]], hedgeCol, (P, q) => [P.s / 3, q[1] + q[0]]); // 軽い 3D（XMQ）: 生け垣の断面は 3 面（6 面 → 3 面。下の面は見えない）
     // 生け垣の上の実のかたまり（kind 5。向正面〜4 コーナーの内馬場のカメラと、4 コーナーのクレーンのカメラの背景に入る目の高さ）
     for (let s = LS + 0.3 * RC, ks = 0; s < 2 * LS + CUR + (Math.PI - 0.3) * RC; s += (XLQ ? 20 : TVQ ? 12 : low ? 6 : 5) * (0.85 + 0.3 * hash3(ks++, 2, 3))) { const q = CO.pointAt(s, RO + 1.9 - 0.22); trees.push({ x: q.x, y: 1.14, z: q.z, h: 1, rad: 0.5, tone: 1, kind: 5 }); }
     // 最後の直線（スタンド前）の花壇の上にも（2 回目。横からのゴール前のカメラの背景）
@@ -1016,12 +1027,12 @@ R3D.Venue = (function () {
 
     /* ---------- ハロン棒（残り 100m ごと。200m ごとに数字の円板）とゴール板 ---------- */
     const red = C('#d42a2a');
-    const stripedPole = (x, z, h, rad, seg) => { for (let k = 0; k < seg; k++) G.plastic.add(CYL, mat(x, h * (k + 0.5) / seg, z, rad, h / seg, rad), k % 2 ? white : red); };
+    const stripedPole = (x, z, h, rad, seg) => { for (let k = 0; k < seg; k++) G.plastic.add(XMQ ? CYL_XL : CYL, mat(x, h * (k + 0.5) / seg, z, rad, h / seg, rad), k % 2 ? white : red); };
     const discPair = (x, y, z, ox, oz, rad, cellI) => {
       const ry = Math.atan2(ox, oz);
-      G.plate.add(DISC, mat(x + ox * 0.03, y, z + oz * 0.03, rad, rad, 1, ry), C('#ffffff'), { uvT: cellUV(cellI) });
-      G.plate.add(DISC, mat(x - ox * 0.03, y, z - oz * 0.03, rad, rad, 1, ry + Math.PI), C('#ffffff'), { uvT: cellUV(cellI) });
-      G.plastic.add(CYL, mat(x, y, z, rad * 1.04, 0.05, rad * 1.04, ry, Math.PI / 2), white);
+      G.plate.add(XMQ ? DISC_XL : DISC, mat(x + ox * 0.03, y, z + oz * 0.03, rad, rad, 1, ry), C('#ffffff'), { uvT: cellUV(cellI) });
+      G.plate.add(XMQ ? DISC_XL : DISC, mat(x - ox * 0.03, y, z - oz * 0.03, rad, rad, 1, ry + Math.PI), C('#ffffff'), { uvT: cellUV(cellI) });
+      G.plastic.add(XMQ ? CYL_XL : CYL, mat(x, y, z, rad * 1.04, 0.05, rad * 1.04, ry, Math.PI / 2), white);
     };
     for (let m = 100; m <= 2400; m += 100) {
       const s = FINISH_S - m, p = CO.pointAt(s, RI - 0.95), o = outAt(s), big = m % 200 === 0 && m <= 1600;
@@ -1030,8 +1041,8 @@ R3D.Venue = (function () {
     }
     for (const [r, sgn] of [[RI - 1.0, -1], [RO + 1.0, 1]]) {
       const p = CO.pointAt(FINISH_S, r), o = outAt(FINISH_S);
-      G.plastic.add(CYL, mat(p.x, 2.6, p.z, 0.18, 5.2, 0.18), white);
-      G.plastic.add(CYL, mat(p.x, 3.3, p.z, 0.19, 0.5, 0.19), red);
+      G.plastic.add(XMQ ? CYL_XL : CYL, mat(p.x, 2.6, p.z, 0.18, 5.2, 0.18), white);
+      G.plastic.add(XMQ ? CYL_XL : CYL, mat(p.x, 3.3, p.z, 0.19, 0.5, 0.19), red);
       G.plastic.box(p.x, 0.15, p.z, 0.7, 0.3, 0.7, C('#9a9a96'));
       discPair(p.x, 5.2 + 0.85, p.z, o.x, o.z, 0.85, 14);
       if (sgn > 0) { // 決勝審判室（ガラス張り）: 本物どおりスタンドのゴール線の所（下の段の上・張り出しの先）。前はラチの外の柱の上にあり、ゴール前の低い横のカメラで先頭の馬を隠していた
@@ -1101,10 +1112,10 @@ R3D.Venue = (function () {
       for (let x = SX0 + 3; x < SX1 - 3;) {
         if (r() > goal(x) * 1.25) { x += 1 + r() * 3; continue; }
         put(near, x, 0.03, zA + r() * 0.22, Math.PI + (r() - 0.5) * 0.5, { rail: true, kids: 0.1 });
-        x += 0.5 + r() * 0.35;
+        x += (0.5 + r() * 0.35) * (XMQ ? 1.7 : 1); // 軽い 3D: ラチ際の列は 1.7 倍の間隔
       }
       // 人だまり: 中心を密度に比例して選び、3〜17 人をまわりに（ときどき同じ色の服の仲間）
-      const nNear = XLQ ? 260 : TVQ ? 700 : low ? 1000 : 3300;
+      const nNear = XMQ ? 150 : XLQ ? 260 : TVQ ? 700 : low ? 1000 : 3300;
       for (let tries = 0; nNearNow < nNear && tries < 40000; tries++) {
         const cx = SX0 + 4 + r() * (SX1 - SX0 - 8), cz = zA + 0.8 + Math.pow(r(), 1.25) * (zB - zA - 0.9), dens = goal(cx) * noise(cx, cz);
         if (r() > Math.pow(dens, 1.5) * 1.25 || inAisle(cx, cz)) continue;
@@ -1116,7 +1127,7 @@ R3D.Venue = (function () {
         }
       }
       // スタンド前の帯（屋根の下・階段の前）: むらのある人の帯
-      const zC = ZS - 7.2, zD = ZS - 0.7, nBack = XLQ ? 70 : low ? 220 : 700;
+      const zC = ZS - 7.2, zD = ZS - 0.7, nBack = XMQ ? 40 : XLQ ? 70 : low ? 220 : 700;
       for (let tries = 0, n0 = peopleFar.length; peopleFar.length - n0 < nBack && tries < 12000; tries++) {
         const x = SX0 + 3 + r() * (SX1 - SX0 - 6), z = zC + r() * (zD - zC);
         if (r() > goal(x) * noise(x * 1.3, z + 40) || !free(x, z, 0.5)) continue;
@@ -1307,7 +1318,7 @@ R3D.Venue = (function () {
     // 2 回目（同日）: 大きささらに 1.3 倍・自発光。ふだんは base 個（前の半分）だけを小さく（FRUIT_OFF_SCALE）描き、残りは演出のときだけ出す
     // 2026-10-17: 演出のときは枠色ごとの果物（別の InstancedMesh）に置き換えるので、木の実は「ふだんの小さな茶色い実」（base 個）だけ
     const FR = (n, base, size) => { const b = TVQ ? (base > 4 ? 1 : 0) : low ? Math.ceil(base * 0.7) : base; return { n: b, base: b, size: TVQ ? size * 1.25 : size, tv: TVQ }; };
-    [[0, treeGeo(low ? 0 : 1, BLOBS_FOREST.slice(0, TVQ ? 2 : 3), 3, FR(18, 6, 0.078)), 'trees'], [1, treeGeo(low ? 0 : 1, BLOBS_ROUND, 5, FR(14, 5, 0.072)), 'treesRound'], [2, treeGeo(low ? 0 : 1, BLOBS_BUSH, 7, FR(10, 4, 0.18)), 'bushes'], [3, coniferGeo(!low), 'treesConifer'], [4, treeGeo(low ? 0 : 1, BLOBS_POPLAR, 9), 'treesPoplar']].forEach(([kind, tgeo, name]) => {
+    [[0, treeGeo(low ? 0 : 1, BLOBS_FOREST.slice(0, XMQ ? 1 : TVQ ? 2 : 3), 3, FR(18, 6, 0.078)), 'trees'], [1, treeGeo(low ? 0 : 1, BLOBS_ROUND, 5, FR(14, 5, 0.072)), 'treesRound'], [2, treeGeo(low ? 0 : 1, BLOBS_BUSH, 7, FR(10, 4, 0.18)), 'bushes'], [3, coniferGeo(!low), 'treesConifer'], [4, treeGeo(low ? 0 : 1, BLOBS_POPLAR, 9), 'treesPoplar']].forEach(([kind, tgeo, name]) => {
       const list = trees.filter((t) => (t.kind | 0) === kind); if (!list.length) return;
       const tm = new T.InstancedMesh(tgeo, M.leaf, list.length);
       list.forEach((t, i) => {
@@ -1660,8 +1671,8 @@ R3D.Venue = (function () {
     redrawBoard();
     return venue;
   }
-  const CYL = new T.CylinderGeometry(1, 1, 1, 16, 1);
-  const DISC = new T.CircleGeometry(1, 28);
+  const CYL = new T.CylinderGeometry(1, 1, 1, 16, 1), CYL_XL = new T.CylinderGeometry(1, 1, 1, 6, 1); // CYL_XL: 軽い 3D のハロン棒・ゴール板（16 角 → 6 角）
+  const DISC = new T.CircleGeometry(1, 28), DISC_XL = new T.CircleGeometry(1, 12);
 
   /* ---------- スタンド ---------- */
   function buildStand(G, low) {
