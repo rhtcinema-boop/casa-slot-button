@@ -115,7 +115,8 @@
         const env = await window.DerbyFirestore.connect(cfg, { role: opt.role });
         impl = window.DerbyFirestore.create(opt, Object.assign({}, env, { Engine: window.Engine, Outcome: window.Outcome, Core: window.DerbyCore, oddsAsync: opt.role === 'tv' ? oddsWorker() : null }));
         if (!activeImpl) activeImpl = impl;
-        await impl.ready();
+        // テレビ（2026-10-29 電波の悪い店）: ログイン・時刻合わせを待たずに見張り（手元の写しの画面）を始める。読み取りはそれぞれ ready を待つ・見張りはつながるまで自分でつなぎ直す
+        if (opt.role === 'tv') impl.ready().catch(() => {}); else await impl.ready();
         if (opt.role === 'phone' && HAS_DOC && impl.warm) { // 画面に初めてさわったら、投票の下準備（端末のリスト・App Check）
           const w = () => { ['pointerdown', 'keydown'].forEach((t) => document.removeEventListener(t, w, true)); impl.warm(); };
           ['pointerdown', 'keydown'].forEach((t) => document.addEventListener(t, w, true));
@@ -130,6 +131,7 @@
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
       get offset() { return impl ? impl.offset : 0; }, get synced() { return impl ? impl.synced : false; },
+      get link() { return impl ? impl.link : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
       vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'),
       staffLogin: call('staffLogin'), release: call('release'), wins: call('wins'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
@@ -141,8 +143,9 @@
       // ログイン（匿名の uid）が変わった（2026-10-28）: cb({ from, to })
       onUser(cb) { let un = null, closed = false; getImpl().then((i) => { if (!closed && i.onUser) un = i.onUser(cb); }).catch(() => {}); return () => { closed = true; if (un) un(); }; },
       admin(password) { const m = {}; ADMIN.forEach((k) => { m[k] = async (...a) => { const i = await getImpl(); const ad = adm[password] || (adm[password] = i.admin(password)); return ad[k](...a); }; }); return m; },
-      /* スマホ（2026-10-28）: 最初につなげなかった（SDK が読めない・ログインできない）ときは 1 → 2 → 4 … 15 秒あけて自動でつなぎ直す（以前は 6 秒ごとの読み直しだけで、見張りは止まったままだった） */
-      subscribe(handlers, o) { let un = null, closed = false, n = 0; const go = () => getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); if (!closed && opt.role === 'phone') setTimeout(go, Math.min(15000, 1000 * 2 ** n++)); }); go(); return () => { closed = true; if (un) un(); }; },
+      /* スマホ（2026-10-28）: 最初につなげなかった（SDK が読めない・ログインできない）ときは 1 → 2 → 4 … 15 秒あけて自動でつなぎ直す（以前は 6 秒ごとの読み直しだけで、見張りは止まったままだった）。
+         テレビも同じ（2026-10-29 電波の悪い店: 起動したときに SDK が読めないと、見張りが始まらないまま 10 秒ごとの読み直しだけになっていた）。テレビは 30 秒まで */
+      subscribe(handlers, o) { let un = null, closed = false, n = 0; const go = () => getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); if (!closed && (opt.role === 'phone' || opt.role === 'tv')) setTimeout(go, Math.min(opt.role === 'tv' ? 30000 : 15000, 1000 * 2 ** n++)); }); go(); return () => { closed = true; if (un) un(); }; },
       get decider() { return impl ? impl.decider : null; },
     };
     getImpl().catch(() => {}); // 早めにつなぐ（テレビは決める係の取り合いを始める）
@@ -188,7 +191,7 @@
       if (!res.ok) { const err = new Error((data && data.message) || ('HTTP ' + res.status)); err.code = (data && data.error) || 'http_' + res.status; err.status = res.status; err.body = data; throw err; }
       return data;
     }
-    const get = (p) => request('GET', p);
+    const get = (p) => request('GET', p, undefined, undefined, role === 'tv' ? 15000 : undefined); // テレビ（2026-10-29）: 読み取りも 15 秒まで（返事が来ないまま 10 秒ごとの読み直しが積み重ならない）
     const post = (p, b, h) => request('POST', p, b || {}, h);
     const qs = (o) => Object.keys(o).filter((k) => o[k] != null && o[k] !== '').map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(o[k])).join('&');
 
