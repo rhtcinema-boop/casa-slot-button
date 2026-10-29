@@ -1703,6 +1703,7 @@ R3D.HorseReal = (function () {
       face: { eye: F.eye, fore: F.fore, mane: F.mane, face: F.face, maneCol: F.maneCol },
       dust: true, // 土煙は馬の部品が出す（統合側の粒は止めてよい）
       setQuality(qq) {
+        if (qq === 'xfar') qq = 'far'; // 2026-10-29: いちばん粗い形 'xfar'（R3D.Horse だけにある）は、この部品では 'far' と同じ
         if (qq !== 'low' && qq !== 'high' && qq !== 'far') return; if (qq === quality) return; quality = qq;
         bodyMesh.geometry = lineMesh.geometry = horseGeometry(S, coat, markIdx, quality, mare, F); aura.geometry = bodyMesh.geometry;
         ghosts.forEach((g) => { g.geometry = bodyMesh.geometry; }); tMesh.geometry = tackGeometry(S, quality, jockeyOn);
