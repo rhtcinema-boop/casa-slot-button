@@ -156,7 +156,11 @@
     return v || null;
   })();
   let tvAuth = null; // サーバーの答え: true（合言葉 OK）/ false（無い・違う）/ null（Firestore 版など、使わない）
-  const C = window.DerbyCloud && DerbyCloud.create ? DerbyCloud.create({ store: STORE, role: 'tv', tvKey: TVKEY }) : null;
+  /* テレビの調子（2026-10-29 オーナー「現場が電波悪いんだって気づければいい」。v2/tvhealth.js）: 数えるだけ。画面・レース・通信は変えない（5 分ごとの名乗りに h を付けるだけ）。
+     ?health=0 で止める（比べるテスト用）。何が起きてもテレビは止めない（全部 try） */
+  const HM = (() => { try { return !/[?&]health=0\b/.test(QS) && window.DerbyTvHealth ? DerbyTvHealth.create() : null; } catch (e) { return null; } })();
+  const hmDo = (f) => { if (!HM) return; try { f(HM); } catch (e) { /* 数えられなくてもテレビは続ける */ } };
+  const C = window.DerbyCloud && DerbyCloud.create ? DerbyCloud.create({ store: STORE, role: 'tv', tvKey: TVKEY, health: HM }) : null;
   const now = () => (C && C.serverNow ? C.serverNow() : Date.now());
   /* 進行役のテレビ（2026-10-19）: 数字は「確認中」の間だけ（最長 3 分）。選ばれた・外れたときは 8 秒だけ知らせる（ふだんは何も出さない） */
   {
@@ -241,17 +245,20 @@
     setInterval(() => { try { pruneCache(); } catch (e) { console.error(e); } }, 10 * 60 * 1000);
     try {
       C.subscribe({
-        hello(h) { lastOk = performance.now(); sseErr = false; if (h && typeof h.tvAuth === 'boolean') tvAuth = h.tvAuth; },
-        open() { lastOk = performance.now(); sseErr = false; },
-        state(s) { applyState(s); },
+        hello(h) { lastOk = performance.now(); sseErr = false; if (h && typeof h.tvAuth === 'boolean') tvAuth = h.tvAuth; hmMock(true); },
+        open() { lastOk = performance.now(); sseErr = false; hmMock(true); },
+        state(s) { applyState(s); hmMock(true); },
         race(r) { keepRace(r); lastOk = performance.now(); },
         next(n) { lastOk = performance.now(); if (!n || !n.store || n.store === STORE) { if (n && n.nextSeq != null) seenSeq = n.nextSeq; onNext(); } },
         reload(x) { lastOk = performance.now(); if (!x || !x.store || x.store === STORE) reloadWithUpdate(); },
-        error() { sseErr = true; },
-        link(l) { link = l; }, // Firestore 版: つながっているか（2026-10-29）
+        error() { sseErr = true; hmMock(false); },
+        link(l) { link = l; hmDo((H) => H.link(!(l && l.up === false))); }, // Firestore 版: つながっているか（2026-10-29）。テレビの調子の「切れた回数・秒」もこれで
       });
     } catch (e) { console.error(e); }
   }
+  // テレビの調子: 模擬クラウドは見張り（SSE）のエラー・届いたで切れた／つながった。Firestore 版は上の link だけ（手元の写しでも state が届くので）
+  function hmMock(up) { if (!(C && C.backend === 'firestore')) hmDo((H) => H.link(up)); }
+  try { window.addEventListener('offline', () => hmDo((H) => H.link(false))); window.addEventListener('online', () => hmDo((H) => { if (!(C && C.backend === 'firestore')) H.link(true); })); } catch (e) { /* noop */ }
   // 通信の印: 15 秒以上なにも届かない、または接続が切れている
   // 2026-10-19: 段階的に。切れてすぐ〜15 秒は右下の小さな「通信中…」、15 秒以上なにも届かなければ上に大きな帯（#v2down）
   /* 2026-10-29 電波の悪い店（オーナー「電波が悪くても行けるようにしといて」）: お客さんに怖い表示を見せない。
@@ -484,6 +491,19 @@
     raceView.offscreen = performance.now() - offSince > 600;
   }
   setInterval(() => { try { decide(); tickLabels(); liteOffscreen(); } catch (e) { console.error(e); } }, 250);
+  /* テレビの調子（2026-10-29）: 映像のなめらかさ。
+     - 1 秒ごと: 3D が動いている間（画面に出ていて、0.5 秒以内に描いた）のコマの数（js/race3d.js の perf.frames を読むだけ）
+     - 0.1 秒以上かかった重い処理（ブラウザの longtask の知らせ。毎コマの仕事なし）を、3D が動いている間だけ数える
+     - レースの間だけ（ゲートインから勝ち馬のアップまで）: 毎コマ、3D が描いた時刻（lastDrawAt）の差を 1 つ足すだけ（下の raceMeter）。2D の映像はコマの間 */
+  const animOn = () => !!(raceView && raceView.perf && is3D() && document.visibilityState === 'visible' && !raceView.offscreen && performance.now() - (raceView.lastDrawAt || 0) < 500);
+  if (HM) {
+    setInterval(() => hmDo((H) => H.fpsTick(raceView.perf ? raceView.perf.frames : 0, animOn())), 1000);
+    try { if (typeof PerformanceObserver !== 'undefined' && (PerformanceObserver.supportedEntryTypes || []).indexOf('longtask') >= 0) new PerformanceObserver((l) => hmDo((H) => { if (!animOn()) return; l.getEntries().forEach((e) => { if (e.duration >= 100) H.longFrame(); }); })).observe({ entryTypes: ['longtask'] }); } catch (e) { /* 無い端末は数えない */ }
+    HM.extra = () => { let q = ''; try { q = localStorage.getItem('casa.derby.q') || ''; } catch (e) { /* noop */ } const p = window.__derbyPair; return { ver: UPD.pageV || '', q, r: p && p.decider ? (p.role === 'backup' ? 'b' : 'p') : '' }; };
+  }
+  let raceStop = null; // レースの間の見張り（DerbyTvHealth.meter。tools/smooth-bench.html と同じもの）
+  function raceMeterStart(id) { if (!HM || raceStop) return; hmDo(() => { raceStop = DerbyTvHealth.meter(HM, id, is3D() ? () => raceView.lastDrawAt : null); }); }
+  function raceMeterEnd() { const s = raceStop; raceStop = null; if (s) hmDo(() => s()); }
 
   // ---------- 投票（openAt 〜 closeAt） ----------
   function showOpen(R) {
@@ -716,6 +736,7 @@
       if (gate && now() < R.runAt - 500) {
         await until(() => now() >= Math.max(R.closeAt, showFrom) - 50);
         if (now() < R.runAt - 500) {
+          raceMeterStart(id); // テレビの調子: ゲートインから数える
           await raceView.gateIn({ onEvent: () => {}, clock: () => (now() - gateStart) / 1000 });
         }
       } else { await until(() => now() >= R.runAt - 1200); raceView.gateShot = true; } // ゲートインなし: 発走の直前まで今の絵のまま → 枠の中
@@ -740,6 +761,7 @@
       const late = (now() - R.runAt) / 1000;
       if (late < 1.5) Sfx.play('gate');
       raceView.gateShot = false;
+      raceMeterStart(id); // テレビの調子: ゲートインを見せなかった店は走り出しから（数えている途中なら何もしない）
       if (window.Commentary && late < 20) Commentary.begin(raceView, R, { tansho: res.finalOdds }); // 実況（途中から見始めたときは 20 秒まで）
       let hoof = 0, saidGoal = false, uiAt = -1; const liteUi = !!(window.R3D && R3D.xlite);
       const rsec = sceneSec('replay');
@@ -766,6 +788,7 @@
           }
         },
       });
+      raceMeterEnd(); // テレビの調子: ゴール・勝ち馬のアップまで
       await until(() => now() >= revealMs() - 900); // 勝ち馬のアップを切った店など: 発表まで今の絵のまま
       bcPhase('done');
       if (out && out.order && out.order[0] !== res.winner) console.warn('casa DERBY v2: 映像の 1 着がサーバーと違う', out.order[0], res.winner);
@@ -775,6 +798,7 @@
       await showBoard(R, out && out.finish ? out.finish : run.finishTimes);
       finishRace(R);
     } catch (e) { console.error(e); TV.done[id] = true; TV.playing = null; }
+    finally { raceMeterEnd(); } // 途中で結果へ・失敗したとき（30 コマ未満は残さない）
   }
   function finishRace(R) {
     TV.done[R.id] = true; TV.playing = null; TV.armed = false;
@@ -1197,7 +1221,8 @@
   window.DERBY = {
     get pair() { return window.__derbyPair; }, // 進行役のテレビ（2026-10-19）
     v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV,
-    upd: UPD, updCheck: (force) => autoUpdate(force), updSafe, // 自動アップデート（tests/v2-tv-update.test.js）
+    upd: UPD, updCheck: (force) => autoUpdate(force), updSafe,
+    health: HM, // テレビの調子（2026-10-29。tests/v2-tvhealth.test.js・tools/smooth-bench.js） // 自動アップデート（tests/v2-tv-update.test.js）
     get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now, hhmm, canVote, nextInfo, renderToday, // hhmm・canVote: 25 時表記と投票できる店（2026-10-26。tests/v4-tv.plan.js）。renderToday: 本日のレースの帯（2026-10-27）
     get cues() { return TV.cues || null; }, cueOverride: CUE_Q, // 確定演出: いま映像に渡しているもの（tests/v2-tv.plan.js）と ?cues= の上書き
     // 結果画面の 5 分の流れの確認用: resultAt(秒) で「結果画面が出てから 秒」の場面にする（表示の時計だけ進める。閉じる時刻は本物のまま）。resultAt(null) で戻す
