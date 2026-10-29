@@ -96,6 +96,7 @@
           ct: str(cn && cn.effectiveType, 8, /^[a-z0-9-]*$/), dl: num1(cn && cn.downlink, 0, 10000), rtt: int(cn && cn.rtt, 0, 60000),
           fps: num1(sec > 0 ? fr / sec : 0, 0, 240), as: int(sec, 0, 3600), j: int(S.j.filter((x) => x >= lo).length, 0, 10000),
           rs: S.races.map((r) => Object.assign({}, r)),
+          m: modelCode(), // 機種の記号（2026-10-29 オーナー「Fire stick の機種が古いとかわかる？」。UA の AFT…。無ければ ''）
         };
       },
     };
@@ -126,8 +127,13 @@
   const H_KEYS = ['v', 'up', 'ver', 'q', 'r', 'n', 'lat', 'lmax', 'f', 'off', 'offs', 'ct', 'dl', 'rtt', 'fps', 'as', 'j', 'rs'];
   const R_KEYS = ['id', 'at', 'd', 'fr', 'fps', 'md', 'p95', 'h1', 'h2', 'mx', 'off'];
   const isInt = (v, a, b) => Number.isInteger(v) && v >= a && v <= b, isNum = (v, a, b) => typeof v === 'number' && isFinite(v) && v >= a && v <= b;
+  /* 機種（2026-10-29）: Fire TV の UA にある記号（例 AFTMM）。h.m は無くてもよい（古い版のテレビ）。管理画面で機種名にする */
+  function modelCode() { try { const m = String((typeof navigator !== 'undefined' && navigator.userAgent) || '').match(/\b(AFT[A-Z0-9]{1,12})\b/); return m ? m[1] : ''; } catch (e) { return ''; } }
+  const MODELS = { AFTM: 'Fire TV Stick（第1世代・2014）', AFTT: 'Fire TV Stick（第2世代・2016）', AFTSSS: 'Fire TV Stick（第3世代・2020）', AFTSS: 'Fire TV Stick Lite（2020）', AFTMM: 'Fire TV Stick 4K（2018）', AFTKM: 'Fire TV Stick 4K（第2世代・2023）', AFTKA: 'Fire TV Stick 4K Max（2021）', AFTKRT: 'Fire TV Stick 4K Max（第2世代・2023）', AFTA: 'Fire TV Cube（第1世代・2018）', AFTR: 'Fire TV Cube（第2世代・2019）', AFTGAZL: 'Fire TV Cube（第3世代・2022）', AFTN: 'Fire TV（第3世代・2017）', AFTB: 'Fire TV（第1世代・2014）', AFTS: 'Fire TV（第2世代・2015）' };
+  const modelName = (c) => (c ? MODELS[c] || ('機種 ' + c) : '');
+  const MODEL_RE = /^[A-Za-z0-9_-]{0,16}$/;
   const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
-  const exact = (o, ks) => Object.keys(o).length === ks.length && ks.every((k) => k in o);
+  const exact = (o, ks) => { const n = Object.keys(o).length - ('m' in o && ks === H_KEYS ? 1 : 0); return n === ks.length && ks.every((k) => k in o); }; // h の m（機種）は無くてもよい
   function raceOk(x) {
     return isObj(x) && exact(x, R_KEYS) && typeof x.id === 'string' && RACE_ID_RE.test(x.id) && isInt(x.at, 0, 1e14) && isInt(x.d, 0, 600) && isInt(x.fr, 0, 100000) && isNum(x.fps, 0, 240)
       && isNum(x.md, 0, 10000) && isNum(x.p95, 0, 10000) && isInt(x.h1, 0, 10000) && isInt(x.h2, 0, 10000) && isInt(x.mx, 0, 600000) && isInt(x.off, 0, 3600);
@@ -136,7 +142,8 @@
     return isObj(h) && exact(h, H_KEYS) && h.v === 1 && isInt(h.up, 0, 1000000) && typeof h.ver === 'string' && /^[A-Za-z0-9._-]{0,16}$/.test(h.ver) && typeof h.q === 'string' && /^[a-z]{0,8}$/.test(h.q)
       && (h.r === '' || h.r === 'p' || h.r === 'b') && isInt(h.n, 0, 10000) && isInt(h.lat, 0, 60000) && isInt(h.lmax, 0, 60000) && isInt(h.f, 0, 10000) && isInt(h.off, 0, 1000) && isInt(h.offs, 0, 3600)
       && typeof h.ct === 'string' && /^[a-z0-9-]{0,8}$/.test(h.ct) && isNum(h.dl, 0, 10000) && isInt(h.rtt, 0, 60000) && isNum(h.fps, 0, 240) && isInt(h.as, 0, 3600) && isInt(h.j, 0, 10000)
-      && Array.isArray(h.rs) && h.rs.length <= MAX_RACES && h.rs.every(raceOk);
+      && Array.isArray(h.rs) && h.rs.length <= MAX_RACES && h.rs.every(raceOk)
+      && (!('m' in h) || (typeof h.m === 'string' && MODEL_RE.test(h.m)));
   }
   const clean = (h) => (valid(h) ? JSON.parse(JSON.stringify(h)) : null);
 
@@ -161,7 +168,7 @@
     const sc = rs.map(raceScore).filter((x) => x != null), avg = sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : null;
     const sec = (ms) => (ms >= 10000 ? Math.round(ms / 1000) : ms >= 1000 ? Math.round(ms / 100) / 10 : Math.round(ms / 10) / 100) + '秒'; // 1 秒より短いときは 0.05秒 まで
     const net = [h.n > 0 ? '遅れ ' + h.lat + 'ms' : '通信を測っていません', '切断 ' + (h.off || 0) + '回' + (h.offs > 0 ? '（' + h.offs + '秒）' : ''), h.f > 0 ? '失敗 ' + h.f + '回' : '', h.ct ? '回線 ' + h.ct : ''].filter(Boolean);
-    const vid = [h.as > 0 ? 'コマ ' + Math.round(h.fps) + '/秒' : '', h.ver ? '版 ' + h.ver : '', '画質 ' + qName(h.q), h.r === 'p' ? '進行役' : h.r === 'b' ? '予備' : '', '起動 ' + upTxt(h.up)].filter(Boolean);
+    const vid = [h.m ? modelName(h.m) : '', h.as > 0 ? 'コマ ' + Math.round(h.fps) + '/秒' : '', h.ver ? '版 ' + h.ver : '', '画質 ' + qName(h.q), h.r === 'p' ? '進行役' : h.r === 'b' ? '予備' : '', '起動 ' + upTxt(h.up)].filter(Boolean);
     return {
       has: true,
       sig: { score: ss, word: ss == null ? '測っていません' : signalWord(ss), lv: lvOf(ss, 50), cut: (h.off || 0) > 0 || (h.offs || 0) > 0 },
@@ -180,5 +187,5 @@
     return { sig: s, sigWord: signalWord(s), sigLv: lvOf(s, 50), smooth: r, smoothWord: smoothWord(r), smoothLv: lvOf(r, 55), cut };
   }
 
-  return { WIN, create, meter, frameStats, valid, clean, raceOk, signalScore, raceScore, signalWord, smoothWord, label, storeLine, H_KEYS, R_KEYS };
+  return { modelCode, modelName, MODELS, WIN, create, meter, frameStats, valid, clean, raceOk, signalScore, raceScore, signalWord, smoothWord, label, storeLine, H_KEYS, R_KEYS };
 });
