@@ -576,6 +576,18 @@ R3D.Venue = (function () {
   }
   /* ---------- 発走ゲートの金属: 頂点の tint（0..1）で金属らしさを変える（1 本の材質・1 回の描画のまま）。
      tint 1 ＝鉄骨（粗さ 0.38・金属 0.45）、0 ＝塗装・クッション（粗さ 0.62・金属 0） ---------- */
+  /* 軽い 3D その 2（2026-10-29。最もなめらか＝XMQ だけ）: 発走ゲートも軽い材質（Lambert）に。つや・金属の計算（いちばん重いシェーダ）をやめ、
+     鉄骨（tint 1）は金属の分だけ暗く（金属 0.45 ＝拡散の色 55%）＝明るさはだいたい同じ・光沢だけなくなる。塗装とクッション（tint 0）はそのまま */
+  function gateLam() {
+    const m = new T.MeshLambertMaterial({ vertexColors: true });
+    m.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tint;\nvarying float vGateM;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGateM = tint;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vGateM;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= 1.0 - 0.45 * vGateM;');
+    };
+    m.customProgramCacheKey = () => 'venueGateL';
+    return m;
+  }
   function gatePatch(m) {
     m.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tint;\nvarying float vGateM;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGateM = tint;');
@@ -637,7 +649,7 @@ R3D.Venue = (function () {
       rail: fadePatch(std({ vertexColors: true, roughness: 0.62 })),
       railIn: fadePatch(std({ vertexColors: true, roughness: 0.62 })),
       post: fadePatch(std({ vertexColors: true, roughness: 0.62 })),   // 頂点色＝根元を暗く（接地感）
-      gate: gatePatch(std0({ vertexColors: true, roughness: 0.38, metalness: 0.45 })),   // 発走ゲート: 頂点の tint＝金属らしさ（1 鉄骨・0 塗装やクッション）
+      gate: XMQ ? gateLam() : gatePatch(std0({ vertexColors: true, roughness: 0.38, metalness: 0.45 })),   // 最もなめらか: 軽い材質（下の gateLam）   // 発走ゲート: 頂点の tint＝金属らしさ（1 鉄骨・0 塗装やクッション）
       judge: fadePatch(lam({ vertexColors: true })),
       judgeGlass: fadePatch(std({ map: T_.glass, roughness: 0.18, metalness: 0.35, vertexColors: true })),
       conc: lam({ vertexColors: true }),
