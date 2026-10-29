@@ -1225,6 +1225,21 @@ R3D.HorseReal = (function () {
     c.fillStyle = g; c.fillRect(0, 0, S, S);
     const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; texCache.halo = t; return t;
   }
+  /* 軽い 3D その 2（最もなめらか）: 体の形と馬具・騎手の形を 1 つに（属性は同じ並び。体の uv は勝負服の絵の白い所 UV_WHITE に） */
+  function mergeBodyTack(bg, tg) {
+    const nb = bg.attributes.position.count, nt = tg.attributes.position.count, g = new THREE.BufferGeometry();
+    ['position', 'normal', 'uv', 'color', 'skinIndex', 'skinWeight'].forEach((nm) => {
+      const a = bg.attributes[nm], b = tg.attributes[nm], sz = b.itemSize, arr = new b.array.constructor((nb + nt) * sz);
+      if (nm === 'uv') { for (let i = 0; i < nb; i++) { arr[i * 2] = UV_WHITE[0]; arr[i * 2 + 1] = UV_WHITE[1]; } } else arr.set(a.array.subarray(0, nb * sz), 0);
+      arr.set(b.array.subarray(0, nt * sz), nb * sz);
+      g.setAttribute(nm, new THREE.BufferAttribute(arr, sz, b.normalized));
+    });
+    const ib = bg.index.array, it = tg.index.array, ix = new (nb + nt > 65535 ? Uint32Array : Uint16Array)(ib.length + it.length);
+    ix.set(ib, 0); for (let i = 0; i < it.length; i++) ix[ib.length + i] = it[i] + nb;
+    g.setIndex(new THREE.BufferAttribute(ix, 1));
+    g.boundingSphere = bg.boundingSphere.clone(); g.boundingBox = bg.boundingBox.clone();
+    return g;
+  }
   function create(h, opts) {
     opts = opts || {};
     const type = TYPES[h.type] ? h.type : 'senko', S = makeSpec('real'); // B 案: 脚質に関係なく全馬同じ体（type は呼び出し側の確認用にそのまま返す）
@@ -1253,10 +1268,24 @@ R3D.HorseReal = (function () {
     [bodyMesh, tMesh].forEach((m) => { m.castShadow = true; m.receiveShadow = true; });
     lineMesh.castShadow = false; lineMesh.receiveShadow = false; lineMesh.visible = quality === "high" && opts.outline === true;
     lineMesh.onBeforeRender = (renderer) => { renderer.getDrawingBufferSize(outlineU.olView.value); };
-    [bodyMesh, lineMesh, tMesh].forEach((m) => rig.add(m));
+    /* 軽い 3D その 2（2026-10-29 オーナー: 最もなめらかをもっと軽く。最もなめらかだけ）: 体と馬具・騎手を 1 つの形にまとめて 1 回で描く（1 頭 2 回 → 1 回。6 頭で 6 回へる）。
+       体の頂点は勝負服の絵の白い所（UV_WHITE。馬具の無地の所と同じ）を指す＝体の色は今までどおり頂点の色だけ（形の中で uv が変わらないので、縮めた絵の端の色も混ざらない）。
+       材質は勝負服の材質（tMat）をそのまま使う＝光の計算は同じ。元の 2 つ（bodyMesh・tMesh）は描かない。形を替える所（画質・騎手の乗り降り）は今までどおり元の 2 つに入れ、ここで写す（syncX） */
+    const xMesh = R3D.xmin && opts.merge !== false ? new THREE.SkinnedMesh(bodyMesh.geometry, tMat) : null, xGeo = {};
+    let xKey = '';
+    function syncX() {
+      if (!xMesh) return;
+      const bg = bodyMesh.geometry, tg = tMesh.geometry, k = bg.uuid + '|' + tg.uuid;
+      if (k !== xKey) { xKey = k; xMesh.geometry = xGeo[k] || (xGeo[k] = mergeBodyTack(bg, tg)); }
+      bodyMesh.visible = false; tMesh.visible = false;
+    }
+    if (xMesh) { bodyMesh.userData.noWarm = tMesh.userData.noWarm = true; } // 描かない 2 つ（と輪郭）はシェーダの下ごしらえもしない（js/race3d.js の warmPlan）
+    if (R3D.xmin) lineMesh.userData.noWarm = true;
+    if (xMesh) { xMesh.name = 'horseX'; xMesh.castShadow = xMesh.receiveShadow = true; syncX(); }
+    [bodyMesh, lineMesh, tMesh, xMesh].forEach((m) => { if (m) rig.add(m); });
     object3d.updateMatrixWorld(true);
     const skeleton = new THREE.Skeleton(bones);
-    [bodyMesh, lineMesh, tMesh].forEach((m) => m.bind(skeleton, m.matrixWorld));
+    [bodyMesh, lineMesh, tMesh, xMesh].forEach((m) => { if (m) m.bind(skeleton, m.matrixWorld); });
     const shadowBlob = opts.blob === false ? null : blob(S); if (shadowBlob) object3d.add(shadowBlob);
     // 足元の枠色の輪（object3d の子＝傾かない）
     const ring = opts.ring === false ? null : makeRing(S, h); if (ring) { object3d.add(ring); object3d.add(ring.userData.badges); } // 輪と馬番の札（札は輪の子にしない＝輪を縮めても札の形は変わらない）
@@ -1571,6 +1600,7 @@ R3D.HorseReal = (function () {
       object3d, no: h.no, type, src: h, coat, // src: 元の馬のデータ（出馬表と同じもの。確認用）
       update(dt, st) {
         st = st || {}; const rawDt = Math.max(0, dt || 0); dt = clamp(rawDt, 0, 0.1); t += dt;
+        if (xMesh) syncX(); // 最もなめらか: まとめた形を元の 2 つに合わせる（変わったときだけ作る）
         const gR = GAIT[st.gait] ? st.gait : 'gallop'; gaitReq = gR; REAR_AMP = st.rearAmp > 0 ? Math.min(0.85, st.rearAmp) : gR === 'rear' ? 0 : REAR_AMP;
         let v = st.speed !== undefined ? Math.max(0, st.speed) : DEF_SPEED[gR];
         // 実際に地面を進んだ速さ（統合側が毎コマ object3d.position を入れる）で脚を回す＝蹄が滑らない。
@@ -1710,10 +1740,11 @@ R3D.HorseReal = (function () {
         // 切り替えた形も数える（QA3: Fire TV の far・遠くの馬の形が捨てられずに増えていた）
         { const nk = bodyMesh.geometry.userData.cacheKey; if (nk !== geoKey && !disposed) { geoRef(nk, 1); geoRef(geoKey, -1); geoKey = nk; } }
         lineMesh.visible = quality === "high" && opts.outline === true;
+        syncX();
       },
       setOutline(on) { lineMesh.visible = !!on; },
       // 騎手を乗せる・降ろす（パドックでは降ろすなど）
-      setJockey(on) { on = !!on; if (on === jockeyOn) return; jockeyOn = on; tMesh.geometry = tackGeometry(S, quality, jockeyOn); },
+      setJockey(on) { on = !!on; if (on === jockeyOn) return; jockeyOn = on; tMesh.geometry = tackGeometry(S, quality, jockeyOn); syncX(); },
       get jockey() { return jockeyOn; },
       // 騎手の姿勢: 'celebrate'（勝ったときのガッツポーズ: 右手のムチを突き上げて拍に合わせて振り、胴を起こして揺れる。ずっと繰り返せる）| null（ふつう）。state.jockeyPose でも渡せる。切り替えは約 0.5 秒でなめらかに
       setJockeyPose(p) { jPose = p === 'celebrate' ? 'celebrate' : null; },
@@ -1735,7 +1766,7 @@ R3D.HorseReal = (function () {
       set onStep(fn) { onStep = typeof fn === "function" ? fn : null; }, get onStep() { return onStep; },
       set dustBoost(k) { dustK = Math.max(0.5, Math.min(2.5, +k || 1)); }, get dustBoost() { return dustK; },   // 土煙の強さ（1 = ふつう。統合側が直線の先頭 2 頭を 1.7 に）
       dispose() {
-        clothTex.dispose(); if (tMat.map && tMat.map !== clothTex) tMat.map.dispose(); tMat.dispose(); auraMat.dispose(); ghostMat.dispose(); skeleton.dispose(); if (glint) glint.mat.dispose();
+        clothTex.dispose(); if (tMat.map && tMat.map !== clothTex) tMat.map.dispose(); tMat.dispose(); for (const k in xGeo) xGeo[k].dispose(); auraMat.dispose(); ghostMat.dispose(); skeleton.dispose(); if (glint) glint.mat.dispose();
         if (glint && glint.rglow) glint.rglow.material.dispose();
         if (ring) { ring.userData.tex.dispose(); ring.userData.mat.dispose(); ring.userData.badges.userData.tex.dispose(); ring.userData.badges.userData.mats.forEach((m) => m.dispose()); }
         if (dustSys) { dustSys.free(dustSlot); dustSys = null; dustSlot = -1; }
