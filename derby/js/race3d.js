@@ -263,22 +263,27 @@ window.Race3D = (function () {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(idx, 1));
     return g;
   }
+  const HAND_MATS = {};
   function makeHandBatch(scene, handlers) {
     const G = HAND_GEO, T4 = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z), n = handlers.length;
     const torso = mergeGeo([{ g: G.body, m: T4(0, 1.2, 0), c: 0xf4f4f2 }, { g: G.head, m: T4(0, 1.74, 0), c: 0xe8c3a0 }, { g: G.cap, m: T4(0, 1.77, 0), c: 0x1d2a44 }, { g: G.brim, m: T4(0, 1.78, 0), c: 0x1d2a44 }]);
     const leg = mergeGeo([{ g: G.leg, m: new THREE.Matrix4(), c: 0x2b2d42 }, { g: G.shoe, m: T4(0, -0.74, 0), c: 0x222222 }]);
     const bibG = G.bib.clone(); bibG.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(0.2, 1.22, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2), new THREE.Vector3(1, 1, 1)));
-    const vc = stdM({ vertexColors: true, roughness: 0.75 });
+    // 軽い 3D その 2（最もなめらか）: 材質はレースごとに作り直さず使い回す（捨てるとシェーダも捨てられ、次のレースの準備で作り直して止まっていた）
+    const HM = XMIN ? (HAND_MATS.m || (HAND_MATS.m = { vc: stdM({ vertexColors: true, roughness: 0.75 }), arm: stdM({ color: 0xf4f4f2, roughness: 0.8 }), bib: stdM({ color: 0xffffff, roughness: 0.7 }) })) : null;
+    const vc = HM ? HM.vc : stdM({ vertexColors: true, roughness: 0.75 });
     const mk = (geo, mat, max) => { const m = new THREE.InstancedMesh(geo, mat, max); m.frustumCulled = false; m.count = 0; m.visible = false; m.name = 'handBatch'; scene.add(m); return m; };
-    const B = { torso: mk(torso, vc, n), leg: mk(leg, vc, n * 2), arm: mk(G.arm, stdM({ color: 0xf4f4f2, roughness: 0.8 }), n * 2), bib: mk(bibG, stdM({ color: 0xffffff, roughness: 0.7 }), n), rope: mk(ROPE_GEO, ROPE_MAT, n * 2), own: [torso, leg, bibG, vc] };
+    const B = { torso: mk(torso, vc, n), leg: mk(leg, vc, n * 2), arm: mk(G.arm, HM ? HM.arm : stdM({ color: 0xf4f4f2, roughness: 0.8 }), n * 2), bib: mk(bibG, HM ? HM.bib : stdM({ color: 0xffffff, roughness: 0.7 }), n), rope: mk(ROPE_GEO, ROPE_MAT, n * 2), own: HM ? [torso, leg, bibG] : [torso, leg, bibG, vc] };
     B.cols = handlers.map((hd) => new THREE.Color(hd.userData.color || '#ffffff'));
     for (let i = 0; i < n; i++) B.bib.setColorAt(i, B.cols[i]);
-    handlers.forEach((hd) => { hd.traverse((m) => { if (m.isMesh) m.visible = false; }); const r = hd.userData.rope; if (r) r.children.forEach((m) => { m.visible = false; }); });
-    B.dispose = () => { ['torso', 'leg', 'arm', 'bib', 'rope'].forEach((k) => scene.remove(B[k])); B.own.forEach((x) => x.dispose()); B.arm.material.dispose(); B.bib.material.dispose(); };
+    handlers.forEach((hd) => { hd.traverse((m) => { if (m.isMesh) { m.visible = false; m.userData.noWarm = true; } }); const r = hd.userData.rope; if (r) r.children.forEach((m) => { m.visible = false; m.userData.noWarm = true; }); }); // noWarm: 元の係員は描かない＝シェーダの下ごしらえもしない（warmPlan）
+    B.dispose = () => { ['torso', 'leg', 'arm', 'bib', 'rope'].forEach((k) => scene.remove(B[k])); B.own.forEach((x) => x.dispose()); if (!HM) { B.arm.material.dispose(); B.bib.material.dispose(); } };
     return B;
   }
-  function updateHandBatch(B, scene, handlers) {
-    scene.updateMatrixWorld();
+  function updateHandBatch(B, scene, handlers, only) {
+    // 軽い 3D その 2（最もなめらか）: 会場全体（600 個あまり）の行列を毎コマ 2 回計算し直さない。見えている係員と綱だけ（このあとの描画でもう一度全体を計算する）
+    if (only) handlers.forEach((hd) => { if (hd.visible) hd.updateMatrixWorld(); const r = hd.userData.rope; if (r && r.visible) r.updateMatrixWorld(); });
+    else scene.updateMatrixWorld();
     let nt = 0, nl = 0, na = 0, nr = 0;
     handlers.forEach((hd, i) => {
       if (hd.visible) {
@@ -294,6 +299,43 @@ window.Race3D = (function () {
   /* ===================================================================================
      土ぼこり（蹴り上げた芝・砂の粒。1 回の描画呼び出しで全部）
      =================================================================================== */
+/* 軽い 3D その 2（2026-10-29 オーナー: 最もなめらかをもっと軽く。最もなめらかだけ）: 足元の輪（1 頭 1 枚・絵も 1 頭ずつ）を全部の馬まとめて 1 回で描く（6 回 → 1 回）。
+     輪の絵は 1 枚の大きな絵（4×2 マス。1 マス 128 画素＝元の半分。映像の細かさ 0.4 では見分けがつかない）に写し、輪ごとにどのマスを使うかを渡す。位置・向き・大きさ（混んだときの縮み）・色（確定演出で光る）・見える見えないは毎コマ元の輪から写す。
+     元の輪は描かない（material.visible = false。輪の動き・縮み・描き直しは今までどおり元の輪に入る）。輪の絵が描き直されたら（賭けた馬・確定演出の金色）そのマスだけ写し直す */
+  const RB_COLS = 4, RB_ROWS = 2, RB_CELL = 128, _rbM = new THREE.Matrix4(), RB_SHARED = {};
+  function makeRingBatch(scene, horses) {
+    const list = [];
+    for (const hz of horses) { const o = hz && hz.object3d, r = o && o.getObjectByName && o.getObjectByName('ring'), ud = r && r.userData; if (!r) continue; if (!ud || !ud.cv || !ud.tex || !ud.mat || r.material !== ud.mat) return null; list.push({ o, r, ver: -1 }); }
+    if (!list.length || list.length > RB_COLS * RB_ROWS) return null;
+    const S = RB_SHARED.s || (RB_SHARED.s = (() => { // 大きな絵と材質はレースごとに作り直さない（シェーダを作り直さない）
+      const cv = document.createElement('canvas'); cv.width = RB_COLS * RB_CELL; cv.height = RB_ROWS * RB_CELL;
+      const tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+      mat.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 aCell;').replace('#include <uv_vertex>', '#include <uv_vertex>\nvUv = ( vUv + aCell ) * vec2( ' + (1 / RB_COLS).toFixed(4) + ', ' + (1 / RB_ROWS).toFixed(4) + ' );'); };
+      mat.customProgramCacheKey = () => 'ringBatch';
+      return { cv, tex, mat };
+    })()), cv = S.cv, tex = S.tex, mat = S.mat;
+    S.cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    const geo = list[0].r.geometry.clone(), cell = new Float32Array(list.length * 2);
+    list.forEach((e, i) => { e.cx = (i % RB_COLS) * RB_CELL; e.cy = Math.floor(i / RB_COLS) * RB_CELL; cell[i * 2] = i % RB_COLS; cell[i * 2 + 1] = RB_ROWS - 1 - Math.floor(i / RB_COLS); e.r.material.visible = false; }); // 絵は上下が逆さに貼られる（flipY）ので、上の段のマスが v の大きい側
+    geo.setAttribute('aCell', new THREE.InstancedBufferAttribute(cell, 2));
+    const mesh = new THREE.InstancedMesh(geo, mat, list.length); mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
+    mesh.name = 'ringBatch'; mesh.frustumCulled = false; mesh.renderOrder = 2; scene.add(mesh);
+    const B = { list, mesh, cv, ctx: cv.getContext('2d'), tex };
+    B.dispose = () => { scene.remove(mesh); geo.dispose(); list.forEach((e) => { e.r.material.visible = true; }); };
+    updateRingBatch(B); return B;
+  }
+  function updateRingBatch(B) {
+    const L = B.list;
+    for (let i = 0; i < L.length; i++) {
+      const e = L[i], r = e.r, o = e.o, ud = r.userData;
+      if (ud.tex.version !== e.ver) { e.ver = ud.tex.version; B.ctx.clearRect(e.cx, e.cy, RB_CELL, RB_CELL); B.ctx.drawImage(ud.cv, e.cx, e.cy, RB_CELL, RB_CELL); B.tex.needsUpdate = true; }
+      if (r.visible && o.visible && o.parent && r.parent === o) { o.updateMatrix(); r.updateMatrix(); _rbM.multiplyMatrices(o.parent.matrixWorld, o.matrix).multiply(r.matrix); } // 描く直前の位置（このあとの描画で計算するのと同じ）
+      else _rbM.makeScale(0, 0, 0);
+      B.mesh.setMatrixAt(i, _rbM); B.mesh.setColorAt(i, ud.mat.color);
+    }
+    B.mesh.instanceMatrix.needsUpdate = true; B.mesh.instanceColor.needsUpdate = true;
+  }
   function makeDust(scene, max) {
     const geo = new THREE.BufferGeometry(), pos = new Float32Array(max * 3), col = new Float32Array(max * 4), size = new Float32Array(max);
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 4)); geo.setAttribute('size', new THREE.BufferAttribute(size, 1));
@@ -372,7 +414,7 @@ window.Race3D = (function () {
     this.horses3d = []; this.handlers = [];
     this.dustFx = makeDust(this.scene, this.xlite ? 0 : this.tv ? 40 : low ? 70 : 160);
     if (this.tv) this.noShadows();
-    if (this.xlite) { this.dustFx.max = 0; this.trimVenue(); if (this.xmin) this.chunkVenue(); }
+    if (this.xlite) { this.dustFx.max = 0; this.trimVenue(); if (this.xmin) { this.chunkVenue(); this.freezeVenue(); } }
     if (this.xmin) { const sk = this.scene.getObjectByName('look-sky'); if (sk) sk.visible = false; } // 最もなめらか: 空の絵（雲・数字の雲）を描かない＝霧の色 1 色（look3d.js が天気ごとに setClearColor）
     // 残線（直線の残り 400・200・100m の白い線）
     this.remainMesh = {};
@@ -463,6 +505,12 @@ window.Race3D = (function () {
     });
   };
   // 区画へ元の部品の状態を写す（毎コマ。変わった所だけ）
+  /* 軽い 3D その 2（最もなめらか）: 会場の直下の部品（形。発走ゲートの組・観覧車・飛行船などの組は除く）は動かないので、毎コマの行列の作り直しをやめる（matrixAutoUpdate）。
+     区画の部品はもともと止めてある */
+  Race3D.prototype.freezeVenue = function () {
+    const g = this.venue && this.venue.group; if (!g || !g.children) return;
+    g.children.forEach((o) => { if (!o.isGroup && (o.isMesh || o.isPoints || o.isLine) && o.matrixAutoUpdate && o.name !== 'blimp' && o.name !== 'ferrisWheel') { o.updateMatrix(); o.matrixAutoUpdate = false; } });
+  };
   Race3D.prototype.syncChunk = function (e, force) {
     const src = e.src;
     for (const k of e.kids) {
@@ -483,6 +531,15 @@ window.Race3D = (function () {
       if (!e.src.parent) { e.kids.forEach((k) => { if (k.parent) k.parent.remove(k); try { k.geometry.dispose(); } catch (er) { } }); list.splice(i, 1); continue; }
       this.syncChunk(e, false);
     }
+  };
+  /* 軽い 3D その 2（2026-10-29。最もなめらかだけ）: ターフビジョンの文字（毎秒変わる。大きな絵を描き直して GPU へ送る）は、ターフビジョンが画面に入っているときだけ描き直す
+     （前のコマのカメラで調べる。入ったコマだけ 1 コマ前の文字のことがある）。建物を削って（b）ターフビジョンが無いときは描かない */
+  const _bsF = new THREE.Frustum(), _bsM = new THREE.Matrix4();
+  Race3D.prototype.boardSeen = function () {
+    if (this._tvV !== this.venue) { this._tvV = this.venue; this._tvM = this.scene.getObjectByName('turfVision') || null; }
+    const m = this._tvM; if (!m || !m.parent) return false;
+    const c = this.camera; _bsF.setFromProjectionMatrix(_bsM.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse));
+    return _bsF.intersectsObject(m);
   };
   // 部品を作る（無い・失敗したら代わりの部品）
   Race3D.prototype.part = function (name, make, stub) {
@@ -550,7 +607,7 @@ window.Race3D = (function () {
     this.makeDirector();
     this.cam.mode = ''; this.placeCamera(0, true); this.draw(0);
     this.prewarm();
-    if (this.oldHorses) { const o = this.oldHorses; this.oldHorses = null; o.forEach((hz) => { try { hz.dispose(); } catch (e) {} }); }
+    if (this.oldHorses && !this._warm) { const o = this.oldHorses; this.oldHorses = null; o.forEach((hz) => { try { hz.dispose(); } catch (e) {} }); }
     this.startIdle();
   };
   // 賭けている馬の足元の輪を明るく（game.js の DERBY.bets を読むだけ）
@@ -562,6 +619,7 @@ window.Race3D = (function () {
   };
   // シェーダを先に作っておく（レース中に初めて出る物でカクッと止まらないように。食べ物・パドックの人も含めて）
   Race3D.prototype.prewarm = function () {
+    if (this.xmin) { try { this.warmPlan(); } catch (e) { this._warm = null; warnOnce('prewarm', e); } return; } // 最もなめらか: パドックの間に少しずつ（warmStep）
     try {
       const tmp = [makeFood('carrot'), makeFood('corn')]; tmp.forEach((o) => { o.position.set(0, -50, 0); this.scene.add(o); });
       const hidden = []; this.scene.traverse((o) => { if (o.isObject3D && !o.visible) { hidden.push(o); o.visible = true; } });
@@ -576,6 +634,60 @@ window.Race3D = (function () {
       }
       hidden.forEach((o) => (o.visible = false)); tmp.forEach((o) => this.scene.remove(o));
     } catch (e) { warnOnce('prewarm', e); }
+  };
+  /* 軽い 3D その 2（2026-10-29 オーナー: 最もなめらかをもっと軽く。1 回目のレースのパドックの始まりで 1.5〜2.5 秒止まる）:
+     最もなめらかの下ごしらえ（シェーダを作る・絵と形を GPU へ送る・遠くの馬の粗い形を作る）を、パドックの 2D の札を描いている間に 1 コマ WARM_MS ずつ進める。
+     やり方は今までと同じ（光の数は変えずに、隠れている物も 1 つずつ画面の隅の 4×4 画素に描く）。描くのは WARM_LAYER の印を付けた 1 つだけ（ほかの物は描かない）。
+     パドックが終わる前に 3D を描くことになったら（途中から見始めたテレビなど）、残りをその場で全部やる＝今までと同じ。2 回目のレースからはシェーダが仕上がっているので数コマで終わる */
+  const WARM_MS = 10, WARM_LAYER = 30, WARMED = new WeakSet(); // WARMED: 下ごしらえで描いた材質（2 回目のレースからはまとめて描ける）
+  Race3D.prototype.warmPlan = function () {
+    if (this._warm) this.warmEnd(true); // 前の下ごしらえの途中（前の馬の片付けは新しい下ごしらえのあと）
+    const q = this._warm = { tasks: [], items: null, i: 0, food: [], lights: [], cam: null };
+    this.horses3d.forEach((hz, i) => q.tasks.push(() => { const L = this.lodQ || (this.lodQ = []); if (hz && hz.setQuality && L[i] !== 'xfar') { L[i] = 'xfar'; try { hz.setQuality('xfar'); } catch (e) { warnOnce('Horse.setQuality far', e); } } })); // 遠くの馬の粗い形（lodHorses と同じ）を 1 頭ずつ
+    q.tasks.push(() => {
+      const sky = this.scene.getObjectByName('look-sky'), skip = new Set(); if (sky) sky.traverse((o) => skip.add(o)); // 空の絵は最もなめらかでは描かない
+      q.food = [makeFood('carrot'), makeFood('corn')]; q.food.forEach((o) => { o.position.set(0, -50, 0); o.visible = false; this.scene.add(o); });
+      const items = [];
+      this.scene.traverse((o) => {
+        if (o.isLight) { if (o.visible) { o.layers.enable(WARM_LAYER); q.lights.push(o); } return; } // 光の数は今のまま（隠れている光は足さない）
+        if ((o.isMesh || o.isPoints || o.isLine || o.isSprite) && (o.layers.mask & 1) && !skip.has(o) && !o.userData.noWarm) items.push(o); // 区画分けの元の部品（layers 31）は描かない
+      });
+      q.items = items;
+    });
+  };
+  Race3D.prototype.warmStep = function (ms) {
+    const q = this._warm; if (!q) return true;
+    const t0 = performance.now(), R = this.renderer;
+    while (q.tasks.length) { q.tasks.shift()(); if (performance.now() - t0 > ms) return false; }
+    const cam = q.cam || (q.cam = new THREE.PerspectiveCamera()); cam.copy(this.camera); cam.layers.set(WARM_LAYER); cam.updateMatrixWorld();
+    const vp = R.getViewport(new THREE.Vector4());
+    try {
+      R.setViewport(0, 0, 4, 4);
+      while (q.i < q.items.length) {
+        // 1 回に描く組: 前に下ごしらえした材質の物はまとめて（軽い）、初めての材質（シェーダを作るかもしれない＝重い）は 1 組に 1 つだけ
+        const batch = []; let fresh = 0;
+        while (q.i < q.items.length && batch.length < 48) {
+          const o = q.items[q.i]; if (!o.parent) { q.i++; continue; } // もう片付けられた物
+          const nw = [].concat(o.material || []).some((m) => !WARMED.has(m)); if (nw && fresh) break; if (nw) fresh++;
+          batch.push(o); q.i++;
+        }
+        if (!batch.length) continue;
+        const hid = [], keep = [];
+        batch.forEach((o) => {
+          for (let p = o; p; p = p.parent) if (!p.visible) { hid.push(p); p.visible = true; }
+          keep.push([o, o.frustumCulled, o.isInstancedMesh && o.count === 0]); o.frustumCulled = false; if (o.isInstancedMesh && o.count === 0) o.count = 1; o.layers.enable(WARM_LAYER); // 係員のまとめ（InstancedMesh）は出番まで 0 人なので 1 人に
+        });
+        try { R.render(this.scene, cam); } finally { keep.forEach(([o, fc, zc]) => { o.layers.disable(WARM_LAYER); o.frustumCulled = fc; if (zc) o.count = 0; [].concat(o.material || []).forEach((m) => WARMED.add(m)); }); hid.forEach((p) => { p.visible = false; }); }
+        if (performance.now() - t0 > ms) break;
+      }
+    } finally { R.setViewport(vp); }
+    if (q.i < q.items.length) return false;
+    this.warmEnd(); return true;
+  };
+  Race3D.prototype.warmEnd = function (keepOld) {
+    const q = this._warm; if (!q) return; this._warm = null;
+    q.lights.forEach((o) => o.layers.disable(WARM_LAYER)); q.food.forEach((o) => this.scene.remove(o));
+    if (this.oldHorses && !keepOld) { const o = this.oldHorses; this.oldHorses = null; o.forEach((hz) => { try { hz.dispose(); } catch (e) {} }); } // 前の馬の片付けはシェーダを作り終えてから（同じシェーダを作り直さない）
   };
   /* 出馬表・展開予想・表彰台の馬の絵: レースで走る 3D の馬そのもの（毛色・体型・勝負服・帽子・ゼッケン・白斑）を
      少し斜め前から小さな画像に撮る。kind: 'face'＝上半身（出馬表）、'full'＝全身（表彰台・展開予想）。
@@ -693,6 +805,7 @@ window.Race3D = (function () {
     const oldH = this.horses3d; oldH.forEach((hz) => { this.scene.remove(hz.object3d); }); if (this.xlite) this.oldHorses = (this.oldHorses || []).concat(oldH); else oldH.forEach((hz) => { try { hz.dispose(); } catch (e) {} });
     this.handlers.forEach((o) => { this.scene.remove(o); if (o.userData.rope) this.scene.remove(o.userData.rope); if (o.userData.dispose) o.userData.dispose(); });
     if (this.handBatch) { this.handBatch.dispose(); this.handBatch = null; }
+    if (this.ringBatch) { this.ringBatch.dispose(); this.ringBatch = null; }
     this.horses3d = []; this.handlers = []; this.handler2 = null; this.lodQ = []; this.betKey = null; this.portraits = {}; // 出馬表などの馬の絵もレースごとに撮り直す
     const q = this.lite ? 'low' : this.quality, HM = this.horseModule(), M = HM.M;
     // 見た目を変えたら、前の部品の共有の形・材質を捨てる（両方を持ったままにしない。Fire TV のメモリ）
@@ -711,6 +824,7 @@ window.Race3D = (function () {
     // 確定演出 gateLate の 2 人目の係員（枠の中で待っていて、遅れる馬へ走って行き外側から引く）。handlers の最後（馬の数の次）に置く＝まとめ描き（handBatch）と崩れのチェックに入る
     { const hd = makeHandler({ color: '#ffffff' }); hd.visible = false; hd.userData.extra = true; this.scene.add(hd); this.handlers.push(hd); const rope = makeRope(); this.scene.add(rope); hd.userData.rope = rope; this.handler2 = hd; }
     if (this.tv) this.handBatch = makeHandBatch(this.scene, this.handlers); // Fire TV: 係員と綱をまとめて描く
+    if (this.xmin) { try { this.ringBatch = makeRingBatch(this.scene, this.horses3d); } catch (e) { this.ringBatch = null; warnOnce('足元の輪のまとめ', e); } } // 最もなめらか: 足元の輪をまとめて描く
     this.horseDust = this.horses3d.some((hz) => hz.dust === true || 'onStep' in hz); // 馬の部品が自分で土煙を出すなら統合側の粒は止める
     this.hdim = this.horses3d.map(bodyDims); // 上から見た馬の大きさ（進路取りで重ならないように）
   };
@@ -1625,7 +1739,7 @@ window.Race3D = (function () {
     let txt;
     if (!run) txt = 'まもなく発走';
     else { const order = race.horses.map((_, i) => i).sort((a, b) => run.pos[b] - run.pos[a]), tt = Math.min(run.t, 599); txt = order.map((i) => i + 1).join(' ') + '  ' + Math.floor(tt / 60) + ':' + ('0' + Math.floor(tt % 60)).slice(-2); }
-    if (txt !== this.boardText) { this.boardText = txt; try { this.venue.setBoard(txt); } catch (e) { warnOnce('venue.setBoard', e); } }
+    if (txt !== this.boardText && (!this.xmin || this.boardSeen())) { this.boardText = txt; try { this.venue.setBoard(txt); } catch (e) { warnOnce('venue.setBoard', e); } }
     try { this.venue.update(dt, this.t); } catch (e) { warnOnce('venue.update', e); }
   };
   /* 足元の輪（馬の部品の object3d の子 'ring'）が隣の馬の輪と大きく重ならないように、混んでいるときだけ縮める。
@@ -1725,19 +1839,25 @@ window.Race3D = (function () {
     const dt = adt || 0, t0 = performance.now();
     this.fitRes();
     if (this.xmin && this.inPaddock() && !this.gi) { // 最もなめらか: パドックは 3D を描かない（2D の札だけ）
-      if (!this.minPadWarm) { this.minPadWarm = true; try { this.updateWorld(dt); this.applyCamera(); this.lodHorses(); this.renderer.render(this.scene, this.camera); } catch (e) { warnOnce('パドックの下ごしらえ', e); } } // 最初の 1 コマだけ 3D を描いておく（馬の粗い形・シェーダを先に作る＝パドックのあとのゲートイン・発走で止まらない）
+      this.minPadWarm = true;
       try { this.drawMinPaddock(this.ctx); } catch (e) { warnOnce('パドックの札', e); }
+      if (this._warm) { // 軽い 3D その 2: 下ごしらえを 1 コマ WARM_MS ずつ（札を描いたあと。以前は最初の 1 コマで全部＝1 回目のレースで 1.5〜2.5 秒止まっていた）
+        if (PACE) pacer.grace = performance.now() + 3000; // 下ごしらえの重いコマで 20 コマ/秒に落ちない
+        try { this.warmStep(WARM_MS); } catch (e) { this._warm = null; warnOnce('パドックの下ごしらえ', e); }
+      }
       return;
     }
+    if (this._warm) { try { this.warmStep(1e9); } catch (e) { this._warm = null; warnOnce('下ごしらえ', e); } } // パドックの前に 3D を描くことになった: 残りをその場で全部
     if (this.minPadWarm) { this.minPadWarm = false; this.minPadKey = ''; if (PACE) { pacer.bad = 0; pacer.ema = pacer.iv; pacer.lastAt = 0; pacer.grace = performance.now() + 3000; } } // パドックの札から 3D に戻った最初のコマ: コマの間隔の見張りをやり直す（札の間の測り方を持ち越さない）
     try { this.updateWorld(dt); } catch (e) { warnOnce('updateWorld', e); }
     this.applyCamera();
     if (this.tv) this.lodHorses();
-    if (this.handBatch) { try { updateHandBatch(this.handBatch, this.scene, this.handlers); } catch (e) { warnOnce('係員のまとめ', e); } }
+    if (this.handBatch) { try { updateHandBatch(this.handBatch, this.scene, this.handlers, !!this.xmin); } catch (e) { warnOnce('係員のまとめ', e); } }
     try { this.look.update(dt, this.camera, { slow: this.slow, remain: this.run && this.phase === 'run' ? this.remainNow : null }); } catch (e) { warnOnce('look.update', e); } /* 3 つ目: ゴール前に雨を薄くする目安（スローの倍率・先頭の残り m） */
     this.inset = null; if (!(this.photoHold > 0)) this.insetKeep = null;
     if (this.xlite && this.phase === 'replay' && this.photoHold > 0 && this.insetKeep) this.inset = this.insetKeep; // lite2: 止めている間の写真判定の小窓は最初の 1 回だけ撮る（毎コマ 2 回描かない）
     else if (this.phase === 'replay' && this.photoHold > 0 && this.run) { try { this.renderInset(); this.insetKeep = this.xlite ? this.inset : null; } catch (e) { this.inset = null; warnOnce('写真判定の小窓', e); } }
+    if (this.ringBatch) { try { updateRingBatch(this.ringBatch); } catch (e) { warnOnce('足元の輪のまとめ', e); } }
     this.renderer.info.reset();
     try { this.look.render(this.renderer, this.scene, this.camera); }
     catch (e) { warnOnce('look.render', e); try { this.renderer.render(this.scene, this.camera); } catch (e2) { warnOnce('renderer.render', e2); } }
@@ -1772,10 +1892,10 @@ window.Race3D = (function () {
   /* Fire TV 向け: 画面で小さく映る馬（体高が画面の高さの約 13% より小さい）は粗い形（'far'）にする。行ったり来たりしないよう 11%〜15% の幅を持たせる。
      形は最初に作ると使い回し（setQuality の中でキャッシュ）。アップ（パドック・勝ち馬・ゲートの近く）はいつもの軽い形 */
   Race3D.prototype.lodHorses = function () {
-    let pc = this._padCrowd; if (!pc || !pc.parent) pc = this._padCrowd = this.scene.getObjectByName('crowdPaddock');
+    let pc = this._padCrowd; if (this._padCrowdV !== this.venue || (pc && !pc.parent)) { this._padCrowdV = this.venue; pc = this._padCrowd = this.scene.getObjectByName('crowdPaddock') || null; } // 軽い 3D その 2: 無い（観客を削った）ときも覚えておく＝毎コマ会場じゅうを探さない
     if (pc) pc.visible = this.phase === 'idle' && !this.gateShot;
     if (this._chunks) this.syncChunks(); // 軽い 3D: 会場の区画へ元の部品の状態を写す
-    if (this.xlite) { let hd = this._hDust; if (!hd || !hd.parent) hd = this._hDust = this.scene.getObjectByName('horseDust'); if (hd) hd.visible = false; } // lite2: 土煙の粒なし // パドックの観客はパドックの場面だけ（レース中は映らない）
+    if (this.xlite) { let hd = this._hDust; if (this._hDustH !== this.horses3d || (hd && !hd.parent)) { this._hDustH = this.horses3d; hd = this._hDust = this.scene.getObjectByName('horseDust') || null; } if (hd) hd.visible = false; } // lite2: 土煙の粒なし // パドックの観客はパドックの場面だけ（レース中は映らない）
     const cam = this.camera, th = Math.tan(cam.fov * Math.PI / 360), L = this.lodQ || (this.lodQ = []);
     for (let i = 0; i < this.horses3d.length; i++) {
       const hz = this.horses3d[i], o = hz && hz.object3d; if (!o || !hz.setQuality) continue;
@@ -1829,14 +1949,29 @@ window.Race3D = (function () {
       this.venue = R3D.Venue.build(this.scene, { quality: q });
       const race = this.race; if (race) this.venue.setRace({ dist: race.dist, surface: race.surface, weather: race.weather });
       if (THEME && this.venue.setTheme) this.venue.setTheme(THEME);
-      if (this.xlite) { this.trimVenue(); if (this.xmin) this.chunkVenue(); }
+      if (this.xlite) { this.trimVenue(); if (this.xmin) { this.chunkVenue(); this.freezeVenue(); } }
       const g = this.gateState; this.gateState = ''; this.setGate(g || 'closed'); this.boardText = null; this.rearKey = null;
       this.forwardCues();
       const d = this.director; this.makeDirectorOcc(d);
     } catch (e) { warnOnce('会場の作り直し', e); }
   };
   /* ---------- テロップと画面の仕上げ（2D 版の drawHud / drawPost をそのまま。背景は透明） ---------- */
-  const badge = Race2D.badge, roundRect = Race2D.roundRect;
+  const roundRect = Race2D.roundRect;
+  /* 軽い 3D その 2（2026-10-29。最もなめらかだけ）: ゼッケンの丸（枠の色の丸・黒い縁・馬番）は一度絵にして使い回す（毎コマ 10 個あまりの丸と文字を描き直さない＝テロップの 2D の仕事を軽く）。
+     大きさは 0.25px 刻み・テロップの細かさ（badgeK）ごと。文字が読めた後は描き直す。ほかの画質は今までどおり毎コマ描く */
+  const badgeCache = new Map(); let badgeK = 1;
+  function badge(c, x, y, r, h) {
+    if (!XMIN) return Race2D.badge(c, x, y, r, h);
+    const rq = Math.round(r * 4) / 4, k = badgeK, key = h.no + '|' + h.color + '|' + h.ink + '|' + rq + '|' + k + '|' + (fontsOk ? 1 : 0);
+    let e = badgeCache.get(key);
+    if (!e) {
+      if (badgeCache.size > 400) badgeCache.clear();
+      const R = Math.ceil((rq + 1.5) * k), cv = document.createElement('canvas'); cv.width = cv.height = R * 2;
+      const g = cv.getContext('2d'); g.setTransform(k, 0, 0, k, R, R); Race2D.badge(g, 0, 0, rq, h);
+      e = { cv, R: R / k }; badgeCache.set(key, e);
+    }
+    c.drawImage(e.cv, x - e.R, y - e.R, e.R * 2, e.R * 2);
+  }
   // テロップの文字: みんなでダービー風に、丸くて太いゴシック＋黒い太い縁取り
   /* 文字（2026-10-21 オーナー: ゲーム全体を Noto Sans JP に統一。見出し・数字は 900、ふつうの文は 500〜700）。予備は端末のヒラギノ。
      画面（index.html・tools/lab-v4race.html）が Google Fonts の Noto Sans JP を読み込む。キャンバスは読み込まれる前に描くと別の文字になるので、
@@ -1869,6 +2004,7 @@ window.Race3D = (function () {
   };
   Race3D.prototype.drawOverlay = function (c) {
     c.clearRect(0, 0, W, H);
+    badgeK = this.k || 1;
     const race = this.race, pad = this.inPaddock();
     // ゼッケンの丸（パドックは大きく映ったとき、レース中は 1m が 9px より大きいとき）
     if (!this.gateShot) {
@@ -2076,8 +2212,11 @@ window.Race3D = (function () {
     c.globalAlpha = fa;
     const mx = W - 92, my = H - 40, sx = 0.17;
     c.lineCap = 'round'; c.lineJoin = 'round';
-    c.beginPath(); for (let k = 0; k <= 60; k++) { const p = pointAt(k * L / 60, RC); k ? c.lineTo(mx + p.x * sx, my + p.z * sx) : c.moveTo(mx + p.x * sx, my + p.z * sx); } c.closePath();
-    c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 7; c.stroke(); c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 3.5; c.stroke();
+    if (this.xmin) this.drawMapCached(c, mx, my, sx); // 最もなめらか: コース図の線は絵にして使い回す（下と同じ線）
+    else {
+      c.beginPath(); for (let k = 0; k <= 60; k++) { const p = pointAt(k * L / 60, RC); k ? c.lineTo(mx + p.x * sx, my + p.z * sx) : c.moveTo(mx + p.x * sx, my + p.z * sx); } c.closePath();
+      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 7; c.stroke(); c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 3.5; c.stroke();
+    }
     const gpt = pointAt(FINISH_S, RC); c.fillStyle = '#ff5252'; c.fillRect(mx + gpt.x * sx - 1.5, my + gpt.z * sx - 7, 3, 14);
     const lp = this.horsePos(L_); c.fillStyle = '#ffd54f'; c.strokeStyle = '#000'; c.lineWidth = 1; c.beginPath(); c.arc(mx + lp.x * sx, my + lp.z * sx, 4.5, 0, 6.28); c.fill(); c.stroke();
     const spd = run.speed && run.speed[L_] ? (run.speed[L_] * race.dist / run.length * 3.6) : 0;
@@ -2087,6 +2226,20 @@ window.Race3D = (function () {
     }
     if (!dom && remain <= 400 && remain > 0) tvText(c, '残り ' + remain + 'm', W / 2, 30, 24, '#fff', 'center');
     c.globalAlpha = 1;
+  };
+  /* 軽い 3D その 2（最もなめらか）: 右下のコース図の線（黒い太線＋白い線）を、テロップの画素にそろえた小さな絵に 1 回だけ描いて毎コマ貼る（線の形・太さ・色は drawHud と同じ） */
+  Race3D.prototype.drawMapCached = function (c, mx, my, sx) {
+    const k = this.k || 1, key = mx + '|' + my + '|' + sx + '|' + k; let e = this._mapCv;
+    if (!e || e.key !== key) {
+      const pts = []; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (let q = 0; q <= 60; q++) { const p = pointAt(q * L / 60, RC), x = mx + p.x * sx, y = my + p.z * sx; pts.push([x, y]); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      const ox = Math.floor((x0 - 5) * k) / k, oy = Math.floor((y0 - 5) * k) / k, cv = document.createElement('canvas'); cv.width = Math.ceil((x1 + 5 - ox) * k); cv.height = Math.ceil((y1 + 5 - oy) * k);
+      const g = cv.getContext('2d'); g.setTransform(k, 0, 0, k, -ox * k, -oy * k); g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath(); pts.forEach((p, q) => (q ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); g.closePath();
+      g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 7; g.stroke(); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3.5; g.stroke();
+      e = this._mapCv = { key, cv, ox, oy, w: cv.width / k, h: cv.height / k };
+    }
+    c.drawImage(e.cv, e.ox, e.oy, e.w, e.h);
   };
   // 写真判定の再生で止めている間: 1 着の進路のゴールの位置に縦の線、その横に着差
   /* 写真判定の再生で止めている間（講評 r3 の 2）: ゴールの位置に赤い縦線（画面で約 3px）、上位 2 頭の鼻先のまわりを 2 倍に拡大した小窓（右上の時計の下）、
@@ -2120,6 +2273,7 @@ window.Race3D = (function () {
     const hide = [], off = (o) => { if (o && o.visible) { o.visible = false; hide.push(o); } };
     this.horses3d.forEach((hz) => { const o = hz && hz.object3d; if (!o) return; off(o.getObjectByName('ring')); off(o.getObjectByName('ringBadges')); });
     off(this.scene.getObjectByName('horseDust'));
+    if (this.ringBatch) updateRingBatch(this.ringBatch); // まとめた輪にも「隠す」を写す
     try {
       try { this.look.render(this.renderer, this.scene, this.camera); } catch (e) { this.renderer.render(this.scene, this.camera); }
       const k = this.k || 1, cw = Math.max(1, Math.round(PH_SW * k)), ch = Math.max(1, Math.round(PH_SH * k)), rows = Math.max(2, pc.items.length);
