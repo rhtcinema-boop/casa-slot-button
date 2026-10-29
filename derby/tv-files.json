@@ -189,7 +189,7 @@
   {
    "path": "index.html",
    "size": 23743,
-   "sha256": "d22aa012977a1ff50815d8c8bdba0d57f7e29e4bf69a0dc9d81deb1809cf01b9"
+   "sha256": "7a63ee1f2f5b70811c75bf605e887997fbce07869bb6e44a74be752264f67c19"
   },
   {
    "path": "js/audio.js",
@@ -343,8 +343,8 @@
   },
   {
    "path": "v2/tvhealth.js",
-   "size": 16124,
-   "sha256": "bc36cdb34a92e77a17d2e8ccf8eb2c0d45991d719e2973e83f4194f836ca9888"
+   "size": 17643,
+   "sha256": "14f872660aab772cd48d1a01a8440af31e7b475b4788b11483819991584b5cea"
   },
   {
    "path": "v2/tvswitch.js",
