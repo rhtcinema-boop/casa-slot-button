@@ -46,9 +46,11 @@
   const rawOf = (r) => (r && r._derbyRaw) || r;
   function wrapDocSnap(sn) {
     if (!sn) return sn;
-    return { id: sn.id, exists: sn.exists, get ref() { return wrapRef(sn.ref); }, data: () => decodeFS(sn.data()), get: (f) => decodeFS(sn.get(f)), _derbyRaw: sn };
+    return { id: sn.id, exists: sn.exists, metadata: sn.metadata || null, get ref() { return wrapRef(sn.ref); }, data: () => decodeFS(sn.data()), get: (f) => decodeFS(sn.get(f)), _derbyRaw: sn }; // metadata: 手元の写しか（fromCache。2026-10-29 電波の悪い店）
   }
-  function wrapQuerySnap(q) { const docs = q.docs.map(wrapDocSnap); return { docs, size: q.size, empty: q.empty, forEach: (fn) => docs.forEach(fn), _derbyRaw: q }; }
+  function wrapQuerySnap(q) { const docs = q.docs.map(wrapDocSnap); return { docs, size: q.size, empty: q.empty, metadata: q.metadata || null, forEach: (fn) => docs.forEach(fn), _derbyRaw: q }; }
+  /* onSnapshot(cb, ecb) と onSnapshot({ includeMetadataChanges: true }, cb, ecb) の両方（2026-10-29: つながっているかの見張りに使う） */
+  const snapArgs = (a, b, c, wrap) => (a && typeof a === 'object' && typeof a !== 'function' ? [a, (x) => b(wrap(x)), c] : [(x) => a(wrap(x)), b]);
   function wrapRef(r) {
     if (!r || r._derbyRaw) return r;
     return {
@@ -58,7 +60,7 @@
       set: (d, o) => (o === undefined ? r.set(encodeFS(d, false)) : r.set(encodeFS(d, false), o)),
       update: (p) => r.update(encodePatch(p)),
       delete: () => r.delete(),
-      onSnapshot: (cb, ecb) => r.onSnapshot((sn) => cb(wrapDocSnap(sn)), ecb),
+      onSnapshot: (a, b, c) => r.onSnapshot(...snapArgs(a, b, c, wrapDocSnap)),
     };
   }
   function wrapQuery(q) {
@@ -68,7 +70,7 @@
       orderBy: (a, b) => wrapQuery(b === undefined ? q.orderBy(a) : q.orderBy(a, b)),
       limit: (n) => wrapQuery(q.limit(n)),
       get: (o) => q.get(o).then(wrapQuerySnap),
-      onSnapshot: (cb, ecb) => q.onSnapshot((s) => cb(wrapQuerySnap(s)), ecb),
+      onSnapshot: (a, b, c) => q.onSnapshot(...snapArgs(a, b, c, wrapQuerySnap)),
     };
   }
   function wrapColl(c) {
@@ -189,8 +191,18 @@
     /* まとめた書き込みの大きさ（2026-10-19）: 進行役のテレビ（匿名ログイン＋derbyDeciders）は、ルールが 1 件ごとに derbyDeciders を 1 回読むので、
        1 回のまとめた書き込み（20 件まで読める）を 15 件以下に分ける。マスター・テレビ用アカウントはメールで決まる（読まない）ので今までどおり大きく */
     const cap = (big, small) => (mode === 'tv' || mode === 'master' ? big : small);
+    /* 電波の悪い店のテレビ（2026-10-29 渋谷）: 起動・読み込み直しで画面を止めない。
+       - 前のログイン（端末に保存）が戻るのを待ってから決める（最大 8 秒）。以前は戻る前に currentUser を見て、テレビ用アカウントは毎回ログインし直していた（通信が要る＝圏外だと起動できない）
+       - 時刻合わせ（書いて読み戻す 3 往復）は 8 秒まで待って先へ進む（残りは裏で続ける）。以前は通信が切れていると書き込みの返事が来ず、テレビの画面が最初の状態を出せなかった。
+         進行役（決める係）は今までどおり時刻合わせが終わってから見回りを始める（startDecider の中で待つ） */
+    const TV_BOOT_WAIT_MS = opts.bootWaitMs || 8000;
+    function authSettled() {
+      if (role !== 'tv' || typeof auth.onAuthStateChanged !== 'function') return Promise.resolve();
+      return new Promise((res) => { let un = null, done = false; const fin = () => { if (done) return; done = true; clearTimeout(h); try { if (un) un(); } catch (e) { /* noop */ } res(); }; const h = setTimeout(fin, TV_BOOT_WAIT_MS); try { un = auth.onAuthStateChanged(() => { if (un) fin(); else setTimeout(fin, 0); }); } catch (e) { fin(); } });
+    }
     async function ready() {
       if (!readyP) readyP = (async () => {
+        if (!auth.currentUser) await authSettled();
         if (!auth.currentUser) {
           const tvPass = role === 'tv' && cfg.tvEmail ? (opts.tvPassword || readTvPass()) : null;
           if (tvPass) { try { await auth.signInWithEmailAndPassword(cfg.tvEmail, tvPass); mode = 'tv'; } catch (e) { await signInAnon(); } }
@@ -200,7 +212,8 @@
         /* 時刻合わせ: スマホは待たない（2026-10-28。書いて読み戻す 2 往復ぶん画面が遅れていた）。合うまでは端末の時計。投票は合ってから（vote の clockP） */
         watchUser();
         clockP = syncClock(role === 'tv' ? 3 : 1).catch(() => {});
-        if (role !== 'phone') await clockP;
+        if (role === 'tv') await Promise.race([clockP, new Promise((res) => setTimeout(res, TV_BOOT_WAIT_MS))]); // テレビ: 8 秒まで（上の説明）
+        else if (role !== 'phone') await clockP;
         if (mode === 'tv' && opts.decider !== false) startDecider();
         else if (mode === 'anon' && role === 'tv') startPair(); // 進行役のテレビ（管理画面の 1 タップ）: パスワードのないテレビは名乗って、選ばれたら決める係になる
       })().catch((e) => { readyP = null; throw e; });
@@ -242,16 +255,26 @@
     }
 
     /* ---------- 時刻合わせ（serverTimestamp を書いて読み戻す） ---------- */
+    /* 2026-10-29 電波の悪い店: 1 回の測り方（書いて読み戻す）は 10 秒まで（以前は通信が切れると返事を待ち続けた）。
+       往復が長い測り方は誤差（最大で往復の半分）が大きいので使わない: 一度合わせたあとは、往復が 2 秒かつ今までのいちばん短い往復の 3 倍を超えるものは捨てて前のずれのまま。
+       まだ合わせていないときも 8 秒を超える往復は使わない（端末の時計のまま。次の時刻合わせで）。全店のレースの映像をそろえるため */
+    let clockRtt = null;
+    const CLOCK_OP_MS = opts.clockOpMs || 10000;
+    function clockOp(p) { let h = null; return Promise.race([p, new Promise((res, rej) => { h = setTimeout(() => { const e = new Error('timeout clock'); e.code = 'deadline-exceeded'; rej(e); }, CLOCK_OP_MS); })]).finally(() => clearTimeout(h)); }
     async function syncClock(n) {
-      n = n || 3; let best = null;
+      n = n || 3; let best = null, lastErr = null;
       for (let i = 0; i < n; i++) {
-        const t0 = local(); const ref = doc(COL.clock, uid());
-        await ref.set({ t: FieldValue.serverTimestamp() }); const s = await ref.get(); const t1 = local();
-        const st = s.data().t, sv = st && st.toMillis ? st.toMillis() : null;
-        if (sv != null && (!best || t1 - t0 < best.rtt)) best = { rtt: t1 - t0, off: sv + (t1 - t0) / 2 - t1 };
+        try {
+          const t0 = local(); const ref = doc(COL.clock, uid());
+          await clockOp(ref.set({ t: FieldValue.serverTimestamp() })); const s = await clockOp(ref.get()); const t1 = local();
+          const st = s.data().t, sv = st && st.toMillis ? st.toMillis() : null;
+          if (sv != null && (!best || t1 - t0 < best.rtt)) best = { rtt: t1 - t0, off: sv + (t1 - t0) / 2 - t1 };
+        } catch (e) { lastErr = e; if (e && e.code === 'deadline-exceeded') break; } // 返事が来ない: 残りの回は測らない
       }
-      if (best) { offset = best.off; synced = true; }
-      return { offset, rtt: best ? best.rtt : null };
+      const good = best && (synced ? best.rtt <= Math.max(2000, 3 * (clockRtt != null ? clockRtt : best.rtt)) : best.rtt <= 8000);
+      if (good) { offset = best.off; synced = true; clockRtt = clockRtt == null ? best.rtt : Math.min(clockRtt, best.rtt); }
+      if (!best && lastErr) throw lastErr;
+      return { offset, rtt: best ? best.rtt : null, used: !!good };
     }
 
     /* ---------- 読み込み（キャッシュつき） ---------- */
@@ -271,32 +294,61 @@
     /* 公開の時刻表 derbySchedule/public（2026-10-27 本日の出走時間）: Core.stateFor に rules を渡して today（この営業日のこの店のレースの時刻）を付けるために読む。
        ログインなしでも読める（ルール read: if true）のでスマホも読む。管理画面が保存したときだけ変わるので 5 分は読み直さない。レースの一覧が変わったとき（見張りで届いたとき）は次に読み直す。
        読めなかったときは前の値（無ければ空の時刻表）で続ける＝today が空になるだけ */
-    let schedCache = null, schedAt = 0, schedDirty = false;
-    const SCHED_TTL = 5 * 60000;
+    /* 2026-10-29 電波の悪い店: 読むのは 8 秒まで・同時に何回呼ばれても 1 回だけ読む。読めなかったら 30 秒あとにもう一度（以前は 5 分そのまま）。
+       テレビは前の値があればそれで先に答える（読み終わりを待たない＝毎秒の画面の更新が止まらない）。スマホ・スタッフは今までどおり読み終わりを待つ */
+    let schedCache = null, schedAt = 0, schedDirty = false, schedP = null;
+    const SCHED_TTL = 5 * 60000, READ_MS = opts.readTimeoutMs || 8000;
     async function getSchedule(force) {
       if (!force && schedCache && !schedDirty && local() - schedAt < SCHED_TTL) return schedCache;
-      try { const s = await doc(COL.schedule, 'public').get(); schedCache = Object.assign({ rules: [] }, s.exists ? s.data() : {}); } catch (e) { schedCache = schedCache || { rules: [] }; }
-      schedAt = local(); schedDirty = false; return schedCache;
+      if (!schedP) {
+        schedP = (async () => {
+          try { const s = await withTimeout(doc(COL.schedule, 'public').get(), READ_MS, 'schedule'); schedCache = Object.assign({ rules: [] }, s.exists ? s.data() : {}); schedAt = local(); schedDirty = false; }
+          catch (e) { schedCache = schedCache || { rules: [] }; schedAt = local() - SCHED_TTL + 30000; schedDirty = false; }
+          return schedCache;
+        })();
+        schedP.then(() => { schedP = null; }, () => { schedP = null; });
+      }
+      if (role === 'tv' && schedCache && !force) return schedCache;
+      return schedP;
     }
     const WINDOW = (role === 'tv' ? 120 : role === 'staff' ? 60 : 30) * 60000; // 見るレースの範囲（テレビは前のレースのハイライトがあるので 2 時間、スタッフ 1 時間、スマホ 30 分）
     async function getRaces(fresh) { if (!fresh && live.subs > 0 && live.races) return live.races; const q = await db.collection(COL.races).where('at', '>=', now() - WINDOW).orderBy('at').get(); return q.docs.map((d) => d.data()); }
-    const resultCache = {};
+    const resultCache = {}, resultTry = {}; // resultTry: レース id → { p（読んでいる途中）, next（次に読んでよい時刻）, n（続けて読めなかった回数） }
+    const RESULT_WAIT_MS = opts.resultWaitMs || 2500, RESULT_RETRY_MS = [700, 1000, 1500, 2000, 3000, 4000];
+    /* 結果（seed。決める係が決めた本物）を 1 件読む（2026-10-29 電波の悪い店）: 同じレースを同時に何回も読まない・1 回は 12 秒まで・読めなければ 0.7 → 1 → 1.5 … 4 秒あけて読み直す。
+       読めたものは resultCache に覚える（このテレビの中で作ることはしない＝いつも本物の結果） */
+    function fetchResult(id) {
+      const st = resultTry[id] || (resultTry[id] = { p: null, next: 0, n: 0 });
+      if (st.p) return st.p;
+      if (local() < st.next) return Promise.resolve(null);
+      const miss = () => { st.next = local() + RESULT_RETRY_MS[Math.min(st.n, RESULT_RETRY_MS.length - 1)]; st.n++; return null; };
+      const keep = (sn) => { // 12 秒を過ぎてから届いた返事も使う（とても遅い電波でも、届いた本物の結果は捨てない）
+        if (!sn || !sn.exists) return null;
+        if (!resultCache[id]) { const x = sn.data(); resultCache[id] = { winner: x.winner, second: x.second, combo: x.combo, comboOdds: x.comboOdds, order: x.order, finalExacta: x.finalExacta, finalOdds: x.finalOdds, seed: x.seed, finishTimes: x.finishTimes, winTime: x.winTime, natural: x.natural, cues: x.cues || null }; } /* cues: 確定演出（derbyResults にだけ。derbyRaces・derbyLive には写さない） */
+        delete resultTry[id]; return resultCache[id];
+      };
+      const g = doc(COL.results, id).get(); g.then(keep, () => {});
+      st.p = withTimeout(g, 12000, 'result').then((sn) => keep(sn) || miss(), miss); // まだ読めない（ゲートが開く 2 秒前より前・通信の失敗・返事が来ない）
+      st.p.then(() => { st.p = null; });
+      return st.p;
+    }
     async function resultsFor(races) { // テレビ: ゲートが開く 2 秒前から結果（seed）を読む（ルールで runAt まで読めない）
       if (role !== 'tv') return {};
-      const t = now(), out = {};
+      const t = now(), out = {}, wait = [];
       for (const r of races) {
-        if (resultCache[r.id]) { out[r.id] = resultCache[r.id]; continue; }
-        if ((r.status === 'decided' || r.status === 'done') && (t >= r.runAt - 2000 || canDecide())) { /* テレビ用アカウント（ルールの isDecider）は決まった直後から読める＝確定演出（ゲートインの遅れ）をゲートインの前に渡せる */
-          try { const s = await doc(COL.results, r.id).get(); if (s.exists) { const x = s.data(); resultCache[r.id] = { winner: x.winner, second: x.second, combo: x.combo, comboOdds: x.comboOdds, order: x.order, finalExacta: x.finalExacta, finalOdds: x.finalOdds, seed: x.seed, finishTimes: x.finishTimes, winTime: x.winTime, natural: x.natural, cues: x.cues || null }; out[r.id] = resultCache[r.id]; } } catch (e) { /* まだ読めない */ } /* cues: 確定演出（derbyResults にだけ。derbyRaces・derbyLive には写さない） */
-        }
+        if (resultCache[r.id]) continue;
+        if ((r.status === 'decided' || r.status === 'done') && (t >= r.runAt - 2000 || canDecide())) wait.push(fetchResult(r.id)); /* テレビ用アカウント（ルールの isDecider）は決まった直後から読める＝確定演出（ゲートインの遅れ）をゲートインの前に渡せる */
       }
+      /* 2026-10-29: 同時に読み、待つのは 2.5 秒まで（返事が遅いときも毎秒の画面の更新を止めない。読み終わったものは次の更新で渡す） */
+      if (wait.length) await Promise.race([Promise.all(wait), new Promise((res) => setTimeout(res, RESULT_WAIT_MS))]);
+      races.forEach((r) => { if (resultCache[r.id]) out[r.id] = resultCache[r.id]; });
       return out;
     }
     let countsCache = null;
     const withCounts = (races, counts) => (counts ? races.map((r) => (r.status === 'upcoming' && counts[r.id] ? Object.assign({}, r, { participants: counts[r.id] }) : r)) : races);
     async function compose(s, races, stores, pub) {
       s = s || store;
-      if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await doc(COL.counts, 'live').get(); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = {}; } } races = withCounts(races, countsCache); }
+      if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = withCounts(races, countsCache); } // 2026-10-29: 8 秒まで・読めなければ前の値
       const sched = await getSchedule(); // 本日の出走時間（2026-10-27）: 公開の時刻表の決まり → state.today
       return Core.stateFor({ t: now(), store: s, role, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [] });
     }
@@ -313,9 +365,10 @@
       if (role === 'phone' && !(live.subs > 0 && live.races)) { const d = await phoneLive(s || store); if (d) return compose(s, d.races || [], d.stores || [], Object.assign({}, Core.DEFAULT_TUNING, d.pub || {})); } const [stores, races, pub] = await Promise.all([getStores(), getRaces(), getPublic()]); return compose(s, races, stores, pub); } catch (e) { throw mapErr(e); } }
     async function race(id) {
       await ready();
-      const r = data(await doc(COL.races, id).get()); if (!r) throw E(404, 'no_race', 'レースが見つかりません');
-      const stores = await getStores(), st = stores.find((x) => x.id === store);
-      return Core.publicRace(r, { role, store, storeSettings: st && st.settings, openId: (Core.openRaceFor(await getRaces(), store, now()) || {}).id, result: (await resultsFor([r]))[r.id] });
+      const g = doc(COL.races, id).get(), r = data(await (role === 'tv' ? withTimeout(g, READ_MS, 'race') : g)); if (!r) throw E(404, 'no_race', 'レースが見つかりません'); // テレビ: 8 秒まで（2026-10-29）
+      const soft = (q, dflt) => (role === 'tv' ? withTimeout(q, READ_MS, 'race').catch(() => dflt) : q); // テレビ: 店舗・一覧は読めなければ手元のもので（2026-10-29）
+      const stores = (await soft(getStores(), storesCache)) || [], st = stores.find((x) => x.id === store);
+      return Core.publicRace(r, { role, store, storeSettings: st && st.settings, openId: (Core.openRaceFor((await soft(getRaces(), live.races)) || [], store, now()) || {}).id, result: (await resultsFor([r]))[r.id] });
     }
 
     /* ---------- スマホ（v4: 参加無料・1 票 ＝ 店＋会計番号 2 けた・2 連単） ----------
@@ -940,6 +993,15 @@
       decider.inTick = false; decider.nextTry = 0;
       if (pair.on) pairHello().catch(() => {});
     }
+    /* 読み込み直しの前に、インターネットに届くかを 1 回だけ確かめる（2026-10-29 電波の悪い店）: 届かない（Wi-Fi が切れている）ときは読み込み直しても直らないので、
+       読み込み直さずに、つなぎ直し（resetNet）だけを続ける（Wi-Fi が切れている間に何度も読み込み直さない）。届く（SDK だけが止まっている）ときは今までどおり読み込み直す。
+       確かめ方: Firestore のサーバーに中身を見ない問い合わせ（no-cors）を 1 回・5 秒まで。env.probe があればそれ（テスト） */
+    async function netReachable() {
+      if (env.probe) { try { return !!(await env.probe()); } catch (e) { return false; } }
+      if (typeof fetch !== 'function' || typeof location === 'undefined') return true; // ブラウザの外（node のテスト）は確かめない
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+      try { await withTimeout(fetch('https://firestore.googleapis.com/', { mode: 'no-cors', cache: 'no-store', credentials: 'omit' }), 5000, 'probe'); return true; } catch (e) { return false; }
+    }
     async function watchdog() {
       if (!decider.running) return 'off';
       const L = local(), since = L - (decider.okAt || decider.startedAt || L);
@@ -949,6 +1011,8 @@
         if (!reload) return 'stuck';
         if (raceOnScreen()) return 'wait';
         if (decider.reloadAsked && L - decider.reloadAsked < 60000) return 'reloading';
+        if (!(await netReachable())) { logD([now(), 'watchdog offline']); if (!decider.wdResetAt || local() - decider.wdResetAt >= WD_RESET_MS) await resetNet(); return 'offline'; }
+        if (!decider.running || decider.okAt > L - WD_RELOAD_MS) return 'ok'; // 確かめている間に直った
         decider.reloadAsked = L; logD([now(), 'watchdog reload']);
         try { reload(); } catch (e) { /* noop */ }
         return 'reload';
@@ -1105,36 +1169,97 @@
     function startDecider() {
       if (decider.running || typeof setTimeout === 'undefined' || opts.deciderAuto === false) return;
       decider.running = true; decider.startedAt = local();
-      /* 見回りは必ず次を予約する（2026-10-28: 中で待ち続けると次が始まらなかった。deciderTick は時間の上限つきで投げない。念のため finally でも） */
-      const loop = async () => { if (!decider.running) return; try { await deciderTick(); } catch (e) { noteErr(e, 'loop'); } finally { if (decider.running) { clearTimeout(decider.timer); decider.timer = setTimeout(loop, BEAT_MS); } } };
+      /* 見回りは必ず次を予約する（2026-10-28: 中で待ち続けると次が始まらなかった。deciderTick は時間の上限つきで投げない。念のため finally でも）。
+         2026-10-29: テレビの ready は時刻合わせを 8 秒までしか待たなくなった → 決める係の最初の見回りは今までどおり時刻合わせの終わりを待つ（clockLoop。待つ間も見張り番は動く） */
+      let clockWaited = !clockP;
+      const loop = async () => { if (!decider.running) return; if (!clockWaited) { clockWaited = true; try { await clockP; } catch (e) { /* noop */ } if (!decider.running) return; } try { await deciderTick(); } catch (e) { noteErr(e, 'loop'); } finally { if (decider.running) { clearTimeout(decider.timer); decider.timer = setTimeout(loop, BEAT_MS); } } };
       loop();
       clearInterval(decider.wdTimer); decider.wdTimer = setInterval(() => { watchdog().catch((e) => noteErr(e, 'watchdog')); }, 10000); // 見張り番は見回りとは別のタイマー
     }
     function stopDecider() { decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; }
 
+    /* ---------- テレビの手元の写し（2026-10-29 電波の悪い店） ----------
+       テレビは、見張りで届いたレース（このテレビに見えるもの・2 時間前から 12 件まで）・店舗・公開の設定・時刻表・参加人数と、もう読めた本物の結果（seed）を
+       端末（localStorage 'casa.derby.tvsnap.<店>'）に 15 秒に 1 回（中身が変わったときだけ）覚える。
+       読み込み直し・アプリの起動のときに通信がつながらなくても、覚えた写しで待ち時間・投票・前のレースの画面をすぐ出せる（12 時間より古い写しは使わない）。
+       つながったら本物の中身に入れ替わる。結果をこのテレビで作ることはしない（覚えるのは決める係が決めて読めた本物だけ） */
+    const SNAP_V = 1, SNAP_MAX_AGE = 12 * 3600e3, SNAP_EVERY_MS = opts.snapEveryMs != null ? opts.snapEveryMs : 15000;
+    const snapKey = () => 'casa.derby.tvsnap.' + (store || '');
+    const snapStore = () => { if (opts.snapStore) return opts.snapStore; try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch (e) { return null; } };
+    function snapLoad() {
+      if (role !== 'tv' || !store || opts.snap === false) return null;
+      try { const ls = snapStore(), x = ls && JSON.parse(ls.getItem(snapKey()) || 'null'); if (!x || x.v !== SNAP_V || x.store !== store || !(local() - x.at < SNAP_MAX_AGE) || !Array.isArray(x.races) || !Array.isArray(x.stores) || !x.pub) return null; return x; } catch (e) { return null; }
+    }
+    let snapLast = '', snapAt = 0;
+    function snapSave(races, stores, pub) {
+      if (role !== 'tv' || !store || opts.snap === false || local() - snapAt < SNAP_EVERY_MS) return;
+      snapAt = local();
+      try {
+        const ls = snapStore(); if (!ls) return;
+        const lo = now() - WINDOW, rs = races.filter((r) => r && r.id && r.at >= lo && Core.visibleTo(r, store)).slice(-12), res = {};
+        rs.forEach((r) => { if (resultCache[r.id]) res[r.id] = resultCache[r.id]; });
+        const body = JSON.stringify({ races: rs, stores, pub, sched: schedCache, counts: countsCache, results: res });
+        if (body === snapLast || body.length > 600000) return; // 大きすぎるときは覚えない（casa SLOT と同じ保存領域）
+        snapLast = body;
+        ls.setItem(snapKey(), '{"v":' + SNAP_V + ',"store":' + JSON.stringify(store) + ',"at":' + Math.round(local()) + ',' + body.slice(1));
+      } catch (e) { /* 保存できない端末: 覚えないだけ */ }
+    }
+    /* つながっているか（テレビ。2026-10-29）: { up: true | false, at }。レースの一覧の見張りが「手元の写し（fromCache）」になったら false、サーバーから届いたら true。まだ分からなければ null */
+    let linkState = null;
+
     /* ---------- リアルタイム（onSnapshot → state / race / vote / next / reload / payout） ---------- */
     function subscribe(handlers, o) {
       handlers = handlers || {}; o = o || {};
       const unsubs = [], raceHooks = []; let closed = false, races = [], stores = null, pub = null, lastStatus = {}, seq = null, rseq = null, timer = null, opened = false;
+      /* テレビは止まらない見張り（2026-10-29 電波の悪い店）: ログインできない・見張りがエラーで止まった → 全部の見張りを作り直す（2 → 4 → 8 … 60 秒あけて。サーバーから届いたら元に戻す）。
+         以前は 1 回止まると二度とつなぎ直さず、10 秒ごとの読み直しも見張りの古い写しを返していた（画面が古いまま）。スマホ・スタッフは今までどおり */
+      const TV = role === 'tv';
+      let healN = 0, healT = null, snapOnly = false;
+      const fresh = (q) => !(q && q.metadata && q.metadata.fromCache);
       const emit = async () => {
         if (closed || !stores || !pub) return;
         try {
           const s = await compose(store, races, stores, pub);
+          if (closed) return;
           for (const r of races) { if (!Core.visibleTo(r, store)) continue; const k = r.status + (r.revealAt || 0); if (lastStatus[r.id] !== k) { const first = lastStatus[r.id] === undefined; lastStatus[r.id] = k; if (!first && handlers.race) handlers.race(Core.publicRace(r, { role, store, result: resultCache[r.id] })); } }
+          if (snapOnly) s.fromSnap = true; // 手元の写しだけで出している（つながったら消える）
           if (handlers.state) handlers.state(s);
+          if (TV && !snapOnly) snapSave(races, stores, pub);
         } catch (e) { if (handlers.error) handlers.error(e); }
       };
       const soon = () => { clearTimeout(timer); timer = setTimeout(emit, 150); };
-      const fail = (e) => { if (handlers.error) handlers.error(e); };
-      ready().then(() => {
+      function teardown() { unsubs.splice(0).forEach((u) => { try { u(); } catch (e) { /* noop */ } }); }
+      function heal() {
+        if (closed || !TV || healT) return;
+        teardown();
+        const ms = Math.min(60000, 2000 * 2 ** Math.min(healN++, 5));
+        healT = setTimeout(() => { healT = null; start(); }, ms);
+      }
+      const fail = (e) => { if (handlers.error) handlers.error(e); if (TV) heal(); };
+      const setLink = (up) => { if (up) healN = 0; if (linkState && linkState.up === up) return; linkState = { up, at: local() }; if (handlers.link) { try { handlers.link(Object.assign({}, linkState)); } catch (e) { /* noop */ } } };
+      if (TV) { // 手元の写し（上）: あればすぐ画面に出す（本物が届いたら入れ替わる）
+        const sn = snapLoad();
+        if (sn) {
+          races = sn.races; stores = sn.stores; pub = Object.assign({}, Core.DEFAULT_TUNING, sn.pub || {}); snapOnly = true;
+          if (!schedCache && sn.sched) { schedCache = Object.assign({ rules: [] }, sn.sched); schedAt = 0; }
+          if (!countsCache && sn.counts) countsCache = sn.counts;
+          Object.keys(sn.results || {}).forEach((id) => { if (!resultCache[id] && sn.results[id] && sn.results[id].seed != null) resultCache[id] = sn.results[id]; });
+          setTimeout(emit, 0);
+        }
+      }
+      const start = () => ready().then(() => {
         if (closed) return;
         live.subs++; unsubs.push(() => { live.subs--; });
-        const gotRaces = (list) => { races = list; live.races = races; schedDirty = true; /* レースの一覧が変わった → 公開の時刻表も次に読み直す（2026-10-27） */ raceHooks.forEach((f) => { try { f(); } catch (e) { /* noop */ } }); if (!opened) { opened = true; if (handlers.open) handlers.open(); if (handlers.hello) handlers.hello({ now: now(), store, role }); } soon(); };
+        const gotRaces = (list) => { races = list; live.races = races; snapOnly = false; schedDirty = true; /* レースの一覧が変わった → 公開の時刻表も次に読み直す（2026-10-27） */ raceHooks.forEach((f) => { try { f(); } catch (e) { /* noop */ } }); if (!opened) { opened = true; if (handlers.open) handlers.open(); if (handlers.hello) handlers.hello({ now: now(), store, role }); } soon(); };
         let full = false;
         const startFull = () => { // テレビ・スタッフ（とスマホの予備）: レースの一覧・店舗・設定を見張る
           if (full) return; full = true;
-          unsubs.push(db.collection(COL.races).where('at', '>=', now() - WINDOW).orderBy('at').onSnapshot((q) => gotRaces(q.docs.map((d) => d.data())), fail));
+          const since = now() - WINDOW;
+          /* テレビ: 手元に写しが無いときの空の写し（通信が切れたまま見張りを始めた）は使わない（前のレース・写しを空で消さない） */
+          unsubs.push(db.collection(COL.races).where('at', '>=', since).orderBy('at').onSnapshot((q) => { if (TV && !fresh(q) && q.empty && races.length) return; gotRaces(q.docs.map((d) => d.data())); }, fail));
+          if (TV) unsubs.push(db.collection(COL.races).where('at', '>=', since).orderBy('at').onSnapshot({ includeMetadataChanges: true }, (q) => setLink(fresh(q)), () => {})); // つながっているか（同じ問い合わせ＝読み取りは増えない）
         unsubs.push(db.collection(COL.stores).onSnapshot((q) => {
+          if (TV && !fresh(q) && q.empty && stores && stores.length) return;
           stores = q.docs.map((d) => Object.assign({ id: d.id }, d.data())); storesCache = stores; storesAt = local();
           const st = stores.find((x) => x.id === store);
           if (st) { // 「次へ」・再読み込み: 最初の値を基準にして、増えたら知らせる
@@ -1144,8 +1269,8 @@
           }
           soon();
         }, fail));
-        if (role !== 'phone') unsubs.push(doc(COL.counts, 'live').onSnapshot((s) => { countsCache = s.exists ? s.data() : {}; soon(); }, () => {}));
-        unsubs.push(doc(COL.config, 'public').onSnapshot((s) => { pub = Object.assign({}, Core.DEFAULT_TUNING, s.exists ? s.data() : {}); pubCache = pub; pubAt = local(); soon(); }, fail));
+        if (role !== 'phone') unsubs.push(doc(COL.counts, 'live').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && countsCache) return; countsCache = s.exists ? s.data() : {}; soon(); }, () => {}));
+        unsubs.push(doc(COL.config, 'public').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && pub) return; pub = Object.assign({}, Core.DEFAULT_TUNING, s.exists ? s.data() : {}); pubCache = pub; pubAt = local(); soon(); }, fail));
         };
         if (role === 'phone') { // スマホ: 「いまの状態」1 件だけ（変わったときに 1 回読む）
           unsubs.push(doc(COL.live, store).onSnapshot((s) => {
@@ -1198,6 +1323,8 @@
         }
         const iv = setInterval(emit, 1000); unsubs.push(() => clearInterval(iv)); // 時刻で変わる場面（締切・ゲート）と、テレビの結果の読み込み
       }).catch(fail);
+      if (TV) { const iv0 = setInterval(() => { if (!unsubs.length) emit(); }, 1000); start(); return function () { closed = true; clearTimeout(timer); clearTimeout(healT); clearInterval(iv0); teardown(); }; } // テレビ: つなぎ直しを待つ間も（手元の写しで）毎秒の更新を続ける
+      start();
       return function () { closed = true; clearTimeout(timer); unsubs.forEach((u) => { try { u(); } catch (e) { /* noop */ } }); };
     }
 
@@ -1417,6 +1544,7 @@
 
     return {
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
+      get link() { return linkState ? Object.assign({}, linkState) : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
       state, race, vote, myVote, claimSelf,
       staffLogin, release, wins, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
