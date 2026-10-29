@@ -127,7 +127,7 @@
   async function readQuality() { // テレビはもう casa-derby に（匿名か進行役で）ログインしている。その接続で店舗の設定を読む（店舗の設定はログインした人なら読める）
     const fb = window.firebase; if (!fb || !fb.apps || !fb.apps.some((a) => a.name === 'derby')) return undefined;
     const app = fb.app('derby'); if (!app.auth().currentUser) return undefined;
-    const d = await app.firestore().doc('derbyStores/' + STORE).get({ source: 'server' });
+    const d = await Promise.race([app.firestore().doc('derbyStores/' + STORE).get({ source: 'server' }), sleep(10000).then(() => { throw new Error('timeout'); })]); // 2026-10-29: 返事が来なくても 10 秒で（5 秒ごとの見直しが止まらない）
     qState.reads++;
     const st = d.exists ? (d.data().settings || {}) : {}; return qKey(qNorm(st.tvQuality), st.tvStrip);
   }
