@@ -28,7 +28,7 @@
   /* 確定演出（店舗には見せない。v4 でも「1 着の馬だけ教える」）: 演出名 → [表示名, どう見えるか]。割合の初期値は v2/core.js の DEFAULT_CUES と同じ */
   const CUES = [['fruit', '木の実の色', 'コース脇の木の実が、その馬の枠の色になる'], ['crowd', '観客の服の色', '観客の服がその馬の枠の色に寄る'], ['sign', '看板の絵柄', '向こう正面の看板にその馬の枠の色が出る'], ['cloud', '雲の形', 'その馬の番号の形をした雲が浮かぶ'], ['gateLate', 'ゲートインで遅れた馬', 'その馬だけゲートに入るのをためらう'], ['eye', '最終コーナーで目が光る', '最終コーナーでその馬の目が光る']];
   const DEF_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
-  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4 };
+  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4 };
   const TUNE_PRESETS = [['steady', '堅め', { volatility: 0.7, shiftUp: 0.05, shiftDown: 0.05 }, '人気の組み合わせが来やすい・倍率のずらしは小さめ'], ['normal', 'ふつう', { volatility: 1.0, shiftUp: 0.1, shiftDown: 0.1 }, '今の作り'], ['wild', '荒れやすい', { volatility: 1.5, shiftUp: 0.15, shiftDown: 0.15 }, '人気薄も来る・倍率のずらしは大きめ']];
   const BIG_SHIFT = 50; // ずらし幅がこれ（%）より大きいと「見た倍率と大きく変わります」
 
@@ -958,7 +958,7 @@
   function reasonTxt(r) {
     const d = r.decision; if (!d || !d.reason) return '';
     const n = d.band && Array.isArray(d.band.combos) ? d.band.combos.length : 0;
-    const t = (REASONS[d.reason] || d.reason) + (d.reason === 'band' && n ? '（候補 ' + n + ' 組）' : '') + (d.target ? '・目標 ' + ptT(d.target) : '') + (d.reason !== 'nobody' ? '・当選額 ' + ptT(d.paid != null ? d.paid : d.payout) : '') + (d.cap ? '・上限 ' + ptT(d.cap) : '');
+    const t = (REASONS[d.reason] || d.reason) + (d.reason === 'band' && n ? '（候補 ' + n + ' 組）' : '') + (d.target ? '・目標 ' + ptT(d.target) : '') + (d.target && d.targetEff != null && d.targetEff !== d.target ? '・このレースは ' + ptT(d.targetEff) + ' に寄せる（ぶれ ×' + (Number(d.spreadF) || 1).toFixed(2) + '）' : '') + /* 配当のぶれ（2026-10-29） */ (d.reason !== 'nobody' ? '・当選額 ' + ptT(d.paid != null ? d.paid : d.payout) : '') + (d.cap ? '・上限 ' + ptT(d.cap) : '');
     return '<small class="hint memo-reason" style="display:block;margin:0">' + nwJoin(t, '・') + '</small>';
   }
   // 区切り（・や /）ごとのかたまりを途中で折り返さない（「看/板の絵柄」のような切れ方をなくす。文字はそのまま）
@@ -1042,10 +1042,11 @@
   function explainHtml(T) {
     const pc = (v) => Math.round((Number(v) || 0) * 100) + '%', tg = 30000;
     const lo = Math.ceil(tg * (1 - (Number(T.bandBelow) || 0)) - 1e-9), hi = Math.floor(tg * (1 + (Number(T.bandAbove) || 0)) + 1e-9);
-    const cap = (v) => (Number(v) > 0 ? ptT(v) : 'なし');
+    const cap = (v) => (Number(v) > 0 ? ptT(v) : 'なし'), sp = spreadOfT(T);
     return '<b class="exh">勝ち馬（1着 → 2着）の決まり方</b><ol class="exl">' +
       '<li>締切のあと、票の入った組み合わせごとに「当たったら渡す額の合計」（票の数 × 100pt × 倍率）を出します。倍率は見せていた値から<b>下げ ' + pc(T.shiftDown) + '〜上げ ' + pc(T.shiftUp) + '</b>の間で動かせます（1.0 倍より下げません）。</li>' +
-      '<li>合計が<b>当選額の目標の幅</b>（目標の −' + pc(T.bandBelow) + '〜＋' + pc(T.bandAbove) + '。目標 ' + ptT(tg) + ' なら ' + fmtN(lo) + '〜' + ptT(hi) + '）に入る組み合わせがあれば、その中から起きやすさに合わせて抽選します。</li>' +
+      '<li>合計が<b>当選額の目標の幅</b>（目標の −' + pc(T.bandBelow) + '〜＋' + pc(T.bandAbove) + '。目標 ' + ptT(tg) + ' なら ' + fmtN(lo) + '〜' + ptT(hi) + '）に入る組み合わせがあれば、その中から起きやすさに合わせて抽選します。倍率は<b>見せていた倍率をなるべくそのまま</b>にし、幅に入れるのに要る分だけ動かします。</li>' +
+      (sp > 0 ? '<li><b>配当のぶれ ' + pc(sp) + '</b>: レースごとに、寄せる額を目標の ' + spreadRange(sp) + ' の間でばらつかせます（幅はそのまわり）。毎レース目標ちょうどにはなりません。</li>' : '<li>配当のぶれは 0%（毎レース目標のまわりに寄せます）。</li>') +
       '<li>幅に入るものが無ければ、目標にいちばん近い組み合わせにします＝<b>必ず誰かは当てる</b>。</li>' +
       '<li>ただし<b>払い出しの上限</b>（1 レース ' + cap(T.payoutCap) + '・1 日 ' + cap(T.payoutCapDay) + '）を超える組み合わせは選びません。上限は「必ず誰かは当てる」より強い決まりです。票の入ったどの組み合わせも上限を超えるときは、票の入っていない組み合わせ＝<b>当たりなし</b>になります。</li>' +
       '<li><b>誰も投票していない</b>レースは自然の結果のまま。テストの票しかないときは払わないので上限を見ません。</li>' +
@@ -1079,6 +1080,14 @@
     const tg = 30000, lo = Math.ceil(tg * (1 - below) - 1e-9), hi = Math.floor(tg * (1 + above) + 1e-9);
     return '目標 ' + ptT(tg) + ' なら <b>' + fmtN(lo) + '〜' + ptT(hi) + '</b> に入る組み合わせから、起きやすさで抽選。無ければいちばん近い組み合わせ（必ず誰かは当てる）';
   }
+  /* 配当のぶれ（2026-10-29）: 0〜0.8。レースごとに目標 ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）に寄せる。v2/outcome.js の spreadFactor と同じ範囲 */
+  const spreadOfT = (T) => (T && T.payoutSpread != null ? Number(T.payoutSpread) || 0 : 0.3);
+  const spreadRange = (s) => Math.round((1 - s) * 100) + '%〜' + Math.floor((1 + s / 4) * 1000 + 1e-6) / 10 + '%';
+  function spreadExample(s) {
+    if (!(s > 0)) return '0 なので今までどおり、毎レース目標ちょうどのまわりに寄せます。上限は必ず守ります';
+    const tg = 30000;
+    return 'レースごとに目標の <b>' + spreadRange(s) + '</b> の間でばらつきます（目標 ' + ptT(tg) + ' なら ' + fmtN(Math.round(tg * (1 - s))) + '〜' + ptT(Math.round(tg * (1 + s / 4))) + ' のどこかに寄せる）。上限は必ず守ります';
+  }
   /* 1 台の会計番号の上限（2026-10-27）の例文。1 は使えない（全員の票が数えられなくなる） */
   function billsExample(n) {
     n = Math.round(Number(n) || 0);
@@ -1105,6 +1114,8 @@
       stepRow('当たりの幅（目標より少ない側）', '当選額の合計が目標より何%少なくてもよいか', 'bandBelow', pct(T.bandBelow), '%', 0, 50, 1) +
       stepRow('当たりの幅（目標より多い側）', '当選額の合計が目標より何%多くてもよいか', 'bandAbove', pct(T.bandAbove), '%', 0, 50, 1) +
       '<p class="hint" id="bandEx">' + bandExample(T.bandBelow, T.bandAbove) + '</p>' +
+      stepRow('配当のぶれ', '0 で今までどおり目標ちょうどに寄せる。30% なら目標の 70%〜107% の間でレースごとにばらつく。上限は必ず守る', 'payoutSpread', pct(spreadOfT(T)), '%', 0, 80, 1) +
+      '<p class="hint" id="spreadEx">' + spreadExample(spreadOfT(T)) + '</p>' +
       stepRow('払い出しの上限（1 レース）', '0 = なし。1 レースの当選額の合計', 'payoutCap', T.payoutCap || 0, 'pt', 0, 99999900, 100) +
       stepRow('払い出しの上限（1 日）', '0 = なし。全店の 1 日の当選額の合計', 'payoutCapDay', T.payoutCapDay || 0, 'pt', 0, 999999900, 100) +
       '<p class="hint capnote">上限は「必ず誰かは当てる」より<b>強い</b>決まりです。上限を超える組み合わせしかないときは<b>当たりなし</b>になります。</p>' +
@@ -1170,13 +1181,14 @@
     finally { btns.forEach((x) => { if (document.contains(x)) x.disabled = false; }); }
   }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
-  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
+  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutSpread', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
   function validateTuning() {
     if (!$('tumsg')) return 1;
     const badKeys = TUN_KEYS.filter((k) => !numOk(k) || (k === 'maxBillsPerDevice' && $('n-' + k) && Number($('n-' + k).value) === 1)), bad = badKeys.length;
     if ($('n-maxBillsPerDevice')) { const one = Number($('n-maxBillsPerDevice').value) === 1, inR = numOk('maxBillsPerDevice'); $('n-maxBillsPerDevice').classList.toggle('bad', one || !inR); if ($('billsEx') && inR) $('billsEx').innerHTML = billsExample(numOf('maxBillsPerDevice')); } // 1 は範囲の中でも赤（numOk は 1 回だけ。2 回目で赤が消えていた）
     if ($('voteEx') && numOk('voteSec')) $('voteEx').innerHTML = voteExample(numOf('voteSec'));
     if ($('bandEx') && numOk('bandBelow') && numOk('bandAbove')) $('bandEx').innerHTML = bandExample(numOf('bandBelow') / 100, numOf('bandAbove') / 100);
+    if ($('spreadEx') && numOk('payoutSpread')) $('spreadEx').innerHTML = spreadExample(numOf('payoutSpread') / 100);
     if (numOk('shiftUp') && numOk('shiftDown')) {
       const up = numOf('shiftUp'), down = numOf('shiftDown');
       if ($('shiftEx')) $('shiftEx').innerHTML = shiftExample(up / 100, down / 100);
@@ -1186,7 +1198,7 @@
     { const mt = $('moreTune'); if (mt && !mt.open && mt.querySelector('.bad')) mt.open = true; } // 畳んだ欄にエラーがあれば開く
     { // 勝ち馬の決まり方（くわしく）も、入れている値で書き直す（範囲の外の欄は保存済みの値）
       const ex = main.querySelector('#explainFold .explain'), T0 = cfg.tuning, v = (k, div) => (numOk(k) ? numOf(k) / (div || 1) : T0[k]);
-      if (ex) ex.innerHTML = explainHtml(Object.assign({}, T0, { shiftUp: v('shiftUp', 100), shiftDown: v('shiftDown', 100), bandBelow: v('bandBelow', 100), bandAbove: v('bandAbove', 100), payoutCap: v('payoutCap'), payoutCapDay: v('payoutCapDay') }));
+      if (ex) ex.innerHTML = explainHtml(Object.assign({}, T0, { shiftUp: v('shiftUp', 100), shiftDown: v('shiftDown', 100), bandBelow: v('bandBelow', 100), bandAbove: v('bandAbove', 100), payoutSpread: v('payoutSpread', 100), payoutCap: v('payoutCap'), payoutCapDay: v('payoutCapDay') }));
     }
     $('tumsg').innerHTML = bad ? '<div class="err">数字の範囲を確かめてください（赤い欄）</div>' : tunDirty ? '<div class="warnmsg">保存していない変更があります</div>' : '<div class="okmsg">保存済みです</div>';
     $('tusave').disabled = bad > 0 || !tunDirty;
@@ -1197,7 +1209,7 @@
     const t = {
       voteSec: Math.round(numOf('voteSec')),
       shiftUp: Math.round(numOf('shiftUp')) / 100, shiftDown: Math.round(numOf('shiftDown')) / 100,
-      bandBelow: Math.round(numOf('bandBelow')) / 100, bandAbove: Math.round(numOf('bandAbove')) / 100,
+      bandBelow: Math.round(numOf('bandBelow')) / 100, bandAbove: Math.round(numOf('bandAbove')) / 100, payoutSpread: Math.round(numOf('payoutSpread')) / 100,
       payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')), maxBillsPerDevice: Math.round(numOf('maxBillsPerDevice')),
       payoutRate: Math.round(numOf('payoutRate')) / 100, volatility: Math.round(numOf('volatility') * 10) / 10,
       resultSec: Math.round(numOf('resultSec')), gateSec: Math.round(numOf('gateSec')), postSec: Math.round(numOf('postSec')),
