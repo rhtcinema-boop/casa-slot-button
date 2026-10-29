@@ -253,6 +253,7 @@ R3D.Horse = (function () {
   // 筒を作る。o: { segs, step, color(ctx)->rgb, col, uv:'coat'|'flat'|[u0,v0,u1,v1], bump(p,n)->m, capA, capB, th0, up }
   function tube(G, keys, o) {
     // G.det: 細かさの倍率（'far'＝遠くの馬用は 0.55。輪の数と 1 周の分割を減らす）
+    if (G.xf && tinyKeys(keys)) return null; // 'xfar'（いちばん粗い形）: 太さ XF_TINY m より細い部品（目の光・鼻の穴・頭絡・手綱・ムチ・あぶみなど）は作らない
     const det = G.det || 1, st0 = o.step || 0.05, rings = sampleRings(keys, st0 >= 1 ? st0 : st0 / det, o.up), segs = Math.max(4, Math.round((o.segs || 12) * det)), th0 = o.th0 === undefined ? PI : o.th0;
     const base = G.P.length / 3, total = rings[rings.length - 1].s || 1;
     rings.forEach((r) => {
@@ -288,6 +289,10 @@ R3D.Horse = (function () {
     if (o.capB !== false) cap(rings.length - 1, true);
     return rings;
   }
+  /* 2026-10-29 軽い 3D（オーナー: 渋谷のテレビは最も軽い画質でもカクカク）: 'xfar'＝最もなめらか専用のいちばん粗い形。
+     細かさ XF_DET（輪の数と 1 周の分割。分割は最低 4）・細い部品は作らない・ゼッケンと鞍の殻も粗く。画面で小さく映る馬にだけ使う（js/race3d.js の lodHorses） */
+  const XF_DET = 0.36, XF_TINY = 0.022;
+  function tinyKeys(keys) { let m = 0; for (const k of keys) { if (typeof k.t !== 'number' || typeof k.w !== 'number') return false; m = Math.max(m, k.t, k.b || 0, k.w); } return m < XF_TINY; }
   // 細い帯（ベルト類）: pts の点列を通る平たい筒。nrm＝帯の面の向き
   function strap(G, pts, o) {
     const keys = pts.map((p, i) => {
@@ -425,7 +430,7 @@ R3D.Horse = (function () {
     F = F || { eye: 'round', fore: 'twin', mane: 'spiky', face: null, maneCol: null };
     const key = S.type + coat + markIdx + q + (mare ? "m" : "") + F.eye + F.fore + F.mane + F.face + F.maneCol; if (geoCache[key]) return geoCache[key];
     const hi = q === 'high', G = new Geo(S.BI), mark = Object.assign({}, MARKS[markIdx], { face: F.face, maneCol: F.maneCol }), D = S.D; const type = S.type;
-    G.det = q === 'far' ? 0.55 : 1; // 'far': Fire TV 向けの遠くの馬（js/race3d.js が画面で小さい馬だけ切り替える）
+    G.det = q === 'xfar' ? XF_DET : q === 'far' ? 0.55 : 1; G.xf = q === 'xfar'; // 'far': Fire TV 向けの遠くの馬（js/race3d.js が画面で小さい馬だけ切り替える）。'xfar': さらに粗い形（軽い 3D）
     const cf = (part, legIdx) => (ctx) => coatColor(S, coat, mark, part, ctx, legIdx, mare);
     // 胴〜首
     tube(G, trunkKeys(S), { segs: hi ? 28 : 14, step: hi ? 0.075 : 0.14, uv: 'coat', color: cf('trunk') });
@@ -516,6 +521,7 @@ R3D.Horse = (function () {
       const nd = [S.nd[0], S.nd[1], 0], crest = [-S.nd[1], S.nd[0], 0], MS = F.mane;
       const N = Math.max(4, Math.round(D.nL / (MS === 'brush' ? 0.05 : MS === 'mohawk' ? 0.065 : 0.09)) + 2);
       for (let i = 0; i < N; i++) {
+        if (G.xf && i % 2 && i < N - 1) continue; // 'xfar': たてがみの房は 1 つおき（遠くでは見分けがつかない）
         const f = lerp(-0.12, 1.02, i / (N - 1)), fc = clamp(f, 0, 1), c = [S.nb[0] + nd[0] * D.nL * f, S.nb[1] + nd[1] * D.nL * f, 0];
         const top = vadd(c, vsc(crest, D.nR * lerp(1.15, 0.95, fc) * 0.92)), wk = D.nR * 0.42;
         let len = D.nR * (0.75 + 0.25 * Math.sin(i * 2.3)) * (i === 0 ? 0.7 : 1) * 1.12, dir = vnorm(vadd(vsc(crest, 0.75), vsc(nd, -0.65))), sdz = (i % 2 ? 0.25 : -0.25), wid = 1, th = 1;
@@ -564,7 +570,7 @@ R3D.Horse = (function () {
   function tackGeometry(S, q, jockey) {
     const key = S.type + q + (jockey ? 'J' : ''); if (tackCache[key]) return tackCache[key];
     const hi = q === 'high', G = new Geo(S.BI), D = S.D;
-    G.det = q === 'far' ? 0.55 : 1;
+    G.det = q === 'xfar' ? XF_DET : q === 'far' ? 0.55 : 1; G.xf = q === 'xfar';
     const flatUV = UV_WHITE;
     // 胴の面に沿った殻（ゼッケン・鞍）
     const shell = (x0, x1, th0, th1, nu, nv, off, thick, uvRect, col, bulge) => {
@@ -589,7 +595,7 @@ R3D.Horse = (function () {
       for (let i = 0; i < nu; i++) { edge(grid[i][0], grid[i + 1][0]); edge(grid[i + 1][nv], grid[i][nv]); }
     };
     const CL = S.cloth, thR = CL.th;
-    shell(CL.x0, CL.x1, -thR, thR, hi ? 10 : 5, hi ? 28 : 12, 0.006, 0.012, UV_CLOTH, null);
+    shell(CL.x0, CL.x1, -thR, thR, G.xf ? 3 : hi ? 10 : 5, G.xf ? 6 : hi ? 28 : 12, 0.006, 0.012, UV_CLOTH, null);
     // 腹帯（ゼッケンの前寄りで一周）
     {
       const x = CL.x1 - CL.cl * 0.18, pts = [], nrm = [], N = hi ? 28 : 14;
@@ -620,7 +626,7 @@ R3D.Horse = (function () {
   function jockeyGeometry(S, G, hi, shell) {
     const D = S.D, JK = S.JK, js = JK.js, CL = S.cloth;
     // 小さな鞍
-    shell(CL.x0 + CL.cl * 0.3, CL.x1 - CL.cl * 0.15, -0.8, 0.8, hi ? 6 : 3, hi ? 8 : 4, 0.02, 0.018, null, TC.saddle, (u, v) => 0.02 * smooth(0.6, 1, u) * (1 - Math.abs(v - 0.5) * 1.8));
+    shell(CL.x0 + CL.cl * 0.3, CL.x1 - CL.cl * 0.15, -0.8, 0.8, G.xf ? 2 : hi ? 6 : 3, G.xf ? 3 : hi ? 8 : 4, 0.02, 0.018, null, TC.saddle, (u, v) => 0.02 * smooth(0.6, 1, u) * (1 - Math.abs(v - 0.5) * 1.8));
     const A = (p, r, wt, rw) => ({ p, t: r, b: r, w: r * (rw || 1.05), n: 2, wt });
     // 胴（勝負服）: 尻→腰→胸→襟
     {
@@ -810,6 +816,7 @@ R3D.Horse = (function () {
     }
     // 白（単色の部品が使う）
     c.fillStyle = '#ffffff'; c.fillRect(128, 384, 128, 128);
+    if (R3D.xmin) { const sm = document.createElement('canvas'); sm.width = sm.height = S / 2; const g = sm.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(cv, 0, 0, S / 2, S / 2); const t = new THREE.CanvasTexture(sm); t.encoding = THREE.sRGBEncoding; return t; } // 軽い 3D（2026-10-29）: 勝負服・ゼッケンの絵は 256×256（GPU のメモリ 4 分の 1。映像の細かさ 0.4〜0.5 倍では見分けがつかない）
     const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4;
     return t;
   }
@@ -1175,7 +1182,7 @@ R3D.Horse = (function () {
     let geoKey = bodyMesh.geometry.userData.cacheKey; geoRef(geoKey, 1);
     let jockeyOn = opts.jockey !== false, disposed = false;
     const clothTex = atlasTexture(h);
-    const tMat = R3D.xlite ? new THREE.MeshLambertMaterial({ map: clothTex, vertexColors: true, alphaTest: 0.5 }) : new THREE.MeshStandardMaterial({ map: clothTex, vertexColors: true, roughness: 0.68, metalness: 0.0, alphaTest: 0.5 }); // さらになめらか: 勝負服も軽い材質
+    const tMat = R3D.xmin ? new THREE.MeshLambertMaterial({ map: clothTex, vertexColors: true }) /* 軽い 3D（2026-10-29。最もなめらかだけ）: 絵は全面不透明なので alphaTest なし（捨てる画素の判定がない方が弱い GPU に軽い） */ : R3D.xlite ? new THREE.MeshLambertMaterial({ map: clothTex, vertexColors: true, alphaTest: 0.5 }) : new THREE.MeshStandardMaterial({ map: clothTex, vertexColors: true, roughness: 0.68, metalness: 0.0, alphaTest: 0.5 }); // さらになめらか: 勝負服も軽い材質
     if (!R3D.xlite) addRim(tMat, 0.12);   // 勝負服: 布らしい柔らかい陰影（縁が少し明るい。講評 v2-1 の 2）
     const tMesh = new THREE.SkinnedMesh(tackGeometry(S, quality, jockeyOn), tMat);
     [bodyMesh, tMesh].forEach((m) => { m.castShadow = true; m.receiveShadow = true; });
@@ -1261,7 +1268,7 @@ R3D.Horse = (function () {
     function updateDust(dt, P, g, v) {
       if (opts.dust === false) return;
       if (!dustSys && object3d.parent) { dustSys = dustSystem(sceneOf(object3d)); dustSlot = dustSys.alloc(); }
-      const moving = (g === 'gallop' || g === 'canter') && v > 5;
+      const moving = (g === 'gallop' || g === 'canter') && v > 5 && !R3D.xlite; // さらになめらか・最もなめらか: 土煙は描かない（js/race3d.js が隠す）ので粒も動かさない（蹄の音の知らせ onStep はそのまま）
       for (let i = 0; i < 4; i++) {
         const st = P.legs[i].stance;
         if (st && !prevStance[i]) {
@@ -1276,7 +1283,7 @@ R3D.Horse = (function () {
         }
         prevStance[i] = st;
       }
-      if (dustSlot < 0) return;
+      if (dustSlot < 0 || R3D.xlite) return;
       for (let i = 0; i < DUST_PER; i++) {
         const p = puffs[i]; let sc = 0;
         if (p.age < p.life) { p.age += dt; const k = p.age / p.life; sc = p.s * (0.35 + 0.9 * Math.sqrt(k)) * (1 - smooth(0.6, 1, k)); p.x += p.vx * dt; p.z += p.vz * dt; p.y += 0.25 * dt; }
@@ -1631,7 +1638,7 @@ R3D.Horse = (function () {
       face: { eye: F.eye, fore: F.fore, mane: F.mane, face: F.face, maneCol: F.maneCol },
       dust: true, // 土煙は馬の部品が出す（統合側の粒は止めてよい）
       setQuality(qq) {
-        if (qq !== 'low' && qq !== 'high' && qq !== 'far') return; if (qq === quality) return; quality = qq;
+        if (qq !== 'low' && qq !== 'high' && qq !== 'far' && qq !== 'xfar') return; if (qq === quality) return; quality = qq;
         bodyMesh.geometry = lineMesh.geometry = horseGeometry(S, coat, markIdx, quality, mare, F); aura.geometry = bodyMesh.geometry;
         ghosts.forEach((g) => { g.geometry = bodyMesh.geometry; }); tMesh.geometry = tackGeometry(S, quality, jockeyOn);
         // 切り替えた形も数える（QA3: Fire TV の far・遠くの馬の形が捨てられずに増えていた）
