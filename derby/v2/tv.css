@@ -589,6 +589,12 @@
 .v2down.show { display: flex; }
 .v2down b { font-size: 48px; font-weight: 900; color: #ffd54f; }
 .v2down span { font-size: 28px; font-weight: 800; }
+/* 2026-10-29 電波の悪い店: 発走の時刻を過ぎても結果がまだ届かない間だけ（v2/tv.js の playRace）。おだやかに（黄色の枠・点滅なし）。映像の真ん中より下・締切の文字と同じ高さ */
+.v2hold { position: absolute; z-index: 9; left: 50%; top: 520px; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 6px; padding: 16px 44px; border-radius: 18px; background: rgba(16, 20, 28, .72); color: #fff; font-family: var(--font-tv); white-space: nowrap; pointer-events: none; }
+.v2hold.show { display: flex; }
+.v2hold b { font-size: 44px; font-weight: 900; }
+.v2hold span { font-size: 26px; font-weight: 800; color: #dfe7f3; }
+#stage.v2:not(.m-live) .v2hold { display: none; }
 /* 店舗が見つからない・合言葉がない: 画面全体を覆う（ふつうの画面や QR は見せない） */
 .v2net.full, .v2key.show { position: absolute; z-index: 80; inset: 0; right: 0; bottom: 0; max-width: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 60px; border-radius: 0; background: radial-gradient(ellipse at 50% 40%, #1f3260, #0a1322 75%); color: #fff; font-family: var(--font-tv); text-align: center; line-height: 1.4; }
 .v2net.full::before, .v2key.show::before { content: "!"; width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; background: #ffb300; color: #1a1200; font: 900 84px/1 var(--font-num); animation: none; }
