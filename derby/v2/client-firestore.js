@@ -27,7 +27,9 @@
      この層は db の一番外側（create の中）で全部の読み書きにかかるので、core.js・tv.js などには元の形のまま渡る。
      地図・数・文字・Timestamp・FieldValue はそのまま。印の名前は他のデータでは使わない。 */
   const NA = 'derbyNestedArray_v1';
-  const isPlain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
+  /* 2026-10-29 スマホの「レースを見る」: 投票ページ（親のページ）の SDK が作った地図は親のページの Object なので、Object.prototype とくらべると違って見える。
+     どのページの Object でも「ふつうの地図」と分かるように見る（同じページの値の答えは今までと同じ。Timestamp などの作られた物は今までどおり地図ではない） */
+  const isPlain = (v) => { if (v === null || typeof v !== 'object' || Array.isArray(v)) return false; const p = Object.getPrototypeOf(v); return p === null || p === Object.prototype || (Object.getPrototypeOf(p) === null && typeof p.constructor === 'function' && p.constructor.name === 'Object'); };
   function encodeFS(v, inArray) {
     if (Array.isArray(v)) { const a = v.map((x) => encodeFS(x, true)); if (!inArray) return a; const o = {}; o[NA] = a; return o; }
     if (isPlain(v)) { const o = {}; Object.keys(v).forEach((k) => (o[k] = encodeFS(v[k], false))); return o; }
@@ -164,6 +166,11 @@
   function create(opts, env) {
     opts = opts || {};
     const role = opts.role || 'tv', store = opts.store || null;
+    /* 見るだけ（role 'watch'。2026-10-29 オーナー「投票終わった端末のみレースを観測できるように」。スマホの投票ページの「レースを見る」＝ index.html?store=…&watch=1）:
+       テレビと同じ画面を出すが、読むだけ（何も書かない）。ログインは投票ページの匿名ログインをそのまま使う（新しくログインしない＝無ければ見られない）。
+       名乗らない（derbyTvs）・進行役にならない・時刻合わせも書かない（opts.clock: 投票ページの時計。無ければページの返事の Date）・手元の写し（tvsnap）も持たない。
+       いまの状態は投票ページと同じ derbyLive/<店> の 1 件、結果（seed）はテレビと同じく derbyResults（ゲートが開く 2 秒前から読める）、参加人数は derbyCounts/live を 20 秒に 1 回まで */
+    const WATCH = role === 'watch', VIEW = WATCH ? 'tv' : role; // VIEW: 中身（Core.stateFor・publicRace）にはテレビとして渡す（結果・確定演出・人気の組み合わせ。読めたものだけ）
     const { fb, Engine, Outcome, Core } = env, cfg = env.config || {};
     const { auth, FieldValue, Timestamp } = fb;
     const db = wrapDb(fb.db); /* 入れ子の配列を自動で包む・戻す（上の encodeFS / decodeFS） */
@@ -197,10 +204,11 @@
          進行役（決める係）は今までどおり時刻合わせが終わってから見回りを始める（startDecider の中で待つ） */
     const TV_BOOT_WAIT_MS = opts.bootWaitMs || 8000;
     function authSettled() {
-      if (role !== 'tv' || typeof auth.onAuthStateChanged !== 'function') return Promise.resolve();
+      if ((role !== 'tv' && !WATCH) || typeof auth.onAuthStateChanged !== 'function') return Promise.resolve();
       return new Promise((res) => { let un = null, done = false; const fin = () => { if (done) return; done = true; clearTimeout(h); try { if (un) un(); } catch (e) { /* noop */ } res(); }; const h = setTimeout(fin, TV_BOOT_WAIT_MS); try { un = auth.onAuthStateChanged(() => { if (un) fin(); else setTimeout(fin, 0); }); } catch (e) { fin(); } });
     }
     async function ready() {
+      if (WATCH) return readyWatch();
       if (!readyP) readyP = (async () => {
         if (!auth.currentUser) await authSettled();
         if (!auth.currentUser) {
@@ -216,6 +224,17 @@
         else if (role !== 'phone') await clockP;
         if (mode === 'tv' && opts.decider !== false) startDecider();
         else if (mode === 'anon' && role === 'tv') startPair(); // 進行役のテレビ（管理画面の 1 タップ）: パスワードのないテレビは名乗って、選ばれたら決める係になる
+      })().catch((e) => { readyP = null; throw e; });
+      return readyP;
+    }
+    /* 見るだけ（WATCH）: 前のログイン（投票ページの匿名ログイン）が戻るのを待つだけ。無ければ「投票した方だけ」（新しい匿名ログインは作らない）。時刻は書かずに合わせる */
+    function readyWatch() {
+      if (!readyP) readyP = (async () => {
+        if (!auth.currentUser) await authSettled();
+        if (!auth.currentUser) throw E(401, 'no_login', '投票した方だけ見られます');
+        mode = 'anon';
+        clockP = syncClock().catch(() => {});
+        await Promise.race([clockP, new Promise((res) => setTimeout(res, 3000))]);
       })().catch((e) => { readyP = null; throw e; });
       return readyP;
     }
@@ -261,7 +280,18 @@
     let clockRtt = null;
     const CLOCK_OP_MS = opts.clockOpMs || 10000;
     function clockOp(p0) { let h = null; const p = timed(p0, 'clock'); return Promise.race([p, new Promise((res, rej) => { h = setTimeout(() => { const e = new Error('timeout clock'); e.code = 'deadline-exceeded'; rej(e); }, CLOCK_OP_MS); })]).finally(() => clearTimeout(h)); }
+    /* 見るだけ（WATCH）の時刻合わせ: 書かない。opts.clock（投票ページのサーバーの時計 ms を返す関数）があればそれに合わせる（同じ端末なのでずれない）。
+       無ければ、このページの返事の Date（秒まで）を往復の半分で直して使う（誤差 0.5 秒くらい）。どちらも無理なら端末の時計のまま */
+    async function watchClock() {
+      if (typeof opts.clock === 'function') { let v = NaN; try { v = Number(opts.clock()); } catch (e) { v = NaN; } if (Number.isFinite(v) && v > 0) { offset = v - local(); synced = true; return { offset, rtt: 0, used: true }; } }
+      if (typeof fetch === 'function' && typeof location !== 'undefined' && location.protocol !== 'file:') {
+        const t0 = local(), r = await withTimeout(fetch(location.href.replace(/#.*$/, ''), { method: 'HEAD', cache: 'no-store', credentials: 'same-origin' }), 5000, 'wclock'), t1 = local();
+        const d = Date.parse((r && r.headers && r.headers.get('date')) || ''); if (Number.isFinite(d)) { offset = d + 500 + (t1 - t0) / 2 - t1; synced = true; return { offset, rtt: t1 - t0, used: true }; }
+      }
+      return { offset, rtt: null, used: false };
+    }
     async function syncClock(n) {
+      if (WATCH) return watchClock();
       n = n || 3; let best = null, lastErr = null;
       for (let i = 0; i < n; i++) {
         try {
@@ -308,10 +338,10 @@
         })();
         schedP.then(() => { schedP = null; }, () => { schedP = null; });
       }
-      if (role === 'tv' && schedCache && !force) return schedCache;
+      if ((role === 'tv' || WATCH) && schedCache && !force) return schedCache;
       return schedP;
     }
-    const WINDOW = (role === 'tv' ? 120 : role === 'staff' ? 60 : 30) * 60000; // 見るレースの範囲（テレビは前のレースのハイライトがあるので 2 時間、スタッフ 1 時間、スマホ 30 分）
+    const WINDOW = (role === 'tv' || WATCH ? 120 : role === 'staff' ? 60 : 30) * 60000; // 見るレースの範囲（テレビは前のレースのハイライトがあるので 2 時間、スタッフ 1 時間、スマホ 30 分）
     async function getRaces(fresh) { if (!fresh && live.subs > 0 && live.races) return live.races; const q = await db.collection(COL.races).where('at', '>=', now() - WINDOW).orderBy('at').get(); return q.docs.map((d) => d.data()); }
     const resultCache = {}, resultTry = {}; // resultTry: レース id → { p（読んでいる途中）, next（次に読んでよい時刻）, n（続けて読めなかった回数） }
     const RESULT_WAIT_MS = opts.resultWaitMs || 2500, RESULT_RETRY_MS = [700, 1000, 1500, 2000, 3000, 4000];
@@ -333,7 +363,7 @@
       return st.p;
     }
     async function resultsFor(races) { // テレビ: ゲートが開く 2 秒前から結果（seed）を読む（ルールで runAt まで読めない）
-      if (role !== 'tv') return {};
+      if (role !== 'tv' && !WATCH) return {};
       const t = now(), out = {}, wait = [];
       for (const r of races) {
         if (resultCache[r.id]) continue;
@@ -344,31 +374,32 @@
       races.forEach((r) => { if (resultCache[r.id]) out[r.id] = resultCache[r.id]; });
       return out;
     }
-    let countsCache = null;
+    let countsCache = null, countsAt = 0;
     const withCounts = (races, counts) => (counts ? races.map((r) => (r.status === 'upcoming' && counts[r.id] ? Object.assign({}, r, { participants: counts[r.id] }) : r)) : races);
     async function compose(s, races, stores, pub) {
       s = s || store;
-      if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = withCounts(races, countsCache); } // 2026-10-29: 8 秒まで・読めなければ前の値
+      if (WATCH) { if (!countsCache || local() - countsAt > 20000) { countsAt = local(); try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = races.map((r) => (!(r.participants && r.participants.total) && countsCache[r.id] ? Object.assign({}, r, { participants: countsCache[r.id] }) : r)); } // 見るだけ: derbyLive には参加人数が無い → 20 秒に 1 回まで 1 件読む（締切のあとのレースにも付ける）
+      else if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = withCounts(races, countsCache); } // 2026-10-29: 8 秒まで・読めなければ前の値
       const sched = await getSchedule(); // 本日の出走時間（2026-10-27）: 公開の時刻表の決まり → state.today
-      return Core.stateFor({ t: now(), store: s, role, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [] });
+      return Core.stateFor({ t: now(), store: s, role: VIEW, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [] });
     }
     // スマホ: 見張っていなければ「いまの状態」1 件を読む（レースの一覧を問い合わせない）
-    async function phoneLive(storeId) { if (role !== 'phone') return null; try { return data(await doc(COL.live, storeId).get()); } catch (e) { return null; } }
+    async function phoneLive(storeId) { if (role !== 'phone' && !WATCH) return null; try { return data(await doc(COL.live, storeId).get()); } catch (e) { return null; } }
     async function openRace(storeId) {
-      if (role === 'phone' && !(live.subs > 0 && live.races)) { const d = await phoneLive(storeId); if (d) return Core.openRaceFor(d.races || [], storeId, now()); }
+      if ((role === 'phone' || WATCH) && !(live.subs > 0 && live.races)) { const d = await phoneLive(storeId); if (d) return Core.openRaceFor(d.races || [], storeId, now()); }
       return Core.openRaceFor(await getRaces(), storeId, now());
     }
 
     /* ---------- 共通 ---------- */
     async function state(s) { await ready(); try {
       getSchedule().catch(() => {}); // 公開の時刻表を同時に読み始める（compose が待つ。順番に読むと 1 往復ぶん遅い。2026-10-28）
-      if (role === 'phone' && !(live.subs > 0 && live.races)) { const d = await phoneLive(s || store); if (d) return compose(s, d.races || [], d.stores || [], Object.assign({}, Core.DEFAULT_TUNING, d.pub || {})); } const [stores, races, pub] = await Promise.all([getStores(), getRaces(), getPublic()]); return compose(s, races, stores, pub); } catch (e) { throw mapErr(e); } }
+      if ((role === 'phone' || WATCH) && !(live.subs > 0 && live.races)) { const d = await phoneLive(s || store); if (d) return compose(s, d.races || [], d.stores || [], Object.assign({}, Core.DEFAULT_TUNING, d.pub || {})); } const [stores, races, pub] = await Promise.all([getStores(), getRaces(), getPublic()]); return compose(s, races, stores, pub); } catch (e) { throw mapErr(e); } }
     async function race(id) {
       await ready();
-      const g = doc(COL.races, id).get(), r = data(await (role === 'tv' ? withTimeout(g, READ_MS, 'race') : g)); if (!r) throw E(404, 'no_race', 'レースが見つかりません'); // テレビ: 8 秒まで（2026-10-29）
-      const soft = (q, dflt) => (role === 'tv' ? withTimeout(q, READ_MS, 'race').catch(() => dflt) : q); // テレビ: 店舗・一覧は読めなければ手元のもので（2026-10-29）
+      const g = doc(COL.races, id).get(), r = data(await (role === 'tv' || WATCH ? withTimeout(g, READ_MS, 'race') : g)); if (!r) throw E(404, 'no_race', 'レースが見つかりません'); // テレビ: 8 秒まで（2026-10-29）
+      const soft = (q, dflt) => (role === 'tv' || WATCH ? withTimeout(q, READ_MS, 'race').catch(() => dflt) : q); // テレビ: 店舗・一覧は読めなければ手元のもので（2026-10-29）
       const stores = (await soft(getStores(), storesCache)) || [], st = stores.find((x) => x.id === store);
-      return Core.publicRace(r, { role, store, storeSettings: st && st.settings, openId: (Core.openRaceFor((await soft(getRaces(), live.races)) || [], store, now()) || {}).id, result: (await resultsFor([r]))[r.id] });
+      return Core.publicRace(r, { role: VIEW, store, storeSettings: st && st.settings, openId: (Core.openRaceFor((await soft(getRaces(), live.races)) || [], store, now()) || {}).id, result: (await resultsFor([r]))[r.id] });
     }
 
     /* ---------- スマホ（v4: 参加無料・1 票 ＝ 店＋会計番号 2 けた・2 連単） ----------
@@ -1230,7 +1261,7 @@
         try {
           const s = await compose(store, races, stores, pub);
           if (closed) return;
-          for (const r of races) { if (!Core.visibleTo(r, store)) continue; const k = r.status + (r.revealAt || 0); if (lastStatus[r.id] !== k) { const first = lastStatus[r.id] === undefined; lastStatus[r.id] = k; if (!first && handlers.race) handlers.race(Core.publicRace(r, { role, store, result: resultCache[r.id] })); } }
+          for (const r of races) { if (!Core.visibleTo(r, store)) continue; const k = r.status + (r.revealAt || 0); if (lastStatus[r.id] !== k) { const first = lastStatus[r.id] === undefined; lastStatus[r.id] = k; if (!first && handlers.race) handlers.race(Core.publicRace(r, { role: VIEW, store, result: resultCache[r.id] })); } }
           if (snapOnly) s.fromSnap = true; // 手元の写しだけで出している（つながったら消える）
           if (handlers.state) handlers.state(s);
           if (TV && !snapOnly) snapSave(races, stores, pub);
@@ -1278,10 +1309,10 @@
           }
           soon();
         }, fail));
-        if (role !== 'phone') unsubs.push(doc(COL.counts, 'live').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && countsCache) return; countsCache = s.exists ? s.data() : {}; soon(); }, () => {}));
+        if (role !== 'phone' && !WATCH) unsubs.push(doc(COL.counts, 'live').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && countsCache) return; countsCache = s.exists ? s.data() : {}; soon(); }, () => {}));
         unsubs.push(doc(COL.config, 'public').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && pub) return; pub = Object.assign({}, Core.DEFAULT_TUNING, s.exists ? s.data() : {}); pubCache = pub; pubAt = local(); soon(); }, fail));
         };
-        if (role === 'phone') { // スマホ: 「いまの状態」1 件だけ（変わったときに 1 回読む）
+        if (role === 'phone' || WATCH) { // スマホ・見るだけ（WATCH）: 「いまの状態」1 件だけ（変わったときに 1 回読む）
           unsubs.push(doc(COL.live, store).onSnapshot((s) => {
             if (!s.exists) { startFull(); return; }
             const d = s.data(); stores = d.stores || []; storesCache = stores; storesAt = local(); pub = Object.assign({}, Core.DEFAULT_TUNING, d.pub || {}); pubCache = pub; pubAt = local();
