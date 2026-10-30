@@ -114,6 +114,7 @@
   let stFrom = '', stTo = '', stStore = '', statsData = null, statsErr = '';
   let abuseData = null, abuseErr = '', abuseOff = false; // 見える化（集計タブの「注意」。2026-10-27）: api('abuse') の答え／使えないサーバー（古い）なら出さない
   let logBill = '', logsData = null, logsErr = '';
+  let winsData = null, winsErr = ''; // 当たり一覧（2026-10-30 オーナー「何時何分に誰が何がいくら当たったか全部見れるように」）: 期間・店舗の当たり（記録の win）と受け取り（paid・expired）
   let raceAll = false, refundOpen = null; // 今日のレース: 全部を表示するか／その場で開いているレース取消（レース id）
   let pairData = null, pairErr = '', pairSeq = 0; // 進行役のテレビ: api('tvs') の答え { tvs, decider, backups, fireTvs, lock, lockInfo, now }
   let healthData = null, healthAt = 0; // 進行役のテレビが止まっていないか（2026-10-28）: api('health') の答え { lock, stall, text }
@@ -1253,9 +1254,11 @@
     const my = (loadStats.seq = (loadStats.seq || 0) + 1); // 期間・店舗を続けて変えたとき、遅れて届いた前の答えで上書きしない
     abuseData = null; abuseErr = '';
     const ab = abuseOff ? Promise.resolve() : api('abuse', stFrom, stTo, stStore || undefined).then((x) => { if (my === loadStats.seq) abuseData = x; }, (e) => { if (my !== loadStats.seq) return; if (e && (e.code === 'not_supported' || e.status === 404)) abuseOff = true; else abuseErr = errText(e); }); // 注意（2026-10-27。古いサーバーなら出さない）
+    winsData = null; winsErr = '';
+    const wn = fetchLogs('').then(async (l) => { const rows = winRows(l), void0 = await voidRaces(rows); rows.forEach((x) => { if (void0[x.raceId] && x.st === 'unpaid') x.st = 'void'; }); if (my === loadStats.seq) winsData = rows; }, (e) => { if (my === loadStats.seq) winsErr = errText(e); });
     try { const x = await api('stats', stFrom, stTo, stStore || undefined); if (my !== loadStats.seq) return; statsData = x; }
     catch (e) { if (my !== loadStats.seq) return; statsErr = errText(e); }
-    await ab; if (my !== loadStats.seq) return;
+    await ab; await wn; if (my !== loadStats.seq) return;
     if (tab === 'stats') keepScroll(() => { main.innerHTML = viewStats(); });
   }
   const SK = ['races', 'votes', 'players', 'target', 'paid', 'claimed', 'expired', 'unclaimed'];
@@ -1301,11 +1304,39 @@
           cell('渡した額', ptN(x.claimed), 1) + cell('期限切れ', ptN(x.expired), 1) + '</tr>').join('') + '</table></div>' : '') +
       '<div class="acts l"><button class="btn sm ghost" data-act="st-csv"' + (days.length ? '' : ' disabled') + '>CSV（Excel）に書き出す</button></div>' +
       '<details class="fold"><summary>言葉の意味</summary><div class="in"><p class="hint">票の数（参加人数）＝投票の数（1 人 1 レース 1 票なので参加人数と同じ）。会計番号＝その日に投票した会計番号の数。当選額の目標＝時刻表の目標の合計。当選額＝当たった人に渡す額の合計（100pt × 倍率を 100pt 単位に切り上げ）。渡した額＝お客さんのスマホのスライドかスタッフのスマホで「渡した」にした額。まだ渡していない額＝当たったのにまだ受け取っていない額（その日のうち）。期限切れ＝その日のうち（朝 5 時の区切りまで）に受け取られなかった額。テストのレースとテストモードの店舗の分は入りません。店舗ごとには目標を出しません（時刻表は全店同じ）。</p></div></details></div>' +
+      viewWins() +
       viewAbuse() +
       '<div class="panel"><h3>会計番号で探す</h3><p class="hint">期間と店舗は上と同じ。空のまま探すと全部出ます。</p>' +
       '<div class="range"><label class="f"><span>会計番号（2 桁）</span><input type="text" id="lbill" value="' + esc(logBill) + '" maxlength="4" placeholder="例: 12" inputmode="numeric" autocapitalize="off"></label><div class="quick" style="align-items:end;padding-bottom:10px"><button class="btn sm" data-act="log-search">探す</button><button class="btn sm ghost" data-act="log-csv"' + (L && L.logs.length ? '' : ' disabled') + '>CSV に書き出す</button></div></div>' +
       (logsErr ? '<div class="err">' + esc(logsErr) + '</div>' : '') +
       (L ? viewLogs(L) : '') + '</div>';
+  }
+  /* 当たり一覧（2026-10-30）: 期間・店舗の当たりを新しい順に 1 件 1 行。レースの時刻・店舗・会計番号・ニックネーム・組み合わせ・額・受け取り（渡した時刻と誰が／期限切れ／まだ）。
+     元は記録（derbyLogs）の win と、同じ当たり（pid）の paid・expired。テストのレースの当たりは記録に入らない */
+  const raceHm = (id) => { const m = /-(\d{2})(\d{2})$/.exec(String(id || '')); return m ? m[1] + ':' + m[2] : ''; };
+  const comboNo = (k) => { const m = /^(\d+)-(\d+)$/.exec(String(k || '')); return m ? (+m[1] + 1) + '→' + (+m[2] + 1) : ''; };
+  function winRows(logs) {
+    const by = {}; (logs || []).forEach((l) => { if (l.pid && (l.type === 'paid' || l.type === 'expired')) by[l.pid] = l; });
+    return (logs || []).filter((l) => l.type === 'win').map((w) => { const e = by[w.pid]; return { raceId: w.raceId, at: w.at, date: w.date || ymd(w.at), race: raceHm(w.raceId) || hms(w.at).slice(0, 5), storeId: w.storeId, bill: w.bill, nick: w.nick || '', combo: comboNo(w.combo), amount: Number(w.amount) || 0, flag: w.flag || '', st: e ? e.type : 'unpaid', stAt: e ? e.at : 0, via: e ? e.via : '' }; });
+  }
+  // 取り消したレース（返還）の当たり: 記録には残るので、その日のレース一覧の refunded で「取消」にする（渡していない当たりは無効。渡した当たりはそのまま）
+  async function voidRaces(rows) {
+    const dates = Array.from(new Set(rows.map((x) => x.date))).slice(0, 62), out = {};
+    await Promise.all(dates.map((d) => api('races', d).then((r) => { ((r && r.races) || []).forEach((x) => { if (x.refunded) out[x.id] = 1; }); }, () => {})));
+    return out;
+  }
+  function viewWins() {
+    const W = winsData, sum = W ? W.filter((x) => x.st !== 'void').reduce((a, x) => a + x.amount, 0) : 0, un = W ? W.filter((x) => x.st === 'unpaid').reduce((a, x) => a + x.amount, 0) : 0;
+    const stTxt = (x) => (x.st === 'paid' ? '<span class="wst ok">渡した ' + esc(hms(x.stAt).slice(0, 5)) + (x.via === 'self' ? '（お客さん）' : '（スタッフ）') + '</span>' : x.st === 'expired' ? '<span class="wst">期限切れ</span>' : x.st === 'void' ? '<span class="wst">取消（レース取消）</span>' : '<b class="wst ng" style="color:var(--unpaid)">まだ</b>');
+    return '<div class="panel" id="winsPanel"><h3>当たり一覧 <small class="qsub">期間・店舗は上と同じ・新しい順</small></h3>' +
+      (winsErr ? '<div class="err">' + esc(winsErr) + '</div>' : '') +
+      (W == null && !winsErr ? '<div class="empty">読み込み中…</div>' : !W ? '' : !W.length ? '<div class="empty">この期間の当たりはありません</div>' :
+        '<p class="hint">' + fmtN(W.length) + ' 件・合計 ' + ptT(sum) + (un ? '・まだ渡していない ' + ptT(un) : '') + '</p>' +
+        '<div class="tbl"><table class="cards" id="winsTable"><tr class="hd"><th>日付・レース</th><th>店舗</th><th>会計番号</th><th>ニックネーム</th><th>当たり（1着→2着）</th><th class="n">額</th><th>受け取り</th></tr>' +
+        W.slice(0, 500).map((x) => '<tr><td class="head"><b>' + esc(fmtDay(x.date)) + ' ' + esc(x.race) + '</b></td><td data-l="店舗">' + esc(storeName(x.storeId)) + '</td><td data-l="会計番号">' + esc(x.bill) + '番</td><td class="nick" data-l="ニックネーム">' + esc(x.nick) + '</td><td data-l="当たり">' + esc(x.combo) + (x.flag ? ' <small class="hint">（注意）</small>' : '') + '</td><td class="n" data-l="額">' + ptN(x.amount) + '</td><td data-l="受け取り">' + stTxt(x) + '</td></tr>').join('') +
+        '</table></div>' + (W.length > 500 ? '<p class="hint">新しい 500 件を表示</p>' : '') +
+        '<div class="acts l"><button class="btn sm ghost" data-act="wins-csv">CSV（Excel）に書き出す</button></div>') +
+      '</div>';
   }
   /* 注意（2026-10-27。オーナー用。1 台のスマホ（端末）で番号・当たり・ボーナスが多いもの）: Core.abuseReport の答え（模擬クラウド GET /api/admin/abuse・Firestore 版 admin.abuse）。
      端末は末尾 6 文字だけ（…abc123）。お客さん・スタッフの画面には何も出さない（ここだけ） */
@@ -1348,26 +1379,26 @@
         L.logs.slice(0, 500).map((x) => { const k = logKind(x), a = logAmt(x); return '<tr><td class="mono dt">' + esc(x.date ? x.date.slice(5) : ymd(x.at).slice(5)) + ' ' + hms(x.at).slice(0, 5) + '</td><td>' + esc(storeName(x.storeId)) + '</td><td class="mono">' + esc(x.bill) + '</td><td class="nick">' + esc(x.nick || '') + '</td><td><span class="chip kind ' + k[1] + '">' + esc(k[0]) + '</span></td><td class="mono">' + esc(comboTxt(x.combo)) + '</td><td class="n">' + (a == null ? '' : esc(ptT(a))) + '</td></tr>'; }).join('') + '</table></div>'
         : '<div class="empty">記録はありません</div>');
   }
-  // 会計番号の記録: 管理用の API（logs）があればそれ、なければ各店舗の PIN でスタッフ用の記録を日ごとに集める
+  // 会計番号の記録: 管理用の API（logs）があればそれ、なければ各店舗の PIN でスタッフ用の記録を日ごとに集める（期間・店舗は上と同じ。新しい順）
+  async function fetchLogs(bill) {
+    let logs, r = null;
+    if (A && typeof A.logs === 'function') { try { r = await api('logs', { from: stFrom, to: stTo, bill: bill || undefined, store: stStore || undefined }); } catch (e) { if (e.status !== 404) throw e; } } // 404 = サーバーが古い → 下の集め方
+    if (r) logs = (r.logs || []);
+    else {
+      const dates = []; for (let d = stFrom; d <= stTo && dates.length < 62; d = addDays(d, 1)) dates.push(d);
+      const stores = cfg.stores.filter((s) => !stStore || s.id === stStore);
+      const jobs = [];
+      stores.forEach((s) => { const sc = DerbyCloud.create({ store: s.id, role: 'staff' }); dates.forEach((d) => jobs.push(sc.logs(s.pin, { date: d, bill: bill || undefined }).then((x) => (x && x.logs) || []))); });
+      logs = [].concat.apply([], await Promise.all(jobs));
+    }
+    return logs.sort((a, b) => b.at - a.at);
+  }
   async function searchLogs() {
     const raw = ($('lbill') ? $('lbill').value : logBill).trim();
     logBill = /^\d$/.test(raw) ? '0' + raw : raw; // 会計番号は 2 桁（「7」は「07」）
     logsData = null; logsErr = '';
     keepScroll(() => { main.innerHTML = viewStats(); });
-    try {
-      let logs, r = null;
-      if (A && typeof A.logs === 'function') { try { r = await api('logs', { from: stFrom, to: stTo, bill: logBill || undefined, store: stStore || undefined }); } catch (e) { if (e.status !== 404) throw e; } } // 404 = サーバーが古い → 下の集め方
-      if (r) logs = (r.logs || []);
-      else {
-        const dates = []; for (let d = stFrom; d <= stTo && dates.length < 62; d = addDays(d, 1)) dates.push(d);
-        const stores = cfg.stores.filter((s) => !stStore || s.id === stStore);
-        const jobs = [];
-        stores.forEach((s) => { const sc = DerbyCloud.create({ store: s.id, role: 'staff' }); dates.forEach((d) => jobs.push(sc.logs(s.pin, { date: d, bill: logBill || undefined }).then((x) => (x && x.logs) || []))); });
-        logs = [].concat.apply([], await Promise.all(jobs));
-      }
-      logs.sort((a, b) => b.at - a.at);
-      logsData = { logs, byBill: sumLogs(logs) };
-    } catch (e) { logsErr = errText(e); }
+    try { const logs = await fetchLogs(logBill); logsData = { logs, byBill: sumLogs(logs) }; } catch (e) { logsErr = errText(e); }
     if (tab === 'stats') keepScroll(() => { main.innerHTML = viewStats(); });
   }
   function quickRange(q) {
@@ -1534,6 +1565,11 @@
         /* 集計 */
         case 'day-more': { const tr = b.closest('tr'); const op = !tr.classList.contains('open'); tr.classList.toggle('open', op); b.setAttribute('aria-expanded', String(op)); b.textContent = op ? '閉じる' : 'くわしく'; return; }
         case 'stq': { const r = quickRange(b.dataset.q); stFrom = r[0]; stTo = r[1]; logsData = null; return loadStats(); }
+        case 'wins-csv': {
+          if (!winsData || !winsData.length) return;
+          const rows = [['日付', 'レース', '店舗', '会計番号', 'ニックネーム', '当たり（1着→2着）', '額(pt)', '受け取り', '受け取りの時刻']].concat(winsData.map((x) => [x.date, x.race, storeName(x.storeId), x.bill, x.nick, x.combo, x.amount, x.st === 'paid' ? '渡した' : x.st === 'expired' ? '期限切れ' : x.st === 'void' ? '取消' : 'まだ', x.stAt ? hms(x.stAt) : '']));
+          return download('casaDERBY_当たり一覧_' + (stStore ? storeName(stStore) + '_' : '') + stFrom + '_' + stTo + '.csv', rows);
+        }
         case 'st-csv': {
           const days = statDays();
           const rows = [['日付', 'レース数', '票の数（参加人数）', '会計番号の数', '当選額の目標(pt)', '当選額(pt)', '渡した額(pt)', 'まだ渡していない額(pt)', '期限切れ(pt)']].concat(days.map((x) => [x.date, x.races, x.votes, x.players, stStore ? '' : x.target, x.paid, x.claimed, x.unclaimed, x.expired]));
