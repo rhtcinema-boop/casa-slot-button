@@ -113,3 +113,51 @@ html.w-bot .wcele .box .t, html.w-fill .wcele .box .t, html.w-side .wcele .box .
 /* 左上の順位の札（v2/tv.js の #rankPanel）: 自分の馬に光る輪 */
 #rankPanel .rr i.wme { box-shadow: 0 0 0 5px #ffd84a, 0 0 26px 6px rgba(255, 216, 74, .85); animation: wPulse .8s ease-in-out infinite alternate; }
 @media (prefers-reduced-motion: reduce) { .wv.hot, .hb.hot, #rankPanel .rr i.wme { animation: none; } .wcele .cf { display: none; } }
+/* ---------- 2026-10-30 オーナー「画面いっぱいに: 上がレースの絵・まん中に順位の表・下に大きく自分の予想」 ----------
+   順位の表（#wOrd）: レース中はいまの順位・ゴールのあとは着順・それより前は出走馬。自分の予想の馬は金の枠。
+   縦向き（w-port）: 自分の予想の欄を下まで伸ばし、数字・番号・倍率・当選額・いまの順位を大きく（票が 2 つなら半分ずつ） */
+.word { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.word:empty { display: none; }
+.word .r { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px 6px; border-radius: 9px; background: #141e31; border: 1px solid rgba(255, 255, 255, .12); font-size: 12px; }
+.word .r b { flex: none; width: 2.1em; color: #b9c6da; font-size: 12px; }
+.word .r .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.word .r.lead b { color: #ffd84a; }
+.word .r.me { border-color: #ffd84a; box-shadow: 0 0 10px rgba(255, 216, 74, .45); }
+.word .wk { min-width: 22px; height: 22px; font-size: 14px; }
+.wbn:empty { display: none; }
+.wbonus { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 0; border-radius: 12px; background: linear-gradient(180deg, #ffe46a, #ffb300); color: #3a2400; font-weight: 900; font-size: 14px; }
+.wbonus span { font-size: 12px; }
+html.w-bot .word, html.w-fill .word { display: none; }
+html.w-side .word { grid-template-columns: 1fr; }
+html.w-port .wmine { bottom: calc(50px + env(safe-area-inset-bottom)); top: calc(var(--wy) + var(--wh) + 6px); overflow-y: auto; }
+html.w-port .wh { display: flex; justify-content: center; }
+html.w-port .hb { font-size: 24px; padding: 8px 22px; }
+html.w-port .wl { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+html.w-port .wl .wv { flex: 1 1 0; min-height: 0; flex-direction: column; flex-wrap: nowrap; justify-content: center; align-items: center; text-align: center; gap: 6px; padding: 10px 12px; border-radius: 16px; }
+html.w-port .wl .wv .k { font-size: 16px; }
+html.w-port .wl .wv .cb { gap: 8px; }
+html.w-port .wl .wv .cb small { font-size: 15px; }
+html.w-port .wl .wv .cb em { font-size: 28px; }
+html.w-port .wl .wv .wk { min-width: 54px; height: 54px; font-size: 34px; border-radius: 10px; }
+html.w-port .wl .wv .od { font-size: 18px; } html.w-port .wl .wv .od b { font-size: 36px; }
+html.w-port .wl .wv .pt { font-size: 18px; } html.w-port .wl .wv .pt b { font-size: 38px; }
+html.w-port .wl .wv .pos { flex-basis: auto; font-size: 20px; font-weight: 700; } html.w-port .wl .wv .pos b { font-size: 22px; }
+html.w-port .wl .wv.more, html.w-port .wl .wv.wait { flex: 0 0 auto; font-size: 14px; }
+html.w-port .wres .wr b { font-size: 26px; } html.w-port .wres .wr .am { font-size: 30px; }
+html.w-port .wrot { padding: 8px; font-size: 12px; }
+/* 票が 3 つ以上のときは少し小さく */
+html.w-port .wl .wv:nth-child(3) ~ .wv, html.w-port .wl .wv:nth-child(3) { padding: 6px 10px; }
+/* 票が 2 つ・3 つ以上のとき（#wLines の data-n）: 1 票ずつの欄が低くなるので、文字と番号を少し小さく（欄からはみ出さない） */
+html.w-port .wl .wv { justify-content: safe center; overflow: hidden; }
+html.w-port .wl[data-n="2"] .wv { gap: 3px; padding: 6px 10px; }
+html.w-port .wl[data-n="2"] .wv .wk { min-width: 42px; height: 42px; font-size: 26px; }
+html.w-port .wl[data-n="2"] .wv .cb em { font-size: 22px; }
+html.w-port .wl[data-n="2"] .wv .od b { font-size: 26px; } html.w-port .wl[data-n="2"] .wv .pt b { font-size: 28px; }
+html.w-port .wl[data-n="2"] .wv .od, html.w-port .wl[data-n="2"] .wv .pt { font-size: 15px; }
+html.w-port .wl[data-n="2"] .wv .pos { font-size: 16px; } html.w-port .wl[data-n="2"] .wv .pos b { font-size: 17px; }
+html.w-port .wl[data-n="3"] .wv { gap: 2px; padding: 4px 8px; flex-direction: row; flex-wrap: wrap; }
+html.w-port .wl[data-n="3"] .wv .wk { min-width: 30px; height: 30px; font-size: 18px; }
+html.w-port .wl[data-n="3"] .wv .od b, html.w-port .wl[data-n="3"] .wv .pt b { font-size: 20px; }
+html.w-port .wl[data-n="3"] .wv .pos { font-size: 14px; flex-basis: 100%; }
+/* 横向き（左右の空きにボタン）:「図で見る」は左の列の 2 段目 */
+html.w-bot.w-cols #wMap { position: absolute; left: 6px; top: 48px; max-width: calc(var(--wx) - 10px); padding: 0 8px; font-size: 12px; }
