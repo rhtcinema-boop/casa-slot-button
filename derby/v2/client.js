@@ -97,9 +97,34 @@
       } catch (e) { rej(e); }
     });
   }
+  /* 見るだけ（role 'watch'。2026-10-29 スマホの「レースを見る」）: 投票ページ（同じサイトの親のページ）の中の窓で開いたときは、親の Firebase（つなぎ・匿名ログイン）と
+     親の部品（client-firestore.js・core.js）をそのまま使う（SDK を 2 回読まない・2 つ目の匿名ログインを作らない・親のログインを入れ替えない）。時計も親のもの。
+     親が無い（アドレスを直接開いた）ときは、このページで SDK を読み、前のログイン（同じブラウザの投票ページの匿名ログイン）があるときだけ見られる */
+  function watchParent() {
+    try { const P = window.parent; if (!P || P === window || !P.BETWATCH || !P.DerbyFirestore || !P.DerbyFirestore.connect || !P.DerbyCore) return null; void P.location.href; return P; } catch (e) { return null; } // 親が投票ページ（v2/bet.js の BETWATCH）のときだけ。別のサイトの窓（読めない）は使わない
+  }
   function createFirestore(opt, cfg) {
     let implP = null, impl = null; const adm = {};
     function getImpl() {
+      if (!implP && opt.role === 'watch') implP = (async () => {
+        const P = watchParent();
+        if (P) {
+          const env = await P.DerbyFirestore.connect(cfg, { role: 'phone' }); // 親がもうつないでいる（同じ約束を返す）
+          const clock = () => (P.DerbyCloud && P.DerbyCloud.serverNow ? P.DerbyCloud.serverNow() : NaN);
+          impl = P.DerbyFirestore.create(Object.assign({}, opt, { clock }), Object.assign({}, env, { Core: P.DerbyCore })); // 親のページの部品で作る（親の SDK の値と同じページの中で扱う）
+        } else {
+          const L = [];
+          if (!window.DerbyCore) L.push(DIR + 'core.js' + VQ);
+          if (!window.DerbyFirestore) L.push(DIR + 'client-firestore.js' + VQ);
+          if (typeof window.firebase === 'undefined') L.push(SDK + 'firebase-app-compat.js', SDK + 'firebase-auth-compat.js', SDK + 'firebase-firestore-compat.js');
+          await Promise.all(L.map((u) => loadScript(u)));
+          const env = await window.DerbyFirestore.connect(cfg, { role: 'phone' }); // スマホと同じつなぎ方（App Check を待たない）
+          impl = window.DerbyFirestore.create(opt, Object.assign({}, env, { Core: window.DerbyCore }));
+        }
+        if (!activeImpl) activeImpl = impl;
+        await impl.ready();
+        return impl;
+      })().catch((e) => { implP = null; if (e && e.status) throw e; const er = new Error('通信できません。電波を確認してください'); er.code = 'network'; er.status = 0; er.cause = e; throw er; });
       if (!implP) implP = (async () => {
         /* 2026-10-28 速さの見直し: 順番待ちせずに同時に読む（実行は入れた順）。Firebase の SDK もここで同時に読み始める（connect は読み終わりを待つだけ）。
            お客さんのスマホ（phone）はレースを決めないので、エンジン（engine.js）と結果の計算（outcome.js）を読まない（決めるのはテレビ・管理だけ） */
@@ -145,7 +170,7 @@
       admin(password) { const m = {}; ADMIN.forEach((k) => { m[k] = async (...a) => { const i = await getImpl(); const ad = adm[password] || (adm[password] = i.admin(password)); return ad[k](...a); }; }); return m; },
       /* スマホ（2026-10-28）: 最初につなげなかった（SDK が読めない・ログインできない）ときは 1 → 2 → 4 … 15 秒あけて自動でつなぎ直す（以前は 6 秒ごとの読み直しだけで、見張りは止まったままだった）。
          テレビも同じ（2026-10-29 電波の悪い店: 起動したときに SDK が読めないと、見張りが始まらないまま 10 秒ごとの読み直しだけになっていた）。テレビは 30 秒まで */
-      subscribe(handlers, o) { let un = null, closed = false, n = 0; const go = () => getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); if (!closed && (opt.role === 'phone' || opt.role === 'tv')) setTimeout(go, Math.min(opt.role === 'tv' ? 30000 : 15000, 1000 * 2 ** n++)); }); go(); return () => { closed = true; if (un) un(); }; },
+      subscribe(handlers, o) { let un = null, closed = false, n = 0; const go = () => getImpl().then((i) => { if (!closed) un = i.subscribe(handlers, o); }).catch((e) => { if (handlers && handlers.error) handlers.error(e); if (!closed && (opt.role === 'phone' || opt.role === 'tv' || opt.role === 'watch')) setTimeout(go, Math.min(opt.role === 'tv' ? 30000 : 15000, 1000 * 2 ** n++)); }); go(); return () => { closed = true; if (un) un(); }; },
       get decider() { return impl ? impl.decider : null; },
     };
     getImpl().catch(() => {}); // 早めにつなぐ（テレビは決める係の取り合いを始める）
