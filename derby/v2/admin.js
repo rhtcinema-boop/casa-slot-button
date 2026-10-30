@@ -28,7 +28,7 @@
   /* 確定演出（店舗には見せない。v4 でも「1 着の馬だけ教える」）: 演出名 → [表示名, どう見えるか]。割合の初期値は v2/core.js の DEFAULT_CUES と同じ */
   const CUES = [['fruit', '木の実の色', 'コース脇の木の実が、その馬の枠の色になる'], ['crowd', '観客の服の色', '観客の服がその馬の枠の色に寄る'], ['sign', '看板の絵柄', '向こう正面の看板にその馬の枠の色が出る'], ['cloud', '雲の形', 'その馬の番号の形をした雲が浮かぶ'], ['gateLate', 'ゲートインで遅れた馬', 'その馬だけゲートに入るのをためらう'], ['eye', '最終コーナーで目が光る', '最終コーナーでその馬の目が光る']];
   const DEF_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
-  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4 };
+  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false }; // noRepeatWin・noRepeatRaces・favorBigStore: 2026-10-31（v2/core.js の DEFAULT_TUNING と同じ）
   const TUNE_PRESETS = [['steady', '堅め', { volatility: 0.7, shiftUp: 0.05, shiftDown: 0.05 }, '人気の組み合わせが来やすい・倍率のずらしは小さめ'], ['normal', 'ふつう', { volatility: 1.0, shiftUp: 0.1, shiftDown: 0.1 }, '今の作り'], ['wild', '荒れやすい', { volatility: 1.5, shiftUp: 0.15, shiftDown: 0.15 }, '人気薄も来る・倍率のずらしは大きめ']];
   const BIG_SHIFT = 50; // ずらし幅がこれ（%）より大きいと「見た倍率と大きく変わります」
 
@@ -976,12 +976,23 @@
   const votesOf = (r) => Number(r.votes != null ? r.votes : r.participants && r.participants.total) || 0;
   const finished = (r) => !r.refunded && (r.status === 'decided' || r.status === 'done');
   /* 勝ち馬の決まり方（decision.reason。v2/outcome.js）を 1 行で */
-  const REASONS = { band: '目標の幅に入る組み合わせから抽選', target: '幅に入る組み合わせがなく、目標にいちばん近い組み合わせ（必ず誰かは当てる）', cap_nowin: '上限を超えるので当たりなし（票のない組み合わせ）', cap_conflict: '全部の組み合わせが上限超え。いちばん少ない組み合わせ', nobody: '投票なし（自然の結果）' };
+  const REASONS = { band: '目標の幅に入る組み合わせから抽選', target: '幅に入る組み合わせがなく、目標にいちばん近い組み合わせ（必ず誰かは当てる）', cap_nowin: '上限を超えるので当たりなし（票のない組み合わせ）', cap_conflict: '全部の組み合わせが上限超え。いちばん少ない組み合わせ', nobody: '投票なし（自然の結果）',
+    heavy_only: '1台で番号が多いスマホの票だけ（起きやすさで抽選）', norepeat: '票の組み合わせが全部、直近の当たり端末の票だったので、その票の無い組み合わせから抽選', norepeat_conflict: '30 通り全部に直近の当たり端末の票。いちばん少ない組み合わせ' }; // norepeat・norepeat_conflict: 2026-10-31
   function reasonTxt(r) {
     const d = r.decision; if (!d || !d.reason) return '';
     const n = d.band && Array.isArray(d.band.combos) ? d.band.combos.length : 0;
-    const t = (REASONS[d.reason] || d.reason) + (d.reason === 'band' && n ? '（候補 ' + n + ' 組）' : '') + (d.target ? '・目標 ' + ptT(d.target) : '') + (d.target && d.targetEff != null && d.targetEff !== d.target ? '・このレースは ' + ptT(d.targetEff) + ' に寄せる（ぶれ ×' + (Number(d.spreadF) || 1).toFixed(2) + '）' : '') + /* 配当のぶれ（2026-10-29） */ (d.reason !== 'nobody' ? '・当選額 ' + ptT(d.paid != null ? d.paid : d.payout) : '') + (d.cap ? '・上限 ' + ptT(d.cap) : '');
+    const t = (REASONS[d.reason] || d.reason) + (d.reason === 'band' && n ? '（候補 ' + n + ' 組）' : '') + (d.target ? '・目標 ' + ptT(d.target) : '') + (d.target && d.targetEff != null && d.targetEff !== d.target ? '・このレースは ' + ptT(d.targetEff) + ' に寄せる（ぶれ ×' + (Number(d.spreadF) || 1).toFixed(2) + '）' : '') + /* 配当のぶれ（2026-10-29） */ (d.reason !== 'nobody' ? '・当選額 ' + ptT(d.paid != null ? d.paid : d.payout) : '') + (d.cap ? '・上限 ' + ptT(d.cap) : '') + extraRuleTxt(d);
     return '<small class="hint memo-reason" style="display:block;margin:0">' + nwJoin(t, '・') + '</small>';
+  }
+  /* 直近の当たり端末・参加の多い店（2026-10-31。decision.noRepeat・decision.bigStore。v2/core.js の decideRace）: 効いたときだけ 1 つずつ */
+  function extraRuleTxt(d) {
+    let t = '';
+    const nr = d.noRepeat;
+    if (nr && nr.error) t += '・直近の当たり端末は読めず使わなかった';
+    else if (nr && nr.devices > 0) t += '・直近の当たり端末を外した（' + fmtN(nr.devices) + '台）' + (nr.won ? '・それでも ' + fmtN(nr.won) + ' 票当たり' : '');
+    const bs = d.bigStore;
+    if (bs && bs.store) t += bs.applied ? '・参加の多い店（' + storeName(bs.store) + '）を優先' : '・参加の多い店（' + storeName(bs.store) + '）の票は候補になし';
+    return t;
   }
   // 区切り（・や /）ごとのかたまりを途中で折り返さない（「看/板の絵柄」のような切れ方をなくす。文字はそのまま）
   const nwJoin = (t, sep) => { const p = t.split(sep), tail = sep.replace(/\s+$/, ''), gap = sep.length > tail.length ? ' ' : '<wbr>'; return p.map((x, i) => '<span class="nw">' + esc(x + (i < p.length - 1 ? tail : '')) + '</span>').join(gap); }; // 区切りは前のかたまりの終わりに付ける（行の頭に「・」「/」が来ない）
@@ -1071,6 +1082,8 @@
       (sp > 0 ? '<li><b>配当のぶれ ' + pc(sp) + '</b>: レースごとに、寄せる額を目標の ' + spreadRange(sp) + ' の間でばらつかせます（幅はそのまわり）。毎レース目標ちょうどにはなりません。</li>' : '<li>配当のぶれは 0%（毎レース目標のまわりに寄せます）。</li>') +
       '<li>幅に入るものが無ければ、目標にいちばん近い組み合わせにします＝<b>必ず誰かは当てる</b>。</li>' +
       '<li>ただし<b>払い出しの上限</b>（1 レース ' + cap(T.payoutCap) + '・1 日 ' + cap(T.payoutCapDay) + '）を超える組み合わせは選びません。上限は「必ず誰かは当てる」より強い決まりです。票の入ったどの組み合わせも上限を超えるときは、票の入っていない組み合わせ＝<b>当たりなし</b>になります。</li>' +
+      (T.noRepeatWin === true ? '<li><b>直近の当たり端末を当てない</b>: 直近 ' + nrRacesOf(T) + ' レース（テスト・取り消しは数えない）で当たったスマホの票が入った組み合わせは選びません。残りに票が無ければ、その票の無い組み合わせから起きやすさで抽選（当たりなしもある）。上限のほうが強い決まりです。</li>' : '') +
+      (T.favorBigStore === true ? '<li><b>参加人数が多い店から当たりを出す</b>: 上の決まりで残った候補の中に、参加がいちばん多い店の票が入った組み合わせがあれば、その中から選びます（同じ人数・1 店だけのレースは何もしない）。</li>' : '') +
       '<li><b>誰も投票していない</b>レースは自然の結果のまま。テストの票しかないときは払わないので上限を見ません。</li>' +
       '<li>決めた 1着 → 2着 の順にゴールするように走りを作ります（人気の倍率の表示はそのまま）。</li></ol>';
   }
@@ -1117,6 +1130,20 @@
     if (n === 1) return '<span class="err" style="display:inline">1 は使えません（0 か 2〜99）</span>';
     return '友だちの分を1台で入れる（' + (n - 1) + ' 個まで）はふつうどおり。' + n + ' 個以上は、決め方に数えず、管理の「集計」の「注意」に出ます（お客さん・スタッフの画面は変わりません）。';
   }
+  /* オン・オフの行（2026-10-31）: 右に「使う」のチェック。id は n-<key>（保存のときに DOM から読む） */
+  const toggleRow = (label, hint, key, on) => '<div class="row tog" id="row-' + key + '"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div>' +
+    '<label class="check tog"><input type="checkbox" id="n-' + key + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(label) + '"><span>' + (on ? '使う' : '使わない') + '</span></label></div>';
+  const ckOf = (key) => { const el = $('n-' + key); return el ? !!el.checked : !!(cfg.tuning && cfg.tuning[key] === true); };
+  /* 直近の当たり端末を当てない（2026-10-31）: 数えるレースは 1〜50（v2/core.js の NOREPEAT_MAX）・初期 10 */
+  const NOREPEAT_MAX = 50;
+  const nrRacesOf = (T) => { const n = Math.floor(Number(T && T.noRepeatRaces)); return n >= 1 && n <= NOREPEAT_MAX ? n : 10; };
+  function noRepeatExample(on, n) {
+    return '直近 ' + n + ' レースで当たったスマホ（端末）は、次の当たりから外します。テストのレースは数えません。' + (on ? '' : '<b>いまは使っていません。</b>');
+  }
+  /* 参加人数が多い店から当たりを出す（2026-10-31） */
+  function bigStoreExample(on) {
+    return 'そのレースで参加（会計番号）がいちばん多い店の票が入った組み合わせを、当たりの候補の中から先に選びます。上限・直近の当たり端末・当選額の目標が先です。同じ人数の店があるとき・1 店だけのレースは何もしません。' + (on ? '' : '<b>いまは使っていません。</b>');
+  }
   function viewTuning() {
     const T = cfg.tuning;
     const cur = TUNE_PRESETS.find((p) => Math.abs(p[2].volatility - T.volatility) < 1e-6 && Math.abs(p[2].shiftUp - T.shiftUp) < 1e-6 && Math.abs(p[2].shiftDown - T.shiftDown) < 1e-6);
@@ -1143,6 +1170,12 @@
       '<p class="hint capnote">上限は「必ず誰かは当てる」より<b>強い</b>決まりです。上限を超える組み合わせしかないときは<b>当たりなし</b>になります。</p>' +
       stepRow('1台の会計番号の上限', '1台のスマホが1レースでこの数以上の会計番号を使うと、その票は「必ず誰かは当てる」に数えません（自然に当たれば払います）。0 = 使わない', 'maxBillsPerDevice', T.maxBillsPerDevice == null ? 4 : T.maxBillsPerDevice, '個', 0, 99, 1) +
       '<p class="hint" id="billsEx">' + billsExample(T.maxBillsPerDevice == null ? 4 : T.maxBillsPerDevice) + '</p>' +
+      /* 直近の当たり端末を当てない・参加人数が多い店から当たりを出す（2026-10-31 オーナー）。どちらも初期は使わない。保存は下の「保存」 */
+      toggleRow('直近の当たり端末を当てない', '同じスマホが続けて当たらないようにする', 'noRepeatWin', T.noRepeatWin === true) +
+      stepRow('数えるレース', '直近の何レースで当たったスマホを外すか（1〜' + NOREPEAT_MAX + '）', 'noRepeatRaces', nrRacesOf(T), 'レース', 1, NOREPEAT_MAX, 1) +
+      '<p class="hint" id="noRepeatEx">' + noRepeatExample(T.noRepeatWin === true, nrRacesOf(T)) + '</p>' +
+      toggleRow('参加人数が多い店から当たりを出す', 'そのレースで参加がいちばん多い店の票を先に当てる', 'favorBigStore', T.favorBigStore === true) +
+      '<p class="hint" id="bigStoreEx">' + bigStoreExample(T.favorBigStore === true) + '</p>' +
       '<details class="fold" id="explainFold"><summary>勝ち馬の決まり方（くわしく）</summary><div class="in explain">' + explainHtml(T) + '</div></details>' +
       '</div>' +
       viewHorseLook(T) +
@@ -1203,7 +1236,7 @@
     finally { btns.forEach((x) => { if (document.contains(x)) x.disabled = false; }); }
   }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
-  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutSpread', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
+  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutSpread', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'noRepeatRaces', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
   function validateTuning() {
     if (!$('tumsg')) return 1;
     const badKeys = TUN_KEYS.filter((k) => !numOk(k) || (k === 'maxBillsPerDevice' && $('n-' + k) && Number($('n-' + k).value) === 1)), bad = badKeys.length;
@@ -1211,6 +1244,11 @@
     if ($('voteEx') && numOk('voteSec')) $('voteEx').innerHTML = voteExample(numOf('voteSec'));
     if ($('bandEx') && numOk('bandBelow') && numOk('bandAbove')) $('bandEx').innerHTML = bandExample(numOf('bandBelow') / 100, numOf('bandAbove') / 100);
     if ($('spreadEx') && numOk('payoutSpread')) $('spreadEx').innerHTML = spreadExample(numOf('payoutSpread') / 100);
+    { // 直近の当たり端末・参加の多い店（2026-10-31）: 「使う／使わない」の字と例文をその場で
+      ['noRepeatWin', 'favorBigStore'].forEach((k) => { const el = $('n-' + k), sp = el && el.parentNode.querySelector('span'); if (sp) sp.textContent = el.checked ? '使う' : '使わない'; });
+      if ($('noRepeatEx')) $('noRepeatEx').innerHTML = noRepeatExample(ckOf('noRepeatWin'), numOk('noRepeatRaces') ? Math.round(numOf('noRepeatRaces')) : nrRacesOf(cfg.tuning));
+      if ($('bigStoreEx')) $('bigStoreEx').innerHTML = bigStoreExample(ckOf('favorBigStore'));
+    }
     if (numOk('shiftUp') && numOk('shiftDown')) {
       const up = numOf('shiftUp'), down = numOf('shiftDown');
       if ($('shiftEx')) $('shiftEx').innerHTML = shiftExample(up / 100, down / 100);
@@ -1220,7 +1258,7 @@
     { const mt = $('moreTune'); if (mt && !mt.open && mt.querySelector('.bad')) mt.open = true; } // 畳んだ欄にエラーがあれば開く
     { // 勝ち馬の決まり方（くわしく）も、入れている値で書き直す（範囲の外の欄は保存済みの値）
       const ex = main.querySelector('#explainFold .explain'), T0 = cfg.tuning, v = (k, div) => (numOk(k) ? numOf(k) / (div || 1) : T0[k]);
-      if (ex) ex.innerHTML = explainHtml(Object.assign({}, T0, { shiftUp: v('shiftUp', 100), shiftDown: v('shiftDown', 100), bandBelow: v('bandBelow', 100), bandAbove: v('bandAbove', 100), payoutSpread: v('payoutSpread', 100), payoutCap: v('payoutCap'), payoutCapDay: v('payoutCapDay') }));
+      if (ex) ex.innerHTML = explainHtml(Object.assign({}, T0, { shiftUp: v('shiftUp', 100), shiftDown: v('shiftDown', 100), bandBelow: v('bandBelow', 100), bandAbove: v('bandAbove', 100), payoutSpread: v('payoutSpread', 100), payoutCap: v('payoutCap'), payoutCapDay: v('payoutCapDay'), noRepeatWin: ckOf('noRepeatWin'), noRepeatRaces: numOk('noRepeatRaces') ? numOf('noRepeatRaces') : T0.noRepeatRaces, favorBigStore: ckOf('favorBigStore') }));
     }
     $('tumsg').innerHTML = bad ? '<div class="err">数字の範囲を確かめてください（赤い欄）</div>' : tunDirty ? '<div class="warnmsg">保存していない変更があります</div>' : '<div class="okmsg">保存済みです</div>';
     $('tusave').disabled = bad > 0 || !tunDirty;
@@ -1233,12 +1271,13 @@
       shiftUp: Math.round(numOf('shiftUp')) / 100, shiftDown: Math.round(numOf('shiftDown')) / 100,
       bandBelow: Math.round(numOf('bandBelow')) / 100, bandAbove: Math.round(numOf('bandAbove')) / 100, payoutSpread: Math.round(numOf('payoutSpread')) / 100,
       payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')), maxBillsPerDevice: Math.round(numOf('maxBillsPerDevice')),
+      noRepeatWin: ckOf('noRepeatWin'), noRepeatRaces: Math.round(numOf('noRepeatRaces')), favorBigStore: ckOf('favorBigStore'), /* 2026-10-31 */
       payoutRate: Math.round(numOf('payoutRate')) / 100, volatility: Math.round(numOf('volatility') * 10) / 10,
       resultSec: Math.round(numOf('resultSec')), gateSec: Math.round(numOf('gateSec')), postSec: Math.round(numOf('postSec')),
     };
     // 変えた項目だけ送る（ほかの画面で変えた項目を、この画面の古い値で戻さない）
     const T0 = cfg.tuning, near = (a, b) => Math.abs(Number(a || 0) - Number(b || 0)) < 1e-9;
-    Object.keys(t).forEach((k) => { if (near(t[k], T0[k])) delete t[k]; });
+    Object.keys(t).forEach((k) => { if (typeof t[k] === 'boolean' ? t[k] === (T0[k] === true) : near(t[k], T0[k] != null ? T0[k] : DEF_TUNING[k])) delete t[k]; }); // オン・オフは true / false で比べる（保存していない古いデータは初期値と比べる）
     { const cz = {}; CUES.forEach(([k]) => { const cur = (T0.cues && T0.cues[k]) || DEF_CUES[k], sh = Math.round(numOf('cueShow_' + k)), hi = Math.round(numOf('cueHit_' + k)), d = {}; if (!near(sh, cur.show)) d.show = sh; if (!near(hi, cur.hit)) d.hit = hi; if (Object.keys(d).length) cz[k] = d; }); if (Object.keys(cz).length) t.cues = cz; } /* 演出: 変えた演出・項目だけ */
     if (!Object.keys(t).length) { tunDirty = false; toast('変更はありません'); return keepScroll(render); }
     const big = (t.shiftUp != null && t.shiftUp * 100 > BIG_SHIFT) || (t.shiftDown != null && t.shiftDown * 100 > BIG_SHIFT);
@@ -1550,6 +1589,7 @@
   });
   main.addEventListener('change', (e) => {
     const el = e.target;
+    if (tab === 'tuning' && el.type === 'checkbox' && /^n-/.test(el.id)) { tunDirty = true; return validateTuning(); } // 調整のオン・オフ（2026-10-31）
     if (tab === 'timetable' && tt) {
       const t = tplOf(el);
       if (t && el.dataset.wd != null) { const d = +el.dataset.wd, i = t.weekdays.indexOf(d); if (el.checked && i < 0) t.weekdays.push(d); if (!el.checked && i >= 0) t.weekdays.splice(i, 1); el.parentNode.classList.toggle('on', el.checked); return ttTouched(); }
