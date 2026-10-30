@@ -1,9 +1,9 @@
 {
- "v": "b166",
+ "v": "b167",
  "files": [
   {
    "path": "index.html",
-   "sha256": "6145f10e8c552b7d513b1defec0d790d87e90449b5c2414295028388507822ea"
+   "sha256": "79ed53503754d8d04ccae3907def4c18f725a6a0adbc7350cd90b8450974e2cb"
   },
   {
    "path": "manifest.webmanifest",
@@ -227,11 +227,11 @@
   },
   {
    "path": "derby/art/voice/g.m4a",
-   "sha256": "4c962f90b1db71089d0acbb8ef1abc6261fc8c777e261c46a428d94d95028f90"
+   "sha256": "ab9ecdb151db60cdb578ec7303908d5e94bfa80db2d617524a5f8ecc89f77c0d"
   },
   {
    "path": "derby/art/voice/index.json",
-   "sha256": "327c5320baa1f3b1f8195a149a9905abf13eb5387203ba23bcd418563933059b"
+   "sha256": "f7213c81a9044608c6467e482bae8c6e49c9a2eaaaad8f047d1b2b294e9d365b"
   },
   {
    "path": "derby/art/voice/x.m4a",
@@ -247,7 +247,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "b7035935ff737ca8652dbab0a62ab184c88399684908dfd14f7abb78b75c24f1"
+   "sha256": "bb584cf7e4fb1c1b97acf89981e096199546e468c103175dc058fae1e52810ef"
   },
   {
    "path": "derby/js/audio.js",
@@ -384,6 +384,10 @@
   {
    "path": "derby/v2/watch.js",
    "sha256": "b366eebb71673ee9289593d3476f88123755cccb8721bc2408e38129ed58f751"
+  },
+  {
+   "path": "derby/v2/announce.js",
+   "sha256": "3c89ad34dc8c0162e5ba8f8e2ae6bf6bcaf6193bcd172d1d8bc0905e30af58f8"
   }
  ]
 }
