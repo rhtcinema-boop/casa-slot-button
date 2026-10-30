@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b101b">
+<meta name="robots" content="noindex">
+<title>casa DERBY レースを見る（図）</title>
+<!-- スマホの「レースを見る」の図の表示（2026-10-30 オーナー「競馬場を真上から見た感じで、数字の書いてある丸い図形が動いて誰が先頭走ってるかわかる」）。
+     3D・テレビの画面の部品は読まない（three.js・テレビの絵・音・文字のファイルなし）。中身は v2/watchmap.js、見た目はこのページの <style>。
+     投票ページ（v2/bet.html）の「レースを見る」の窓で開く（?view=map のとき・Web デモではいつも）。直接開いたときは投票した端末だけ -->
+<style>
+:root { --bg: #0b101b; --card: #141e31; --line: rgba(255, 255, 255, .12); --gold: #ffd84a; --ink: #fff; --sub: #b9c6da; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); box-sizing: border-box; display: flex; flex-direction: column; min-height: 100dvh; }
+body > .top { flex: none; }
+button { font: inherit; cursor: pointer; }
+.top { display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.top .t { flex: 1; min-width: 0; font-weight: 900; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #dfe7f3; }
+.wb { height: 32px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .28); border-radius: 16px; background: rgba(20, 30, 50, .82); color: #fff; font-weight: 700; font-size: 13px; white-space: nowrap; }
+.wb[hidden] { display: none; }
+main { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 8px; }
+.st { display: flex; align-items: center; gap: 8px; font-weight: 900; }
+.st .tag { padding: 3px 10px; border-radius: 999px; background: #2459c9; font-size: 13px; }
+.st .tag.live { background: #d6332b; } .st .tag.res { background: var(--gold); color: #3a2400; } .st .tag.hot { background: #d6332b; }
+.st .clk { margin-left: auto; font-size: 20px; font-variant-numeric: tabular-nums; }
+.st .clk small { font-size: 11px; color: var(--sub); margin-right: 4px; font-weight: 700; }
+.course { position: relative; border-radius: 14px; overflow: hidden; background: #2d6a2a; }
+.course canvas { display: block; width: 100%; }
+.course .hold { position: absolute; inset: auto 0 8px; text-align: center; font-weight: 900; font-size: 14px; text-shadow: 0 1px 3px #000; }
+.course .hold:empty { display: none; }
+.ord { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ord .r { display: flex; align-items: center; gap: 5px; padding: 4px 6px; border-radius: 9px; background: var(--card); border: 1px solid var(--line); font-size: 12px; min-width: 0; transition: border-color .2s; }
+.ord .r b { font-size: 12px; color: var(--sub); width: 2.2em; flex: none; }
+.ord .r .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ord .r.lead b { color: var(--gold); }
+.ord .r.me { border-color: var(--gold); box-shadow: 0 0 10px rgba(255, 216, 74, .45); }
+.left { font-size: 13px; color: var(--sub); text-align: right; } .left b { color: #fff; font-size: 18px; }
+.left:empty { display: none; }
+.wk { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 3px; border-radius: 6px; font-style: normal; font-weight: 900; font-size: 15px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35) inset; flex: none; }
+.pad { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; }
+.pad[hidden] { display: none; }
+.pad h3 { margin: 0 0 6px; font-size: 14px; }
+.pad .h { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.pad .h:first-of-type { border-top: 0; }
+.pad .h .nm { flex: 1; min-width: 0; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pad .h .ty { font-size: 11px; padding: 1px 6px; border-radius: 6px; color: #111; font-weight: 900; }
+.pad .h .cd { font-size: 12px; color: var(--sub); width: 4.2em; text-align: right; }
+.pad .x6 { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 12px; color: var(--sub); }
+.pad .x6 span { display: inline-flex; align-items: center; gap: 3px; }
+.mine { display: flex; flex-direction: column; gap: 6px; }
+.wv { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 10px; border-radius: 12px; background: linear-gradient(180deg, #17233a, #101a2c); border: 1px solid var(--line); font-size: 13px; }
+.wv .k { font-weight: 900; font-size: 12px; color: var(--gold); }
+.wv em { font-style: normal; color: var(--gold); font-weight: 900; }
+.wv .cb { display: inline-flex; align-items: center; gap: 5px; } .wv .cb small { font-size: 11px; color: var(--sub); }
+@media (orientation: portrait), (max-width: 559px) { .mine .wv .cb { gap: 8px; } .mine .wv .cb small { font-size: 15px; } }
+.wv .od b, .wv .pt b { font-size: 17px; font-weight: 900; } .wv .pt b { color: var(--gold); }
+.wv .pos { flex-basis: 100%; } .wv .pos b { color: var(--gold); }
+.wv.hot { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(255, 216, 74, .55), 0 0 18px rgba(255, 216, 74, .45); animation: pulse .9s ease-in-out infinite alternate; }
+.wv.hit { border-color: var(--gold); background: linear-gradient(180deg, #4a3a08, #2a2006); } .wv.miss { opacity: .78; }
+.hb { align-self: flex-start; padding: 6px 14px; border-radius: 999px; font-weight: 900; font-size: 18px; }
+.hb.hot { background: linear-gradient(180deg, #ffe46a, #ffb300); color: #3a2400; box-shadow: 0 0 22px rgba(255, 196, 0, .8); animation: pulse .7s ease-in-out infinite alternate; }
+.hb.near { background: #d6332b; }
+.hyp:empty { display: none; }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+.wbig { height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: #2f7cf6; color: #fff; font-weight: 900; font-size: 15px; white-space: nowrap; }
+.wbig.ghost { background: transparent; border: 1px solid rgba(255, 255, 255, .4); }
+.res { display: flex; flex-direction: column; gap: 6px; } .res:empty { display: none; }
+.wr { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; border-radius: 12px; background: #18243a; }
+.wr b { font-size: 20px; } .wr.hit { background: linear-gradient(180deg, #ffe46a, #ffb300); color: #3a2400; } .wr .am { font-size: 22px; font-weight: 900; }
+.lock { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; padding: 24px; background: var(--bg); text-align: center; }
+.lock.show { display: grid; }
+.lock .in { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 420px; }
+.lock b { font-size: 20px; } .lock span { font-size: 14px; color: var(--sub); line-height: 1.6; } .lock span:empty { display: none; }
+.lock[data-why="load"] .wbig { display: none; }
+.cele { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(4, 8, 16, .55); overflow: hidden; }
+.cele[hidden] { display: none; }
+.cele .cf { position: absolute; inset: 0; pointer-events: none; }
+.cele .cf i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: fall 2.2s linear both; }
+@keyframes fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(105vh) rotate(540deg); } }
+.cele .box { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 240px; max-width: 92vw; padding: 18px 22px; border-radius: 20px; background: #142036; border: 1px solid var(--line); text-align: center; animation: pop .45s cubic-bezier(.2, 1.4, .4, 1) both; }
+.cele .box.hit { background: linear-gradient(180deg, #fff3b0, #ffc21a 60%, #ff9d00); color: #3a2400; border: 0; box-shadow: 0 0 60px rgba(255, 200, 0, .7); }
+.cele .box .t { font-size: 44px; font-weight: 900; } .cele .box .am { font-size: 40px; font-weight: 900; } .cele .box .am small { font-size: 18px; }
+.cele .box span { font-size: 13px; display: inline-flex; gap: 3px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.cele .bt { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.cele .box.hit .wbig.ghost { color: #3a2400; border-color: rgba(58, 36, 0, .5); }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+/* 横向き: 左にコース・右に順位と自分の予想 */
+@media (orientation: landscape) and (min-width: 560px) {
+  main { grid-template-columns: minmax(0, 1.75fr) minmax(220px, 1fr); align-items: start; }
+  main > .colA { grid-column: 1; } main > .colB { grid-column: 2; grid-row: 1 / span 6; display: flex; flex-direction: column; gap: 8px; }
+  .ord { grid-template-columns: 1fr; }
+}
+/* 2026-10-30 オーナー「画面いっぱいに」: 縦向きは コース → 順位 → 自分の予想（下まで伸ばして大きく）。初参加ボーナスの 2 票目のボタン */
+.bn:empty { display: none; }
+.wbonus { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 0; border-radius: 12px; background: linear-gradient(180deg, #ffe46a, #ffb300); color: #3a2400; font-weight: 900; font-size: 14px; }
+.wbonus span { font-size: 12px; }
+@media (orientation: portrait), (max-width: 559px) {
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  main > .colB { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  .mine { flex: 1 1 auto; min-height: 0; }
+  .mine .wv { flex: 1 1 0; min-height: 0; flex-direction: column; flex-wrap: nowrap; justify-content: center; align-items: center; text-align: center; gap: 6px; border-radius: 16px; }
+  .mine .wv .k { font-size: 16px; }
+  .mine .wv .wk { min-width: 54px; height: 54px; font-size: 34px; border-radius: 10px; }
+  .mine .wv em { font-size: 28px; margin: 0 6px; }
+  .mine .wv .od { font-size: 18px; } .mine .wv .od b { font-size: 36px; }
+  .mine .wv .pt { font-size: 18px; } .mine .wv .pt b { font-size: 38px; }
+  .mine .wv .pos { flex-basis: auto; font-size: 20px; font-weight: 700; } .mine .wv .pos b { font-size: 22px; }
+  .hyp { display: flex; justify-content: center; } .hb { font-size: 24px; padding: 8px 22px; align-self: center; }
+  .wr b { font-size: 26px; } .wr .am { font-size: 30px; }
+  .mine .wv { justify-content: safe center; overflow: hidden; }
+  .mine[data-n="2"] .wv { gap: 3px; padding: 6px 10px; } .mine[data-n="2"] .wv .wk { min-width: 42px; height: 42px; font-size: 26px; } .mine[data-n="2"] .wv .od b, .mine[data-n="2"] .wv .pt b { font-size: 27px; } .mine[data-n="2"] .wv .pos { font-size: 16px; }
+  .mine[data-n="3"] .wv { gap: 2px; padding: 4px 8px; flex-direction: row; flex-wrap: wrap; } .mine[data-n="3"] .wv .wk { min-width: 30px; height: 30px; font-size: 18px; } .mine[data-n="3"] .wv .od b, .mine[data-n="3"] .wv .pt b { font-size: 20px; } .mine[data-n="3"] .wv .pos { font-size: 14px; flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .wv.hot, .hb.hot { animation: none; } .cele .cf { display: none; } }
+</style>
+<link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="top"><button type="button" class="wb" id="mBack">‹ 投票ページ</button><span class="t">レースを見る</span><button type="button" class="wb" id="m3d" hidden>3Dで見る</button></div>
+<main>
+  <div class="colA">
+    <div class="st"><span class="tag" id="mTag">—</span><b id="mTitle"></b><span class="clk" id="mClk"></span></div>
+  </div>
+  <div class="colA course" id="mCourse"><canvas id="mCv" aria-label="コースを真上から見た図"></canvas><div class="hold" id="mHold"></div></div>
+  <div class="colA pad" id="mPad" hidden></div>
+  <div class="colB">
+    <div class="bn" id="mBonus"></div>
+    <div class="left" id="mLeft"></div>
+    <div class="ord" id="mOrd" aria-live="off"></div>
+    <div class="hyp" id="mHype"></div>
+    <div class="mine" id="mMine"></div>
+    <div class="res" id="mRes"></div>
+  </div>
+</main>
+<div class="lock show" id="mLock" data-why="load"><div class="in"><b id="mLockT">読み込み中…</b><span id="mLockS"></span><button type="button" class="wbig" id="mLockB">投票ページへ戻る</button></div></div>
+<div class="cele" id="mCele" hidden></div>
+<script src="client.js?v=m2"></script>
+<script src="form.js?v=m2"></script>
+<script src="../js/engine.js?v=m2"></script>
+<script src="../js/r3d/course.js?v=m2"></script>
+<script src="watchmap.js?v=m2"></script>
+</body>
+</html>
