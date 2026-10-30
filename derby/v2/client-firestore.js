@@ -739,6 +739,22 @@
       return r;
     }
     const CHUNK = 150; // 1 回の取引で書くのは 500 件まで（Firestore の上限）。当たり 1 件 = 当たり・票の 2 件
+    /* 直近の当たり端末（2026-10-31。Core.recentWinners。模擬クラウドの server.js の recentWinners と同じ答え）: 決める係だけが読める（ルールはもとのまま）。
+       レース（derbyRaces）を at の新しい順に n＋10 件ずつ（6 日前まで・6 回まで。Core.NOREPEAT_PAGE_EXTRA・NOREPEAT_PAGES）読み、数えるレースが n 本そろったら、その当たり（derbyPayouts。raceId を 10 件ずつ）を読む。
+       ページの境目は「at が同じかそれより前」で読み直す（同じ時刻のレースを落とさない。読んだものは id で 1 回だけ）。1 回の決め方の中だけで使う（覚えておかない） */
+    async function recentWinnersFor(r, n) {
+      const lo = r.at - Core.NOREPEAT_LOOKBACK_MS, L = n + Core.NOREPEAT_PAGE_EXTRA, seen = {}, list = [];
+      let cur = r.at, strict = true;
+      for (let page = 0; page < Core.NOREPEAT_PAGES; page++) {
+        const docs = (await db.collection(COL.races).where('at', strict ? '<' : '<=', cur).where('at', '>=', lo).orderBy('at', 'desc').limit(L).get()).docs.map((d) => d.data());
+        let added = 0; docs.forEach((x) => { if (x && x.id && !seen[x.id]) { seen[x.id] = 1; list.push(x); added++; } });
+        if (Core.recentRaces(list, r, n).length >= n || docs.length < L || !added) break;
+        cur = docs[docs.length - 1].at; strict = false;
+      }
+      const ids = Core.recentRaces(list, r, n).map((x) => x.id), pays = [];
+      for (let i = 0; i < ids.length; i += 10) (await db.collection(COL.payouts).where('raceId', 'in', ids.slice(i, i + 10)).get()).docs.forEach((d) => pays.push(d.data()));
+      return Core.recentWinners(list, pays, r, n);
+    }
     async function decideRace(raceId, actor) {
       const ref = doc(COL.races, raceId), t = now(), key = randId('k', 12);
       const claimed = await db.runTransaction(async (tx) => {
@@ -749,10 +765,13 @@
       });
       if (!claimed) return null;
       const r = claimed, sc = await secretConfig(), secret = data(await doc(COL.secrets, raceId).get()) || { payoutTarget: 0, scope: 'all', comboProb: null };
-      const vq = await db.collection(COL.votes).where('raceId', '==', raceId).get();
+      // 直近の当たり端末（2026-10-31）: 調整がオンで本物のレースのときだけ、票と一緒に読む。読めなければ決まりを使わずに決める（レースは止めない。decision.noRepeat.error）
+      const NR = Core.noRepeatOf(sc.tuning);
+      const [vq, recent] = await Promise.all([db.collection(COL.votes).where('raceId', '==', raceId).get(), NR.on && !r.test ? recentWinnersFor(r, NR.races).catch((e) => ({ error: (e && (e.code || e.message)) || 'error' })) : null]);
       const votes = vq.docs.map((d) => d.data());
       const day = r.day || Core.bizDate(r.at, sc.tuning.dayStartHour), st = data(await doc(COL.stats, day).get());
-      const d = Core.decideRace(Engine, Outcome, r, secret, votes, sc.tuning, sc.salt, now(), (st && st.committed) || 0);
+      const d = Core.decideRace(Engine, Outcome, r, secret, votes, sc.tuning, sc.salt, now(), (st && st.committed) || 0, recent);
+      if (d.decision.noRepeat) logD([now(), 'norepeat ' + raceId + ' ' + (d.decision.noRepeat.error ? 'error ' + d.decision.noRepeat.error : 'devices=' + d.decision.noRepeat.devices + ' recent=' + d.decision.noRepeat.recent)]); // 直近の当たり端末（記録は derbyRaceSecrets の decision）
       if (d.decision.manyBills) logD([now(), 'many_bills ' + raceId + ' ' + d.decision.manyBills.map((x) => x.dev + ':' + x.bills).join(',')]); // 1 台で番号が多いスマホ（2026-10-27。決め方に数えない。記録は derbyRaceSecrets の decision と当たりの flag）
       const exp = Core.expireAtFor(Math.max(r.at, d.revealAt), sc.tuning.dayStartHour);
       const mine = (x) => !!x && x.status === 'closing' && x.closingKey === key;
