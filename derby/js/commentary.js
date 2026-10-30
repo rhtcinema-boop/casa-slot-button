@@ -1,6 +1,6 @@
 /* 実況エンジン（本物の競馬実況のように、レースの様子を見ながら途切れずにしゃべる）
    - 声は前もって録音した部品（art/voice/{c,e,x}.m4a と index.json。tools/make-voice.js で作る）をつないで話す
-     例: 「先頭は3番」＋「レッドアロー」＋「リードは2馬身」
+     例: 「先頭は3番」＋「プリフロップジャム」＋「リードは2馬身」（馬名の声は名前で探す。声の無い名前は言わない＝下の nameKey）
    - テンションは 3 段階: c=道中（落ち着いた） e=スタート・3〜4コーナー・直線の入口 x=残り 260m〜ゴール（最高潮）
    - 毎コマ、レースの画面（DERBY.raceView）から位置・着・進路・スローを読み、次に何を言うかを決める
      （隊列・リード・動き・コーナー・1000m の通過タイム・残り距離・「○番か！○番か！」・ゴールイン・写真判定）
@@ -267,8 +267,15 @@ window.Commentary = (function () {
     this.speedRate = opt.rate || 1;
     this.sideSaid = {}; this.sideStep = 0; this.lowAt = {}; this.quietUntil = 0; this.fieldSaid = 0;
   }
-  const NAMEIDX = {};
-  function nameKey(name) { if (!(name in NAMEIDX)) { const pool = (window.Engine && Engine.POOL) || []; NAMEIDX[name] = pool.findIndex((p) => p.name === name); } return NAMEIDX[name]; }
+  /* 馬名の声は「名前」で探す（2026-10-30 管理画面で馬を足す・名前を変えられるようにしたため。一覧の順番では探さない＝並べ替え・名前の変更で別の馬の名前を言わない）。
+     部品は nm.<馬名>（tools/make-voice.js の --names で art/voice/n.m4a に作る）。以前の素材の name.<番号> は、部品の文（表示用の文）が馬名と同じときだけ使う。
+     声の無い名前（管理画面で足した・変えたばかり）は言わない＝その前の「○番」だけ（L.name を呼ぶ所は、どれも先に馬番を言っている） */
+  function nameKey(name) {
+    name = String(name || ''); if (!name || !Lib.index) return null;
+    if (hasClip('nm.' + name)) return 'nm.' + name;
+    if (!Lib.names) { Lib.names = {}; Object.keys(Lib.index.clips).forEach((id) => { const m = /^[cex]:(name\.\d+)$/.exec(id); if (m) Lib.names[Lib.index.clips[id][2]] = m[1]; }); }
+    return Lib.names[name] || null;
+  }
   // 1 本の文を作る道具
   Director.prototype.line = function (pri, tier, key) {
     const D = this, L = { pri, tier, key, parts: [], text: '', dur: 0 };
@@ -284,7 +291,7 @@ window.Commentary = (function () {
       return L;
     };
     L.pause = function (s) { L.parts.push({ pause: s }); L.dur += s; return L; };
-    L.name = function (i, opt) { const k = nameKey(D.race.horses[i].name); if (k >= 0) { L.add('name.' + k, opt); D.named[i] = D.now; } return L; };
+    L.name = function (i, opt) { const h = D.race.horses[i], k = h && nameKey(h.name); if (k) { L.add(k, opt); D.named[i] = D.now; } return L; };
     return L;
   };
   Director.prototype.pickVar = function (vs, v) {
