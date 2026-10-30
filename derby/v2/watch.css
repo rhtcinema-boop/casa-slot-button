@@ -1,0 +1,115 @@
+/* casa DERBY 見るだけ（index.html?store=<店>&watch=1。v2/watch.js）。スマホの投票ページの「レースを見る」の窓の中。
+   画面の置き方（html のクラス。v2/watch.js の fit が付ける）:
+     w-port 縦向き: 上に帯（戻る・音）、テレビの画面は横いっぱい、その下に自分の予想、いちばん下に「横向きにすると大きく見られます」
+     w-side 横向き: テレビの画面をまるごと左に収め、空いた右の列に帯と自分の予想
+     w-bot  横向き（右に空きが無い画面）: テレビの画面を上に収め、下に自分の予想の帯
+     w-fill 横向きの「横いっぱい」: テレビの画面を横いっぱい（上下に動かして見る）。自分の予想は下に重ねる細い帯
+   --wx・--wy・--ww・--wh: テレビの画面（#stage）の位置と大きさ（px）。文字は投票ページと同じ Noto Sans JP（無ければ端末の文字） */
+html.watch, html.watch body { background: #0b101b; overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; } /* スマホのブラウザが文字を勝手に大きくしない */
+html.watch #viewport { background: #0b101b; }
+html.watch.w-fill #viewport { overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#wSizer { position: absolute; left: 0; top: 0; width: 1px; height: calc(var(--wh, 0px) + 64px); pointer-events: none; visibility: hidden; }
+html.watch:not(.w-fill) #wSizer { display: none; }
+html.watch #stage.w-locked { visibility: hidden; }
+html.watch #stage::before { display: none; } /* 背景の回る光（3000px 四方の層）はスマホでは出さない（メモリーの節約。測ると GPU の分が 40MB ほど減る） */
+#wUi { position: fixed; inset: 0; z-index: 40; pointer-events: none; color: #fff; font-family: 'Noto Sans JP', system-ui, -apple-system, 'Hiragino Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
+#wUi button { pointer-events: auto; font: inherit; cursor: pointer; }
+/* 上の帯（戻る・題・横いっぱい・音） */
+.wtop { position: absolute; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+.wtop .wt { flex: 1; min-width: 0; font-weight: 900; font-size: 14px; letter-spacing: .04em; color: #dfe7f3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb { height: 32px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .28); border-radius: 16px; background: rgba(20, 30, 50, .82); color: #fff; font-weight: 700; font-size: 13px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.wb.back i { font-style: normal; font-size: 20px; line-height: 1; margin-top: -2px; }
+.wb.snd { width: 40px; padding: 0; justify-content: center; }
+.wb.snd svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wb.snd .spk { fill: #fff; }
+.wb.snd .x { display: none; } .wb.snd.off .x { display: inline; } .wb.snd.off .wave { display: none; } .wb.snd.off { background: rgba(120, 30, 30, .85); }
+.wb[hidden] { display: none; }
+html.w-port .wtop { left: 0; right: 0; top: 0; height: 40px; padding: 0 8px; background: #0b101b; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+html.w-side .wtop { left: calc(var(--ww) + 8px); right: 8px; top: 8px; flex-wrap: wrap; }
+html.w-side .wtop .wt { display: none; }
+html.w-side #wBack { order: 1; } html.w-side #wSnd { order: 2; margin-left: auto; } html.w-side #wFit { order: 3; }
+html.w-bot .wtop, html.w-fill .wtop { right: 8px; top: 6px; }
+/* w-bot: テレビの画面の左右の空き（--wx）に置く（画面の上の帯に重ねない）。空きが狭いときは今までどおり右上に並べる */
+html.w-bot.w-cols .wtop { left: 0; right: 0; top: 0; height: 0; }
+html.w-bot.w-cols #wBack { position: absolute; left: 6px; top: 8px; max-width: calc(var(--wx) - 10px); padding: 0 8px; }
+html.w-bot.w-cols #wSnd { position: absolute; right: 6px; top: 8px; }
+html.w-bot.w-cols #wFit { position: absolute; right: 6px; top: 48px; max-width: calc(var(--wx) - 10px); padding: 0 8px; font-size: 12px; }
+html.w-bot .wtop .wt, html.w-fill .wtop .wt { display: none; }
+/* 自分の予想 */
+.wmine { position: absolute; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+.wmine[hidden] { display: none; }
+html.w-port .wmine { left: 8px; right: 8px; top: calc(var(--wy) + var(--wh) + 8px); }
+html.w-side .wmine { left: calc(var(--ww) + 8px); right: 8px; top: 90px; bottom: 8px; overflow-y: auto; }
+html.w-bot .wmine, html.w-fill .wmine { left: 0; right: 0; bottom: 0; padding: 4px 8px calc(4px + env(safe-area-inset-bottom)); background: rgba(8, 14, 26, .86); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.wv { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 10px; border-radius: 12px; background: linear-gradient(180deg, #17233a, #101a2c); border: 1px solid rgba(255, 255, 255, .12); font-size: 13px; transition: box-shadow .3s, border-color .3s; }
+.wv .k { font-weight: 900; font-size: 12px; color: #ffd84a; letter-spacing: .04em; }
+.wv .cb { display: inline-flex; align-items: center; gap: 4px; }
+.wv .cb small { font-size: 11px; color: #b9c6da; }
+.wv .cb em, .wr em, .box em { font-style: normal; color: #ffd84a; font-weight: 900; margin: 0 2px; }
+.wk { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 3px; border-radius: 6px; font-style: normal; font-weight: 900; font-size: 16px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35) inset; }
+.wv .od { font-size: 12px; color: #dfe7f3; } .wv .od b { font-size: 17px; font-weight: 900; color: #fff; margin-right: 1px; }
+.wv .pt { font-size: 12px; color: #dfe7f3; } .wv .pt b { font-size: 17px; font-weight: 900; color: #ffd84a; }
+.wv .pos { flex-basis: 100%; font-size: 13px; color: #fff; } .wv .pos b { color: #ffd84a; font-weight: 900; }
+.wv.wait, .wv.more { color: #b9c6da; font-size: 12px; }
+.wv.hot { border-color: #ffd84a; box-shadow: 0 0 0 2px rgba(255, 216, 74, .55), 0 0 18px rgba(255, 216, 74, .45); animation: wPulse .9s ease-in-out infinite alternate; }
+.wv.hit { border-color: #ffd84a; background: linear-gradient(180deg, #4a3a08, #2a2006); }
+.wv.miss { opacity: .78; }
+html.w-bot .wv, html.w-fill .wv { padding: 3px 8px; border-radius: 9px; font-size: 12px; }
+html.w-bot .wv .pos, html.w-fill .wv .pos { flex-basis: auto; }
+html.w-bot .wk, html.w-fill .wk { min-width: 22px; height: 22px; font-size: 14px; }
+html.w-bot .wv .k, html.w-fill .wv .k { font-size: 11px; }
+/* 盛り上げの札 */
+.wh:empty { display: none; }
+.hb { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 900; font-size: 18px; letter-spacing: .06em; }
+.hb.hot { background: linear-gradient(180deg, #ffe46a, #ffb300); color: #3a2400; box-shadow: 0 0 0 2px #fff4, 0 0 22px rgba(255, 196, 0, .8); animation: wPulse .7s ease-in-out infinite alternate; }
+.hb.near { background: #d6332b; color: #fff; }
+html.w-bot .hb, html.w-fill .hb { font-size: 14px; padding: 3px 10px; }
+@keyframes wPulse { from { transform: scale(1); } to { transform: scale(1.06); } }
+/* 結果（行の下） */
+.wres:empty { display: none; }
+.wres { display: flex; flex-direction: column; gap: 6px; }
+html.w-bot .wres, html.w-fill .wres { flex-direction: row; align-items: center; }
+.wr { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; border-radius: 12px; background: #18243a; }
+.wr b { font-size: 20px; font-weight: 900; }
+.wr.hit { background: linear-gradient(180deg, #ffe46a, #ffb300); color: #3a2400; }
+.wr .am { font-size: 22px; font-weight: 900; } .wr .am small { font-size: 13px; margin-left: 2px; }
+.wr .rs { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; }
+.wr .tst { flex-basis: 100%; font-size: 11px; }
+.wbig { height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: #2f7cf6; color: #fff; font-weight: 900; font-size: 15px; }
+.wbig.ghost { background: transparent; border: 1px solid rgba(255, 255, 255, .4); }
+html.w-bot .wres .wbig, html.w-fill .wres .wbig { height: 32px; font-size: 13px; }
+/* 縦向きの案内 */
+.wrot { position: absolute; left: 8px; right: 8px; bottom: calc(10px + env(safe-area-inset-bottom)); display: none; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: 12px; background: rgba(255, 255, 255, .07); color: #dfe7f3; font-size: 13px; font-weight: 700; }
+.wrot i { font-style: normal; font-size: 20px; color: #ffd84a; }
+html.w-port .wrot { display: flex; }
+/* 見られないとき（投票していない・レースが終わった・読み込み中） */
+.wlock { position: absolute; inset: 0; display: none; place-items: center; padding: 24px; background: #0b101b; pointer-events: auto; text-align: center; }
+.wlock.show { display: grid; }
+.wlock .in { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 420px; }
+.wlock b { font-size: 20px; font-weight: 900; }
+.wlock span { font-size: 14px; color: #b9c6da; line-height: 1.6; }
+.wlock span:empty { display: none; }
+.wlock[data-why="load"] .wbig { display: none; }
+.wlock[data-why="load"] b::after { content: ""; display: block; width: 28px; height: 28px; margin: 14px auto 0; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .2); border-top-color: #ffd84a; animation: wSpin .9s linear infinite; }
+@keyframes wSpin { to { transform: rotate(360deg); } }
+/* 結果の知らせ（短く。紙吹雪は CSS だけ） */
+.wcele { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(4, 8, 16, .55); pointer-events: auto; overflow: hidden; }
+.wcele[hidden] { display: none; }
+.wcele .box { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 240px; max-width: 92vw; padding: 18px 22px; border-radius: 20px; background: #142036; border: 1px solid rgba(255, 255, 255, .16); text-align: center; animation: wPop .45s cubic-bezier(.2, 1.4, .4, 1) both; }
+.wcele .box.hit { background: linear-gradient(180deg, #fff3b0, #ffc21a 60%, #ff9d00); color: #3a2400; border: 0; box-shadow: 0 0 0 4px #fff8, 0 0 60px rgba(255, 200, 0, .7); }
+.wcele .box small { font-size: 14px; font-weight: 900; letter-spacing: .1em; }
+.wcele .box .t { font-size: 44px; font-weight: 900; letter-spacing: .06em; line-height: 1.1; }
+.wcele .box.hit .t { font-size: 56px; text-shadow: 0 3px 0 #fff8; }
+.wcele .box .am { font-size: 40px; font-weight: 900; line-height: 1; } .wcele .box .am small { font-size: 18px; margin-left: 3px; }
+.wcele .box span { font-size: 13px; display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; justify-content: center; }
+.wcele .box .bt { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
+.wbig { white-space: nowrap; }
+.wcele .box.hit .wbig.ghost { border-color: rgba(58, 36, 0, .5); color: #3a2400; }
+.wcele .cf { position: absolute; inset: 0; pointer-events: none; }
+.wcele .cf i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation: wFall 2.2s linear both; }
+@keyframes wFall { from { transform: translateY(0) rotate(0); opacity: 1; } to { transform: translateY(105vh) rotate(540deg); opacity: .8; } }
+@keyframes wPop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+html.w-bot .wcele .box .t, html.w-fill .wcele .box .t, html.w-side .wcele .box .t { font-size: 36px; } html.w-bot .wcele .box.hit .t, html.w-fill .wcele .box.hit .t, html.w-side .wcele .box.hit .t { font-size: 42px; }
+/* 左上の順位の札（v2/tv.js の #rankPanel）: 自分の馬に光る輪 */
+#rankPanel .rr i.wme { box-shadow: 0 0 0 5px #ffd84a, 0 0 26px 6px rgba(255, 216, 74, .85); animation: wPulse .8s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .wv.hot, .hb.hot, #rankPanel .rr i.wme { animation: none; } .wcele .cf { display: none; } }
