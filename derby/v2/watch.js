@@ -39,7 +39,7 @@
   const ui = document.createElement('div'); ui.id = 'wUi';
   ui.innerHTML = '<div class="wtop" id="wTop"><button type="button" class="wb back" id="wBack"><i aria-hidden="true">‹</i>' + esc(TX.back) + '</button><span class="wt">' + esc(TX.title) + '</span>' +
     '<button type="button" class="wb fit" id="wFit">' + esc(TX.fitWide) + '</button><button type="button" class="wb snd off" id="wSnd" aria-label="' + esc(TX.sndOn) + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/><path class="x" d="M16 9l6 6M22 9l-6 6"/></svg></button></div>' +
-    '<div class="wmine" id="wMine" hidden><div class="wh" id="wHype" aria-live="polite"></div><div class="wl" id="wLines"></div><div class="wres" id="wRes"></div></div>' +
+    '<div class="wmine" id="wMine" hidden><div class="wbn" id="wBonus"></div><div class="word" id="wOrd"></div><div class="wh" id="wHype" aria-live="polite"></div><div class="wl" id="wLines"></div><div class="wres" id="wRes"></div></div>' +
     '<div class="wrot" id="wRot"><i aria-hidden="true">⟳</i>' + esc(TX.rotate) + '</div>' +
     '<div class="wlock show" id="wLock" role="status"><div class="in"><b id="wLockT">' + esc(TX.loading) + '</b><span id="wLockS"></span><button type="button" class="wbig" id="wLockB">' + esc(TX.backBig) + '</button></div></div>' +
     '<div class="wcele" id="wCele" hidden></div>';
@@ -53,6 +53,8 @@
     location.href = 'v2/bet.html?store=' + encodeURIComponent(STORE) + (keep ? '&' + keep : '');
   }
   $('wBack').addEventListener('click', goBack); $('wLockB').addEventListener('click', goBack);
+  // 図の表示（v2/watchmap.html）へ切り替える（2026-10-30 本番も。選んだ表示はこの端末に覚える＝次に開くときもその表示。casa.derby.watchView）
+  { const b = document.createElement('button'); b.type = 'button'; b.className = 'wb'; b.id = 'wMap'; b.textContent = '図で見る'; $('wFit').parentNode.insertBefore(b, $('wFit')); b.addEventListener('click', () => { const keep2 = ['cloud', 'mute', 'race'].map((k) => { const m = QS.match(new RegExp('[?&]' + k + '=([^&#]*)')); return m ? '&' + k + '=' + m[1] : ''; }).join(''); try { localStorage.setItem('casa.derby.watchView', 'map'); } catch (e) { /* noop */ } location.replace('v2/watchmap.html?store=' + encodeURIComponent(STORE) + keep2); }); }
   // 音: テレビの音のボタン（#soundBtn。v2/tv.js の soundButton）を押す。押した操作の中で鳴らすので、スマホでも音が出る
   function sndShow() { const off = !window.Sfx || Sfx.isMuted(), b = $('wSnd'); b.classList.toggle('off', off); b.setAttribute('aria-label', off ? TX.sndOn : TX.sndOff); }
   $('wSnd').addEventListener('click', (e) => { e.stopPropagation(); const b = document.getElementById('soundBtn'); if (b) b.click(); else if (window.Sfx) { Sfx.mute(!Sfx.isMuted()); if (!Sfx.isMuted() && Sfx.unlock) Sfx.unlock(); } sndShow(); });
@@ -155,7 +157,7 @@
   }
 
   /* ---------- 描く（1 秒に 5 回まで。中身が変わったときだけ書き換える） ---------- */
-  const last = { lock: '', lines: '', hype: '', res: '', rk: '' };
+  const last = { lock: '', lines: '', hype: '', res: '', rk: '', ord: '', bonus: '' };
   const celeDone = {};
   function setHtml(id, key, html) { if (last[key] === html) return; last[key] = html; $(id).innerHTML = html; }
   function lock(why) {
@@ -184,6 +186,19 @@
     });
     if (list.length > 3) lines += '<div class="wv more">' + esc(fill(TX.more, { n: list.length - 3 })) + '</div>';
     setHtml('wLines', 'lines', lines);
+    { const nv = String(Math.min(3, Math.max(1, list.length))); if ($('wLines').dataset.n !== nv) $('wLines').dataset.n = nv; } // 票の数で大きさを変える（watch.css）
+    /* 順位の表（2026-10-30 オーナー「上がレースの絵・まん中に順位の表・下に大きく自分の予想」）: レース中はいまの順位（1 秒に 5 回まで）、ゴールのあとは着順、
+       それより前（投票中・ゲート）は出走馬の番号と名前。自分の予想の馬は金の枠 */
+    const mineIdx = list.reduce((a, v) => a.concat([v.first, v.second]), []);
+    let ordIdx = null, ordHead = '';
+    if (rk) { ordIdx = rk.map((r, i) => [r, i]).sort((a, b) => a[0] - b[0]).map((x) => x[1]); ordHead = '位'; }
+    else if (R.result && R.result.order && (D.phase === 'result' || (R.revealAt && D.now() >= R.revealAt))) { ordIdx = R.result.order.slice(); ordHead = '着'; }
+    const ord = ordIdx ? ordIdx.map((i, k) => '<div class="r' + (k === 0 ? ' lead' : '') + (mineIdx.indexOf(i) >= 0 ? ' me' : '') + '"><b>' + (k + 1) + ordHead + '</b>' + chip(R, i) + '<span class="nm">' + esc(horseOf(R, i).name) + '</span></div>').join('')
+      : (R.horses || []).map((h, i) => '<div class="r' + (mineIdx.indexOf(i) >= 0 ? ' me' : '') + '">' + chip(R, i) + '<span class="nm">' + esc(h.name) + '</span></div>').join('');
+    setHtml('wOrd', 'ord', ord);
+    // 初参加ボーナス（2 票目）がまだ入れられる: 投票ページへ戻るボタン（自動で開いた窓でも 2 票目を逃さない）
+    let bn = ''; try { const B = parentBet(); if (B && B.bonus && B.bonus(R.id)) bn = '<button type="button" class="wbonus" data-wact="back"><b>初参加ボーナス：もう1票</b><span>投票ページで選ぶ ›</span></button>'; } catch (e) { bn = ''; }
+    setHtml('wBonus', 'bonus', bn);
     // 盛り上げ: 当たりの形！（どれかの票の 1・2 着が予想どおり）／あと少し！（どれかの馬が 2 着以内）
     let hype = '';
     if (rk && !oc) {
