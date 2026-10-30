@@ -1,9 +1,9 @@
 {
- "v": "b168",
+ "v": "b169",
  "files": [
   {
    "path": "index.html",
-   "sha256": "02236938c7703da22f3311fc4c2854f7ac4c3ecfdf7fe1f2d016654ca3330a6d"
+   "sha256": "21665dfd77991dd275dd56619b31b192f5ab9a292007e07c8e9e163089c73332"
   },
   {
    "path": "manifest.webmanifest",
@@ -231,7 +231,11 @@
   },
   {
    "path": "derby/art/voice/index.json",
-   "sha256": "f7213c81a9044608c6467e482bae8c6e49c9a2eaaaad8f047d1b2b294e9d365b"
+   "sha256": "c5007a8e5e996e44c5923ed10f43da952a6b09392067960fd3284de3bbe6cfd4"
+  },
+  {
+   "path": "derby/art/voice/n.m4a",
+   "sha256": "bc239545fb576f6f36ef2127e42de8a48c793ef10023fe59ffb575ccd5fa3d19"
   },
   {
    "path": "derby/art/voice/x.m4a",
@@ -247,7 +251,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "d2cb268469598180b995eb2e72e3f3c519a8687cd1e7b3b25e82febb5a7e1a6e"
+   "sha256": "367b791a756aa122703b54807dfaa674a3045be0161781684e1bed018886e134"
   },
   {
    "path": "derby/js/audio.js",
@@ -259,11 +263,11 @@
   },
   {
    "path": "derby/js/commentary.js",
-   "sha256": "33ee1bbd75e0ff2fe5d0342e6e7197eaf0d9d9a0a73c85b012c8baca93ecc4c6"
+   "sha256": "d57b858887bceeab6a358dc40b6f2665d717985f1341f357164e1aae47a37d0e"
   },
   {
    "path": "derby/js/engine.js",
-   "sha256": "9d0c14114c4d3fd4ab2a7c4b7c659792d443f700ef85861009f146766058c755"
+   "sha256": "0a0d9245affe9134231b02bb65a4363777bba87d4d997b123f1dd458cfb74f4a"
   },
   {
    "path": "derby/js/game.js",
@@ -330,6 +334,10 @@
    "sha256": "618277311553568c735759f546eb88035db4dfc7d9c293bdc38e1aa6034d7778"
   },
   {
+   "path": "derby/v2/announce.js",
+   "sha256": "3c89ad34dc8c0162e5ba8f8e2ae6bf6bcaf6193bcd172d1d8bc0905e30af58f8"
+  },
+  {
    "path": "derby/v2/client-firestore.js",
    "sha256": "219e1254673d84cdffa1bbb4dc2689fab84c1e4b1de12c5715a85bcb72758c2a"
   },
@@ -343,7 +351,7 @@
   },
   {
    "path": "derby/v2/core.js",
-   "sha256": "e2fbf956633bcfc6c1ace4dc574b3fd96ef20588539ed4757816d34799f1a322"
+   "sha256": "a09b802ac02a7ad389aae5da22a26306dbfbbb0d37fdb8314f7a276c688fe7aa"
   },
   {
    "path": "derby/v2/form.js",
@@ -384,10 +392,6 @@
   {
    "path": "derby/v2/watch.js",
    "sha256": "bd3762509d9c0359674381cc39590baceab44c7cadd269a295792ef15535c89f"
-  },
-  {
-   "path": "derby/v2/announce.js",
-   "sha256": "3c89ad34dc8c0162e5ba8f8e2ae6bf6bcaf6193bcd172d1d8bc0905e30af58f8"
   }
  ]
 }
