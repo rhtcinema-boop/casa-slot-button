@@ -168,8 +168,13 @@
   },
   {
    "path": "art/voice/index.json",
-   "size": 31339,
-   "sha256": "f7213c81a9044608c6467e482bae8c6e49c9a2eaaaad8f047d1b2b294e9d365b"
+   "size": 32481,
+   "sha256": "c5007a8e5e996e44c5923ed10f43da952a6b09392067960fd3284de3bbe6cfd4"
+  },
+  {
+   "path": "art/voice/n.m4a",
+   "size": 262643,
+   "sha256": "bc239545fb576f6f36ef2127e42de8a48c793ef10023fe59ffb575ccd5fa3d19"
   },
   {
    "path": "art/voice/x.m4a",
@@ -188,8 +193,8 @@
   },
   {
    "path": "index.html",
-   "size": 26213,
-   "sha256": "b7035935ff737ca8652dbab0a62ab184c88399684908dfd14f7abb78b75c24f1"
+   "size": 26491,
+   "sha256": "367b791a756aa122703b54807dfaa674a3045be0161781684e1bed018886e134"
   },
   {
    "path": "js/audio.js",
@@ -203,13 +208,13 @@
   },
   {
    "path": "js/commentary.js",
-   "size": 60064,
-   "sha256": "33ee1bbd75e0ff2fe5d0342e6e7197eaf0d9d9a0a73c85b012c8baca93ecc4c6"
+   "size": 60967,
+   "sha256": "d57b858887bceeab6a358dc40b6f2665d717985f1341f357164e1aae47a37d0e"
   },
   {
    "path": "js/engine.js",
-   "size": 25625,
-   "sha256": "9d0c14114c4d3fd4ab2a7c4b7c659792d443f700ef85861009f146766058c755"
+   "size": 28060,
+   "sha256": "0a0d9245affe9134231b02bb65a4363777bba87d4d997b123f1dd458cfb74f4a"
   },
   {
    "path": "js/game.js",
@@ -292,6 +297,11 @@
    "sha256": "618277311553568c735759f546eb88035db4dfc7d9c293bdc38e1aa6034d7778"
   },
   {
+   "path": "v2/announce.js",
+   "size": 11823,
+   "sha256": "3c89ad34dc8c0162e5ba8f8e2ae6bf6bcaf6193bcd172d1d8bc0905e30af58f8"
+  },
+  {
    "path": "v2/client-firestore.js",
    "size": 157788,
    "sha256": "219e1254673d84cdffa1bbb4dc2689fab84c1e4b1de12c5715a85bcb72758c2a"
@@ -308,8 +318,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 85342,
-   "sha256": "e2fbf956633bcfc6c1ace4dc574b3fd96ef20588539ed4757816d34799f1a322"
+   "size": 90472,
+   "sha256": "a09b802ac02a7ad389aae5da22a26306dbfbbb0d37fdb8314f7a276c688fe7aa"
   },
   {
    "path": "v2/form.js",
@@ -360,11 +370,6 @@
    "path": "v2/watch.js",
    "size": 24175,
    "sha256": "bd3762509d9c0359674381cc39590baceab44c7cadd269a295792ef15535c89f"
-  },
-  {
-   "path": "v2/announce.js",
-   "size": 11823,
-   "sha256": "3c89ad34dc8c0162e5ba8f8e2ae6bf6bcaf6193bcd172d1d8bc0905e30af58f8"
   }
  ]
 }
