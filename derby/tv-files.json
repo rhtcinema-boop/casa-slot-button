@@ -353,13 +353,13 @@
   },
   {
    "path": "v2/watch.css",
-   "size": 12096,
-   "sha256": "6cd8fb76313e0120d7d2eb7c17d676e9777f448692e2939efbdbf958767a5401"
+   "size": 16596,
+   "sha256": "407bd5d3a39240b924c0f8c5dac06a913ed0272e869733547fb03201bca67465"
   },
   {
    "path": "v2/watch.js",
-   "size": 21501,
-   "sha256": "b366eebb71673ee9289593d3476f88123755cccb8721bc2408e38129ed58f751"
+   "size": 24175,
+   "sha256": "bd3762509d9c0359674381cc39590baceab44c7cadd269a295792ef15535c89f"
   },
   {
    "path": "v2/announce.js",
