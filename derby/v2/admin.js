@@ -1,4 +1,4 @@
-/* casa DERBY 管理画面（v4・2026-10-21）: 今日／時刻表／テレビ／調整／集計
+/* casa DERBY 管理画面（v4・2026-10-21）: 今日／時刻表／テレビ／調整／馬（2026-10-30 出走する馬の一覧の修正・追加）／集計
    元の仕様: 仕様書_v4_大改修.md。中身（core）の関数と項目は v2/V4_CORE_NOTES.md の 8 章。画面のメモは v2/V4_UI_ADMIN_NOTES.md。
    v4 で変わったこと: 参加無料・1 人 1 票（会計番号）・2 連単だけ。リングバウンティの交換の割合・参加受付の秒数・賭けたチップ・当選額の割合・返却はなくした。
    投票の秒数（初期 180 秒・全店同じ）・元の額 100pt（決まり）・倍率のずらし幅（上限なし。1.0 倍より下げない）・払い出しの上限・当たりの幅・時刻表（走り出す時刻・全店同じ・当選額の目標）。
@@ -182,14 +182,15 @@
   async function reloadCfg() { cfg = normCfg(await api('config')); }
   function tick() { $('clock').textContent = fmtDay(todayStr()) + ' ' + hms(now()).slice(0, 5); main.querySelectorAll('[data-until]').forEach((el) => { el.textContent = leftTxt(+el.dataset.until - now()); }); }
 
-  const leaveOk = () => !((ttDirty && tab === 'timetable') || (tunDirty && tab === 'tuning') || (editStore && tab === 'tv')) || confirm('保存していない変更があります。破棄して移動しますか？');
-  window.addEventListener('beforeunload', (e) => { if (ttDirty || tunDirty) { e.preventDefault(); e.returnValue = ''; } });
+  const leaveOk = () => !((ttDirty && tab === 'timetable') || (tunDirty && tab === 'tuning') || (hsDirty && tab === 'horses') || (editStore && tab === 'tv')) || confirm('保存していない変更があります。破棄して移動しますか？');
+  window.addEventListener('beforeunload', (e) => { if (ttDirty || tunDirty || hsDirty) { e.preventDefault(); e.returnValue = ''; } });
   const markTab = () => document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x.dataset.tab === tab));
   function switchTab(name) {
     if (name === tab) { if (!editStore) { if (tab === 'races') racesData = null; if (tab === 'tv') pairData = null; render(); } return; } // いまのタブを押したら読み直す
     if (!leaveOk()) return;
     if (tab === 'timetable' && ttDirty) { tt = null; ttDirty = false; }
     if (tab === 'tuning') tunDirty = false;
+    if (tab === 'horses') { hs = null; hsDirty = false; } // 馬: 保存していない変更は捨てる（戻ってきたら保存済みの一覧から）
     if (tab === 'races') { memoOn = false; refundOpen = null; } // 勝ち馬の決まり方・レース取消はほかの画面へ移ったら閉じ直す
     editStore = null; connOpen = false; // 畳みは別の画面に移ったら閉じた状態から
     if (name === 'tv') pairData = null; // 進行役のテレビは開くたびに読み直す
@@ -201,11 +202,12 @@
 
   function render() {
     clearInterval(racesTimer);
-    main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats');
+    main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats' || tab === 'horses');
     if (tab === 'tv') { main.innerHTML = editStore ? viewStoreEdit() : viewTvPanel() + viewStores(); if (editStore) validateStore(); else if (!pairData && pairOk()) loadPair(); }
     else if (tab === 'timetable') { if (!tt) loadTT(); main.innerHTML = viewTT(); paintTT(); }
     else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
     else if (tab === 'tuning') { main.innerHTML = viewTuning(); validateTuning(); }
+    else if (tab === 'horses') { main.innerHTML = viewHorses(); paintHorses(); if (!hsVoice) loadVoiceNames(); } // 声の一覧は開くたびに読み直さない（読めなかったときだけもう一度）
     else if (tab === 'stats') { if (!stFrom) { stTo = bizToday(); stFrom = addDays(stTo, -6); } main.innerHTML = viewStats(); if (!statsData && !statsErr) loadStats(); }
   }
   const keepScroll = (fn) => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
@@ -1246,6 +1248,129 @@
   }
 
   /* ======================================================================
+     馬（2026-10-30 オーナー「マスター画面から馬の一覧を出して、修正できるように。追加も修正もできるように」）
+     一覧は調整値の horses（v2/core.js の cleanHorses と同じ決まり。保存は saveTuning({ horses })＝裏の設定 derbyConfig/secret）。
+     保存していなければ初期の 16 頭（js/engine.js の POOL。admin.html で読む）。初期と同じ一覧を保存したときは null（＝初期のまま）で送る。
+     「出走」の馬からレースごとに 6 頭（出走は 6 頭以上）。「休み」は一覧に残して走らせない。保存は「これから作るレース」から（作ってあるレース＝15 分ほど先までは前の馬）。
+     実況の声: art/voice/index.json に名前の声（nm.<馬名>）がある馬は「実況で名前を読む ✓」、無い馬は「実況は馬番で読む」（js/commentary.js は声の無い名前を言わない）。
+     声を作るのは開発の手元（node tools/make-voice.js --names …）。「実況の声について」に、そのまま渡せる文を出す
+     ====================================================================== */
+  const H_TYPES = [['nige', '逃げ'], ['senko', '先行'], ['sashi', '差し'], ['oikomi', '追込']];
+  const H_COATS = [['bay', '鹿毛'], ['chestnut', '栗毛'], ['black', '青毛'], ['gray', '芦毛'], ['white', '白毛'], ['palomino', '月毛']]; // js/engine.js の COATS と同じ
+  const H_STATS = [['spd', 'スピード'], ['sta', 'スタミナ'], ['pow', 'パワー']];
+  const H_LV = [1, 2, 3, 4, 5].map((n) => [n, String(n)]);
+  const H_MIN = 6, H_MAX = 40, H_NAME_MAX = 9; // core.js の HORSES_MIN・HORSES_MAX・HORSE_NAME_MAX と同じ
+  // 馬名の書き方と決まり（core.js の horseName / horseNameErr と同じ式。管理画面は core.js を後から読むので自分でも持つ）
+  const hName = (s) => {
+    let t = String(s == null ? '' : s); try { t = t.normalize('NFKC'); } catch (e) { /* そのまま */ }
+    return t.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[-‐‑–—―−─～〜~]/g, 'ー').replace(/\s+/g, '');
+  };
+  const hNameErr = (n) => (!n ? '名前を入れてください' : !/^[ァ-ヶー]+$/.test(n) ? 'カタカナと「ー」だけで書いてください' : n.length < 2 || n.length > H_NAME_MAX ? '2〜' + H_NAME_MAX + '文字にしてください（いま ' + n.length + ' 文字）' : /^[ーァィゥェォッャュョヮヵヶ]/.test(n) ? '「ー」や小さい字で始めないでください' : '');
+  let hs = null, hsDirty = false, hsVoice = null, hsVoiceErr = '', hsFoldOpen = false; // hs: 編集中のコピー { list: [{ k, name, type, spd, sta, pow, coat, off }] }／hsVoice: 声のある馬名（Set）
+  const hsDefault = () => (window.Engine && Array.isArray(Engine.POOL) ? Engine.POOL : []);
+  const hsPlain = (h) => { const o = { name: h.name, type: h.type, spd: Number(h.spd), sta: Number(h.sta), pow: Number(h.pow), coat: h.coat }; if (h.off) o.off = true; return o; };
+  const hsCustom = () => (cfg && Array.isArray(cfg.tuning.horses) && cfg.tuning.horses.length ? cfg.tuning.horses : null);
+  const hsSaved = () => hsCustom() || hsDefault();
+  const sameAsDefault = (list) => JSON.stringify(list.map(hsPlain)) === JSON.stringify(hsDefault().map(hsPlain));
+  function hsLoad() { hs = { list: hsSaved().map((h) => Object.assign({ k: nk() }, hsPlain(h))) }; hsDirty = false; }
+  // 声のある馬名: art/voice/index.json の nm.<馬名>（と、以前の素材の name.<番号> の文）
+  async function loadVoiceNames() {
+    try {
+      const r = await fetch('../art/voice/index.json?nc=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const ix = await r.json(), set = new Set();
+      Object.keys(ix.clips || {}).forEach((id) => { const m = /^[cex]:nm\.(.+)$/.exec(id); if (m) set.add(m[1]); else if (/^[cex]:name\.\d+$/.test(id)) set.add(ix.clips[id][2]); });
+      hsVoice = set; hsVoiceErr = '';
+    } catch (e) { hsVoice = null; hsVoiceErr = '実況の声の一覧を読めませんでした'; }
+    if (tab === 'horses') paintHorses();
+  }
+  const hasVoice = (name) => !!(hsVoice && hsVoice.has(name));
+  const hOpts = (list, v) => list.map(([k, l]) => '<option value="' + k + '"' + (String(v) === String(k) ? ' selected' : '') + '>' + l + '</option>').join('');
+  function viewHorses() {
+    if (!hs) hsLoad();
+    if (!hs.list.length && !hsDefault().length) return '<div class="panel"><h3>馬</h3><p class="err">馬の一覧（js/engine.js）を読めませんでした。画面を読み込み直してください。</p></div>';
+    return '<div class="panel" id="horsePanel"><h3>出走する馬 <small class="qsub">全店共通</small></h3>' +
+      '<p class="hint">レースごとに、<b>出走</b>の馬から 6 頭を選んで走らせます。名前・脚質・能力（1〜5）・毛色を直せます。<b>休み</b>にした馬は一覧に残して走らせません。' +
+      '保存すると<b>これから作るレース</b>から使われます（作ってあるレース＝15 分ほど先までは前の馬のまま）。</p>' +
+      '<div class="hrs-sum" id="hrsSum"></div>' +
+      '<div class="hrs-list" id="hrsList">' + hs.list.map(hrsRow).join('') + '</div>' +
+      '<div class="acts l"><button type="button" class="btn ghost" data-act="hs-add" id="hsadd">＋ 馬を追加</button>' +
+      (hsCustom() || !sameAsDefault(hs.list) ? '<button type="button" class="btn link" data-act="hs-default">初期の 16 頭に戻す</button>' : '') + '</div>' +
+      '<details class="fold" id="hrsVoiceFold"' + (hsFoldOpen ? ' open' : '') + '><summary>実況の声について <small>新しい名前は、声を作るまで馬番で読みます</small></summary><div class="in" id="hrsVoice"></div></details>' +
+      '</div>' +
+      '<div class="savebar"><div class="msg" id="hsmsg"></div><button type="button" class="btn ghost" data-act="hs-revert">元に戻す</button><button type="button" class="btn" data-act="hs-save" id="hssave">保存</button></div>';
+  }
+  function hrsRow(h, i) {
+    return '<div class="hrs-row' + (h.off ? ' off' : '') + '" data-hk="' + h.k + '">' +
+      '<div class="hrs-no" aria-hidden="true">' + (i + 1) + '</div>' +
+      '<label class="hrs-f hrs-name"><span>名前</span><input type="text" data-hf="name" value="' + esc(h.name) + '" maxlength="14" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="カタカナ 2〜9 文字"></label>' +
+      '<label class="hrs-f hrs-type"><span>脚質</span><select data-hf="type">' + hOpts(H_TYPES, h.type) + '</select></label>' +
+      H_STATS.map(([k, l]) => '<label class="hrs-f hrs-st hrs-' + k + '"><span>' + l + '</span><select data-hf="' + k + '">' + hOpts(H_LV, h[k]) + '</select></label>').join('') +
+      '<label class="hrs-f hrs-coat"><span>毛色</span><select data-hf="coat">' + hOpts(H_COATS, h.coat) + '</select></label>' +
+      '<div class="hrs-voice" data-hv></div>' +
+      '<div class="hrs-ops"><button type="button" class="btn xs onoff' + (h.off ? '' : ' on') + '" data-act="hs-on" title="押すと切り替え">' + (h.off ? '休み' : '出走') + '</button>' +
+      '<button type="button" class="btn xs ghost" data-act="hs-del">削除</button></div>' +
+      '<div class="hrs-err err" data-he hidden></div></div>';
+  }
+  // 確かめ（core.js の cleanHorses と同じ決まり）: { errs: { 行の k: 名前のまちがい }, on: 出走の頭数, bad: まちがいの数 }
+  function hsCheck() {
+    const errs = {}, cnt = {};
+    hs.list.forEach((h) => { cnt[h.name] = (cnt[h.name] || 0) + 1; });
+    hs.list.forEach((h) => { const e = hNameErr(h.name) || (cnt[h.name] > 1 ? '同じ名前の馬がいます' : ''); if (e) errs[h.k] = e; });
+    const on = hs.list.filter((h) => !h.off).length;
+    return { errs, on, bad: Object.keys(errs).length + (on < H_MIN ? 1 : 0) + (hs.list.length > H_MAX ? 1 : 0) };
+  }
+  function paintHorses() {
+    if (tab !== 'horses' || !hs || !$('hrsList')) return 0;
+    const c = hsCheck();
+    main.querySelectorAll('[data-hk]').forEach((row) => {
+      const h = hs.list.find((x) => x.k === row.dataset.hk); if (!h) return;
+      const e = c.errs[h.k] || '', er = row.querySelector('[data-he]');
+      row.querySelector('[data-hf="name"]').classList.toggle('bad', !!e); er.hidden = !e; er.textContent = e;
+      row.querySelector('[data-hv]').innerHTML = e ? '' : !hsVoice ? '<span class="chip">' + (hsVoiceErr ? '声の一覧を読めません' : '声を確かめています…') + '</span>'
+        : hasVoice(h.name) ? '<span class="chip ok">実況で名前を読む ✓</span>' : '<span class="chip warn" title="声を作るまで、実況は「3番」のように馬番で読みます">実況は馬番で読む</span>';
+    });
+    const voiced = hs.list.filter((h) => !h.off && hasVoice(h.name)).length;
+    $('hrsSum').innerHTML = '<span class="chip ' + (c.on < H_MIN ? 'ng' : 'ok') + '">出走 ' + c.on + ' 頭</span><span class="chip">一覧 ' + hs.list.length + ' 頭</span>' +
+      (hsVoice ? '<span class="chip">実況で名前を読む ' + voiced + ' / ' + c.on + ' 頭</span>' : '') + (hsCustom() ? '' : '<span class="chip info">初期の 16 頭</span>');
+    $('hsadd').disabled = hs.list.length >= H_MAX;
+    paintHorseVoice();
+    const nErr = Object.keys(c.errs).length;
+    $('hsmsg').innerHTML = c.bad ? '<div class="err">' + (nErr ? '赤い欄を直してください（' + nErr + ' 頭）' : c.on < H_MIN ? '出走は ' + H_MIN + ' 頭以上にしてください（いま ' + c.on + ' 頭）' : '馬は ' + H_MAX + ' 頭までです') + '</div>'
+      : hsDirty ? '<div class="warnmsg">保存していない変更があります</div>' : '<div class="okmsg">保存済みです</div>';
+    $('hssave').disabled = c.bad > 0 || !hsDirty;
+    return c.bad;
+  }
+  // 「実況の声について」の中身: 声の無い馬（保存済み）と、声を作る文（開発用。初期の 16 頭に無い名前だけを渡す＝tools/make-voice.js が初期の 16 頭は必ず作る）
+  function paintHorseVoice() {
+    const box = $('hrsVoice'); if (!box) return;
+    const saved = hsSaved().map((h) => h.name), pool = hsDefault().map((h) => h.name);
+    const extra = saved.filter((n) => pool.indexOf(n) < 0), missing = hsVoice ? saved.filter((n) => !hasVoice(n)) : [];
+    const cmd = 'node tools/make-voice.js --names ' + extra.join(',');
+    box.innerHTML = '<p class="hint">実況の声は、前もって録音した言葉をつないでいます。この画面で<b>足した名前・変えた名前</b>は、声を作るまで実況では<b>馬番で読みます</b>（例「3番」。ほかの馬の名前を言うことはありません）。' +
+      'テレビ・スマホの表示（出馬表・結果）には、保存したレースからすぐ新しい名前が出ます。</p>' +
+      (!hsVoice ? '' : missing.length ? '<p class="hint">声がまだ無い馬（保存済み）: <b>' + missing.map(esc).join('・') + '</b></p>' : '<p class="hint">保存済みの馬は、全部声があります。</p>') +
+      (extra.length && missing.length ? '<p class="hint">声を作るとき（開発用）: 下の文を開発担当に渡してください（声を作ってから公開すると、実況で名前を読むようになります）。</p>' +
+        '<div class="onceRow hrs-cmd"><code>' + esc(cmd) + '</code><button type="button" class="btn xs ghost" data-act="copy" data-copy="' + esc(cmd) + '">コピー</button></div>' : '');
+  }
+  const hsOf = (el) => { const r = el && el.closest && el.closest('[data-hk]'); return r && hs ? hs.list.find((h) => h.k === r.dataset.hk) || null : null; };
+  function hsInput(el) {
+    const h = hsOf(el), f = el.dataset && el.dataset.hf; if (!h || !f) return;
+    if (f === 'name') h.name = hName(el.value); // 打っている途中の欄は書き換えない（日本語入力の変換中）。欄を離れたら整えた名前を入れる（focusout）
+    else if (f === 'type' || f === 'coat') h[f] = el.value;
+    else h[f] = Number(el.value);
+    hsDirty = true; paintHorses();
+  }
+  const hsRerender = () => keepScroll(() => { main.innerHTML = viewHorses(); paintHorses(); });
+  async function saveHorses() {
+    if (paintHorses()) return;
+    const list = hs.list.map(hsPlain), horses = sameAsDefault(list) ? null : list; // 初期と同じなら null（＝初期のまま。あとで初期の一覧が変わっても付いていく）
+    const cur = hsCustom();
+    if (JSON.stringify(horses) === JSON.stringify(cur ? cur.map(hsPlain) : null)) { hsLoad(); toast('変更はありません'); return hsRerender(); }
+    await api('saveTuning', { horses });
+    await reloadCfg(); hsLoad(); toast('保存しました（これから作るレースから使われます。作ってあるレースは前の馬のまま）'); hsRerender();
+  }
+
+  /* ======================================================================
      集計（v4: 票の数（参加人数）・当選額と目標・渡した額・まだ渡していない額・期限切れ。日ごと・店舗ごと）と、会計番号で探す
      テストのレース・テストの店は入らない（サーバーの集計に入れていない）
      ====================================================================== */
@@ -1415,6 +1540,7 @@
     const el = e.target;
     if (tab === 'tv' && editStore) return validateStore();
     if (tab === 'tuning') { if (TEST_INPUTS.indexOf(el.id) >= 0) return; tunDirty = true; return validateTuning(); }
+    if (tab === 'horses' && hs) return hsInput(el); // 馬の欄（名前・脚質・能力・毛色）
     if (tab === 'timetable' && tt) {
       const t = tplOf(el);
       if (t && el.dataset.rf) { const r = rowOf(t, el); if (r) r[el.dataset.rf] = el.value; return ttTouched(); }
@@ -1459,7 +1585,7 @@
       logsData = null; return loadStats();
     }
   });
-  main.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'connFold') connOpen = e.target.open; }, true);
+  main.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'connFold') connOpen = e.target.open; if (e.target && e.target.id === 'hrsVoiceFold') hsFoldOpen = e.target.open; }, true);
   main.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.id === 'lbill') { e.preventDefault(); searchLogs(); }
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.bf) { e.preventDefault(); const t = tplOf(e.target); if (t) bulkCreate(t, e.target.closest('[data-tk]')); }
@@ -1467,6 +1593,7 @@
   // 時刻の欄を離れたら: 文字を整えて（「1900」→「19:00」）、行の時刻なら時刻順に並べ直す
   main.addEventListener('focusout', (e) => {
     const el = e.target;
+    if (tab === 'horses' && hs && el.dataset && el.dataset.hf === 'name') { const h = hsOf(el); if (h && el.value !== h.name) el.value = h.name; return; } // 馬名: 「ぶらふ」→「ブラフ」など整えた形を見せる
     if (tab !== 'timetable' || !tt || !el.dataset || !el.classList || !el.classList.contains('tm')) return;
     const t = tplOf(el); if (!t) return;
     { const v = normTime(el.value); if (v !== el.value) el.value = v; }
@@ -1562,6 +1689,13 @@
           const at = (r && (r.at || (r.race && r.race.at))) || now() + inSec * 1000;
           toast('テストレースを作りました（' + bizHM(at) + ' に走り出す・投票は ' + bizHM(at - Math.min(TEST_VOTE_SEC, inSec) * 1000) + ' から）'); racesData = null; return;
         }
+        /* 馬（2026-10-30） */
+        case 'hs-add': { if (!hs || hs.list.length >= H_MAX) return; const k = nk(); hs.list.push({ k, name: '', type: 'senko', spd: 3, sta: 3, pow: 3, coat: 'bay' }); hsDirty = true; hsRerender(); const ip = main.querySelector('[data-hk="' + k + '"] [data-hf="name"]'); if (ip) { ip.scrollIntoView({ block: 'center' }); ip.focus({ preventScroll: true }); } return; }
+        case 'hs-del': { const h = hsOf(b); if (!h) return; hs.list.splice(hs.list.indexOf(h), 1); hsDirty = true; return hsRerender(); } // 保存するまでは「元に戻す」で戻せる
+        case 'hs-on': { const h = hsOf(b); if (!h) return; h.off = !h.off; hsDirty = true; const row = b.closest('[data-hk]'); row.classList.toggle('off', !!h.off); b.classList.toggle('on', !h.off); b.textContent = h.off ? '休み' : '出走'; return paintHorses(); }
+        case 'hs-default': hs = { list: hsDefault().map((h) => Object.assign({ k: nk() }, hsPlain(h))) }; hsDirty = true; return hsRerender();
+        case 'hs-revert': hsLoad(); return hsRerender();
+        case 'hs-save': b.disabled = true; try { return await saveHorses(); } finally { if (document.contains(b)) paintHorses(); }
         /* 集計 */
         case 'day-more': { const tr = b.closest('tr'); const op = !tr.classList.contains('open'); tr.classList.toggle('open', op); b.setAttribute('aria-expanded', String(op)); b.textContent = op ? '閉じる' : 'くわしく'; return; }
         case 'stq': { const r = quickRange(b.dataset.q); stFrom = r[0]; stTo = r[1]; logsData = null; return loadStats(); }
@@ -1587,7 +1721,7 @@
 
   const TAB_ALIAS = { stores: 'tv', ops: 'tuning' }; // 以前のタブの名前（テスト・メモ用）
   window.DerbyAdmin = { // テスト用の入口（tests/v2-admin.plan.js）
-    get tt() { return tt; }, get cfg() { return cfg; }, get abuse() { return abuseData; }, get dirty() { return ttDirty; }, get tunDirty() { return tunDirty; }, get pair() { return pairData; }, get races() { return racesData; }, get stats() { return statsData; }, get tab() { return tab; }, loadPair, minGapSec: () => minGapSec().sec,
+    get tt() { return tt; }, get cfg() { return cfg; }, get horses() { return hs ? hs.list.map(hsPlain) : null; }, get hsDirty() { return hsDirty; }, get voiceNames() { return hsVoice ? Array.from(hsVoice) : null; }, get abuse() { return abuseData; }, get dirty() { return ttDirty; }, get tunDirty() { return tunDirty; }, get pair() { return pairData; }, get races() { return racesData; }, get stats() { return statsData; }, get tab() { return tab; }, loadPair, minGapSec: () => minGapSec().sec,
     validate: () => (tt ? validateTT() : null), templatesToRules: () => templatesToRules(tt.tpls), daySchedule: (d, s) => daySchedule(tt.tpls, d, s || null).map((x) => ({ t: x.t, p: x.p, store: x.group, stores: x.s })),
     bizHM, normTime, // 営業日の時計（25:00）と時刻の整え（テスト用）
     holidayName, isHoliday, // 祝日の判定（core.js。無ければ null / false。2026-10-27）
