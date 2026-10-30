@@ -18,6 +18,10 @@
   const QS = location.search;
   const STORE = decodeURIComponent((QS.match(/[?&]store=([^&#]+)/) || [])[1] || '');
   const MUTE = /[?&]mute=1/.test(QS);
+  /* 見るだけ（?watch=1。2026-10-29 オーナー「投票終わった端末のみレースを観測できるように」）: スマホの投票ページの「レースを見る」で開く。テレビと同じ画面を同じ時刻で出すが、
+     テレビとして名乗らない・進行役にならない・調子を数えない・読み込み直しの合図を受けない・SLOT へ切り替えない（index.html が tvhealth.js・tvswitch.js を読まない）・何も書かない。
+     音は最初は消す（v2/watch.js の 🔇 を押すと出る）。画面の合わせ方・自分の予想・見られるかの確かめは v2/watch.js */
+  const WATCH = /[?&]watch=1\b/.test(QS);
   const stageEl = $('stage');
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,7 +31,8 @@
      鳴るのは今までどおりレースの場面だけ（下の scene）。?mute=1 はテスト専用の無音（そのまま）。
      Fire TV のアプリ（casa SLOT の APK）は setMediaPlaybackRequiresUserGesture(false) なので、触らなくても音を作って鳴らせる。
      ふつうのブラウザは人が触るまで音を止めることがある → 何か押されたとき・レースの場面に入るたびに鳴らし直す（unlockAudio） */
-  const AUTO_SOUND = !(window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo) && !window.__derbyDemoPage;
+  const AUTO_SOUND = !(window.DERBY_FIREBASE && window.DERBY_FIREBASE.demo) && !window.__derbyDemoPage && !WATCH;
+  if (WATCH) Sfx.mute(true); // 見るだけ: 最初は音なし（押すと出る）
   if (AUTO_SOUND) { try { document.documentElement.classList.add('tv-autosnd'); } catch (e) { } }
   let audioOn = false; // 音を鳴らせる状態になったか（下の unlockAudio）
   /* 2026-10-19 オーナー「レース中以外は音を出さない」: 音の出口（js/audio.js の scene）は場面が「レース」（m-live）のときだけ開ける（setMode）。
@@ -42,9 +47,9 @@
     if (AUTO_SOUND) { try { if (localStorage.getItem(KEY) != null) localStorage.removeItem(KEY); } catch (e) { } btns.forEach((b) => { b.hidden = true; b.tabIndex = -1; }); return; } // 店のテレビ: ボタンなし・S キーもなし・保存の 'off' は消す
     if (!btns.length) return;
     let saved = null; try { saved = localStorage.getItem(KEY); } catch (e) { }
-    if (saved === 'off') Sfx.mute(true);
+    if (saved === 'off' || WATCH) Sfx.mute(true); // 見るだけ: 前に「音ON」にしていても最初は消す（保存もしない＝下の toggle）
     const show = () => { const off = Sfx.isMuted(); btns.forEach((btn) => { btn.classList.toggle('off', off); btn.setAttribute('aria-label', off ? '音を出す' : '音を消す'); btn.querySelector('small').textContent = off ? '音OFF' : '音ON'; }); };
-    const toggle = () => { const off = !Sfx.isMuted(); Sfx.mute(off); if (!off) { unlockAudio(); Sfx.play('button'); } try { localStorage.setItem(KEY, off ? 'off' : 'on'); } catch (e) { } show(); };
+    const toggle = () => { const off = !Sfx.isMuted(); Sfx.mute(off); if (!off) { unlockAudio(); Sfx.play('button'); } if (!WATCH) { try { localStorage.setItem(KEY, off ? 'off' : 'on'); } catch (e) { } } show(); };
     btns.forEach((btn) => { btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); btn.blur(); }); btn.addEventListener('keydown', (e) => e.stopPropagation()); });
     document.addEventListener('keydown', (e) => { if ((e.key === 's' || e.key === 'S') && !e.repeat && !e.ctrlKey && !e.metaKey) toggle(); });
     show();
@@ -65,7 +70,13 @@
     return s;
   }
   function layout() {
-    const vw = window.innerWidth, vh = window.innerHeight, sr = slotScreen();
+    const vw = window.innerWidth, vh = window.innerHeight, sr = WATCH ? null : slotScreen();
+    if (WATCH) { // 見るだけ（スマホ）: 大きさと位置は v2/watch.js（DerbyWatch.fit。横向き＝画面に収める・縦向き＝横いっぱい）。まだ読めていなければ横いっぱい
+      const f = (window.DerbyWatch && DerbyWatch.fit && DerbyWatch.fit(vw, vh)) || { s: vw / 1600, x: 0, y: 0 };
+      stageEl.style.transform = 'translate(' + f.x + 'px,' + f.y + 'px) scale(' + f.s + ')'; delete stageEl.dataset.calib;
+      $('rotate').style.display = 'none';
+      return;
+    }
     if (sr) {
       const w = Math.max(1, (sr.x1 - sr.x0) * vw), h = Math.max(1, (sr.y1 - sr.y0) * vh);
       stageEl.style.transform = 'translate(' + sr.x0 * vw + 'px,' + sr.y0 * vh + 'px) scale(' + w / 1600 + ',' + h / 900 + ')';
@@ -137,7 +148,7 @@
   // テレビの合言葉（RED TEAM 2026-10-14）: 発表前の結果（seed）はこれを持つテレビにだけ届く（スマホがテレビを名乗っても読めない）。
   // Firestore 版のテレビ用パスワードと同じく ?tvkey=...（別名 tv=）で 1 回開くと、そのテレビに覚えてアドレスから消す（管理画面の「店舗」のテレビの URL に入っている）。
   // 無い・違うと、結果はスマホと同じく発表のときにしか届かない（画面の隅に注意を出す）
-  const TVKEY = (function () {
+  const TVKEY = WATCH ? null : (function () { // 見るだけ: 合言葉は使わない（読まない・覚えない）
     const K = 'casa.derby.tvkey', m = QS.match(/[?&](?:tvkey|tv)=([^&#]+)/);
     let v = null; try { v = m ? decodeURIComponent(m[1]) : null; } catch (e) { v = null; }
     // アドレスから消したあとも、ページの履歴（history.state）にも持っておく: 端末の保存（localStorage）が消えても、読み込み直し（reload）で合言葉を失わない
@@ -158,9 +169,9 @@
   let tvAuth = null; // サーバーの答え: true（合言葉 OK）/ false（無い・違う）/ null（Firestore 版など、使わない）
   /* テレビの調子（2026-10-29 オーナー「現場が電波悪いんだって気づければいい」。v2/tvhealth.js）: 数えるだけ。画面・レース・通信は変えない（5 分ごとの名乗りに h を付けるだけ）。
      ?health=0 で止める（比べるテスト用）。何が起きてもテレビは止めない（全部 try） */
-  const HM = (() => { try { return !/[?&]health=0\b/.test(QS) && window.DerbyTvHealth ? DerbyTvHealth.create() : null; } catch (e) { return null; } })();
+  const HM = (() => { try { return !WATCH && !/[?&]health=0\b/.test(QS) && window.DerbyTvHealth ? DerbyTvHealth.create() : null; } catch (e) { return null; } })();
   const hmDo = (f) => { if (!HM) return; try { f(HM); } catch (e) { /* 数えられなくてもテレビは続ける */ } };
-  const C = window.DerbyCloud && DerbyCloud.create ? DerbyCloud.create({ store: STORE, role: 'tv', tvKey: TVKEY, health: HM }) : null;
+  const C = window.DerbyCloud && DerbyCloud.create ? DerbyCloud.create(WATCH ? { store: STORE, role: 'watch' } : { store: STORE, role: 'tv', tvKey: TVKEY, health: HM }) : null; // 見るだけ: テレビとして名乗らない（v2/client.js・client-firestore.js の role watch）
   const now = () => (C && C.serverNow ? C.serverNow() : Date.now());
   /* 進行役のテレビ（2026-10-19）: 数字は「確認中」の間だけ（最長 3 分）。選ばれた・外れたときは 8 秒だけ知らせる（ふだんは何も出さない） */
   {
@@ -176,7 +187,7 @@
     setInterval(place, 1000);
     const show = (lbl, code, cls) => { const b = $('v2pair'); $('v2pairLbl').textContent = lbl; $('v2pairCode').textContent = code || ''; b.className = 'v2pair show' + (cls ? ' ' + cls : ''); place(); };
     const hide = () => { $('v2pair').className = 'v2pair'; };
-    if (C && C.onPair) C.onPair((p) => {
+    if (C && C.onPair && !WATCH) C.onPair((p) => {
       window.__derbyPair = p; // テスト用（window.DERBY.pair）
       clearTimeout(msgT);
       if (p.asking && p.code) show('進行役の確認', p.code);
@@ -210,7 +221,7 @@
     const seq = s.store && s.store.nextSeq;
     if (seq != null) { if (seenSeq != null && seq > seenSeq) onNext(); seenSeq = seq; }
     const rs = s.store && s.store.reloadSeq;
-    if (rs != null) { if (seenReload != null && rs > seenReload) reloadWithUpdate(); seenReload = rs; }
+    if (rs != null) { if (seenReload != null && rs > seenReload && !WATCH) reloadWithUpdate(); seenReload = rs; } // 見るだけ: 店のテレビの読み込み直しの合図では読み込み直さない
     if (s.store && s.store.name) { $('v2store').textContent = s.store.name + (/店$/.test(s.store.name) ? '' : '店') + (ST().test || (s.open && s.open.test) || (s.live && s.live.test) ? '（テスト）' : ''); $('v2store').classList.toggle('test', !!(ST().test || (s.open && s.open.test) || (s.live && s.live.test))); } /* テストのレース（2026-10-19。スタッフの「この店だけテストレース」）もテストモードの店と同じ印 */
     renderQR();
   }
@@ -238,24 +249,26 @@
   }
   const missing = {};
   async function getRace(id) { if (!C || !id || missing[id] > performance.now()) return null; const q = C.race(id); q.then(keepRace, () => {}); /* 10 秒を過ぎてから届いた返事も覚える */ try { const r = await Promise.race([q, sleep(10000).then(() => null)]); return r ? cache[r.id] || r : null; } catch (e) { if (e && e.status === 404) missing[id] = performance.now() + 60000; return null; } } // 2026-10-29: 返事が来なくても 10 秒で戻る（結果を待つ間に止まらない）
+  let subStop = null; // 見張りを止める関数（見るだけ: 窓を閉じるときに止める。投票ページの Firebase の見張りを残さない）
   if (C) {
     (async () => { try { await C.syncClock(); } catch (e) { } await refresh(); })();
     setInterval(() => { if (C.syncClock) C.syncClock().catch(() => {}); }, 5 * 60 * 1000);
     setInterval(refresh, 10000); // SSE が黙って止まっていても 10 秒ごとに取り直す
     setInterval(() => { try { pruneCache(); } catch (e) { console.error(e); } }, 10 * 60 * 1000);
     try {
-      C.subscribe({
+      subStop = C.subscribe({
         hello(h) { lastOk = performance.now(); sseErr = false; if (h && typeof h.tvAuth === 'boolean') tvAuth = h.tvAuth; hmMock(true); },
         open() { lastOk = performance.now(); sseErr = false; hmMock(true); },
         state(s) { applyState(s); hmMock(true); },
         race(r) { keepRace(r); lastOk = performance.now(); },
         next(n) { lastOk = performance.now(); if (!n || !n.store || n.store === STORE) { if (n && n.nextSeq != null) seenSeq = n.nextSeq; onNext(); } },
-        reload(x) { lastOk = performance.now(); if (!x || !x.store || x.store === STORE) reloadWithUpdate(); },
+        reload(x) { lastOk = performance.now(); if (WATCH) return; if (!x || !x.store || x.store === STORE) reloadWithUpdate(); },
         error() { sseErr = true; hmMock(false); },
         link(l) { link = l; hmDo((H) => H.link(!(l && l.up === false))); }, // Firestore 版: つながっているか（2026-10-29）。テレビの調子の「切れた回数・秒」もこれで
       });
     } catch (e) { console.error(e); }
   }
+  if (WATCH) { const stop = () => { const f = subStop; subStop = null; if (f) { try { f(); } catch (e) { } } try { const rr = raceView && raceView.renderer; if (rr) { rr.dispose(); if (rr.forceContextLoss) rr.forceContextLoss(); } } catch (e) { } }; /* 閉じるとき: 見張りを止め、3D の絵の記憶（WebGL）もすぐ手放す */ window.__derbyWatchStop = stop; window.addEventListener('pagehide', stop); }
   // テレビの調子: 模擬クラウドは見張り（SSE）のエラー・届いたで切れた／つながった。Firestore 版は上の link だけ（手元の写しでも state が届くので）
   function hmMock(up) { if (!(C && C.backend === 'firestore')) hmDo((H) => H.link(up)); }
   try { window.addEventListener('offline', () => hmDo((H) => H.link(false))); window.addEventListener('online', () => hmDo((H) => { if (!(C && C.backend === 'firestore')) H.link(true); })); } catch (e) { /* noop */ }
@@ -274,6 +287,8 @@
   }, 1000);
 
   // ---------- レース映像 ----------
+  // 見るだけ（スマホ）: 画質の指定（?q= ?lite= ?hd=）が無ければ Fire TV と同じ軽い描き方（ふつうのスマホでもなめらかに。js/race3d.js の 'tv'）
+  if (WATCH && window.R3D && !R3D.quality && !/[?&](q|lite|hd)=/.test(QS)) R3D.quality = 'tv';
   const raceView = new Race($('race'));
   raceView.timeScale = 1;
   raceView.no800 = true; // 2026-10-20 オーナー「消して」: 残り 800m の縦の札（js/race3d.js）は店内モニターでは出さない
@@ -471,6 +486,7 @@
   /* 回し方（settings.mode）: レースの時刻は全店共通のまま、この店のテレビで流すかどうかだけ決める。
      bet＝この店の参加が 0 人なら流さず待ち時間（結果も出さない）、staff＝スタッフの「次へ」があるまで待ち時間（押されたら今のレースから流す。1 レースごと）。auto＝いつも流す */
   function skipLive(R, t) {
+    if (WATCH) return false; // 見るだけ: 投票した人だけが見る＝流す（店の回し方「スタッフが開始」の合図はスマホには届かない）
     const m = runMode(); let skip = false;
     // bet: 締切直後（closed＝結果を決めている途中）は参加人数がまだ 0 のことがある（Firestore 版は決まるまでレースの participants が空）→ 最大 15 秒は決めずに待つ
     //（以前は一瞬「待ち時間」に切り替わってから流れ始めた。コードレビュー 2026-10-14）
@@ -827,7 +843,7 @@
   // ---------- テロップ・中継のグラフィックス（game.js と同じ） ----------
   let announceId = 0;
   function announce(text) {
-    if (window.Commentary && Commentary.active) Commentary.caption(text); else if (window.Voice && !MUTE) Voice.say(text, { urgent: /ゴール|残り 200m|写真判定|大接戦/.test(text) });
+    if (window.Commentary && Commentary.active) Commentary.caption(text); else if (window.Voice && !MUTE && !WATCH) Voice.say(text, { urgent: /ゴール|残り 200m|写真判定|大接戦/.test(text) });
     // 実況テロップ（REVIEW_TODO 5）: 1 文 3 秒。ゴール前（.bc-final）は「ゴール」以外は出さない。残り 200m などの節目は黄色で 1.4 秒
     const goal = /ゴール！|勝ったのは/.test(text), mark = /残り\s*\d+\s*m|残り\s*\d+メートル/.test(text);
     if (stageEl.classList.contains('bc-final') && !goal) return;
@@ -1136,14 +1152,14 @@
     const sub = sp.querySelector('.sub'); if (sub) sub.textContent = '参加費無料 スマホでカンタン投票';
     const go = sp.querySelector('.splash-go'); if (go) go.innerHTML = '<p class="tap">スタート</p>' + (AUTO_SOUND ? '' : '<p class="keys">決定ボタン（OK）を押すと音が出ます</p>'); // 店のテレビは最初から音が出る（案内なし）
     let splashRun = null;
-    try { if (window.Splash3D && window.Race && window.Race.Race3D && !/[?&]r2d=1/.test(QS)) { splashRun = Splash3D.start($('splashRun'), Engine.makeRace().horses, { quality: (window.R3D && R3D.quality) || 'high' }); if (splashRun) $('splashRun').classList.add('is3d'); } } catch (e) { splashRun = null; }
+    try { if (window.Splash3D && window.Race && window.Race.Race3D && !/[?&]r2d=1/.test(QS) && !WATCH) { /* 見るだけ: 起動画面の 3D の馬は作らない（2 つ目の WebGL を作らない） */ splashRun = Splash3D.start($('splashRun'), Engine.makeRace().horses, { quality: (window.R3D && R3D.quality) || 'high' }); if (splashRun) $('splashRun').classList.add('is3d'); } } catch (e) { splashRun = null; }
     const bye = () => { if (!sp.parentNode) return; sp.id = ''; sp.classList.add('bye'); setTimeout(() => { sp.remove(); if (splashRun) { try { splashRun.stop(); } catch (e) { } } }, 520); if (!audioOn && !MUTE && !AUTO_SOUND && !Sfx.isMuted()) $('v2snd').classList.add('show'); };
     sp.addEventListener('click', () => { unlockAudio(); bye(); });
-    setTimeout(bye, MUTE ? 600 : 4000);
+    setTimeout(bye, MUTE || WATCH ? 600 : 4000);
   })();
-  ['keydown', 'pointerdown', 'touchend'].forEach((ev) => document.addEventListener(ev, () => unlockAudio(), { passive: true }));
+  ['keydown', 'pointerdown', 'touchend'].forEach((ev) => document.addEventListener(ev, () => { if (!WATCH) unlockAudio(); }, { passive: true })); // 見るだけ: 音を作るのは 🔇 を押したときだけ（スマホのメモリーを使わない）
   if (AUTO_SOUND && !MUTE) unlockAudio(); // 店のテレビ: 触らなくても最初から（Fire TV のアプリはこのまま鳴る。ブラウザで止められたら上の予備）
-  Sprites.load().then(() => { if (view) { raceView.draw(); renderHorses(); } }).catch(() => {});
+  if (!WATCH) Sprites.load().then(() => { if (view) { raceView.draw(); renderHorses(); } }).catch(() => {}); // 見るだけ（スマホ）: 写真風の馬の絵（art/sprites の大きな PNG）は読まない（3D の映像では使わない。メモリーの節約）
 
   /* ---------- 自動アップデート（Fire TV のアプリの中だけ。2026-10-18） ----------
      アプリ（casa SLOT の APK）は、ページが /__update を呼んだときだけ公開サイトの version.json に並んだファイル（derby/ も入っている）を端末に取り込む。
@@ -1220,7 +1236,7 @@
   // ---------- テスト・確認用 ----------
   window.DERBY = {
     get pair() { return window.__derbyPair; }, // 進行役のテレビ（2026-10-19）
-    v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV,
+    v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV, watch: WATCH, // watch: 見るだけ（v2/watch.js が使う）
     upd: UPD, updCheck: (force) => autoUpdate(force), updSafe,
     health: HM, // テレビの調子（2026-10-29。tests/v2-tvhealth.test.js・tools/smooth-bench.js） // 自動アップデート（tests/v2-tv-update.test.js）
     get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now, hhmm, canVote, nextInfo, renderToday, // hhmm・canVote: 25 時表記と投票できる店（2026-10-26。tests/v4-tv.plan.js）。renderToday: 本日のレースの帯（2026-10-27）
