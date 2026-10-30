@@ -213,5 +213,6 @@ window.addEventListener('error', function (e) {
   else document.write('<script src="js/game.js?v=k11"><\/script>');
 })();
 </script>
+<script>if (/[?&]store=[^&]/.test(location.search) && !/[?&]watch=1\b/.test(location.search)) document.write('<script src="v2/announce.js?v=a1"><\/script>');</script><!-- 店のテレビの投票の案内の声（2026-10-30。v2/announce.js。v2/tv.js のあとに読む） -->
 </body>
 </html>
