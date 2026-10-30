@@ -32,7 +32,7 @@
   const CUE_KEYS = ['fruit', 'crowd', 'sign', 'cloud', 'gateLate', 'eye'];
   const DEFAULT_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
   /* 調整の初期値（ver: 4 ＝ v4 の形。ver のない以前の保存データは、投票の秒数の意味が違う＝2 段の 2 段目だったので初期値 180 秒に読み替える） */
-  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, maxBillsPerDevice: 4 }; /* payoutSpread（配当のぶれ。2026-10-29）: レースごとに目標を ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）でばらつかせる（0 ＝ 目標ちょうどのまわり・0〜0.8。裏の設定）。v2/outcome.js の spreadFactor */ /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
+  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false }; /* noRepeatWin・noRepeatRaces（直近の当たり端末を当てない）・favorBigStore（参加人数が多い店から当たりを出す）。2026-10-31: どちらも初期は使わない（オーナーが管理画面で入れる）・裏の設定＝public に入れない。下の「直近の当たり端末」「参加の多い店」 */ /* payoutSpread（配当のぶれ。2026-10-29）: レースごとに目標を ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）でばらつかせる（0 ＝ 目標ちょうどのまわり・0〜0.8。裏の設定）。v2/outcome.js の spreadFactor */ /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
   const PUBLIC_TUNING_KEYS = ['ver', 'shiftUp', 'shiftDown', 'voteSec', 'resultSec', 'gateSec', 'postSec', 'photoExtraSec', 'closeLeadSec', 'scenes', 'dayStartHour', 'horizonMin', 'horseLook', 'horseLookPrev', 'horseLookAt']; /* cues（演出の割合）・当たりの幅・上限・払い戻し率は裏＝入れない */
   const LEGACY_TUNING_KEYS = ['exchangeSec', 'betSec', 'bountyPerTicket', 'shiftWidth']; // 以前の形の項目（読むときに捨てる）
   const SHIFT_UP_MAX = 10000, SHIFT_DOWN_MAX = 1; // 締切のあとの倍率のずらし幅（2026-10-20「上限なしで管理画面から全部決められる」）: 上げ幅は事実上上限なし・下げ幅は 100% まで（倍率は 1.0 倍より下げない）
@@ -332,6 +332,9 @@
     num('shiftUp', 0, SHIFT_UP_MAX); num('shiftDown', 0, SHIFT_DOWN_MAX);
     num('bandBelow', 0, 0.5); num('bandAbove', 0, 0.5); num('payoutSpread', 0, 0.8); // 配当のぶれ（2026-10-29）
     num('maxBillsPerDevice', 0, 99); if (b.maxBillsPerDevice != null && b.maxBillsPerDevice !== '' && (Number(b.maxBillsPerDevice) === 1 || !Number.isInteger(Number(b.maxBillsPerDevice)))) throw err(400, 'bad_tuning', 'maxBillsPerDevice は 0（使わない）か 2〜99 です'); // 1 台の番号の上限（2026-10-27）
+    // 直近の当たり端末を当てない・参加人数が多い店から当たりを出す（2026-10-31）: オン・オフは true / false だけ。数えるレースは 1〜NOREPEAT_MAX の整数
+    ['noRepeatWin', 'favorBigStore'].forEach((k) => { if (b[k] == null) return; if (typeof b[k] !== 'boolean') throw err(400, 'bad_tuning', k + ' は true か false です'); t[k] = b[k]; });
+    num('noRepeatRaces', 1, NOREPEAT_MAX); if (b.noRepeatRaces != null && b.noRepeatRaces !== '' && !Number.isInteger(Number(b.noRepeatRaces))) throw err(400, 'bad_tuning', 'noRepeatRaces は 1〜' + NOREPEAT_MAX + ' の整数です');
     num('voteSec', VOTE_SEC_MIN, VOTE_SEC_MAX); num('resultSec', 0, 3600); num('gateSec', 0, 60); num('postSec', 0, 120); num('photoExtraSec', 0, 60); num('closeLeadSec', 0, 600); num('oddsSims', 100, 10000); num('horizonMin', 1, 120); num('dayStartHour', 0, 12);
     if (b.scenes && typeof b.scenes === 'object') t.scenes = Object.assign({}, t.scenes, b.scenes);
     if (b.horses !== undefined) t.horses = cleanHorses(b.horses); // 馬の一覧（2026-10-30）。null ＝ 初期の一覧に戻す（Firestore の merge で消えるよう null のまま書く）
@@ -627,6 +630,43 @@
   const maxBillsOf = (n) => { const x = Math.floor(Number(n)); return Number.isFinite(x) && x >= 2 ? x : 0; };
   function billsByOwner(votes) { const by = {}; (votes || []).forEach((v) => { const o = ownerOf(v); if (!o) return; (by[o] = by[o] || {})[v.storeId + '~' + v.bill] = 1; }); const out = {}; Object.keys(by).forEach((o) => { out[o] = Object.keys(by[o]).length; }); return out; }
   function manyBillOwners(votes, n) { const N = maxBillsOf(n), out = {}; if (!N) return out; const by = billsByOwner(votes); Object.keys(by).forEach((o) => { if (by[o] >= N) out[o] = by[o]; }); return out; }
+  /* ---------- 直近の当たり端末を当てない（2026-10-31 オーナー「端末 ID 取って、直近 10 レースで当たった人が重複しないようにしてほしい。これはオンオフ機能つけておいて」） ----------
+     調整の noRepeatWin（初期 false ＝ 使わない）・noRepeatRaces（1〜50。初期 10）。裏の設定（public に入れない＝スマホ・テレビ・スタッフの画面には出さない）。
+     オンのとき: このレースより前（時刻 at の順。全店。同じ時刻のレースは数えない＝同時のレースどうしは外さない）の、結果が決まった（decided・done）本物のレース N 本で
+     当たった端末の票は、このレースでは当てない（v2/outcome.js の input.block。その票が入った組み合わせは選ばない。残りで今までどおり。上限はいちばん強いまま）。
+     - 数えないレース（N 本にも入れない）: テストのレース（test）・取り消したレース（refunded）・決めている途中（closing・closed）・締切前・void。
+     - さかのぼるのは NOREPEAT_LOOKBACK_MS（6 日）まで（模擬クラウドは 7 日より前のデータを消すので、どちらも同じ答えになるように）。
+     - 端末 ID ＝ ownerOf（初参加ボーナス・注意と同じ。Firestore 版は匿名ログインの uid＝票・当たりの owner、模擬クラウドは device＝スマホが覚える番号）。
+       無い票（端末 ID を送らない古い画面の模擬クラウドの票）は数えない・外さない。初参加ボーナスの 2 票目も同じ端末。取り消し（void）の当たりは数えない。
+     - 当たりを読むのは決める係だけ（Firestore 版は derbyRaces を at の新しい順に少しずつ＋その当たり derbyPayouts。v2/client-firestore.js の recentWinnersFor。模擬クラウドは db から）。
+     - テストのレース・テストの票はこの決まりを使わない（払わないので）。 */
+  const NOREPEAT_MAX = 50, NOREPEAT_DEFAULT = 10, NOREPEAT_LOOKBACK_MS = 6 * DAY, NOREPEAT_PAGE_EXTRA = 10, NOREPEAT_PAGES = 6; // Firestore 版はレースを 1 回に n＋10 件・6 回まで読む
+  function noRepeatOf(T) { const n = Math.floor(Number(T && T.noRepeatRaces)); return { on: !!T && T.noRepeatWin === true, races: Number.isFinite(n) && n >= 1 ? Math.min(NOREPEAT_MAX, n) : NOREPEAT_DEFAULT }; }
+  const recentCounts = (r) => !!r && !r.test && !r.refunded && (r.status === 'decided' || r.status === 'done');
+  // このレースの前の、数えるレース n 本（新しい順。同じ時刻は id の大きい順）。races は多めに渡してよい（このレース・あとのレースは入れない）
+  function recentRaces(races, race, n) {
+    const at = Number(race && race.at), lo = at - NOREPEAT_LOOKBACK_MS, N = Math.max(0, Math.floor(Number(n) || 0));
+    return (races || []).filter((r) => recentCounts(r) && r.id !== race.id && Number(r.at) < at && Number(r.at) >= lo).sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)).slice(0, N);
+  }
+  /* 直近 n 本で当たった端末: { races: [レース id（新しい順）], devices: { 端末 ID: 当たりの数 } }。payouts: 当たり（raceId・status・owner か device） */
+  function recentWinners(races, payouts, race, n) {
+    const list = recentRaces(races, race, n), ids = {}, devices = Object.create(null);
+    list.forEach((r) => { ids[r.id] = 1; });
+    (payouts || []).forEach((p) => { if (!p || !ids[p.raceId] || p.status === 'void' || p.test) return; const o = ownerOf(p); if (o) devices[o] = (devices[o] || 0) + 1; });
+    return { races: list.map((r) => r.id), devices };
+  }
+  /* ---------- 参加の多い店から当たりを出す（2026-10-31 オーナー「参加人数が多い店舗から当たりを出す」。オンオフあり） ----------
+     調整の favorBigStore（初期 false）。裏の設定。オンのとき、このレースで参加（会計番号の数。本物の票・1 台で番号が多いスマホは数えない。2 票目は同じ番号）が
+     いちばん多い店を 1 つ決め、ほかの決まり（上限 > 直近の当たり端末 > 目標の幅・目標）で残った候補の中から、その店のふつうの票が入った組み合わせを先に選ぶ（v2/outcome.js の input.favor）。
+     いちばん多い店が 2 つ以上（同じ人数）・票のある店が 1 つだけ・1 店だけのレース（storeId・storeIds が 1 店）は何もしない。 */
+  function bigStoreOf(race, votes) {
+    if (race && (race.storeId || (Array.isArray(race.storeIds) && race.storeIds.length === 1))) return { store: null, why: 'one_store' };
+    const by = {}; (votes || []).forEach((v) => { (by[v.storeId] = by[v.storeId] || {})[v.bill] = 1; });
+    const cnt = Object.keys(by).map((s) => [s, Object.keys(by[s]).length]).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    if (cnt.length < 2) return { store: null, why: cnt.length ? 'one_store' : 'no_votes', count: cnt.length ? cnt[0][1] : 0 };
+    if (cnt[0][1] === cnt[1][1]) return { store: null, why: 'tie', count: cnt[0][1] };
+    return { store: cnt[0][0], count: cnt[0][1], next: cnt[1][1] };
+  }
   /* 見える化（管理の集計タブの「注意」。2026-10-27）: マスターが読めるデータ（票・当たり・ボーナスの印・レース）から、営業日 × 店ごとの
      ボーナスの数・端末の数（持ち主の数）・1 台あたりの番号の数（1 レースでの最大・多い端末）・端末ごとの当たりの回数と額、と気になる端末（注意）を出す。
      p: { races: [{ id, day, test }], votes: [票（owner か device）], payouts: [当たり（owner か device・flag）], bonus: [ボーナスの印（day・storeId・owner か device）], tuning, from?, to?, store? }
@@ -666,8 +706,10 @@
     return { from: p.from || null, to: p.to || null, threshold: N, days: outDays, flags };
   }
   /* race（公開部分）, secret（payoutTarget, scope, comboProb）, votes（このレースの票）→ 結果・当たり（id は呼ぶ側で付ける）。
-     テストのレース・テストの店の票: 本物の票があるときは決め方に入れない。当たりは作らない（winners には test つきで出す。スマホは「テストなので受け取りはありません」） */
-  function decideRace(Engine, Outcome, race, secret, votes, tuning, salt, t, usedToday) {
+     テストのレース・テストの店の票: 本物の票があるときは決め方に入れない。当たりは作らない（winners には test つきで出す。スマホは「テストなので受け取りはありません」）
+     recent（2026-10-31。直近の当たり端末）: recentWinners の答え { races, devices }（調整の noRepeatWin がオンで本物のレースのときに呼ぶ側が読んで渡す）。
+       読めなかったときは { error: '…' }（決まりを使わずに決める＝レースは止めない。decision.noRepeat.error に残す）。null・省略 ＝ 使わない */
+  function decideRace(Engine, Outcome, race, secret, votes, tuning, salt, t, usedToday, recent) {
     const T = tuningOf(tuning);
     const list = (votes || []).filter((v) => v && v.first != null && v.second != null).sort((a, b) => (a.vid < b.vid ? -1 : 1)); // 順番で結果が変わらないように
     const isT = (v) => !!v.test || !!race.test;
@@ -675,12 +717,19 @@
     /* 1 台で番号が多いスマホ（2026-10-27）: 本物の票で、同じ持ち主（owner＝uid・模擬クラウドは device）が maxBillsPerDevice 個以上の会計番号を使ったら、その票は
        決め方（目標の幅・必ず誰かは当てる・倍率のずらし）に数えない（上限にだけ数える）。自然に当たったら払う（当たりに flag: 'many_bills'。管理の「注意」にだけ出る） */
     const heavy = manyBillOwners(real, T.maxBillsPerDevice), isHeavy = (v) => !isT(v) && heavy[ownerOf(v)] != null;
-    const honest = basis.filter((v) => !isHeavy(v)), extra = basis.filter(isHeavy);
+    /* 直近の当たり端末（2026-10-31）: その端末の本物の票は当てない（input.block。多いスマホの票でもこちらが先） */
+    const NR = noRepeatOf(T), useNR = NR.on && !race.test && !!recent && !recent.error, recentDev = useNR && recent.devices ? recent.devices : null;
+    const isBlocked = (v) => { if (!recentDev || isT(v)) return false; const o = ownerOf(v); return o != null && Object.prototype.hasOwnProperty.call(recentDev, o); };
+    const honest = basis.filter((v) => !isHeavy(v) && !isBlocked(v)), extra = basis.filter((v) => isHeavy(v) && !isBlocked(v)), block = basis.filter(isBlocked); // 外す票が無ければ今までと同じ honest・extra
     const t0 = Date.now(), cap = real.length ? effectiveCap(T, usedToday) : 0, er = engineRace(race); // テストの票だけのときは払わないので上限は見ない
     const vin = (v) => ({ first: v.first, second: v.second, group: v.storeId });
     const input = { exacta: race.exacta, comboProb: secret.comboProb, n: (race.horses || []).length || 6, votes: honest.map(vin), target: secret.payoutTarget, scope: secret.scope, up: T.shiftUp, down: T.shiftDown, bandBelow: T.bandBelow, bandAbove: T.bandAbove, cap, seed: Outcome.hash(salt, race.id, 'decide') };
     const spread = Number(T.payoutSpread) || 0; if (spread > 0) input.spread = spread; // 配当のぶれ（2026-10-29）。0 なら入れない＝目標ちょうどのまわり
     if (extra.length) input.extra = extra.map(vin); // 多いスマホが無いレースは今までとまったく同じ入力
+    if (block.length) input.block = block.map(vin); // 直近の当たり端末の票（2026-10-31）。無ければ今までとまったく同じ入力
+    /* 参加の多い店（2026-10-31）: 本物の票（多いスマホの票は数えない）で参加がいちばん多い店。テストのレースは使わない */
+    const big = T.favorBigStore === true && !race.test ? bigStoreOf(race, real.filter((v) => !isHeavy(v))) : null;
+    if (big && big.store) input.favor = big.store;
     const res = Outcome.resolveExacta(Engine, er, input);
     const run = Engine.replayRun(er, res.seed, { order: res.order });
     const cues = cuesFor(Outcome, salt, race.id, res.first, T, (race.horses || []).length || 6);
@@ -715,6 +764,14 @@
       decision.manyBills = Object.keys(heavy).sort().map((o) => ({ dev: shortDev(o), bills: heavy[o] })); decision.manyBillVotes = extra.length;
       decision.manyBillPaid = payouts.filter((x) => x.flag === 'many_bills').reduce((a, x) => a + x.amount, 0); decision.maxBills = T.maxBillsPerDevice;
     }
+    /* 直近の当たり端末（2026-10-31。管理のオーナー用・記録）: races＝数えるレースの数（調整）・counted＝実際に見たレース・recent＝その中で当たった端末の数・
+       devices＝このレースで外した端末の数（○台）・votes＝外した票・excludedCombos＝外した組み合わせ・won＝それでも当たった票（30 通り全部にあるときだけ。ふつうは 0）。端末 ID は書かない */
+    if (NR.on && recent && !race.test) {
+      if (recent.error) decision.noRepeat = { races: NR.races, error: String(recent.error).slice(0, 200) };
+      else { const devs = {}; block.forEach((v) => { devs[ownerOf(v)] = 1; }); decision.noRepeat = { races: NR.races, counted: (recent.races || []).length, recent: Object.keys(recent.devices || {}).length, devices: Object.keys(devs).length, votes: block.length, excludedCombos: res.blocked || [], won: block.filter((v) => comboOf(v) === res.combo).length }; }
+    }
+    /* 参加の多い店（2026-10-31）: store＝いちばん多い店（同じ人数・1 店だけなら null）・count＝その店の参加・applied＝その店の票が入った組み合わせから選んだ */
+    if (big) decision.bigStore = Object.assign({ store: big.store, count: big.count || 0, applied: !!(res.favor && res.favor.applied) }, big.why ? { why: big.why } : {});
     const participants = countVotes(list);
     decision.runShift = shift; decision.lateReveal = late;
     return { result, decision, cues, runAt, revealAt, endAt, photo, photo2, payouts, winners, participants, runShift: shift, lateReveal: late };
@@ -830,7 +887,7 @@
     HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
-    effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
+    effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, TV_STRIP_KEYS, TV_STRIP_A, TV_STRIP_B, tvStripOf, tvStripCode, PW_CHARS, genTvPassword };
 });
