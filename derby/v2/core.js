@@ -64,6 +64,54 @@
     const open = Number(race.openAt != null ? race.openAt : race.at) || 0;
     return open >= at + HORSE_LOOK_GRACE_MS ? cur : prev;
   }
+  /* 馬の一覧（2026-10-30 オーナー「マスター画面から馬の一覧を出して、修正できるように。追加も修正もできるように」）
+     tuning.horses: [{ name, type, spd, sta, pow, coat, off? }]（裏の設定 derbyConfig/secret。public には写さない）。無い・null ＝ js/engine.js の POOL（初期の 16 頭）。
+     off: true は「出走させない」（一覧には残す）。出走する馬は 6 頭以上。レースを作るとき（raceBase）に出走する馬だけを Engine.makeRace に渡す
+     ＝もう作ってあるレースの馬（race.horses）はそのまま。管理画面の確かめ（v2/admin.js の hsCheck・hName・hNameErr）も同じ決まり */
+  const HORSE_TYPES = ['nige', 'senko', 'sashi', 'oikomi'], HORSE_COATS = ['bay', 'chestnut', 'black', 'gray', 'white', 'palomino'];
+  const HORSES_MIN = 6, HORSES_MAX = 40, HORSE_NAME_MAX = 9, HORSE_STATS = [['spd', 'スピード'], ['sta', 'スタミナ'], ['pow', 'パワー']];
+  // 馬名の書き方をそろえる: 全角・半角のゆれ（NFKC。ｶﾀｶﾅ → カタカナ）→ ひらがなはカタカナに → 「-」「－」などは「ー」に → 空白は取る
+  function horseName(s) {
+    let t = String(s == null ? '' : s); try { t = t.normalize('NFKC'); } catch (e) { /* 古い端末はそのまま */ }
+    return t.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[-‐‑–—―−─～〜~]/g, 'ー').replace(/\s+/g, '');
+  }
+  // 馬名の決まり（JRA の馬名と同じ 2〜9 文字・カタカナと「ー」だけ）。よければ ''、だめならその理由
+  function horseNameErr(name) {
+    if (!name) return '名前を入れてください';
+    if (!/^[ァ-ヶー]+$/.test(name)) return 'カタカナと「ー」だけで書いてください';
+    if (name.length < 2 || name.length > HORSE_NAME_MAX) return '2〜' + HORSE_NAME_MAX + '文字にしてください（いま ' + name.length + ' 文字）';
+    if (/^[ーァィゥェォッャュョヮヵヶ]/.test(name)) return '「ー」や小さい字で始めないでください';
+    return '';
+  }
+  /* 管理画面の保存（mergeTuning の horses）: 確かめて整えた一覧を返す。null・空 ＝ 初期の一覧に戻す。
+     まちがいは 400 bad_horses（「3頭目「…」: スピード は 1〜5 です」のように。index・field も付ける） */
+  function cleanHorses(list) {
+    if (list == null) return null;
+    if (!Array.isArray(list)) throw err(400, 'bad_horses', 'horses は馬の一覧（配列）です');
+    if (!list.length) return null;
+    if (list.length > HORSES_MAX) throw err(400, 'bad_horses', '馬は ' + HORSES_MAX + ' 頭までです');
+    const seen = {};
+    const out = list.map((h, i) => {
+      h = h && typeof h === 'object' ? h : {};
+      const name = horseName(h.name), no = (i + 1) + '頭目「' + (name || '名前なし') + '」: ', bad = (field, m) => err(400, 'bad_horses', no + m, { index: i, field });
+      const ne = horseNameErr(name); if (ne) throw bad('name', ne);
+      if (seen[name]) throw bad('name', '同じ名前の馬がいます'); seen[name] = 1;
+      if (HORSE_TYPES.indexOf(h.type) < 0) throw bad('type', '脚質は 逃げ・先行・差し・追込 のどれかです');
+      const o = { name, type: h.type };
+      HORSE_STATS.forEach(([k, label]) => { const v = Number(h[k]); if (!Number.isInteger(v) || v < 1 || v > 5) throw bad(k, label + ' は 1〜5 です'); o[k] = v; });
+      if (HORSE_COATS.indexOf(h.coat) < 0) throw bad('coat', '毛色が選べる色ではありません');
+      o.coat = h.coat;
+      if (h.off) o.off = true;
+      return o;
+    });
+    const on = out.filter((h) => !h.off).length;
+    if (on < HORSES_MIN) throw err(400, 'bad_horses', '出走する馬は ' + HORSES_MIN + ' 頭以上にしてください（いま ' + on + ' 頭）', { field: 'off' });
+    return out;
+  }
+  // 保存されている一覧を読むとき（tuningOf）: まちがいがあれば null（＝初期の一覧）。壊れたデータでレースが作れなくならないように
+  function horsesOf(list) { try { return cleanHorses(list); } catch (e) { return null; } }
+  // レースを作るときの馬（出走する馬だけ。null ＝ Engine.POOL）
+  function horsePool(tuning) { const hs = horsesOf(tuning && tuning.horses); return hs ? hs.filter((h) => !h.off).map((h) => ({ name: h.name, type: h.type, spd: h.spd, sta: h.sta, pow: h.pow, coat: h.coat })) : null; }
 
   /* ---------- 投票の時間（v4: 1 段だけ） ----------
      closeAt（締切）＝ at（発走）− closeLeadSec（初期 0）。openAt（投票の始まり）＝ closeAt − voteSec。全店同じ（店ごとの上書きはしない）。
@@ -271,6 +319,7 @@
     t.ver = 4;
     LEGACY_TUNING_KEYS.forEach((k) => { delete t[k]; });
     t.cues = cuesOf(src.cues);
+    { const hs = horsesOf(src.horses); if (hs) t.horses = hs; else delete t.horses; } // 馬の一覧（2026-10-30）: 無い・まちがい ＝ 初期の一覧（項目なし）
     return t;
   }
   // 調整値の確かめ（管理画面の保存。範囲の外は 400 bad_tuning。以前の画面が送る交換の割合などは黙って捨てる）
@@ -285,6 +334,7 @@
     num('maxBillsPerDevice', 0, 99); if (b.maxBillsPerDevice != null && b.maxBillsPerDevice !== '' && (Number(b.maxBillsPerDevice) === 1 || !Number.isInteger(Number(b.maxBillsPerDevice)))) throw err(400, 'bad_tuning', 'maxBillsPerDevice は 0（使わない）か 2〜99 です'); // 1 台の番号の上限（2026-10-27）
     num('voteSec', VOTE_SEC_MIN, VOTE_SEC_MAX); num('resultSec', 0, 3600); num('gateSec', 0, 60); num('postSec', 0, 120); num('photoExtraSec', 0, 60); num('closeLeadSec', 0, 600); num('oddsSims', 100, 10000); num('horizonMin', 1, 120); num('dayStartHour', 0, 12);
     if (b.scenes && typeof b.scenes === 'object') t.scenes = Object.assign({}, t.scenes, b.scenes);
+    if (b.horses !== undefined) t.horses = cleanHorses(b.horses); // 馬の一覧（2026-10-30）。null ＝ 初期の一覧に戻す（Firestore の merge で消えるよう null のまま書く）
     if (b.horseLook != null) {
       if (HORSE_LOOKS.indexOf(b.horseLook) < 0) throw err(400, 'bad_tuning', 'horseLook は cute か real です');
       const old = HORSE_LOOKS.indexOf(t.horseLook) >= 0 ? t.horseLook : 'cute';
@@ -329,7 +379,7 @@
   function tuneOf(Engine, t) { return { sigmaMul: Math.round(Engine.TUNE.sigmaMul * Math.max(0.2, Math.min(3, Number(t.volatility) || 1)) * 1000) / 1000, payoutRate: Math.max(0.3, Math.min(1.2, Number(t.payoutRate) || 0.85)) }; }
   const engineRace = (r) => ({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta });
   function raceBase(Engine, Outcome, salt, id, tuning) {
-    const base = Engine.makeRace(Engine.rng(Outcome.hash(salt, id, 'horses')));
+    const base = Engine.makeRace(Engine.rng(Outcome.hash(salt, id, 'horses')), horsePool(tuning)); // 馬は管理画面の一覧（無ければ Engine.POOL。2026-10-30）
     return Object.assign(base, { tune: tuneOf(Engine, tuning) });
   }
   /* 倍率（重い。テレビは Worker で計算してよい＝v2/client.js の oddsWorker も同じ形を返す）: { tansho（参考の単勝）, winProb, tenkai, exacta（2 連単 30 通り）, exactaProb } */
@@ -777,6 +827,7 @@
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
     isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
+    HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
