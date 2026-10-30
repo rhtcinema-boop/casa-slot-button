@@ -20,7 +20,12 @@
      - ほかのレースの投票中は、次のレースの始まる前の案内（pre）は言わない（「投票を開始しました」のすぐあとに「次のレースの投票開始まで…」と食い違わないように）
      - 消音（?mute=1・?voice=0・Sfx.mute）のときは言わない。音がまだ出せない（AudioContext が running でない・声の部品が読めていない）ときも言わない
      - 1 台のテレビで 1 レース 1 回だけ: 言ったものは localStorage 'casa.derby.ann'（{ 'レースid|案内': 時刻 }。2 日より古いものは消す）に覚える＝読み込み直しても言い直さない
-   確認用: window.DerbyAnnounce（plan・due・candidates・log・player・env を差し替えられる。tests/v4-announce.test.js・tests/v4-announce.plan.js） */
+   チャイム（2026-10-31 オーナー「締め切りとかのアナウンスの前後に、ちょっと効果音を入れてほしい。ピロロンみたいな。ピロロン → 締め切りまで何分です → ピロロン」）:
+     どの案内も「チャイム（上がる）→ 0.15 秒 → 声 → 0.15 秒 → チャイム（下がる）」。駅・空港の案内のように、前は上がって後は下がる（下の CHIME・chime）。
+     音声ファイルは使わず、その場でサイン波から作る。声と同じ出口（out → リミッター → スピーカー）を通るので、消音・音量は声と同じ。
+     チャイムも案内の一部: 次の案内・ほかの声を待たせる長さ（busyUntil）は後のチャイムの終わりまで。途中で消音・レースになったら残りを止める（player.stop）
+   確認用: window.DerbyAnnounce（plan・due・candidates・log・player・env を差し替えられる。schedule は好きな AudioContext に 1 回の案内を予約する＝書き出し・確かめ用。
+     tests/v4-announce.test.js・tests/v4-announce.plan.js） */
 (function (root) {
   'use strict';
   const MIN = 60000;
@@ -77,8 +82,70 @@
     add(k, t) { const m = this.load(); m[k] = t; Object.keys(m).forEach((x) => { if (!(m[x] > t - KEEP_MS)) delete m[x]; }); try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (e) { /* 保存できなくても今の間は覚えている */ } },
   };
 
+  // ---------- チャイム「ピロロン」（上の説明。2026-10-31） ----------
+  /* 3 音のアルペジオ: ソ・シ・レ（G5 784Hz・B5 988Hz・D6 1175Hz）を 0.12 秒おき。前（up）は上がる・後（down）は下がる（レ・シ・ソ）で少し小さく（−2dB）。
+     1 音: サイン波の基音＋オクターブ上（薄く・早く消える）＋4 倍音の「チン」（立ち上がりだけ）。5ms で立ち上がり、なめらかに減る。
+     最初の 2 音は 0.55 秒・最後の音は 1.1 秒で −60dB（最後の音だけ長く響く）。1 回の長さ len＝0.72 秒（最後の音の頭から 0.48 秒）。そのあと gap＝0.15 秒で声。
+     音色をやわらげる 5.5kHz の高域カットと、薄い残響（0.9 秒）。大きさ vol は声（場内スピーカーの音）の山より約 3dB 小さく（tests/v4-announce.plan.js で測る） */
+  const CHIME = {
+    up: [783.99, 987.77, 1174.66], down: [1174.66, 987.77, 783.99], downVol: 0.8,
+    step: 0.12, len: 0.72, gap: 0.15, ring: [0.55, 0.55, 1.1], vol: 0.22,
+    partials: [[1, 1, 1], [2, 0.22, 0.45], [4, 0.05, 0.1]], // [倍音, 大きさ, 響く長さの割合]
+  };
+  let irCache = null;
+  function chimeIR(ctx, rnd) { // 薄い残響（左右で別の雑音・あとほどこもる）
+    if (irCache && irCache.ctx === ctx) return irCache.buf;
+    const sr = ctx.sampleRate, n = Math.floor(sr * 1.0), b = ctx.createBuffer(2, n, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = b.getChannelData(ch); let lp = 0;
+      for (let i = 0; i < n; i++) { const t = i / sr, k = Math.max(0.06, 0.5 - t * 0.45); lp += k * ((rnd() * 2 - 1) - lp); d[i] = t < 0.012 ? 0 : lp * Math.pow(10, -3 * t / 0.9); }
+    }
+    irCache = { ctx, buf: b };
+    return b;
+  }
+  // チャイムの通り道（入口を返す）: 音量 → 高域カット → そのまま＋残響 → out
+  function chimeBus(ctx, out, rnd) {
+    const inp = ctx.createGain(); inp.gain.value = CHIME.vol;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(5500, ctx.sampleRate * 0.45); lp.Q.value = 0.5;
+    const conv = ctx.createConvolver(); conv.buffer = chimeIR(ctx, rnd);
+    const wet = ctx.createGain(); wet.gain.value = 0.22;
+    inp.connect(lp); lp.connect(out); lp.connect(conv); conv.connect(wet); wet.connect(out);
+    return inp;
+  }
+  // チャイム 1 回を ctx の時刻 t から予約する。返す: { kind: 'chime', dir, at, len, notes: [{ f, at }] }
+  function chime(ctx, dest, dir, t) {
+    const F = CHIME[dir], v = dir === 'down' ? CHIME.downVol : 1, notes = [];
+    F.forEach((f, i) => {
+      const t1 = t + i * CHIME.step; notes.push({ f, at: t1 });
+      CHIME.partials.forEach(([m, a, k]) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(), end = t1 + CHIME.ring[i] * k, pk = v * a;
+        o.type = 'sine'; o.frequency.value = f * m;
+        g.gain.setValueAtTime(0, t1); g.gain.linearRampToValueAtTime(pk, t1 + 0.005); g.gain.exponentialRampToValueAtTime(pk * 0.001, end); g.gain.linearRampToValueAtTime(0, end + 0.015);
+        o.connect(g); g.connect(dest); o.start(t1); o.stop(end + 0.02);
+      });
+    });
+    return { kind: 'chime', dir, at: t, len: CHIME.len, notes };
+  }
+
   // ---------- 声を鳴らす（実況の声の部品・場内スピーカーの音。scene を通さない） ----------
-  let busyUntil = 0; // テレビの時計（DERBY.now）の ms。自分の案内が終わる時刻（＋1.5 秒）
+  /* 1 回の案内（チャイム → 声 → チャイム）を ctx の時刻 t0 から予約する。dest: 出口（本番は ctx.destination。書き出し・確かめは OfflineAudioContext）。
+     返す: { dur: t0 から後のチャイムの終わりまで（秒）, parts: [チャイム, { kind: 'voice', id, at, len }, チャイム], out, nodes } か null（声の部品が無い） */
+  function schedule(ctx, dest, id, t0) {
+    const C = root.Commentary && Commentary._, c = C && C.clipById && C.clipById(id); if (!c) return null;
+    const out = ctx.createGain(); out.gain.value = 1;
+    const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
+    out.connect(lim); lim.connect(dest);
+    const pa = C.buildPA(ctx, out, C.seeded(4242));
+    const bus = chimeBus(ctx, out, C.seeded ? C.seeded(7171) : Math.random);
+    const parts = []; let t = t0;
+    parts.push(chime(ctx, bus, 'up', t)); t += CHIME.len + CHIME.gap;
+    const src = ctx.createBufferSource(); src.buffer = c.buf; src.connect(pa); src.start(t, c.off, c.dur);
+    parts.push({ kind: 'voice', id, at: t, len: c.dur }); t += c.dur + CHIME.gap;
+    parts.push(chime(ctx, bus, 'down', t)); t += CHIME.len;
+    return { dur: t - t0, parts, out, nodes: [src, pa, bus, out, lim] };
+  }
+  let busyUntil = 0; // テレビの時計（DERBY.now）の ms。自分の案内（後のチャイムまで）が終わる時刻（＋1.5 秒）
+  let cur = null;    // いま鳴っている案内（schedule の返り値）
   const player = {
     ready() {
       const ctx = root.Sfx && Sfx.ctx && Sfx.ctx(), C = root.Commentary && Commentary._;
@@ -86,19 +153,18 @@
       if (!C.Lib.ready) { if (!C.Lib.decoding && !C.Lib.failed) C.loadLib(ctx).catch(() => {}); return false; }
       return ctx.state === 'running';
     },
-    // 鳴らせたら長さ（秒）、鳴らせなければ 0
+    // 鳴らせたら長さ（秒。前のチャイムから後のチャイムの終わりまで）、鳴らせなければ 0。消音なら何も作らない
     play(id) {
-      const ctx = root.Sfx && Sfx.ctx && Sfx.ctx(), C = root.Commentary && Commentary._;
-      if (!this.ready()) return 0;
-      const c = C.clipById(id); if (!c) return 0;
-      const out = ctx.createGain(); out.gain.value = 1;
-      const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
-      out.connect(lim); lim.connect(ctx.destination);
-      const pa = C.buildPA(ctx, out, C.seeded(4242));
-      const src = ctx.createBufferSource(); src.buffer = c.buf; src.connect(pa);
-      src.start(ctx.currentTime + 0.05, c.off, c.dur);
-      setTimeout(() => { try { src.disconnect(); pa.disconnect(); out.disconnect(); lim.disconnect(); } catch (e) { /* noop */ } }, (c.dur + 3) * 1000); // 残響が消えてから外す
-      return c.dur;
+      if (A.env.muted() || !this.ready()) return 0;
+      const ctx = Sfx.ctx(), s = schedule(ctx, ctx.destination, id, ctx.currentTime + 0.05); if (!s) return 0;
+      cur = s;
+      setTimeout(() => { s.nodes.forEach((n) => { try { n.disconnect(); } catch (e) { /* noop */ } }); if (cur === s) cur = null; }, (s.dur + 3.5) * 1000); // 響きが消えてから外す
+      return s.dur + 0.05;
+    },
+    // 途中で止める（消音・レースが始まったとき）: 残りの声・チャイムを消す
+    stop() {
+      const s = cur, ctx = root.Sfx && Sfx.ctx && Sfx.ctx(); cur = null; if (!s || !ctx) return;
+      try { const g = s.out.gain, t = ctx.currentTime; g.cancelScheduledValues(t); if (ctx.state === 'running') { g.setValueAtTime(g.value, t); g.setTargetAtTime(0, t, 0.03); } else g.setValueAtTime(0, t); } catch (e) { /* noop */ }
     },
   };
   // ---------- テレビの様子（tests で差し替えられる） ----------
@@ -120,6 +186,8 @@
     const D = root.DERBY;
     if (!D || !D.v2 || D.watch || !D.state || !D.now) return;
     const t = D.now(), done = (k) => mem.has(k), C = candidates(D.state, t, D.canVote);
+    // 自分の案内の途中で消音・レース・実況になったら、残り（声・後のチャイム）を止める（消音を戻したあとに続きが鳴らないように）
+    if (t < busyUntil && (env.muted() || env.busy()) && A.player.stop) A.player.stop();
     const voting = C.find((r) => Number(r.openAt) <= t && t < Number(Number.isFinite(Number(r.closeAt)) ? r.closeAt : r.at)) || null; // いま投票中のレース
     for (const r of C) {
       const d = due(r, t, done); if (!d) continue;
@@ -139,7 +207,7 @@
     }
   }
 
-  const A = { plan, due, candidates, isTest, CLIP, CL, GAP, LATE, LATE_OPEN, KEY, mem, player, env, log, tick, reset() { busyUntil = 0; log.length = 0; } };
+  const A = { plan, due, candidates, isTest, CLIP, CL, GAP, LATE, LATE_OPEN, KEY, CHIME, chime, schedule, mem, player, env, log, tick, busyUntil: () => busyUntil, reset() { busyUntil = 0; cur = null; log.length = 0; } };
   if (typeof module !== 'undefined' && module.exports) { module.exports = A; return; }
   root.DerbyAnnounce = A;
   const on = /[?&]store=[^&]/.test(Q) && !/[?&]watch=1\b/.test(Q) && !(root.DERBY_FIREBASE && root.DERBY_FIREBASE.demo) && !root.__derbyDemoPage;
