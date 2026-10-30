@@ -43,6 +43,8 @@
     sendSlow: '時間がかかっています。このままお待ちください', sendRetry: '通信が不安定です。自動で送り直しています（{n}回目）',
     checking: '最新状況を確認中…', closedSend: '受付できませんでした（締め切りました）', ownerChanged: 'この端末の記録が変わったため、ここからは選び直せません。変更はスタッフにお伝えください',
     sendQueued: '電波が戻ったら自動で送ります（締切 {t} まで）', sendFail: '送れませんでした。電波が戻ると自動で送ります', resend: 'もう一度送る',
+    /* 2026-10-29 オーナー「投票終わった端末のみレースを観測できるように」: 投票した人だけの「レースを見る」（テレビと同じ画面。v2/watch.js） */
+    watchBtn: 'レースを見る', watchSub: 'テレビと同じ画面',
   };
   const fill = (s, o) => String(s).replace(/\{(\w+)\}/g, (m, k) => (o && o[k] != null ? o[k] : ''));
 
@@ -287,17 +289,55 @@
     if (!v || !r) return R.boot();
     const lost = !!my.lost, can = !lost && !v2 && !!my.bonus && stageOf(r) === 'vote'; // 初参加ボーナス: 1 票目のすぐ下に「もう1票」。lost: ログインが変わって自分の票として読めない（選び直しは出さない）
     return '<div class="scr voted">' + testTag(r) + '<h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' +
-      mineCard(r, v, v2 ? 1 : 0, true, true) + (can ? bonusBox() : '') + (v2 ? mineCard(r, v2, 2, true, false) : '') +
+      mineCard(r, v, v2 ? 1 : 0, true, true) + (can ? bonusBox() : '') + (v2 ? mineCard(r, v2, 2, true, false) : '') + watchBtn(r) +
       '<div class="clock"><div class="k">' + esc(TX.closeIn) + '</div><div class="v">' + cd(r.closeAt) + '</div></div>' + todayRow() + /* 本日のレースの時刻（2026-10-27）: 締切の時計の下・「選び直す」の上（開いた直後の画面に入る位置。デザイン審査） */
       (lost ? '<div class="note" role="status">' + esc(TX.ownerChanged) + '</div>' : v2 ? '<div class="redo2"><button class="btn ghost" data-act="redo">' + esc(TX.redo1) + '</button><button class="btn ghost" data-act="redo2">' + esc(TX.redo2) + '</button></div>'
         : '<button class="btn ghost" data-act="redo">' + esc(TX.redo) + '</button>') + '</div>';
+  };
+
+  /* 「レースを見る」（2026-10-29 オーナー「投票終わった端末のみレースを観測できるように」）: このスマホに票があるレースだけ、投票済み・レース中・結果の画面に出す。
+     押すとこのページの上に窓を開き、テレビと同じ画面（../index.html?store=<店>&watch=1。v2/watch.js・tv.js の見るだけ）を出す。重い部品（3D の映像）は押したときに初めて読む。
+     出すのは結果の画面が終わるまで（endAt）。取り消しのレースは出さない */
+  const watchEnd = (r) => r.endAt || (r.revealAt ? r.revealAt + 300000 : (r.closeAt || 0) + 15 * 60000);
+  function watchBtn(r) {
+    if (!my || !my.vote || !r || r.refunded || r.status === 'void' || my.lost || now() >= watchEnd(r)) return '';
+    return '<button class="btn ghost watchbtn" data-act="watch"><span aria-hidden="true">▶ </span>' + esc(TX.watchBtn) + '<small>' + esc(TX.watchSub) + '</small></button>';
+  }
+  /* 窓の見た目は開くときだけ足す（投票ページの最初の読み込みを重くしない＝bet.css には入れない） */
+  const WATCH_CSS = '#watchOv{position:fixed;inset:0;z-index:100;background:#0b101b}#watchOv iframe{position:absolute;top:0;bottom:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:100%;border:0;display:block;background:#0b101b}html.watching,html.watching body{overflow:hidden}.watchbtn small{display:block;font-size:12px;font-weight:500;opacity:.8}';
+  function openWatch() {
+    if (!my || !my.vote || $('watchOv')) return;
+    if (!$('watchCss')) { const s = document.createElement('style'); s.id = 'watchCss'; s.textContent = WATCH_CSS; document.head.appendChild(s); }
+    const keep = ['cloud', 'mute'].map((k) => (qs.get(k) ? '&' + k + '=' + encodeURIComponent(qs.get(k)) : '')).join('');
+    const ov = document.createElement('div'); ov.id = 'watchOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', TX.watchBtn);
+    const fr = document.createElement('iframe'); fr.id = 'watchFr'; fr.title = TX.watchBtn; fr.setAttribute('allow', 'autoplay; fullscreen');
+    fr.src = '../index.html?store=' + encodeURIComponent(STORE) + '&watch=1&race=' + encodeURIComponent(my.raceId) + keep;
+    ov.appendChild(fr); document.body.appendChild(ov); document.documentElement.classList.add('watching');
+    try { history.pushState(Object.assign({}, history.state || {}, { derbyWatch: 1 }), ''); } catch (e) { /* noop */ } // スマホの「戻る」で窓を閉じる
+  }
+  function closeWatch(fromPop) {
+    const ov = $('watchOv'); if (!ov) return;
+    const fr = $('watchFr');
+    try { const w = fr && fr.contentWindow; if (w && w.__derbyWatchStop) w.__derbyWatchStop(); } catch (e) { /* noop: 見張りを止める（このページの Firebase の見張りを残さない） */ }
+    try { if (fr) fr.src = 'about:blank'; } catch (e) { /* noop */ }
+    ov.remove(); document.documentElement.classList.remove('watching');
+    if (!fromPop) { try { if (history.state && history.state.derbyWatch) history.back(); } catch (e) { /* noop */ } }
+    lastSig = ''; route();
+  }
+  window.addEventListener('popstate', () => { if ($('watchOv')) closeWatch(true); });
+  /* 窓（v2/watch.js）が読むもの: このスマホのそのレースの票（予想・会計番号・結果）と、票の持ち主の印。窓から閉じる */
+  const watchVote = (v) => (v ? { first: v.first, second: v.second, bill: v.bill, nick: v.nick, n: v.n, result: v.result ? { win: !!v.result.win, amount: v.result.amount, test: !!v.result.test, refunded: !!v.result.refunded } : null } : null);
+  window.BETWATCH = {
+    close: () => closeWatch(false),
+    votes: (raceId) => (my && my.raceId === raceId && my.vote ? [my.vote, my.vote2].filter(Boolean).map(watchVote) : []),
+    mv: (raceId) => (MV ? MV.get(raceId) : null),
   };
 
   /* ⑥ レース中: 自分の予想だけ（初参加ボーナスの 2 票目もあれば 2 枚） */
   R.race = () => {
     const v = my && my.vote, v2 = my && my.vote2, r = my && my.race; if (!v || !r) return R.boot();
     return '<div class="scr racing' + (v2 ? ' two' : ' mid') + '">' + testTag(r) + mineCard(r, v, v2 ? 1 : 0, false, true) + /* ⑤投票済みと同じ札・同じ大きさ。当たればいくら（2026-10-21 文字帳の指示） */
-      (v2 ? mineCard(r, v2, 2, false, false) : '') + '</div>';
+      (v2 ? mineCard(r, v2, 2, false, false) : '') + watchBtn(r) + '</div>';
   };
 
   /* ⑦ 結果 */
@@ -312,7 +352,7 @@
     const perVote = v2 ? '<div class="vlist">' + all.map((x) => { const w = !!(x.result && x.result.win); return '<div class="vr' + (w ? ' w' : '') + '"><span class="vk">' + esc(x.n === 2 ? TX.vote2 : TX.vote1) + '</span>' + arrowNum(x.first, x.second) + '<b class="vm">' + esc(w ? TX.hitMark : TX.missMark) + '</b></div>'; }).join('') + '</div>' : '';
     if (!wins.length) {
       return '<div class="scr result">' + testTag(r) + '<div class="miss"><h1 class="t">' + esc(TX.lose) + '</h1><p class="rc">' + esc(TX.result) + ' ' + arrowNum(res.first, res.second) + '</p></div>' + resLine +
-        (v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + nextLine() + todayRow() + nextBtn(false) + '</div>'; // 本日のレースの時刻（2026-10-27）は「次のレース」と「次のレースへ」の間
+        (v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + watchBtn(r) + nextLine() + todayRow() + nextBtn(false) + '</div>'; // 本日のレースの時刻（2026-10-27）は「次のレース」と「次のレースへ」の間
     }
     /* 受け取りは 1 つのスライドで（2 票とも当たりなら 2 票分をまとめて。スタッフの操作は 1 回。2026-10-24 決め） */
     const wr = wins[0].result, total = wins.reduce((a, x) => a + (Number(x.result.amount) || 0), 0), test = wins.some((x) => x.result.test);
@@ -327,7 +367,7 @@
     return '<div class="scr result win">' + testTag(r) + '<div class="hit"><h1 class="t">' + esc(TX.win) + '</h1><div class="combo">' + esc(comboText(r, wr.first, wr.second, wr.odds)) + '</div>' +
       '<div class="k">' + esc(TX.amount) + '</div><div class="a">' + bigAmt(total, 'n') + '</div>' + (wins.length >= 2 ? '<div class="x2">' + esc(fill(TX.times, { a: ptT(wr.amount), n: wins.length })) + '</div>' : '') + '</div>' + perVote +
       '<div class="billbig"><span>' + esc(TX.billHead) + '</span><b>' + esc(v.bill) + '</b><small data-fit="13">' + esc(v.nick) + '</small></div>' + pay +
-      todayRow() + nextBtn(true) + '</div>'; // 本日のレースの時刻（2026-10-27）は「次のレースへ」のすぐ上
+      watchBtn(r) + todayRow() + nextBtn(true) + '</div>'; // 本日のレースの時刻（2026-10-27）は「次のレースへ」のすぐ上
   };
 
   /* ================= 描画 ================= */
@@ -547,6 +587,7 @@
       return submitVote(draft); // 同じ予想を送っている途中なら何もしない（submitVote の中）
     }
     if (a === 'reload') { try { location.reload(); } catch (e) { /* noop */ } return; }
+    if (a === 'watch') return openWatch(); // レースを見る（2026-10-29）
     if (a === 'dismiss') { if (my) dismissed.add(my.raceId); if (pinned && my && pinned.vid === my.vid) pinned = null; my = null; resubscribe(); lastSig = ''; route(); return scanUnpaid(); }
     if (a === 'openUnpaid') {
       const u = unpaidList.find((x) => x.vid === (el && el.dataset.vid)); if (!u) return;
@@ -759,7 +800,7 @@
     flushResend(false); // 送れなかった投票は 15 秒ごとにも（Wi-Fi はつながっているのに外へ出られないとき）
   }, 6000);
 
-  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, prepKey, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote };
+  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, prepKey, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote, openWatch, closeWatch };
 
   /* ================= 起動 ================= */
   /* 2026-10-28 速さの見直し: 時刻合わせ・状態・見張りを同時に始める（以前は時刻合わせ → 状態 → 見張りの順で待っていた）。
