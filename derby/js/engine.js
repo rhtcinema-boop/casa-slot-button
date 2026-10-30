@@ -31,25 +31,30 @@
     { mark: '▲', label: '不調', mul: 0.997 },
     { mark: '×', label: '絶不調', mul: 0.994 },
   ];
-  // 馬の一覧（名前はオリジナル）。stars=総合、spd/sta/pow=スピード・スタミナ・パワー（1〜5）、coat=毛色
+  // 馬の一覧（初期の 16 頭）。stars=総合、spd/sta/pow=スピード・スタミナ・パワー（1〜5）、coat=毛色
+  // 名前は 2026-10-30 に casa（カーサ＝ハウス）とポーカーにちなんだものへ一新（オーナー「全部めっちゃダサい」。ChatGPT と相談して決定）。
+  // 脚質・能力・毛色は以前のまま（同じ位置の馬の名前だけを変えた＝レースの結果は名前以外変わらない）。かっこ内は以前の名前
+  // 管理画面の「馬」で直した一覧があればそちらを使う（v2/core.js の horsePool → makeRace の pool）
   const POOL = [
-    { name: 'カーサブランカ', type: 'senko', spd: 5, sta: 4, pow: 3, coat: 'white' },
-    { name: 'ミッドナイトキング', type: 'oikomi', spd: 4, sta: 5, pow: 4, coat: 'black' },
-    { name: 'レッドアロー', type: 'nige', spd: 5, sta: 2, pow: 3, coat: 'chestnut' },
-    { name: 'ブルームーン', type: 'sashi', spd: 4, sta: 4, pow: 3, coat: 'gray' },
-    { name: 'ゴールドラッシュ', type: 'nige', spd: 4, sta: 3, pow: 2, coat: 'palomino' },
-    { name: 'グリーンフラッシュ', type: 'sashi', spd: 3, sta: 3, pow: 5, coat: 'bay' },
-    { name: 'シブヤハチコウ', type: 'senko', spd: 3, sta: 4, pow: 4, coat: 'bay' },
-    { name: 'ウエノパンダ', type: 'oikomi', spd: 3, sta: 5, pow: 5, coat: 'black' },
-    { name: 'サッポロユキダルマ', type: 'nige', spd: 4, sta: 4, pow: 2, coat: 'white' },
-    { name: 'モーニングショット', type: 'senko', spd: 4, sta: 2, pow: 4, coat: 'chestnut' },
-    { name: 'ナイトキャップ', type: 'sashi', spd: 2, sta: 4, pow: 4, coat: 'gray' },
-    { name: 'シャンパンタワー', type: 'oikomi', spd: 5, sta: 3, pow: 2, coat: 'palomino' },
-    { name: 'オヤジノユメ', type: 'sashi', spd: 2, sta: 3, pow: 3, coat: 'bay' },
-    { name: 'ラストオーダー', type: 'oikomi', spd: 3, sta: 2, pow: 3, coat: 'chestnut' },
-    { name: 'ハシゴザケ', type: 'nige', spd: 3, sta: 5, pow: 3, coat: 'black' },
-    { name: 'ツケバライ', type: 'senko', spd: 2, sta: 2, pow: 2, coat: 'white' },
+    { name: 'カーサロワイヤル', type: 'senko', spd: 5, sta: 4, pow: 3, coat: 'white' },     // casa＋カジノ・ロワイヤル。看板馬（カーサブランカ）
+    { name: 'リバーファントム', type: 'oikomi', spd: 4, sta: 5, pow: 4, coat: 'black' },   // 最後のカード（リバー）で現れる幻＝最後に来る（ミッドナイトキング）
+    { name: 'プリフロップジャム', type: 'nige', spd: 5, sta: 2, pow: 3, coat: 'chestnut' }, // 配られてすぐオールイン＝最初から飛ばす（レッドアロー）
+    { name: 'チェックレイズ', type: 'sashi', spd: 4, sta: 4, pow: 3, coat: 'gray' },        // 一度待ってから反撃（ブルームーン）
+    { name: 'ポケットロケッツ', type: 'nige', spd: 4, sta: 3, pow: 2, coat: 'palomino' },  // A のペアの愛称。ロケットスタート（ゴールドラッシュ）
+    { name: 'ショーダウン', type: 'sashi', spd: 3, sta: 3, pow: 5, coat: 'bay' },           // 手札を見せ合う最後の勝負＝力で抜ける（グリーンフラッシュ）
+    { name: 'ハウスエッジ', type: 'senko', spd: 3, sta: 4, pow: 4, coat: 'bay' },           // 胴元（ハウス＝カーサ）がいつも有利（シブヤハチコウ）
+    { name: 'ディープスタック', type: 'oikomi', spd: 3, sta: 5, pow: 5, coat: 'black' },   // チップがたっぷり＝最後まで余力（ウエノパンダ）
+    { name: 'ナッツフラッシュ', type: 'nige', spd: 4, sta: 4, pow: 2, coat: 'white' },     // いちばん強いフラッシュ。閃光のように逃げる（サッポロユキダルマ）
+    { name: 'ヘッズアップ', type: 'senko', spd: 4, sta: 2, pow: 4, coat: 'chestnut' },      // 1 対 1 の勝負（モーニングショット）
+    { name: 'シルバーブラフ', type: 'sashi', spd: 2, sta: 4, pow: 4, coat: 'gray' },        // 銀色（芦毛）のはったり（ナイトキャップ）
+    { name: 'ラストオールイン', type: 'oikomi', spd: 5, sta: 3, pow: 2, coat: 'palomino' }, // 最後の全部賭け＝一瞬の末脚（シャンパンタワー）
+    { name: 'ターンミラージュ', type: 'sashi', spd: 2, sta: 3, pow: 3, coat: 'bay' },       // 4 枚目のカード（ターン）の蜃気楼（オヤジノユメ）
+    { name: 'ランナーランナー', type: 'oikomi', spd: 3, sta: 2, pow: 3, coat: 'chestnut' }, // ターンとリバーで続けて引いて大逆転（ラストオーダー）
+    { name: 'ポーカーフェイス', type: 'nige', spd: 3, sta: 5, pow: 3, coat: 'black' },     // 表情を変えず淡々と粘る（ハシゴザケ）
+    { name: 'ワンペアドリーム', type: 'senko', spd: 2, sta: 2, pow: 2, coat: 'white' },     // 弱い役でも夢を見る（ツケバライ）
   ];
+  // 毛色（3D の馬 js/r3d/horse3d.js の COATS と同じ 6 つ）と、管理画面に出す呼び名
+  const COATS = { bay: '鹿毛', chestnut: '栗毛', black: '青毛', gray: '芦毛', white: '白毛', palomino: '月毛' };
 
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   // 勝負服（馬主の服色のつもり。名前から決める）: base=地色, accent=差し色, pattern=柄
@@ -62,12 +67,15 @@
   // 正規乱数（ボックス・ミュラー）
   function gauss(r) { let u = 0, v = 0; while (u === 0) u = rnd(r); while (v === 0) v = rnd(r); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283185307 * v); }
 
-  /* ---------- レースの条件と出走馬を作る ---------- */
-  function makeRace(r) {
+  /* ---------- レースの条件と出走馬を作る ----------
+     pool: 出走させる馬の一覧（2026-10-30 管理画面の「馬」で直せる。v2/core.js の horsePool が tuning.horses から作る）。
+     渡さない・6 頭より少ないときは上の POOL。並べ方と乱数の使い方は同じなので、POOL を渡したときと渡さないときの結果は同じ */
+  function makeRace(r, pool) {
+    const src = Array.isArray(pool) && pool.length >= 6 ? pool : POOL;
     const dist = 1000; rnd(r); // オーナー指示「1000m にしよう」（全レース 1000m・約57秒。乱数は 1 つ消費して抽選の並びを保つ）
     const weather = pick(['sunny', 'cloudy', 'rain'], r);
     const surface = rnd(r) < 0.7 ? 'turf' : 'dirt';
-    const horses = shuffle(POOL, r).slice(0, 6).map((h, i) => {
+    const horses = shuffle(src, r).slice(0, 6).map((h, i) => {
       const cond = CONDS[Math.floor(rnd(r) * CONDS.length)];
       // 過去5走の着順（能力が高いほど上位が多い）
       const stars = (h.spd + h.sta + h.pow) / 3;
@@ -322,5 +330,5 @@
   }
 
   return { FIXED_DT, TUNE, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET,
- BALLS_MAX, TYPES, CONDS, POOL, ROULETTE, makeRace, simulate, createRun, calcOdds, qkey, ekey, forceOrder, EX_MIN, EX_MAX, oddsColor, totalBet, payout, carrotCount, spinFood, betHorses, ballsEarned, spinRoulette, profile, baseSpeed };
+ BALLS_MAX, TYPES, CONDS, POOL, COATS, ROULETTE, makeRace, simulate, createRun, calcOdds, qkey, ekey, forceOrder, EX_MIN, EX_MAX, oddsColor, totalBet, payout, carrotCount, spinFood, betHorses, ballsEarned, spinRoulette, profile, baseSpeed };
 });
