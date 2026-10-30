@@ -311,7 +311,12 @@
     const keep = ['cloud', 'mute'].map((k) => (qs.get(k) ? '&' + k + '=' + encodeURIComponent(qs.get(k)) : '')).join('');
     const ov = document.createElement('div'); ov.id = 'watchOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', TX.watchBtn);
     const fr = document.createElement('iframe'); fr.id = 'watchFr'; fr.title = TX.watchBtn; fr.setAttribute('allow', 'autoplay; fullscreen');
-    fr.src = '../index.html?store=' + encodeURIComponent(STORE) + '&watch=1&race=' + encodeURIComponent(my.raceId) + keep;
+    /* 3D（テレビと同じ画面）が先。図の表示（v2/watchmap.html）は ?view=map・窓の中の「図で見る」で選んだ端末（casa.derby.watchView = 'map'）・Web デモ（?view=3d でなく、選んでいないとき）。
+       Web デモのテレビの画面は ../tv.html（2026-10-30 本番も「図で見る」「3Dで見る」で切り替えられるように） */
+    let pref = null; try { pref = localStorage.getItem('casa.derby.watchView'); } catch (e) { pref = null; }
+    const DEMO = !!window.__derbyDemoPage, vq = qs.get('view'), map = vq === 'map' || (vq !== '3d' && (pref === 'map' || (DEMO && pref !== '3d')));
+    const q = '?store=' + encodeURIComponent(STORE) + '&race=' + encodeURIComponent(my.raceId) + keep;
+    fr.src = map ? 'watchmap.html' + q : (DEMO ? '../tv.html' : '../index.html') + q + '&watch=1';
     ov.appendChild(fr); document.body.appendChild(ov); document.documentElement.classList.add('watching');
     try { history.pushState(Object.assign({}, history.state || {}, { derbyWatch: 1 }), ''); } catch (e) { /* noop */ } // スマホの「戻る」で窓を閉じる
   }
@@ -327,8 +332,18 @@
   window.addEventListener('popstate', () => { if ($('watchOv')) closeWatch(true); });
   /* 窓（v2/watch.js）が読むもの: このスマホのそのレースの票（予想・会計番号・結果）と、票の持ち主の印。窓から閉じる */
   const watchVote = (v) => (v ? { first: v.first, second: v.second, bill: v.bill, nick: v.nick, n: v.n, result: v.result ? { win: !!v.result.win, amount: v.result.amount, test: !!v.result.test, refunded: !!v.result.refunded } : null } : null);
+  /* 投票が届いたら自動で「レースを見る」を開く（2026-10-30 オーナー）。同じレースはこの端末で 1 回だけ（閉じたあとはもう開かない。ボタンはそのまま）。
+     覚える場所: casa.derby.watchAuto（レース id の並び。新しい 20 件だけ）。保存できない端末はこのページの間だけ */
+  const AUTO_KEY = 'casa.derby.watchAuto', autoMem = new Set();
+  function autoOpened(raceId) { if (autoMem.has(raceId)) return true; try { const L = JSON.parse(localStorage.getItem(AUTO_KEY) || '[]'); return Array.isArray(L) && L.indexOf(raceId) >= 0; } catch (e) { return false; } }
+  function markAuto(raceId) { autoMem.add(raceId); try { let L = JSON.parse(localStorage.getItem(AUTO_KEY) || '[]'); if (!Array.isArray(L)) L = []; L = L.filter((x) => x !== raceId).concat([raceId]).slice(-20); localStorage.setItem(AUTO_KEY, JSON.stringify(L)); } catch (e) { /* このページの間だけ */ } }
+  function autoWatch() {
+    if (!my || !my.vote || autoOpened(my.raceId) || $('watchOv') || /[?&]watchauto=0\b/.test(location.search)) return; // ?watchauto=0: 自動で開かない（確認用）
+    markAuto(my.raceId); openWatch();
+  }
   window.BETWATCH = {
     close: () => closeWatch(false),
+    bonus: (raceId) => !!(my && my.raceId === raceId && my.vote && !my.vote2 && my.bonus && !my.lost && my.race && stageOf(my.race) === 'vote'), // 初参加ボーナスの 2 票目をまだ入れられる（窓に「もう1票」を出す）
     votes: (raceId) => (my && my.raceId === raceId && my.vote ? [my.vote, my.vote2].filter(Boolean).map(watchVote) : []),
     mv: (raceId) => (MV ? MV.get(raceId) : null),
   };
@@ -693,6 +708,7 @@
     online = up(); lastSig = '';
     if (rechoosing) { d.redo = true; d.done = false; d.sendLabel = d.sendMsg = ''; d.sendDis = false; return drawTop(); }
     route();
+    autoWatch(); // 投票できたら、自動で「レースを見る」（このレースで初めてのときだけ）
   }
   async function voteFailed(d, e) { // 送り直しても変わらない答え（今までと同じ動き）
     const code = e && e.code;
