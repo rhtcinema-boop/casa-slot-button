@@ -278,11 +278,11 @@
   }
 
   /* ================= 下: シート（番号を空ける・テストレース・その他） ================= */
-  function openSheet(name) { sheet = name; if (name === 'test') testPoll(true); drawSheet(); }
+  function openSheet(name) { sheet = name; if (name === 'test') testPoll(true); if (name === 'hist') histLoad(); drawSheet(); }
   function closeSheet() { sheet = null; relBill = ''; relMsg = null; const s = $('sheet'); s.className = 'sheet hidden'; s.innerHTML = ''; }
   function drawSheet() {
     const s = $('sheet'); if (!sheet) return closeSheet();
-    const h = sheet === 'release' ? relHtml() : sheet === 'test' ? testHtml() : moreHtml();
+    const h = sheet === 'release' ? relHtml() : sheet === 'test' ? testHtml() : sheet === 'hist' ? histHtml() : moreHtml();
     const close = '<button type="button" class="btn ghost close" data-act="close">' + esc(TX.close) + '</button>';
     const fresh = s.classList.contains('hidden'); // 開いたときだけ下から出す（描き直しのたびに薄く出し直さない）
     s.className = 'sheet'; s.innerHTML = '<div class="card ' + esc(sheet) + (fresh ? ' in' : '') + '">' + (sheet === 'release' ? h.replace('<!--close-->', close) : h + close) + '</div>'; // 番号を空ける: 「閉じる」と「空ける」を横に並べる（低いスマホでも 1 画面に入るように。2026-10-23）
@@ -384,7 +384,38 @@
       '<div class="tq"><h4>' + esc(TX.qHead) + '<small>' + esc(TX.qSub) + '</small></h4><p class="now">' + esc(TX.qNow) + ': <b id="tvqNow">' + (q === undefined ? '…' : QN[q]) + '</b></p>' +
       '<div class="three">' + QS3.map(([v, name, note]) => '<button type="button" data-tvq="' + v + '" class="' + (q === v ? 'cur' : '') + '"' + (q === v || busy ? ' disabled' : '') + '><b>' + name + '</b><small>' + note + '</small></button>').join('') + '</div></div>' +
       (SW && SW.home && SW.home() ? '<div class="auto"><span>' + esc(TX.autoHead) + '<small>' + esc(TX.autoSub) + '</small></span><button type="button" data-act="auto">' + esc(SW.auto() ? TX.on : TX.off) + '</button></div>' : '') +
+      '<button type="button" class="btn ghost hist" data-sheet="hist" style="width:100%;margin:10px 0">当たりの履歴（日ごと）</button>' +
       '<div class="row2"><button type="button" class="btn ghost" data-act="reload">' + esc(TX.reload) + '</button><button type="button" class="btn ghost" data-act="logout">' + nwrap(TX.logout) + '</button></div>';
+  }
+  /* ---- 当たりの履歴（2026-10-30 オーナー「何時何分に誰が何がいくら当たったか、スタッフからも見れるように」）: この店の 1 日ぶんの当たり（記録の win）と受け取り。
+     見るだけ（何も書かない）。日付は営業日（5 時区切り）で、◀ ▶ で前の日・次の日 */
+  let histDate = '', histList = null, histErr = '', histSeq = 0;
+  const shiftDay = (d, n) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+  const bizToday = () => { const CORE = window.DerbyCore || window.Core, h = dayStartHour(); if (CORE && CORE.bizDate) return CORE.bizDate(Date.now(), h); const d = new Date(Date.now() + 9 * 3600e3 - h * 3600e3); return d.toISOString().slice(0, 10); };
+  async function histLoad() {
+    if (!histDate) histDate = bizToday();
+    const my = ++histSeq; histList = null; histErr = ''; if (sheet === 'hist') drawSheet();
+    try {
+      const d = await C.logs(saved.pin, { date: histDate }), L = (d && d.logs) || [];
+      const by = {}; L.forEach((l) => { if (l.pid && (l.type === 'paid' || l.type === 'expired')) by[l.pid] = l; });
+      const rids = Array.from(new Set(L.filter((l) => l.type === 'win').map((l) => l.raceId).filter(Boolean))), voids = {};
+      await Promise.all(rids.map((id) => C.race(id).then((r) => { const x = (r && r.race) || r; if (x && x.refunded) voids[id] = 1; }, () => {}))); // 取り消したレースの当たり（渡していないものは無効）
+      if (my !== histSeq) return;
+      histList = L.filter((l) => l.type === 'win').sort((a, b) => b.at - a.at).map((w) => { const e = by[w.pid], m = /-(\d{2})(\d{2})$/.exec(String(w.raceId || '')), c = /^(\d+)-(\d+)$/.exec(String(w.combo || ''));
+        return { voided: !e && !!voids[w.raceId], race: m ? (+m[1]) + ':' + m[2] : hhmm(w.at), bill: w.bill, nick: w.nick || '', combo: c ? (+c[1] + 1) + '→' + (+c[2] + 1) : '', amount: Number(w.amount) || 0, st: e ? e.type : 'unpaid', stAt: e ? e.at : 0, via: e ? e.via : '' }; });
+    } catch (e) { if (my !== histSeq) return; if (pinGone(e)) return; histErr = errText(e); }
+    if (sheet === 'hist') drawSheet();
+  }
+  function histHtml() {
+    const d = histDate || bizToday(), today = d >= bizToday(), L = histList;
+    const dt = new Date(d + 'T00:00:00Z'), lbl = (dt.getUTCMonth() + 1) + '/' + dt.getUTCDate() + '（' + '日月火水木金土'[dt.getUTCDay()] + '）';
+    const sum = L ? L.filter((x) => !x.voided).reduce((a, x) => a + x.amount, 0) : 0;
+    const stTxt = (x) => (x.st === 'paid' ? '渡した ' + hhmm(x.stAt) + (x.via === 'self' ? '（お客さん）' : '') : x.st === 'expired' ? '期限切れ' : x.voided ? '取消' : 'まだ');
+    return '<h3>当たりの履歴</h3>' +
+      '<div class="row2" style="align-items:center"><button type="button" class="btn ghost" data-act="hday" data-d="-1">◀ 前の日</button><b style="text-align:center;flex:1">' + esc(lbl) + '</b><button type="button" class="btn ghost" data-act="hday" data-d="1"' + (today ? ' disabled' : '') + '>次の日 ▶</button></div>' +
+      (histErr ? '<p class="warn">' + esc(histErr) + '</p>' : L == null ? '<p>読み込み中…</p>' : !L.length ? '<p>この日の当たりはありません</p>' :
+        '<p>' + L.length + ' 件・合計 ' + amt(sum) + 'pt</p><div class="histl" style="max-height:52vh;overflow:auto">' +
+        L.map((x) => '<div class="win ' + (x.voided ? 'voided' : x.st === 'unpaid' ? 'unpaid' : x.st) + '" style="padding:8px 10px"><div class="wl"><span class="bill">' + esc(x.bill) + '</span><b class="nk">' + esc(x.nick) + '</b><small class="meta">' + esc(x.race + ' のレース・' + x.combo + '・' + stTxt(x)) + '</small><span class="wa">' + amt(x.amount) + '<small>pt</small></span></div></div>').join('') + '</div>');
   }
   async function setQuality(v) {
     if (busy || v === qNow()) return;
@@ -412,6 +443,7 @@
     const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
     const a = b.dataset.act;
     if (a === 'close') { if (!busy) closeSheet(); return; }
+    if (a === 'hday') { histDate = shiftDay(histDate, +b.dataset.d); return histLoad(); }
     if (a === 'release') return doRelease();
     if (a === 'test') return testPress();
     if (a === 'tv') return setGame(b.dataset.g);
