@@ -163,13 +163,13 @@
   },
   {
    "path": "art/voice/g.m4a",
-   "size": 855411,
-   "sha256": "4c962f90b1db71089d0acbb8ef1abc6261fc8c777e261c46a428d94d95028f90"
+   "size": 972787,
+   "sha256": "ab9ecdb151db60cdb578ec7303908d5e94bfa80db2d617524a5f8ecc89f77c0d"
   },
   {
    "path": "art/voice/index.json",
-   "size": 30694,
-   "sha256": "327c5320baa1f3b1f8195a149a9905abf13eb5387203ba23bcd418563933059b"
+   "size": 31339,
+   "sha256": "f7213c81a9044608c6467e482bae8c6e49c9a2eaaaad8f047d1b2b294e9d365b"
   },
   {
    "path": "art/voice/x.m4a",
@@ -360,6 +360,11 @@
    "path": "v2/watch.js",
    "size": 21501,
    "sha256": "b366eebb71673ee9289593d3476f88123755cccb8721bc2408e38129ed58f751"
+  },
+  {
+   "path": "v2/announce.js",
+   "size": 11823,
+   "sha256": "3c89ad34dc8c0162e5ba8f8e2ae6bf6bcaf6193bcd172d1d8bc0905e30af58f8"
   }
  ]
 }
