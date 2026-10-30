@@ -22,6 +22,13 @@
    - 1 台で番号が多いスマホの票（2026-10-27。input.extra）: 決め方（目標の幅・必ず誰かは当てる・倍率のずらし）には数えない。上限にだけ数える（上限がいちばん強いのはそのまま）。
      幅の中・目標に近い組み合わせを選ぶときは、そのスマホの票が無い組み合わせを先に選ぶ（どれにもあるときだけ、ある組み合わせ＝自然に当たる）。
      ふつうの票が無く、多いスマホの票だけのときは、30 通りから起きやすさで抽選（reason 'heavy_only'。上限を超える組み合わせは選ばない）。extra が空なら今までと同じ答え。
+   - 直近の当たり端末の票（2026-10-31 オーナー「直近 10 レースで当たった人が重複しないように」。input.block。v2/core.js の recentWinners）: 守る決まり（多いスマホの票と違って必ず）。
+     その票が 1 つでも入った組み合わせは候補から外す（幅・目標・上限の当たりなしのどれでも選ばない）。残りの組み合わせで今までどおり決める。
+     残りにふつうの票が無ければ、その票が無い組み合わせから起きやすさで抽選（当たりなしもある。reason 'norepeat'。上限を超える組み合わせは選ばない）。
+     30 通り全部にその票があるときだけ（ほぼ起きない）、上限を超えない中でその票がいちばん少ない組み合わせ（reason 'norepeat_conflict'）。返り値 blocked: 外した組み合わせ。block が空なら今までと同じ答え。
+   - 参加の多い店を先に（2026-10-31 オーナー「参加人数が多い店舗から当たりを出す」。input.favor ＝ 店の id。v2/core.js の bigStoreOf）: ほかの決まり（上限 > 直近の当たり端末 > 幅・目標）で
+     残った候補（幅に入る組み合わせ・幅が無ければ目標にいちばん近い組み合わせ）の中に、その店のふつうの票が入った組み合わせがあれば、その中から抽選。無ければ今までどおり。
+     返り値 favor: { group, applied }（applied ＝ その店の票が入った組み合わせから選んだ）。favor が無ければ今までと同じ答え。
    キー（組み合わせ）は '1着の添字-2着の添字'（例 '2-4' ＝ 3 番 → 5 番）。js/engine.js の ekey と同じ。 */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -102,10 +109,13 @@
   const allKeys = (n) => { const o = []; for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) if (a !== b) o.push(ekey(a, b)); return o; };
 
   /* 勝ちの組み合わせとその確定倍率を選ぶ
-     input: { exacta: { 'a-b': 倍率 }, comboProb?: { 'a-b': 確率 }, n?: 6, votes: [{ first, second, group? }], extra?: [{ first, second, group? }]（1 台で番号が多いスマホの票。2026-10-27）, target, scope: 'all'|'store', w?, up?, down?, bandBelow, bandAbove, cap, seed }
-     返り値: { combo, first, second, comboOdds, payout, payoutHeavy?（多いスマホの票の当選額）, perGroup, dist, overCap, noWinner, reason, cands, target（時刻表の目標）, targetEff（目標 × f。寄せた額）, spreadF（f）, scope, band }
+     input: { exacta: { 'a-b': 倍率 }, comboProb?: { 'a-b': 確率 }, n?: 6, votes: [{ first, second, group? }], extra?: [{ first, second, group? }]（1 台で番号が多いスマホの票。2026-10-27）,
+              block?: [{ first, second, group? }]（直近の当たり端末の票。2026-10-31）, favor?: 店の id（参加の多い店。2026-10-31）, target, scope: 'all'|'store', w?, up?, down?, bandBelow, bandAbove, cap, seed }
+     返り値: { combo, first, second, comboOdds, payout, payoutHeavy?（多いスマホの票の当選額）, perGroup, dist, overCap, noWinner, reason, cands, target（時刻表の目標）, targetEff（目標 × f。寄せた額）, spreadF（f）, scope, band,
+              blocked?（block があるとき: 外した組み合わせ）, favor?（favor があるとき: { group, applied }） }
      input.spread: 配当のぶれ（0〜0.8。省略・0 ならぶれなし）
-     reason: 'band' | 'target' | 'cap_nowin'（上限のため票のない組み合わせ＝当たりなし）| 'cap_conflict' | 'nobody'（票なし＝自然の結果。combo は null）| 'heavy_only'（多いスマホの票だけ＝起きやすさで抽選） */
+     reason: 'band' | 'target' | 'cap_nowin'（上限のため票のない組み合わせ＝当たりなし）| 'cap_conflict' | 'nobody'（票なし＝自然の結果。combo は null）| 'heavy_only'（多いスマホの票だけ＝起きやすさで抽選）
+             | 'norepeat'（ふつうの票の組み合わせが全部、直近の当たり端末の票で外れた＝その票の無い組み合わせから起きやすさで抽選）| 'norepeat_conflict'（30 通り全部にその票） */
   /* 配当のぶれ（2026-10-29）: レースごとに目標に掛ける数 f（1 − spread 〜 1 + spread ÷ 4）。spread は 0〜0.8 に丸める。seed が同じなら同じ f */
   const SPREAD_MAX = 0.8;
   function spreadOf(v) { const x = Number(v); return Number.isFinite(x) ? Math.min(SPREAD_MAX, Math.max(0, x)) : 0; }
@@ -122,8 +132,12 @@
     const useBand = (below > 0 || above > 0) && target > 0, lo = target * (1 - below) - 1e-9, hi = target * (1 + above) + 1e-9;
     const g = groupVotes(input.votes, n, scope), cands = [];
     const xg = groupVotes(input.extra, n, scope), hasX = Object.keys(xg.tot).length > 0, xAt = (k, t) => (xg.tot[k] || 0) * amountT(t); // 1 台で番号が多いスマホの票（上限にだけ数える）
+    const bg = groupVotes(input.block, n, scope), hasB = Object.keys(bg.tot).length > 0, blocked = (k) => hasB && !!bg.tot[k]; // 直近の当たり端末の票（2026-10-31。入った組み合わせは選ばない）
+    const favor = input.favor != null && input.favor !== '' ? String(input.favor) : null, fv = favor ? groupVotes(input.votes, n, 'store') : null, favInfo = favor ? { group: favor, applied: false } : null; // 参加の多い店（2026-10-31）
+    const fin = (o) => { if (hasB) o.blocked = Object.keys(bg.tot).sort(); if (favInfo) o.favor = favInfo; return o; }; // block・favor が無ければ今までとまったく同じ返り値
     const mk = (b) => b && { t: b.t, d: b.d, pay: b.pay, xt: b.xt };
     Object.keys(g.tot).sort().forEach((k) => {
+      if (blocked(k)) return; // 直近の当たり端末の票が入った組み合わせは候補にしない
       const r = rangeT(ex[k], sh);
       let best = null, each = null, sum = null;
       const better = (cur, t, d) => !cur || d < cur.d || (d === cur.d && Math.abs(t - r.oT) < Math.abs(cur.t - r.oT));
@@ -148,22 +162,30 @@
     const band = { below, above, lo: Math.ceil(lo), hi: Math.floor(hi), combos: [], how: null };
     const baseT = (k) => Math.min(MAX_T, Math.max(MIN_T, toT(ex[k]) || MAX_T));
     const asPick = (k) => { const ab = parseKey(k); return { combo: k, first: ab[0], second: ab[1] }; };
-    if (!cands.length && hasX) { // 多いスマホの票だけ: 必ず当てることはしない。30 通りから起きやすさで抽選（上限を超える組み合わせは選ばない。全部超えるなら多いスマホの票が無い組み合わせ）
-      const keys = allKeys(n), okK = keys.filter((k) => !(cap > 0 && xAt(k, baseT(k)) > cap)), freeK = keys.filter((k) => !xg.tot[k]);
-      const pick = lottery((okK.length ? okK : freeK.length ? freeK : keys).map(asPick), input, 'heavy');
-      return { combo: pick.combo, first: pick.first, second: pick.second, comboOdds: baseT(pick.combo) / 10, payout: 0, payoutHeavy: xAt(pick.combo, baseT(pick.combo)), perGroup: {}, dist: target, overCap: false, noWinner: !xg.tot[pick.combo], reason: 'heavy_only', cands, target: target0, targetEff: target, spreadF, scope, band };
+    if (!cands.length && (hasX || hasB)) { // 多いスマホの票だけ: 必ず当てることはしない。30 通りから起きやすさで抽選（上限を超える組み合わせは選ばない。全部超えるなら多いスマホの票が無い組み合わせ）
+      // 直近の当たり端末（2026-10-31）: ふつうの票の組み合わせが全部外れた → その端末の票が無い組み合わせから同じように抽選（reason 'norepeat'。当たりなしもある）
+      const keys = allKeys(n).filter((k) => !blocked(k));
+      if (!keys.length) { // 30 通り全部に直近の当たり端末の票（ほぼ起きない）: 上限を超えない中で、その票がいちばん少ない組み合わせ（その端末も当たる。上限がいちばん強い）
+        const all = allKeys(n), payAll = (k) => ((g.tot[k] || 0) + (bg.tot[k] || 0)) * amountT(baseT(k)) + xAt(k, baseT(k));
+        const okA = all.filter((k) => !(cap > 0 && payAll(k) > cap)), pool = okA.length ? okA : all, minB = Math.min.apply(null, pool.map((k) => bg.tot[k]));
+        const pk = lottery(pool.filter((k) => bg.tot[k] === minB).map(asPick), input, 'norepeat_conflict'), pt = baseT(pk.combo);
+        return fin({ combo: pk.combo, first: pk.first, second: pk.second, comboOdds: pt / 10, payout: ((g.tot[pk.combo] || 0) + bg.tot[pk.combo]) * amountT(pt), payoutHeavy: xAt(pk.combo, pt), perGroup: {}, dist: target, overCap: cap > 0 && payAll(pk.combo) > cap, noWinner: false, reason: 'norepeat_conflict', cands, target: target0, targetEff: target, spreadF, scope, band });
+      }
+      const okK = keys.filter((k) => !(cap > 0 && xAt(k, baseT(k)) > cap)), freeK = keys.filter((k) => !xg.tot[k]);
+      const pick = lottery((okK.length ? okK : freeK.length ? freeK : keys).map(asPick), input, hasB ? 'norepeat' : 'heavy');
+      return fin({ combo: pick.combo, first: pick.first, second: pick.second, comboOdds: baseT(pick.combo) / 10, payout: 0, payoutHeavy: xAt(pick.combo, baseT(pick.combo)), perGroup: {}, dist: target, overCap: false, noWinner: !xg.tot[pick.combo], reason: hasB ? 'norepeat' : 'heavy_only', cands, target: target0, targetEff: target, spreadF, scope, band });
     }
-    if (!cands.length) return { combo: null, first: null, second: null, comboOdds: null, payout: 0, perGroup: {}, noWinner: false, reason: 'nobody', cands, target: target0, targetEff: target, spreadF, scope, band };
+    if (!cands.length) return fin({ combo: null, first: null, second: null, comboOdds: null, payout: 0, perGroup: {}, noWinner: false, reason: 'nobody', cands, target: target0, targetEff: target, spreadF, scope, band });
     const over = (b) => cap > 0 && b.pay.total + (b.xt || 0) > cap, allOver = cands.every((c) => c.overCap);
     // 上限が強い（2026-10-20 オーナー決定）: 票の入ったどの組み合わせも上限を超えるなら、票の入っていない組み合わせ（当たりなし）
     if (allOver) {
-      const voted = new Set(cands.map((c) => c.combo)), free0 = allKeys(n).filter((k) => !voted.has(k));
+      const voted = new Set(cands.map((c) => c.combo)), free0 = allKeys(n).filter((k) => !voted.has(k) && !blocked(k)); // 直近の当たり端末の票が入った組み合わせも選ばない（2026-10-31）
       // 多いスマホの票がある組み合わせは後回し（その票だけで上限を超えるものは選ばない）。多いスマホの票が無ければ今までと同じ
       const freeX = hasX ? free0.filter((k) => !xg.tot[k]) : free0, free = (freeX.length ? freeX : free0.filter((k) => !(cap > 0 && xAt(k, baseT(k)) > cap))).map(asPick);
       cands.forEach((c) => { c.inBand = false; delete c._each; delete c._sum; });
       if (free.length) {
         const pick = lottery(free, input, 'nowin');
-        return { combo: pick.combo, first: pick.first, second: pick.second, comboOdds: baseT(pick.combo) / 10, payout: 0, payoutHeavy: hasX ? xAt(pick.combo, baseT(pick.combo)) : 0, perGroup: {}, dist: target, overCap: false, noWinner: !(hasX && xg.tot[pick.combo]), reason: 'cap_nowin', cands, target: target0, targetEff: target, spreadF, scope, band };
+        return fin({ combo: pick.combo, first: pick.first, second: pick.second, comboOdds: baseT(pick.combo) / 10, payout: 0, payoutHeavy: hasX ? xAt(pick.combo, baseT(pick.combo)) : 0, perGroup: {}, dist: target, overCap: false, noWinner: !(hasX && xg.tot[pick.combo]), reason: 'cap_nowin', cands, target: target0, targetEff: target, spreadF, scope, band });
       }
     }
     const pickBand = (key) => cands.filter((c) => c[key] && (allOver || !over(c[key])));
@@ -181,16 +203,18 @@
     let pick, reason;
     // 多いスマホの票が無い組み合わせを先に（それが 1 つも無い・全部上限を超えるときだけ、ある組み合わせから）。多いスマホの票が無ければ今までと同じ
     const clean = (list) => { if (!hasX) return list; const c = list.filter((x) => !xg.tot[x.combo] && !x.overCap); return c.length ? c : list; };
-    if (inB.length) { pick = lottery(clean(inB), input, 'band'); reason = 'band'; }
+    // 参加の多い店（2026-10-31）: 残った候補の中に、その店のふつうの票が入った組み合わせがあればその中から（無ければそのまま＝今までと同じ）
+    const fav = (list) => { if (!favor) return list; const f = list.filter((x) => fv.by[x.combo] && fv.by[x.combo][favor]); if (!f.length) return list; favInfo.applied = true; return f; };
+    if (inB.length) { pick = lottery(fav(clean(inB)), input, 'band'); reason = 'band'; }
     else {
       const pool = clean(cands), minD = Math.min.apply(null, pool.map((c) => c.dist));
-      pick = lottery(pool.filter((c) => c.dist === minD), input, 'tie');
+      pick = lottery(fav(pool.filter((c) => c.dist === minD)), input, 'tie');
       reason = 'target';
     }
     if (pick.overCap) reason = 'cap_conflict';
     const out = { combo: pick.combo, first: pick.first, second: pick.second, comboOdds: pick.odds, payout: pick.payout, perGroup: pick.perGroup, dist: pick.dist, overCap: pick.overCap, noWinner: false, reason, cands, target: target0, targetEff: target, spreadF, scope, band };
     if (hasX) out.payoutHeavy = pick.payoutHeavy || 0;
-    return out;
+    return fin(out);
   }
 
   /* 確定倍率（30 通り）: 勝ちの組み合わせはずらした値。ほかは見かけの払い戻し率（Σ1/倍率）がそろうよう同じ向きに動かし、[1 − down, 1 + up] の中で小さなゆらぎ（最大 ±3%）を足す。
@@ -245,8 +269,11 @@
     const first = fs.order[0], second = fs.order[1], combo = ekey(first, second);
     const comboOdds = ch.combo == null ? Math.min(MAX_T, Math.max(MIN_T, toT(input.exacta[combo]) || MAX_T)) / 10 : ch.comboOdds;
     const finalExacta = shapeExacta(input.exacta, combo, comboOdds, shiftOf(input), input.seed);
-    return { first, second, combo, comboOdds: finalExacta[combo], order: fs.order, finalExacta, seed: fs.seed, natural: fs.natural, tries: fs.tries, swapsNeeded: fs.swapsNeeded,
+    const out = { first, second, combo, comboOdds: finalExacta[combo], order: fs.order, finalExacta, seed: fs.seed, natural: fs.natural, tries: fs.tries, swapsNeeded: fs.swapsNeeded,
       payout: ch.combo == null ? 0 : ch.payout, payoutHeavy: ch.payoutHeavy || 0, perGroup: ch.perGroup || {}, reason: ch.reason, target: ch.target, targetEff: ch.targetEff, spreadF: ch.spreadF, scope: ch.scope, cands: ch.cands, band: ch.band, noWinner: !!ch.noWinner };
+    if (ch.blocked) out.blocked = ch.blocked; // 直近の当たり端末の票で外した組み合わせ（2026-10-31）
+    if (ch.favor) out.favor = ch.favor; // 参加の多い店（2026-10-31）
+    return out;
   }
 
   return { chooseCombo, spreadFactor, spreadOf, SPREAD_MAX, shapeExacta, findSeedPair, resolveExacta, groupVotes, weightOf, shiftOf, rangeT, levelsOf, payFor, amountT, stakePayout, perTicket, roundPay, ekey, parseKey, allKeys,
