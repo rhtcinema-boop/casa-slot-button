@@ -52,7 +52,7 @@ window.DERBY_APPCHECK_PROVIDER = 'enterprise'; // Firebase の App Check に Fra
 <script>/* 2026-10-28 b155 速さの見直し 2: 画面のスクリプトは、起動の画面（ロゴ）が出てから読む（それまでの通信はページ・ロゴだけ＝最初の表示とロゴを待たせない）。
    ロゴが 1.5 秒で出なくても読み始める。前に開いた端末（店の状態を覚えている）はロゴを待たずにすぐ。Firebase のときは、つなぎの部品（client.js が同じ URL で使う）もここで同時に読み始める。実行は入れた順（async=false） */
 (function () {
-  var V = '?v=v4q6', S = 'https://www.gstatic.com/firebasejs/10.12.2/', h = document.head, done = false;
+  var V = '?v=v4q7', S = 'https://www.gstatic.com/firebasejs/10.12.2/', h = document.head, done = false;
   function sc(u) { var s = document.createElement('script'); s.src = u; s.async = false; h.appendChild(s); }
   function pre(u) { var l = document.createElement('link'); l.rel = 'preload'; l.as = 'script'; l.href = u; h.appendChild(l); }
   function go() {
