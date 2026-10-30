@@ -1035,3 +1035,39 @@ input.tm { font-variant-numeric: tabular-nums; text-align: center; }
 .hstores > small { display: block; color: var(--sub); font-size: 12px; margin-bottom: 2px; }
 .hsrow { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 14px; padding: 2px 0; }
 .hsrow .lv-mid { color: #f2c94c; } .hsrow .lv-bad { color: #ff7a7a; font-weight: 700; } .hsrow .lv-good { color: #6fd69a; } .hsrow .lv-none { color: var(--sub); }
+
+/* ===== 馬（2026-10-30）: 出走する馬の一覧（v2/admin.js の viewHorses）。PC は 1 頭 1 行（番号・名前・脚質・能力 3 つ・毛色・実況・出走／削除）、
+   幅 1000px 以下は 1 頭 1 枚（名前 → 脚質・毛色 → 能力 3 つ → 実況と操作）。「休み」の馬は欄を薄く（操作のボタンはそのまま） ===== */
+.hrs-sum { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; }
+.hrs-list { border-top: 1px solid var(--line); }
+.hrs-row { display: grid; grid-template-columns: 28px minmax(170px, 1.6fr) 92px repeat(3, 76px) 84px minmax(150px, 1fr) auto; gap: 4px 10px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.hrs-row.off .hrs-f, .hrs-row.off .hrs-voice, .hrs-row.off .hrs-no { opacity: .45; }
+.hrs-no { align-self: center; padding-top: 22px; color: var(--dim); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.hrs-f { display: block; min-width: 0; margin: 0; }
+.hrs-f span { display: block; margin-bottom: 3px; color: var(--sub); font-size: 13px; white-space: nowrap; }
+.hrs-f select { padding: 0 8px; }
+.hrs-name input { font-weight: 700; letter-spacing: .02em; }
+.hrs-voice { align-self: center; min-width: 0; padding-top: 22px; }
+.hrs-voice .chip { white-space: normal; }
+.hrs-ops { display: flex; gap: 6px; align-items: center; }
+.hrs-ops .onoff { min-width: 64px; }
+.hrs-err { grid-column: 2 / -1; margin: 0; font-size: 14px; }
+.hrs-cmd code { font-size: 13px; }
+@media (max-width: 1000px) {
+  .hrs-row { grid-template-columns: 22px repeat(6, minmax(0, 1fr)); gap: 8px 8px; align-items: end; }
+  .hrs-no { grid-column: 1; grid-row: 1; }
+  .hrs-name { grid-column: 2 / 8; grid-row: 1; }
+  .hrs-type { grid-column: 2 / 5; grid-row: 2; }
+  .hrs-coat { grid-column: 5 / 8; grid-row: 2; }
+  .hrs-spd { grid-column: 2 / 4; grid-row: 3; } .hrs-sta { grid-column: 4 / 6; grid-row: 3; } .hrs-pow { grid-column: 6 / 8; grid-row: 3; }
+  .hrs-voice { grid-column: 2 / 6; grid-row: 4; padding-top: 0; }
+  .hrs-ops { grid-column: 6 / 8; grid-row: 4; justify-content: flex-end; }
+  .hrs-err { grid-column: 2 / 8; grid-row: 5; }
+}
+@media (min-width: 1001px) { /* PC: 欄の名前（名前・脚質・…）は 1 頭目の上だけ（見出しの代わり）。2 頭目からは読み上げ用に残して見た目は隠す＝1 頭 1 行を低く */
+  .hrs-f { position: relative; }
+  .hrs-row { padding: 6px 0; }
+  .hrs-row:first-child { padding-top: 10px; }
+  .hrs-row:not(:first-child) .hrs-f > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .hrs-row:not(:first-child) .hrs-no, .hrs-row:not(:first-child) .hrs-voice { padding-top: 0; }
+}
