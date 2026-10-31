@@ -83,6 +83,13 @@
   const holdOf = (s) => { const h = s && s.slotHold; return h && Number(h.until) > Date.now() ? h : null; };
   const next6 = () => { const d = new Date(); d.setHours(6, 0, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); return d.getTime(); }; // 次の朝 6 時
   function holdNote(s) { const h = holdOf(s); return h ? '<div class="swarn" style="border-color:rgba(120,170,255,.6);color:#cfe3ff;background:rgba(120,170,255,.08)">📺 ' + fmtDate(h.until) + ' まで casa SLOT のまま（競馬の時刻になっても切り替わりません）</div>' : ''; }
+  /* テレビの画面のようす（2026-10-31 b177）: 端末が stat.screen に 1 本/3 本・文字・当たりの設定・状態を送る（紙幣モード以外の店も stat を送るようにした） */
+  function screenNote(s) {
+    const st = s && s.stat, sc = st && st.screen; if (!sc) return '';
+    const mode = { idle: '待機中', spin: '回転中', shown: '結果を表示中' }[sc.mode] || sc.mode || '';
+    const kind = sc.single ? (sc.text ? 'リール 1 本・文字' : 'リール 1 本') : 'リール 3 本';
+    return '<div class="smeta">📺 画面: ' + kind + '「' + esc(sc.preset || '（設定なし）') + '」・' + esc(mode) + (sc.last ? '・直前 ' + esc(String(sc.last)) : '') + '<small>（' + fmtDate(st.at) + ' 時点・' + esc(sc.ver || '') + '）</small></div>';
+  }
   function timedNote(s) {
     const t = timedOf(s), n = Date.now();
     if (!t || n >= t.to) return '';
@@ -184,7 +191,7 @@
     const nOk = stores.filter((s) => aliveOf(s) === 'ok').length, nWarn = stores.filter((s) => aliveOf(s) === 'warn').length, nNone = stores.length - nOk - nWarn;
     return '<div class="panel" id="storesPanel"><div class="phead"><h3>お店のようす</h3><span class="fsum">全 ' + stores.length + ' 店' + (stores.length ? '：動いている ' + nOk + (nWarn ? '・つながっていない ' + nWarn : '') + (nNone ? '・未使用 ' + nNone : '') : '') + '</span></div>' +
       (stores.length ? '<div class="slist">' + stores.map((s) => '<div class="scard"><div class="sinfo"><div class="sname"><span>' + esc(s.name) + '</span>' + verBadge(s.deviceVersion) + '</div>' +
-        '<div class="smeta">' + aliveBadge(s) + '</div><div data-warn="' + esc(s.id) + '">' + storeWarn(s) + timedNote(s) + holdNote(s) + pubNote(s) + '</div></div>' +
+        '<div class="smeta">' + aliveBadge(s) + '</div>' + screenNote(s) + '<div data-warn="' + esc(s.id) + '">' + storeWarn(s) + timedNote(s) + holdNote(s) + pubNote(s) + '</div></div>' +
         '<div class="sctl">' + presetSelect(s) + '<button class="btn sm ghost sedit" data-act="store-edit" data-id="' + esc(s.id) + '">お店の設定</button></div></div>').join('') + '</div>' : '<div class="empty">まだお店がありません</div>') +
       '<div class="updbox" id="updBox"><div class="oldnote" id="oldNote"></div><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全 ' + stores.length + ' 店の画面を最新にする</button></div>' +
       '<div class="acts start"><button class="btn ghost" data-act="store-new">＋ お店を追加</button><button class="btn ghost" data-act="stores-reload">読み直す</button></div>' +
