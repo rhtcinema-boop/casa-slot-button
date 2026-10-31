@@ -1,9 +1,9 @@
 {
- "v": "b175",
+ "v": "b176",
  "files": [
   {
    "path": "index.html",
-   "sha256": "038356b19c8fdf4d4bcb9d9c6553a3db3717282891a40336693e46efa788bb46"
+   "sha256": "ce15d5cc92fb693f53f796ac3af8b7f7b57f15444035194896dba167ea820055"
   },
   {
    "path": "manifest.webmanifest",
@@ -35,7 +35,7 @@
   },
   {
    "path": "js/admin.js",
-   "sha256": "11789de5833cbf75995e16e46a6cb6eae9a0dd48db8d3483ae576bd81db94158"
+   "sha256": "407a247622ea06ee2326d3a4fdce345ea045ad9e6f90cca6d24a8e9fab34d7d7"
   },
   {
    "path": "js/audio.js",
@@ -55,7 +55,7 @@
   },
   {
    "path": "js/derbyswitch-master.js",
-   "sha256": "449119853474857ae129baec0309c53b4d824f9df907db75f925a380a59566ac"
+   "sha256": "f968e57ee080064a5e57156f82b002b7f76643745df4ba19d8800f5fff15de01"
   },
   {
    "path": "js/engine.js",
@@ -67,11 +67,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "2422b06e4eddb60a3bd63597c2e735e5fd1b057ad49213b34584ec31c8916925"
+   "sha256": "a791a8638c7a53bf5147f80735bc206becdf46f08824b4ca847dba92460e1be5"
   },
   {
    "path": "js/master.js",
-   "sha256": "b7497989d3e51b1e476db5d07df15d94b58190a8d54d2bf57b5614bc4afba679"
+   "sha256": "0c3de2c5dd3860b4b58d2576dd47fd332c8262d44db2b61a2534a06707430fc6"
   },
   {
    "path": "js/phoneswitch.js",
@@ -95,7 +95,7 @@
   },
   {
    "path": "js/tvswitch.js",
-   "sha256": "75c1108ec5c9ae3af9aebac42d15a20031e3f058542c8eab08796c301c83d74e"
+   "sha256": "0b63a86d3b30db8b06eb2f0356876212de1211abaffcd579234ffde772ba723c"
   },
   {
    "path": "derby/art/logo-3d/B/icon-3d-B.svg",
