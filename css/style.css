@@ -1919,3 +1919,7 @@ body.single .notes { display: none; }
 body.single .cabinet { left: 350px; width: 840px; }
 body.single .window::before { background: radial-gradient(ellipse at 50% 50%, rgba(var(--acc), .18), transparent 70%); }
 body.single .pointer { display: none; }
+
+/* 文字の当たり（2026-10-31）: 配当履歴と LAST に文字をそのまま出す */
+.rc b.txt { font: 700 24px/1.1 var(--font-ui); letter-spacing: 0; text-align: right; }
+.lockbar .res b.txt { font: 700 34px/1 var(--font-ui); letter-spacing: 0; }
