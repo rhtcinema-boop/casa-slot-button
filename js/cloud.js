@@ -128,7 +128,7 @@ const Cloud = (function () {
   /* 店舗側: プレイ結果を送る（圏外なら SDK が溜めて後で送る） */
   async function pushPlay(storeId, play, resetHour) {
     await ready();
-    const day = dayKey(play.ts, resetHour), win = play.value > 0 ? 1 : 0;
+    const day = dayKey(play.ts, resetHour), win = play.value > 0 || (play.text && play.win) ? 1 : 0; // 文字の当たり（2026-10-31）: 金額は 0 のまま、当たりの数にだけ数える
     if (isLocal) {
       const d = lread();
       (d.plays[storeId] = d.plays[storeId] || []).push(play);
