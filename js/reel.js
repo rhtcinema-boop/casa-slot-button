@@ -5,6 +5,11 @@ const Reel = (function () {
   'use strict';
   const W = 720, H = 440, CH = 220, SW = 680; // 設計px（SW は当選額バナー用の幅）
   const NR = 3, COLW = 226, GAP = 12, X0 = (W - (COLW * NR + GAP * (NR - 1))) / 2; // 3本の列
+  /* 1本モード（2026-10-31）: 中央の列だけを幅 SCOLW・セル高さ SCH で描く（窓に約 4 コマ見えるルーレット風の縦リール）。left/right は描かない */
+  const SCOLW = 600, SCH = 110, SPAD = 40;
+  let single = false;
+  let SSTRIP = ['BAR', 500, 'BAR', 1000, 'BAR']; // 1本モードの帯（setTable で配当表から作る）
+  const simgs = {}; // 1本モード用の絵柄画像（横長）
   let S = 2, MIN_FRAME = 0; // S はキャンバス解像度倍率。軽量モードでは init で 1 と 24fps 上限にする
   const BLUR_S = 0.5, PAD = 80;
   // 回転中に流れる絵柄の帯（見た目用。止まる絵柄は位置指定で差し替えるので、帯の並びは結果に影響しない）
@@ -91,7 +96,7 @@ const Reel = (function () {
   const reels = [{ pos: 0, ov: {} }, { pos: 5, ov: {} }, { pos: 10, ov: {} }];
 
   const mod = (a, n) => ((a % n) + n) % n;
-  const symAt = (rl, i) => (rl.ov[i] !== undefined ? rl.ov[i] : strip[mod(i, strip.length)]);
+  const symAt = (rl, i) => (rl.ov[i] !== undefined ? rl.ov[i] : single ? SSTRIP[mod(i, SSTRIP.length)] : strip[mod(i, strip.length)]);
   const fmt = (v) => Number(v).toLocaleString('en-US');
 
   let faceCv = null;
@@ -189,6 +194,70 @@ const Reel = (function () {
     }
     return c;
   }
+  /* 1本モード用の絵柄（横長・低い）: 金額は大きな数字、0 は銀の「0」、READY/TO/SPIN は 1 つにまとめて "READY TO SPIN" */
+  function renderSharpS(sym) {
+    const c = document.createElement('canvas');
+    c.width = SCOLW * S; c.height = SCH * S;
+    const x = c.getContext('2d');
+    x.scale(S, S);
+    const cx = SCOLW / 2;
+    if (sym === 'READY' || sym === 'TO' || sym === 'SPIN') { metalText(x, 'READY TO SPIN', cx, SCH / 2, 62, LBL_FONT, PAL.gold, SCOLW - 40, true); }
+    else if (sym === 'NEXT') { metalText(x, 'NEXT STAGE', cx, SCH / 2, 60, LBL_FONT, PAL.next, SCOLW - 40, true); }
+    else if (sym === 'FREE' || sym === 'FREE2' || sym === 'FREE3') { metalText(x, 'FREE SPIN', cx, SCH / 2, 60, LBL_FONT, PAL.free, SCOLW - 40, true); }
+    else if (sym === 'LOGO') { if (imgs.LOGO && imgs.LOGO.sharp) { const im = imgs.LOGO.sharp; const h = SCH - 12, w = h * (im.width / im.height); x.drawImage(im, cx - w / 2, 6, w, h); } }
+    else if (sym === 'BAR') { metalText(x, '0', cx, SCH / 2, 86, NUM_FONT, PAL.silver, SCOLW - 40); }
+    else { metalText(x, fmt(sym), cx, SCH / 2, 86, NUM_FONT, palOf(sym), SCOLW - 40); }
+    return c;
+  }
+  function renderBlurS(sharp, smear, n) {
+    const c = document.createElement('canvas');
+    c.width = SCOLW * S; c.height = (SCH + SPAD * 2) * S;
+    const x = c.getContext('2d');
+    x.scale(S, S);
+    x.globalAlpha = 1 / n;
+    for (let i = 0; i < n; i++) { const dy = -smear + (2 * smear * i) / (n - 1); x.drawImage(sharp, 0, SPAD + dy, SCOLW, SCH); }
+    return c;
+  }
+  const mkS = (sym) => { const sharp = renderSharpS(sym); return { sharp, mid: renderBlurS(sharp, 12, 7), heavy: renderBlurS(sharp, SPAD, 9) }; };
+  const simgOf = (sy) => { const k = (sy === 'READY' || sy === 'TO' || sy === 'SPIN') ? 'RTS' : sy; if (!simgs[k] && ctx) { try { simgs[k] = mkS(sy); } catch (e) { return null; } } return simgs[k]; };
+  function drawColS(p, speed) { // 1本モードの描画（中央の列 ri=1 の位置を使う）
+    const rl = reels[1], xc = W / 2;
+    const sp = Math.abs(speed);
+    let aS = 0, aM = 0, aH = 0;
+    if (sp < 2.5) aS = 1; else if (sp < 9) { aM = (sp - 2.5) / 6.5; aS = 1 - aM; } else if (sp < 20) { aH = (sp - 9) / 11; aM = 1 - aH; } else aH = 1;
+    const base = Math.floor(p), vis = Math.ceil(H / SCH / 2) + 1;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(xc - SCOLW / 2 - 2, 0, SCOLW + 4, H); ctx.clip();
+    for (let i = base - vis; i <= base + vis; i++) {
+      const d = p - i, y = H / 2 + d * SCH;
+      if (y < -SCH || y > H + SCH) continue;
+      const sy = symAt(rl, i);
+      if (sy === 'BLANK') continue;
+      const im = simgOf(sy);
+      if (!im) continue;
+      const k = 1 - 0.06 * Math.min(1, (d * d) / 4); // 中央から離れるほど少し小さく（ドラムの丸み）
+      const w = SCOLW * k;
+      if (aH > 0.01) { ctx.globalAlpha = aH * 0.92; const h = (SCH + SPAD * 2) * k; ctx.drawImage(im.heavy, xc - w / 2, y - h / 2, w, h); }
+      if (aM > 0.01) { ctx.globalAlpha = aM; const h = (SCH + SPAD * 2) * k; ctx.drawImage(im.mid, xc - w / 2, y - h / 2, w, h); }
+      if (aS > 0.01) { ctx.globalAlpha = aS; const h = SCH * k; ctx.drawImage(im.sharp, xc - w / 2, y - h / 2, w, h); }
+      // コマの境界線
+      ctx.globalAlpha = 0.3 * (1 - aH);
+      ctx.fillStyle = lineGrad(1, xc, SCOLW);
+      ctx.fillRect(xc - SCOLW / 2 + 16, y + SCH / 2 - 1, SCOLW - 32, 2);
+    }
+    ctx.restore();
+    // 上下を暗く（窓の奥行き）、中央のコマの枠（針）
+    ctx.globalAlpha = 1;
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, 'rgba(0,0,0,.78)'); g.addColorStop(0.3, 'rgba(0,0,0,0)'); g.addColorStop(0.7, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.78)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const lc = LINE_RGB[stage];
+    ctx.fillStyle = 'rgba(' + lc + ',.95)';
+    ctx.fillRect(xc - SCOLW / 2 - 6, H / 2 - SCH / 2 - 2, SCOLW + 12, 3);
+    ctx.fillRect(xc - SCOLW / 2 - 6, H / 2 + SCH / 2 - 1, SCOLW + 12, 3);
+    ctx.beginPath(); ctx.moveTo(xc - SCOLW / 2 - 8, H / 2); ctx.lineTo(xc - SCOLW / 2 - 34, H / 2 - 16); ctx.lineTo(xc - SCOLW / 2 - 34, H / 2 + 16); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(xc + SCOLW / 2 + 8, H / 2); ctx.lineTo(xc + SCOLW / 2 + 34, H / 2 - 16); ctx.lineTo(xc + SCOLW / 2 + 34, H / 2 + 16); ctx.closePath(); ctx.fill();
+  }
   // 縦方向のモーションブラー画像を事前生成（毎フレームのフィルタ処理を避ける）
   function renderBlur(sharp, smear, n) {
     const c = document.createElement('canvas');
@@ -268,6 +337,7 @@ const Reel = (function () {
   /* 3列まとめて描く。ps[i] = 各リールの位置、speeds[i] = 各リールの速度 */
   function drawAll(ps, speeds) {
     ctx.clearRect(0, 0, W, H);
+    if (single) { drawColS(ps[1], speeds[1]); return; } // 1本モード: 中央の列だけ
     for (let i = 0; i < NR; i++) drawCol(i, ps[i], speeds[i]);
     // 列の境目
     ctx.globalAlpha = 0.5; ctx.fillStyle = '#000';
@@ -275,10 +345,10 @@ const Reel = (function () {
     ctx.globalAlpha = 1;
   }
   const lineGrads = {}; // b80: コマ境界線のグラデーション（ステージ×列ごとに 1 回だけ作る。毎フレーム作ると GC が増えてカクつく）
-  function lineGrad(ri, xc) {
-    const key = stage + ':' + ri;
+  function lineGrad(ri, xc, width) {
+    const cw = width || COLW, key = stage + ':' + ri + ':' + cw;
     if (!lineGrads[key]) {
-      const g = ctx.createLinearGradient(xc - COLW / 2, 0, xc + COLW / 2, 0), lc = LINE_RGB[stage];
+      const g = ctx.createLinearGradient(xc - cw / 2, 0, xc + cw / 2, 0), lc = LINE_RGB[stage];
       g.addColorStop(0, 'rgba(' + lc + ',0)'); g.addColorStop(0.5, 'rgba(' + lc + ',1)'); g.addColorStop(1, 'rgba(' + lc + ',0)');
       lineGrads[key] = g;
     }
@@ -536,7 +606,7 @@ const Reel = (function () {
      kind が 'logo' のときは、左右が空で真ん中に casa ロゴが止まる。最後まで回れば true、途中で切り替わったら false */
   function attract(kind) {
     interrupt();
-    const combo = kind === 'logo' && imgs.LOGO ? ['BLANK', 'LOGO', 'BLANK'] : ['READY', 'TO', 'SPIN']; // logo: 左右は空で、真ん中に casa ロゴ
+    const combo = kind === 'logo' && imgs.LOGO ? ['BLANK', 'LOGO', 'BLANK'] : single ? ['BLANK', 'READY', 'BLANK'] : ['READY', 'TO', 'SPIN']; // logo: 左右は空で、真ん中に casa ロゴ。1本モードは中央に READY TO SPIN
     return new Promise((res) => {
       spin(stage, combo, [0, 1, 2], [3.8, 4.4, 5.0], { type: 'plain', attract: true }, {}).then(() => { if (attractDone === res) { attractDone = null; res(true); } });
       attractDone = res;
@@ -621,6 +691,7 @@ const Reel = (function () {
       rl.ov = {};
       rl.pos = Math.round(rl.pos);
       if (combo) rl.ov[rl.pos] = combo[i];
+      else if (single) { if (i === 1) rl.ov[rl.pos] = 'READY'; } // 1本モード: 中央に READY TO SPIN（上下はそのまま帯が見える）
       else { rl.ov[rl.pos] = words[i]; rl.ov[rl.pos - 1] = 'BLANK'; rl.ov[rl.pos + 1] = 'BLANK'; } // 待機中は READY / TO / SPIN
     });
     drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
@@ -651,6 +722,12 @@ const Reel = (function () {
     } catch (e) { return false; }
   }
   /* キャンバスと絵柄の元画像を作り直して描き直す（b78）。復帰したときに isBlank() なら呼ぶ */
+  function setSingle(on) { // 1本モードの ON/OFF（プリセットの切り替えで）。絵柄画像は必要になったときに作る
+    on = !!on;
+    if (on === single) return;
+    single = on;
+    if (ctx && !live) drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
+  }
   function restore() {
     if (!cv) return;
     try {
@@ -659,6 +736,7 @@ const Reel = (function () {
       ctx.setTransform(S, 0, 0, S, 0, 0);
       faceCv = null;
       Object.keys(imgs).forEach((k) => { if (k !== 'LOGO') delete imgs[k]; }); // FREE2/FREE3 も含めて全部作り直す（LOGO は画像の読み込み後に置き換わる）
+      Object.keys(simgs).forEach((k) => delete simgs[k]); // 1本モードの絵柄も
       build(); buildLogo();
       if (!live) drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
     } catch (e) { /* 次の機会に */ }
@@ -691,6 +769,13 @@ const Reel = (function () {
     PAYOUTS = {};
     (payouts || []).forEach((v) => { if (v > 0) PAYOUTS[v] = true; });
     const recolor = before !== JSON.stringify(PAYOUTS);
+    { // 1本モードの帯: 配当表の金額を小さい順→大きい順を交互に、間に 0 を挟む（止まる絵柄は位置指定で差し替えるので並びは結果に影響しない）
+      const vals = (payouts || []).filter((v) => v > 0).sort((a, b) => a - b), order = [];
+      for (let i = 0, j = vals.length - 1; i <= j; i++, j--) { order.push(vals[i]); if (i !== j) order.push(vals[j]); }
+      const st2 = []; (order.length ? order : [500]).forEach((v, i) => { st2.push(v); if (i % 2 === 1) st2.push('BAR'); }); if (st2[st2.length - 1] !== 'BAR') st2.push('BAR');
+      SSTRIP = st2;
+    }
+    if (recolor) Object.keys(simgs).forEach((k) => { if (!PAL_BY_VALUE[k]) delete simgs[k]; }); // 1本モードの色表に無い数字の色を作り直す
     [1, 2, 3].forEach((st) => {
       const syms = (symsByStage && symsByStage[st]) || DEFAULT_SYMS[st];
       STRIPS[st] = makeStrip(st, syms);
@@ -700,5 +785,5 @@ const Reel = (function () {
     if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
   }
 
-  return { init, spin, attract, setStage, setTable, hold, resume, relaunch, redraw, restore, lost, drawText, get stage() { return stage; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  return { init, spin, attract, setStage, setTable, setSingle, hold, resume, relaunch, redraw, restore, lost, drawText, get stage() { return stage; }, get single() { return single; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
