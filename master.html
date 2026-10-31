@@ -68,6 +68,13 @@
   .del { flex: none; width: 32px; height: 40px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--sub); font-size: 18px; line-height: 1; touch-action: manipulation; }
   .del:active { background: var(--ng); color: #fff; }
   .del.ph { border-color: transparent; }
+  .trow { gap: 8px; } /* 文字の当たり（2026-10-31） */
+  .trow .txtin { flex: 1; min-width: 0; height: 40px; padding: 0 10px; font-size: 16px; font-weight: 700; }
+  .trow .tp { display: flex; align-items: center; gap: 4px; flex: none; }
+  .trow .tpin { width: 78px; height: 40px; padding: 0 8px; font-size: 17px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .trow .tp i { font-style: normal; color: var(--sub); font-size: 14px; }
+  .trow .tl { display: flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; font-size: 14px; color: var(--sub); }
+  .trow .tl input { width: 20px; height: 20px; accent-color: #d9b14f; }
   .addrow { display: flex; align-items: center; gap: 10px; padding: 10px 0 2px; border-top: 1px solid var(--line); }
   .addrow small { color: var(--sub); font-size: 12px; }
   .btn[disabled] { opacity: .4; pointer-events: none; }
@@ -251,10 +258,10 @@
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
-<script src="cloud-config.js?v=b173"></script>
-<script src="js/engine.js?v=b173"></script>
-<script src="js/cloud.js?v=b173"></script>
-<script src="js/derbyswitch-master.js?v=b173"></script><!-- テレビのゲームの切り替え（casa DERBY の Firebase に書く。casa SLOT のクラウドとは別） -->
-<script src="js/master.js?v=b173"></script>
+<script src="cloud-config.js?v=b174"></script>
+<script src="js/engine.js?v=b174"></script>
+<script src="js/cloud.js?v=b174"></script>
+<script src="js/derbyswitch-master.js?v=b174"></script><!-- テレビのゲームの切り替え（casa DERBY の Firebase に書く。casa SLOT のクラウドとは別） -->
+<script src="js/master.js?v=b174"></script>
 </body>
 </html>
