@@ -1912,3 +1912,10 @@ body:not(.super) #stage[data-lamp="jackpot"] .edge i:nth-child(4n) { --acc: 125,
 #stage[data-tense="3"] .tglow, #stage[data-tense="3"] .edge { --acc: 255, 210, 74; }
 #bannerLabel.tierup { animation: tierUp .5s cubic-bezier(.2, 1.6, .4, 1); }
 @keyframes tierUp { from { transform: translate(-50%, -50%) scale(1.7); opacity: .4; } }
+
+/* ---------- リール 1 本モード（2026-10-31、プリセットの「リール 1 本」）: 左のステージの段と下の MAX の帯を隠し、窓を縦に広く ---------- */
+body.single .ladder, body.single .paytable { display: none; }
+body.single .notes { display: none; }
+body.single .cabinet { left: 350px; width: 840px; }
+body.single .window::before { background: radial-gradient(ellipse at 50% 50%, rgba(var(--acc), .18), transparent 70%); }
+body.single .pointer { display: none; }
