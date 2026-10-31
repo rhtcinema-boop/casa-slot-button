@@ -2103,7 +2103,7 @@ const Game = (function () {
   let meter = null, unwatchMeter = null, superPreset = null, superPresetId = '', unwatchSuperPreset = null, superStarting = false;
   const superActive = () => !!(meter && meter.enabled && meter.superLeft > 0);
   function renderMeter() { // b103: リール左右の光の柱がゲージ（オーナー選択「案B」）。下から金色で満ちていき、満タンで SUPER MODE。b117: 柱の上に ％ を出す
-    const on = !!(meter && meter.enabled);
+    const on = !!(meter && meter.enabled) && !isSingle(); // b178: 1 本モードではゲージも出さない（対象外）
     document.body.classList.toggle('meteron', on);
     const supNow = superActive() || !!(Store.state && Store.state.play && Store.state.play.sup && Store.state.play.phase !== 'shown'); // b105: 最後の 1 回を回している間もスーパーの見た目
     document.body.classList.toggle('super', on && supNow);
@@ -2138,6 +2138,7 @@ const Game = (function () {
   function meterAfterPlay(p) { // 結果を保存する transact の中から呼ぶ。数えるだけで、クラウドへ送るのは保存が成功してから（flushMeter）
     meterPending = 0;
     if (!storeMode() || !meter || !meter.enabled || !p || p.test || p.dud || p.off || p.sup) return; // b105: オフラインの強制ハズレと、スーパーの回は数えない
+    if (isSingle()) return; // b178: リール 1 本（文字）の店はメーターの対象外（数えない・ボーナスタイムにもならない。札幌で文字のハズレが貯まって 3 本用のスーパー設定に切り替わった）
     if (p.value > 0) return;
     meterPending = 1;
   }
@@ -2150,6 +2151,7 @@ const Game = (function () {
   /* b105: スーパー用プリセットが使えるか（読み込み済み・確率が正しい・テスト用でない、店舗のプリセットもテスト用でない） */
   function superUsable() {
     if (!storeMode() || !superPreset || !superPreset.probs || superPreset.test) return false;
+    if (isSingle()) return false; // b178: 1 本モードはスーパーを当てない（3 本用の設定で回ると見た目も当たりも崩れる）
     const base = cloudStore && cloudStore.activePresetId && cloudPresets[cloudStore.activePresetId];
     if (base && base.test) return false;
     try { return Engine.validateProbs(superPreset.probs).ok; } catch (e) { return false; }
@@ -2291,6 +2293,7 @@ const Game = (function () {
   function applySingle() {
     const on = isSingle();
     document.body.classList.toggle('single', on);
+    try { renderMeter(); } catch (e) { /* メーター未読み込み */ } // b178: 1 本モードではゲージを出さない
     Reel.setTexts(textsOn() ? Store.state.texts : null); // 文字の当たり
     if (on) { const ex = [], fr = freeRates(); if (fr[0] > 0) ex.push(FREE_SYM[1]); if (logoOn() && Reel.hasLogo) ex.push('LOGO'); Reel.setSingleExtra(ex); } // 設定で出る種類だけ帯に混ぜる
     if (Reel.single !== on) { Reel.setSingle(on); if (!busy && !(Store.state.play && Store.state.play.phase !== 'shown')) { try { setStage(curStage, Store.state.play ? Store.state.play.value : undefined); } catch (e) { /* 次の描き直しで */ } } }
