@@ -189,8 +189,12 @@
     };
   }
   const units = (x) => Math.round(Number(x) * 100); // 0.01% 単位の整数
-  function validateProbs(p) {
+  /* 1 本モード（2026-10-31）: p.__single が true なら STAGE 1 だけ見る（NEXT は 0 でなければならない）。
+     呼ぶ側は probs に __single を付けずに、singleProbs(p) で STAGE 2・3 を「必ず 0」に埋めた表を渡してもよい */
+  function singleProbs(p) { const q = { 1: Object.assign({}, (p && p[1]) || {}) }; q[1].NEXT = 0; q[2] = { 0: 100, NEXT: 0 }; q[3] = { 0: 100 }; return q; }
+  function validateProbs(p, single) {
     const errors = [];
+    if (single) { const row = (p && p[1]) || {}; if (Number(row.NEXT) > 0) errors.push('リール 1 本の設定では NEXT STAGE は使えません（0 にしてください）。'); p = singleProbs(p); }
     tableOf(p).forEach((d) => {
       const row = (p && p[d.stage]) || {};
       let ok = true, sum = 0;
@@ -503,7 +507,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
+    probKeys, defaultProbs, validateProbs, singleProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
     REEL_SYMS, readReels, reelCombos, reelAlternatives, tensionOf,
     sha256, makePin, checkPin,
   };
