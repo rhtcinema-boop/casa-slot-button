@@ -216,6 +216,14 @@
     if (texts.filter((x) => x && !x.lose).length > MAX_AMOUNTS) errors.push('当たりの文字（ハズレ以外）は ' + MAX_AMOUNTS + ' 個までです。');
     return { ok: errors.length === 0, errors };
   }
+  /* 文字の当たりの上限（2026-10-31）: 文字ごとの上限（t.max）と「その日の最初は出さない」（t.early）を、数字の表の鍵（'1:番号'）に置き換えた limits を返す */
+  function textLimits(texts, limits) {
+    const L = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, limits || {});
+    L.max = {}; const keys = [];
+    (texts || []).forEach((x, i) => { if (!x || x.lose) return; const m = Number(x.max) || 0; if (m > 0) L.max['1:' + (i + 1)] = m; if (x.early) keys.push('1:' + (i + 1)); });
+    L.early = Object.assign({}, L.early || {}, { keys });
+    return L;
+  }
   function singleProbs(p) { const q = { 1: Object.assign({}, (p && p[1]) || {}) }; q[1].NEXT = 0; q[2] = { 0: 100, NEXT: 0 }; q[3] = { 0: 100 }; return q; }
   function validateProbs(p, single) {
     const errors = [];
@@ -289,6 +297,10 @@
   function earlyBlocked(early, played, p) {
     if (!early || !early.on) return [];
     const n = Number(early.plays) || 0, min = Number(early.min) || 0;
+    if (Array.isArray(early.keys)) { // 文字の当たり: 金額の代わりに「出さない文字」の鍵の一覧
+      if (n <= 0 || !early.keys.length || (Number(played) || 0) >= n) return [];
+      return (p ? outcomesOf(p) : OUTCOMES).filter((o) => early.keys.indexOf(o.key) >= 0).map((o) => o.key);
+    }
     if (n <= 0 || min <= 0 || (Number(played) || 0) >= n) return [];
     return (p ? outcomesOf(p) : OUTCOMES).filter((o) => o.value >= min).map((o) => o.key);
   }
@@ -532,7 +544,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, singleProbs, textProbs, validateTexts, MAX_TEXTS, MAX_TEXT_LEN, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
+    probKeys, defaultProbs, validateProbs, singleProbs, textProbs, textLimits, validateTexts, MAX_TEXTS, MAX_TEXT_LEN, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
     REEL_SYMS, readReels, reelCombos, reelAlternatives, tensionOf,
     sha256, makePin, checkPin,
   };
