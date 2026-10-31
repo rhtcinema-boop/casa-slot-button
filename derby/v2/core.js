@@ -112,6 +112,19 @@
   function horsesOf(list) { try { return cleanHorses(list); } catch (e) { return null; } }
   // レースを作るときの馬（出走する馬だけ。null ＝ Engine.POOL）
   function horsePool(tuning) { const hs = horsesOf(tuning && tuning.horses); return hs ? hs.filter((h) => !h.off).map((h) => ({ name: h.name, type: h.type, spd: h.spd, sta: h.sta, pow: h.pow, coat: h.coat })) : null; }
+  /* まんべんなく出走（2026-10-31 オーナー「登録してる馬がまんべんなく出るように」）: 出走する馬のうち、しばらく出ていない馬から 6 頭（何番かは今までどおり抽選）。
+     recent: このレースより前の本物のレースの馬名（新しい順。recentHorseNames）。休み ＝ 最後に出たのが何レース前か（FRESH_RACES 本の中に無ければいちばん長い）。
+     休みが長い順・同じなら直近に出た回数が少ない順・それも同じなら seed の抽選。16 頭なら 3 レースで全頭が 1 回ずつ出る。recent が無い（読めなかった）ときは今までどおり一覧全部から抽選。
+     テストのレースは数えない（その店だけなので）。取り消したレースは数える（テレビには出たので） */
+  const FRESH_RACES = 12;
+  function recentHorseNames(races, at) {
+    return (races || []).filter((r) => r && !r.test && Number(r.at) < Number(at) && Array.isArray(r.horses)).sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)).slice(0, FRESH_RACES).map((r) => r.horses.map((h) => h && h.name).filter(Boolean));
+  }
+  function freshPick(pool, recent, r) {
+    if (!Array.isArray(pool) || pool.length <= 6 || !Array.isArray(recent)) return pool;
+    const rest = Object.create(null), runs = Object.create(null); recent.forEach((names, i) => (names || []).forEach((nm) => { if (!(nm in rest)) rest[nm] = i; runs[nm] = (runs[nm] || 0) + 1; }));
+    return pool.map((h) => ({ h, rest: h.name in rest ? rest[h.name] : FRESH_RACES, runs: runs[h.name] || 0, k: r() })).sort((a, b) => b.rest - a.rest || a.runs - b.runs || a.k - b.k).slice(0, 6).map((x) => x.h);
+  }
 
   /* ---------- 投票の時間（v4: 1 段だけ） ----------
      closeAt（締切）＝ at（発走）− closeLeadSec（初期 0）。openAt（投票の始まり）＝ closeAt − voteSec。全店同じ（店ごとの上書きはしない）。
@@ -381,8 +394,9 @@
   /* ---------- レースを作る ---------- */
   function tuneOf(Engine, t) { return { sigmaMul: Math.round(Engine.TUNE.sigmaMul * Math.max(0.2, Math.min(3, Number(t.volatility) || 1)) * 1000) / 1000, payoutRate: Math.max(0.3, Math.min(1.2, Number(t.payoutRate) || 0.85)) }; }
   const engineRace = (r) => ({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta });
-  function raceBase(Engine, Outcome, salt, id, tuning) {
-    const base = Engine.makeRace(Engine.rng(Outcome.hash(salt, id, 'horses')), horsePool(tuning)); // 馬は管理画面の一覧（無ければ Engine.POOL。2026-10-30）
+  function raceBase(Engine, Outcome, salt, id, tuning, recent) {
+    const pool = horsePool(tuning), src = Array.isArray(recent) ? freshPick(pool || Engine.POOL, recent, Engine.rng(Outcome.hash(salt, id, 'fresh'))) : pool; // まんべんなく出走（2026-10-31）
+    const base = Engine.makeRace(Engine.rng(Outcome.hash(salt, id, 'horses')), src); // 馬は管理画面の一覧（無ければ Engine.POOL。2026-10-30）
     return Object.assign(base, { tune: tuneOf(Engine, tuning) });
   }
   /* 倍率（重い。テレビは Worker で計算してよい＝v2/client.js の oddsWorker も同じ形を返す）: { tansho（参考の単勝）, winProb, tenkai, exacta（2 連単 30 通り）, exactaProb } */
@@ -391,7 +405,7 @@
   function buildRace(Engine, Outcome, entry, tuning, salt, t, opt) {
     opt = opt || {};
     const T = tuningOf(tuning);
-    const base = raceBase(Engine, Outcome, salt, entry.id, T);
+    const base = raceBase(Engine, Outcome, salt, entry.id, T, opt.recent); // opt.recent: まんべんなく出走（倍率を先に計算したときと同じものを渡す）
     const odds = opt.odds && opt.odds.exacta ? opt.odds : oddsFor(Engine, Outcome, salt, entry.id, base, opt.sims || T.oddsSims);
     const vs = secOf(opt.voteSec) != null ? secOf(opt.voteSec) : T.voteSec, gateSec = T.scenes && T.scenes.gate === false ? 0 : T.gateSec;
     const closeAt = entry.at - T.closeLeadSec * 1000;
@@ -884,7 +898,7 @@
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
     isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
-    HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool,
+    HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool, FRESH_RACES, recentHorseNames, freshPick,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
