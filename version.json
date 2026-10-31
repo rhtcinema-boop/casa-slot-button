@@ -1,9 +1,9 @@
 {
- "v": "b170",
+ "v": "b171",
  "files": [
   {
    "path": "index.html",
-   "sha256": "b5941e46cb8585e73f3e1fdbfad3d7e43079c34d543f4d2e38e0148e4338b96e"
+   "sha256": "adf50a56861640913e283418541c7ac6f026352d33bcd1c338e4b0bfcd505757"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,7 +31,7 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "6bce7d02144441defa3b813820d6e45c3fbd81ff0db27ec67686375b1a3b9e3c"
+   "sha256": "92010e02f5fe1a17aa00a28ec83cd32b03ba0402aa900c927cb94f67bcd1a418"
   },
   {
    "path": "js/admin.js",
@@ -59,7 +59,7 @@
   },
   {
    "path": "js/engine.js",
-   "sha256": "a539c4afcc9db5c09666d0c85920c7ee2b5b3c4b6afeaa1c85b764685f4c61ab"
+   "sha256": "445189d96c98f44d15d187b107a28e9532343de894d166fda49eecff1a967944"
   },
   {
    "path": "js/fx.js",
@@ -67,11 +67,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "1b85d1cbed75c692c579c24cbe07f19c2b58e528743dc2c5e82574b1ce56856d"
+   "sha256": "8d41cd9fe759bb9a05f18173cf557915800f7fd9b28953dba44fa1e8ce335aea"
   },
   {
    "path": "js/master.js",
-   "sha256": "7ca0e6e21d6e33b58ed3a1728ef816d95523463b867fc8fe45d45d092c5bebab"
+   "sha256": "6fac3b3a91f8aeb5c00c29fad054bec852ba57f4e357b153bc7a4f57bb57de3a"
   },
   {
    "path": "js/phoneswitch.js",
@@ -79,7 +79,7 @@
   },
   {
    "path": "js/reel.js",
-   "sha256": "9cb4bb5adadbe042a9e74fd4e974fe2503bedff06844e165d2519f8a52366f10"
+   "sha256": "906188f4df07fe31c7feb64f7e048d1302ed1df85b1bb8ee87e2af9235b8a980"
   },
   {
    "path": "js/store.js",
