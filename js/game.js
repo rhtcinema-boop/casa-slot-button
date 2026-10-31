@@ -226,12 +226,13 @@ const Game = (function () {
 
   /* ---------- 状態 → 画面 ---------- */
   /* 待機中: 下の大きな NEXT GAME ボタンだけを出す */
-  const lastBox = (v) => '<div class="res"><small>LAST</small><b class="' + (v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + fmtN(v) + '</b></div>';
+  let barText = null; // 文字の当たり: LAST の箱に出す文字（結果の表示中はその回の文字、待機中は直前の回の文字）
+  const lastBox = (v) => { const t = barText; return '<div class="res"><small>LAST</small><b class="' + (t ? (v === 0 ? 'zero txt' : 'amt lv2 txt') : v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + (t ? escT(t) : fmtN(v)) + '</b></div>'; }; // 文字の当たりは文字のまま
   /* b83: NEXT GAME ボタンは無くし、サンド（紙幣投入口）を出す。スマホの紙幣が入ると回る。
      隠しボタン（data-act="next"）は残し、CREDIT の自動回転・読み直し後の自動再開・長押し開始・紙幣の受け取りが押す（画面には出ない） */
   function sandBar(v) {
     const has = typeof v === 'number';
-    const lv = has ? '<b class="' + (v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + fmtN(v) + '</b>' : '<b class="none">—</b>';
+    const t = barText, lv = has ? '<b class="' + (t ? (v === 0 ? 'zero txt' : 'amt lv2 txt') : v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + (t ? escT(t) : fmtN(v)) + '</b>' : '<b class="none">—</b>'; // 文字の当たりは文字のまま
     return '<div class="sand" id="sand"><span class="led l"></span><span class="led r"></span><div class="last"><small>LAST</small>' + lv + '</div><span class="emb r"></span><span class="arrow l">▶</span><span class="arrow r">◀</span><div class="lbl">INSERT BILL · 1 GAME</div><div class="slit"></div></div>' +
       '<div class="billwrap" id="billwrap"></div><button class="btn hidden-next" data-act="next" tabindex="-1" aria-hidden="true">NEXT GAME</button>';
   }
@@ -240,6 +241,7 @@ const Game = (function () {
   function idleBar() {
     plate.classList.add('hidden');
     const lv = Store.state.lastValue; // 直前のゲームの結果（自動で待機画面に戻ったあとも LAST に残す）
+    barText = Store.state.lastText || null;
     lockbar.innerHTML = billMode() ? sandBar(lv) : nextBar(lv, true);
     lockbar.classList.toggle('sandbar', billMode()); // サンドのときは箱の飾りを消し、幅をリールの箱に合わせる
     lockbar.classList.add('show');
@@ -624,12 +626,15 @@ const Game = (function () {
   const storeLabel = (name) => { const e = STORE_EMOJI.find((x) => String(name).indexOf(x[0]) >= 0); return (e ? '<em>' + e[1] + '</em>' : '') + escH(name); };
   function renderRecent() {
     const list = $('recentList');
-    const row = (x, isNew) => '<div class="rc' + (isNew ? ' new' : '') + (x.value >= 1000000 ? ' wider' : x.value >= 100000 ? ' wide' : '') + '"><small>' + hhmm(x.ts).replace(/<\/i>$/, (x.store ? '<u>' + storeLabel(x.store) + '</u>' : '') + '</i>') + '</small><b>' + fmtN(x.value) + '</b></div>'; // 店舗名は時刻の横に小さく
+    const row = (x, isNew) => '<div class="rc' + (isNew ? ' new' : '') + (x.value >= 1000000 ? ' wider' : x.value >= 100000 ? ' wide' : '') + '"><small>' + hhmm(x.ts).replace(/<\/i>$/, (x.store ? '<u>' + storeLabel(x.store) + '</u>' : '') + '</i>') + '</small><b' + (x.text ? ' class="txt"' : '') + '>' + (x.text ? escT(x.text) : fmtN(x.value)) + '</b></div>'; // 店舗名は時刻の横に小さく。文字の当たりは文字のまま
     $('recent').classList.toggle('all', !!feed);
     if (feed) { // 全店舗ぶん
       const top = feed.length ? feed[0].ts : 0, grew = feedTop > 0 && top > feedTop;
       feedTop = top || feedTop;
-      return putRecent(list, feed.length ? feed.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>', feed.length);
+      // 文字の当たり（2026-10-31）: 全店舗の欄には送らないので、この端末の文字の当たりをここで混ぜて出す（他のお店には出ない）
+      const mine = (Store.state.recent || []).filter((x) => x && x.text).map((x) => Object.assign({ store: (cloudStore && cloudStore.name) || (Store.state.store && Store.state.store.name) || '' }, x));
+      const rows = mine.length ? feed.concat(mine).sort((a, b) => b.ts - a.ts).slice(0, RECENT_MAX) : feed;
+      return putRecent(list, rows.length ? rows.map((x, i) => row(x, grew && i === 0)).join('') : '<div class="rc none">—</div>', rows.length);
     }
     const all = Store.state.recent || [];
     const r = all.slice(-RECENT_MAX).reverse();
@@ -854,6 +859,7 @@ const Game = (function () {
   }
   function renderLockbar() {
     const p = Store.state.play;
+    barText = p.text || null;
     lockbar.innerHTML = billMode() ? sandBar(p.value) : nextBar(p.value, false);
     lockbar.classList.toggle('sandbar', billMode());
     resultSince = Date.now(); // ここから 10 秒で待機画面へ戻す
@@ -865,7 +871,7 @@ const Game = (function () {
     try {
       Store.transact((s) => {
         Store.log('NEXT_PLAY', { playNo: s.play ? s.play.playNo : null, credits: s.credits });
-        if (s.play) s.lastValue = s.play.value;
+        if (s.play) { s.lastValue = s.play.value; s.lastText = s.play.text || null; }
         s.play = null; s.locked = false;
       });
       doorClear(); // b108
@@ -943,17 +949,19 @@ const Game = (function () {
         // テスト用プリセット: 回転数・当選額・当たり本数の制限・配当履歴・マスターの集計のどれにも数えない（全履歴には「テスト」として残す）
         const test = !!s.testMode;
         const bestBefore = bestOf(s); // 今回の結果が出る前の最高額配当（回転中はこちらを表示する）
+        const tx = s.single && Array.isArray(s.texts) && s.texts.length > 0, tv = tx ? 0 : res.value; // 文字の当たり: 金額の合計・最高額には足さない
         if (!test) {
-          if (res.value > bestBefore) s.bestValue = res.value; else s.bestValue = bestBefore;
+          if (tv > bestBefore) s.bestValue = tv; else s.bestValue = bestBefore;
           if (!off) s.dayPlays.n += 1; // b80: オフラインの強制ハズレは「開始直後の高額制限」の回数に数えない（制限の回数を食いつぶさない）
           if (res.value > 0) s.hits.push({ ts: now, key: res.key });
           ses.playNo += 1;
-          ses.awarded += res.value;
-          s.wonTotal = (s.wonTotal || 0) + res.value; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
+          ses.awarded += tv;
+          s.wonTotal = (s.wonTotal || 0) + tv; // 合計当選額も同じ書き込みで加算（表示は結果が出てから）
         }
         const chk = test ? null : checkNo(); curCheck = null; // b97: 会計番号（スマホの紙幣に付いてきたもの）。b105: この 1 回で使い切る（次の CREDIT や別の回に付かない）
         s.play = { startStage: startSt, playNo: ses.playNo, stage: res.stage, value: res.value, overflow: false, phase: 'drawn', cur: startSt, ts: Date.now(), check: chk || undefined, sup: (supOk && !test) || undefined, off: off || undefined };
-        s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined, check: chk || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
+        if (tx) { const ti = textIndexOf(res.value, s.texts); s.play.ti = ti; s.play.text = (ti >= 0 && s.texts[ti] && s.texts[ti].t) || undefined; } // 文字の当たり: どの文字で止めるかをここで決める（途中で落ちても同じ文字）
+        s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: tv, text: s.play.text, free: !!((s.credits || 0) > 0), test: test || undefined, check: chk || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
         if (res.value > 0 && !test && !off && !s.play.free && !s.play.sup && !s.single && rollDoor()) s.play.door = true; // b108: 当たりの回の一部を 3 つの扉で見せる（FREE SPIN・スーパーモードの回は出さない）
@@ -968,7 +976,7 @@ const Game = (function () {
     clearSure(); // b79: 前のゲームの「当選確定」の表示が（画面が隠れていた等で）遅れて付いても、新しいゲームには持ち越さない
     showCredits();
     lockbar.classList.remove('show');
-    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.value, key: p.stage + ':' + p.value, startStage: p.startStage || 1, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free, check: p.check || null }, Store.state.limits && Store.state.limits.resetHour).catch(cloudFail); }
+    if (storeMode() && !Store.state.play.test && !Store.state.play.dud) { const p = Store.state.play, me = Store.state.store; Cloud.pushPlay(me.id, { ts: p.ts, stage: p.stage, value: p.text ? 0 : p.value, key: p.stage + ':' + p.value, text: p.text || null, win: p.text ? p.value > 0 : undefined, startStage: p.startStage || 1, playNo: p.playNo, presetId: Store.state.presetId || null, free: !!p.free, check: p.check || null }, Store.state.limits && Store.state.limits.resetHour).catch(cloudFail); }
     { const p0 = Store.state.play, s1 = (p0 && p0.cur) || 1; // b107: STAGE 2/3 から始めるときは、いつものステージの切り替わり演出で移ってから回す
       if (s1 > 1 && curStage !== s1) { busy = true; transition(s1).catch(() => { setStage(s1); }).then(() => { busy = false; runStage(Store.state.play, s1); }); }
       else runStage(Store.state.play, s1); }
@@ -1266,7 +1274,7 @@ const Game = (function () {
       if (fxErrPlay !== play.ts) { fxErrPlay = play.ts; fxErrN = 0; }
       fxErrN += 1;
       if (fxErrN >= 3) {
-        try { Store.transact((s) => { if (s.play && s.play.phase !== 'shown') { s.play.phase = 'shown'; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; try { meterAfterPlay(s.play); } catch (e) { /* 集計のみ */ } if (s.play.value > 0 && !s.play.test) { const rt = Date.now(); s.recent = (s.recent || []).concat({ ts: rt, value: s.play.value }).slice(-200); if (s.play.check) s.checks = (s.checks || []).concat({ ts: rt, at: s.play.ts, check: s.play.check, stage: s.play.stage, value: s.play.value }).slice(-300); } /* b105: 会計番号は結果を出した時刻（配当履歴と同じ ts）で記録する */ Store.log('FX_GIVEUP', { stage: st, value: s.play.value }); } }); } catch (e) { /* 保存できなければ次回また試す */ }
+        try { Store.transact((s) => { if (s.play && s.play.phase !== 'shown') { s.play.phase = 'shown'; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; try { meterAfterPlay(s.play); } catch (e) { /* 集計のみ */ } if (s.play.value > 0 && !s.play.test) { const rt = Date.now(); s.recent = (s.recent || []).concat({ ts: rt, value: s.play.text ? 0 : s.play.value, text: s.play.text || undefined }).slice(-200); if (s.play.check) s.checks = (s.checks || []).concat({ ts: rt, at: s.play.ts, check: s.play.check, stage: s.play.stage, value: s.play.value }).slice(-300); } /* b105: 会計番号は結果を出した時刻（配当履歴と同じ ts）で記録する */ Store.log('FX_GIVEUP', { stage: st, value: s.play.value }); } }); } catch (e) { /* 保存できなければ次回また試す */ }
         flushMeter();
         try { const p = Store.state.play; if (storeMode() && p && p.value > 0 && !p.test) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === p.value ? last.ts : Date.now(), value: p.value }).catch(cloudFail); } } catch (e) { /* 送れなくても進む */ } // b105: 全店舗の配当履歴にも出す
         try { setStage(play.stage); } catch (e) { /* noop */ }
@@ -1414,11 +1422,11 @@ const Game = (function () {
     await resultFx(play);
     clearSure();
     const out = false; // ボタン版: クレジット制なし（PINなしで何回でも回せる）
-    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; try { meterAfterPlay(s.play); } catch (e) { /* 集計のみ */ } if (s.play.value > 0 && !s.play.test) { const rt = Date.now(); s.recent = (s.recent || []).concat({ ts: rt, value: s.play.value }).slice(-200); if (s.play.check) s.checks = (s.checks || []).concat({ ts: rt, at: s.play.ts, check: s.play.check, stage: s.play.stage, value: s.play.value }).slice(-300); } /* b105: 会計番号は結果を出した時刻（配当履歴と同じ ts）で記録する */ } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
+    try { Store.transact((s) => { if (s.play) { s.play.phase = 'shown'; if (lastCombo) s.play.combo = lastCombo.combo; if (s.play.value > 0 && !s.play.test) s.winCount = winsOf(s) + 1; try { meterAfterPlay(s.play); } catch (e) { /* 集計のみ */ } if (s.play.value > 0 && !s.play.test) { const rt = Date.now(); s.recent = (s.recent || []).concat({ ts: rt, value: s.play.text ? 0 : s.play.value, text: s.play.text || undefined }).slice(-200); if (s.play.check) s.checks = (s.checks || []).concat({ ts: rt, at: s.play.ts, check: s.play.check, stage: s.play.stage, value: s.play.value }).slice(-300); } /* b105: 会計番号は結果を出した時刻（配当履歴と同じ ts）で記録する */ } if (out) Store.log('TOTAL', { total: s.wonTotal || 0 }); }); } catch (err) { /* 表示済みフラグのみ。失敗しても整合性に影響なし */ }
     flushMeter();
     showCredits();
     renderRecent();
-    if (storeMode() && play.value > 0 && !play.test) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === play.value ? last.ts : Date.now(), value: play.value }).catch(cloudFail); } // 全店舗の配当履歴へ（時刻は端末の履歴と同じにする）
+    if (storeMode() && play.value > 0 && !play.test && !play.text) { const me = Store.state.store, last = (Store.state.recent || []).slice(-1)[0]; Cloud.pushWin(me.id, (cloudStore && cloudStore.name) || me.name, { ts: last && last.value === play.value ? last.ts : Date.now(), value: play.value }).catch(cloudFail); } // 全店舗の配当履歴へ（時刻は端末の履歴と同じにする）
     if (out) await totalFx(Store.state.wonTotal || 0);
     busy = false;
     if (Store.state.play) showLocked(Store.state.play, true); else refresh();
@@ -1569,10 +1577,11 @@ const Game = (function () {
   }
   function spinSingle(st, sym, pat, extra) {
     extra = extra || {};
-    const show = sym === 0 ? 'BAR' : sym; // 止まる絵柄
+    const pl = Store.state.play, ti = textsOn() ? (pl && pl.ti >= 0 ? pl.ti : textIndexOf(sym)) : -1; // 文字の当たり: 抽選のときに決めた文字
+    const show = ti >= 0 ? 'TX' + ti : sym === 0 ? 'BAR' : sym; // 止まる絵柄
     const combo = ['BLANK', show, 'BLANK'];
     const vals = (Engine.tableOf(Store.state.probs)[0] || { values: [] }).values.filter((v) => v > 0);
-    const alts = ['BAR'].concat(vals).filter((x) => x !== show);
+    const alts = (ti >= 0 ? Store.state.texts.map((_, i) => 'TX' + i) : ['BAR'].concat(vals)).filter((x) => x !== show);
     const nb = pat.type === 'slip2' ? 2 : pat.type === 'slip' ? 1 : 0;
     const bait = [];
     for (let i = 0; i < nb; i++) bait.push(alts.length ? alts[Math.floor(Math.random() * alts.length)] : null);
@@ -1828,16 +1837,16 @@ const Game = (function () {
   ];
 
   async function resultFx(res) {
-    const v = res.value;
+    const v = res.value, txt = res.text || ''; // 文字の当たり（2026-10-31）: 金額の代わりに文字を出す
     if (v === 0) {
       await wait(250);
       win.classList.add('lose');
       Sfx.play('zero');
-      setPlate('result zero', '0', '');
+      setPlate('result zero', txt || '0', '');
       await wait(1700);
       return;
     }
-    const L = Math.max(1, WIN_LEVELS.filter((x) => x <= v).length);
+    const L = txt ? 3 : Math.max(1, WIN_LEVELS.filter((x) => x <= v).length); // 文字の当たりは BIG WIN の段階で固定
     const fx = WIN_FX[L - 1];
     const timers = [];
     const later = (sec, fn) => timers.push(setTimeout(fn, sec * 1000));
@@ -1872,7 +1881,7 @@ const Game = (function () {
     stageEl.dataset.win = L;
     const startTier = L >= 3 ? 2 : L - 1; let shownTier = startTier; // b120: 本物のスロットのように、BIG WIN から始めて数え上げの途中で SUPER → MEGA … と看板を 1 段ずつ上げる
     setPlate('spin', WIN_FX[startTier].label, '');
-    showBanner('win lv' + L, WIN_FX[startTier].label, fx.count ? '0' : fmtN(v), v);
+    showBanner('win lv' + L, WIN_FX[startTier].label, txt ? txt : fx.count ? '0' : fmtN(v), txt ? 1000 : v);
     stageEl.dataset.lamp = L >= 7 ? 'jackpot' : 'win';
     Sfx.play('win', L);
 
@@ -1886,8 +1895,9 @@ const Game = (function () {
     if (L >= 3) bulletTime(0.12, 0.45); // 弾けた瞬間に一瞬止まり、指数的に加速
     if (L >= 6) $('dim').classList.add('on');
 
-    // 金額カウントアップ → 確定の一撃
-    if (fx.count) {
+    // 金額カウントアップ → 確定の一撃（文字の当たりは数え上げず、一撃だけ）
+    if (fx.count && txt) { later(0.6, () => { restart($('bannerCv'), 'slam'); Sfx.play('stop'); FX.burst(CX, CY, 60 + L * 20, { max: 900, colors }); }); }
+    else if (fx.count) {
       const t0 = performance.now(), el = $('bannerValue');
       let lastTick = 0;
       const step = (now) => {
@@ -2202,8 +2212,10 @@ const Game = (function () {
     if (!p) return;
     if (busy || (Store.state.play && Store.state.play.phase !== 'shown')) { pendingPreset = p; return; }
     pendingPreset = null;
-    const single = !!p.single, probs = single && p.probs ? Engine.singleProbs(p.probs) : p.probs; // 1 本モード（2026-10-31）: STAGE 1 の表だけ使う
-    const v = probs ? Engine.validateProbs(p.probs, single) : { ok: false, errors: ['確率表がありません。'] };
+    const single = !!p.single; // 1 本モード（2026-10-31）: STAGE 1 の表だけ使う
+    const texts = single && p.textMode && Array.isArray(p.texts) && p.texts.length ? p.texts.map((x) => ({ t: String((x && x.t) || '').trim(), p: Number(x && x.p) || 0, lose: !!(x && x.lose) })) : null; // 文字の当たり（2026-10-31）
+    const probs = texts ? Engine.textProbs(texts) : single && p.probs ? Engine.singleProbs(p.probs) : p.probs;
+    const v = texts ? Engine.validateTexts(texts) : probs ? Engine.validateProbs(p.probs, single) : { ok: false, errors: ['確率表がありません。'] };
     if (!v.ok) {
       presetWarn = { id: p.id, name: String(p.name || ''), errors: v.errors.slice() };
       const sig = p.id + '|' + v.errors.join('|');
@@ -2212,7 +2224,7 @@ const Game = (function () {
       return;
     }
     presetWarn = null; presetWarnSig = '';
-    const same = JSON.stringify(Store.state.probs) === JSON.stringify(probs) && !!Store.state.single === single && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
+    const same = JSON.stringify(Store.state.probs) === JSON.stringify(probs) && !!Store.state.single === single && JSON.stringify(Store.state.texts || null) === JSON.stringify(texts) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
     const num = (v, d) => (typeof v === 'number' ? v : d);
     const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0), noRe = p.noRetrigger !== false;
     const st0 = Store.state;
@@ -2221,7 +2233,7 @@ const Game = (function () {
     try {
       Store.transact((s) => {
         s.probs = JSON.parse(JSON.stringify(probs));
-        s.single = single;
+        s.single = single; s.texts = texts;
         s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
         s.presetId = p.id;
         s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2]; s.logoRate = lg; s.noRetrigger = noRe;
@@ -2237,9 +2249,23 @@ const Game = (function () {
   }
   /* 1 本モード（2026-10-31）: body.single と Reel.setSingle。待機中・結果の表示中なら、その場で描き直す */
   const isSingle = () => !!(Store.state && Store.state.single);
+  /* 文字の当たり（2026-10-31）: 1 本モードで、金額の代わりに文字で止める。Store.state.texts = [{t, p, lose}]。
+     抽選の結果は番号（当たりの文字は並び順＋1、ハズレは 0）。0 のときは「ハズレ」の文字の中から確率の重みで 1 つ選んで見せる（見た目だけ。結果はハズレ） */
+  const textsOn = () => isSingle() && Array.isArray(Store.state.texts) && Store.state.texts.length > 0;
+  function textIndexOf(value, T) {
+    T = T || Store.state.texts || [];
+    if (value > 0) return T[value - 1] ? value - 1 : -1;
+    const L = T.map((x, i) => ({ i, p: x.lose ? Math.max(0, Number(x.p) || 0) : 0 })).filter((x) => x.p > 0);
+    if (!L.length) return T.findIndex((x) => x.lose);
+    let r = Math.random() * L.reduce((a, x) => a + x.p, 0);
+    for (const x of L) { r -= x.p; if (r <= 0) return x.i; }
+    return L[L.length - 1].i;
+  }
+  const escT = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function applySingle() {
     const on = isSingle();
     document.body.classList.toggle('single', on);
+    Reel.setTexts(textsOn() ? Store.state.texts : null); // 文字の当たり
     if (Reel.single !== on) { Reel.setSingle(on); if (!busy && !(Store.state.play && Store.state.play.phase !== 'shown')) { try { setStage(curStage, Store.state.play ? Store.state.play.value : undefined); } catch (e) { /* 次の描き直しで */ } } }
   }
   /* いま使っているプリセットの名前を、左上（casa のエンブレムの右）に出す。色はマスターのプリセット編集で選んだ色。店舗モードのときだけ */
