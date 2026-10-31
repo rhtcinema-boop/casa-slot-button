@@ -191,6 +191,31 @@
   const units = (x) => Math.round(Number(x) * 100); // 0.01% 単位の整数
   /* 1 本モード（2026-10-31）: p.__single が true なら STAGE 1 だけ見る（NEXT は 0 でなければならない）。
      呼ぶ側は probs に __single を付けずに、singleProbs(p) で STAGE 2・3 を「必ず 0」に埋めた表を渡してもよい */
+  /* 文字の当たり（2026-10-31）: 1 本モードで、金額の代わりに文字で止める。texts = [{t:'ドリンク1杯', p:30, lose:false}, ...]
+     抽選は今までの数字の表に置き換えてそのまま使う: ハズレ（lose）の文字は全部まとめて 0、当たりの文字は「並び順＋1」を金額の代わりの番号にする（番号は画面には出さない） */
+  const MAX_TEXTS = 12, MAX_TEXT_LEN = 12;
+  function textProbs(texts) {
+    const row = { 0: 0 };
+    (texts || []).forEach((x, i) => { const p = Number(x && x.p) || 0; if (x && x.lose) row[0] += p; else row[i + 1] = p; });
+    row[0] = Math.round(row[0] * 100) / 100; row.NEXT = 0;
+    return { 1: row, 2: { 0: 100, NEXT: 0 }, 3: { 0: 100 } };
+  }
+  function validateTexts(texts) {
+    const errors = [];
+    if (!Array.isArray(texts) || !texts.length) return { ok: false, errors: ['文字を 1 つ以上入れてください。'] };
+    if (texts.length > MAX_TEXTS) errors.push('文字は ' + MAX_TEXTS + ' 個までです。');
+    let sum = 0, ok = true;
+    texts.forEach((x, i) => {
+      const t = String((x && x.t) || '').trim(), p = Number(x && x.p);
+      if (!t) errors.push((i + 1) + ' 番目の文字が空です。');
+      else if (t.length > MAX_TEXT_LEN) errors.push('「' + t.slice(0, 6) + '…」は長すぎます（' + MAX_TEXT_LEN + ' 文字まで）。');
+      if (!Number.isFinite(p) || p < 0 || p > 100 || Math.abs(p * 100 - Math.round(p * 100)) > 1e-6) ok = false; else sum += units(p);
+    });
+    if (!ok) errors.push('確率は 0〜100 の数字（小数第2位まで）で入力してください。');
+    else if (sum !== 10000) errors.push('合計が ' + sum / 100 + '% です。ちょうど 100% にしてください。');
+    if (texts.filter((x) => x && !x.lose).length > MAX_AMOUNTS) errors.push('当たりの文字（ハズレ以外）は ' + MAX_AMOUNTS + ' 個までです。');
+    return { ok: errors.length === 0, errors };
+  }
   function singleProbs(p) { const q = { 1: Object.assign({}, (p && p[1]) || {}) }; q[1].NEXT = 0; q[2] = { 0: 100, NEXT: 0 }; q[3] = { 0: 100 }; return q; }
   function validateProbs(p, single) {
     const errors = [];
@@ -507,7 +532,7 @@
     defaultCapRules, validateCapRules, capFor,
     validateSetup, createSession, validateAdjust,
     secureRandomInt, draw, applyDraw, pathFor,
-    probKeys, defaultProbs, validateProbs, singleProbs, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
+    probKeys, defaultProbs, validateProbs, singleProbs, textProbs, validateTexts, MAX_TEXTS, MAX_TEXT_LEN, probStats, drawProb, windowStart, pruneHits, hitCounts, blockedKeys, earlyBlocked, FREE_SYMS: FREES,
     REEL_SYMS, readReels, reelCombos, reelAlternatives, tensionOf,
     sha256, makePin, checkPin,
   };
