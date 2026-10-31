@@ -339,6 +339,7 @@ const Admin = (function () {
     return '<div class="panel" id="tvgamePanel"><h4>このテレビのゲーム' + (loc ? ' <span class="pill" style="height:28px;font-size:14px;background:#5a3a08;color:#ffd98a;margin-left:8px">固定中</span>' : '') + '</h4>' +
       '<p class="hint">このテレビだけの設定です。「店の設定どおり」は、マスター画面（または casa DERBY の管理画面）で決めた店のゲームに従います。casa SLOT／casa DERBY を選ぶと、店の設定より優先して、このテレビはずっとそのゲームを映します。casa DERBY の画面から戻すときは、リモコンの「戻る」を長押し →「casa SLOT に戻す」。</p>' +
       '<div class="summary">' + stat('店の設定', esc(store)) + stat('このテレビ', loc ? TVG[loc] + '（固定）' : '店の設定どおり') + '</div>' +
+      (function () { const h = t.hold && t.hold(); if (!h) return ''; const d = new Date(h.until), p = (n) => ('0' + n).slice(-2); return '<p class="hint" style="color:#cfe3ff">マスター画面の設定で、' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ' まで casa SLOT のままです（競馬の時刻になっても切り替わりません）。</p>'; })() +
       (id ? '' : '<ul class="errors"><li>この店舗に対応する casa DERBY の店舗がありません（店舗名に 渋谷・上野・札幌 のどれかが入っている店だけ切り替わります）。</li></ul>') +
       '<div class="preset-list">' + btn('auto', '店の設定どおり') + btn('slot', 'casa SLOT') + btn('derby', 'casa DERBY') + '</div>' +
       (loc === 'derby' ? '<p class="hint" style="margin-top:10px">設定画面を閉じると、待機中になってから casa DERBY に切り替わります。</p>' : '') + '</div>';
