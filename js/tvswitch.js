@@ -19,7 +19,11 @@
      derby/v2/next-open.js の DerbyNextOpen.next(schedule, now) で次のレースの投票の始まり（openAt）〜発走（at）を求め、その間に入ったら DERBY へ移る
      （待機中はすぐ、遊んでいる途中は終わってから）。同じレースで 1 回だけ（localStorage casa.tvAutoAt に発走の時刻を覚える。そのあとスタッフが
      SLOT に戻したら、そのレースの間は SLOT のまま）。「このテレビだけ SLOT に固定」のテレビは移らない。テストの店（DERBY の店舗の対応が無い）は対象外。
-     次の投票の始まりの時刻に合わせて確かめ直す。時刻表は 5 分ごとに読み直す。localhost では ?schedUrl=<URL> で読む先を差し替えられる */
+     次の投票の始まりの時刻に合わせて確かめ直す。時刻表は 5 分ごとに読み直す。localhost では ?schedUrl=<URL> で読む先を差し替えられる
+   - 〜まで casa SLOT のままにする（2026-10-31 b176）: マスター画面の店舗の設定 slotHold = { until }（casa SLOT の店舗データ。js/game.js が届くたび setHold で渡す。
+     localStorage casa.tvHold にも覚える＝起動直後、店舗データが届く前でも効く）。期限中は、店の設定の 'derby' も時刻表の自動切替も見ずに casa SLOT のまま。
+     「このテレビだけ casa DERBY に固定」だけは今までどおり（その場の操作）。期限が切れたあと、期限中から変わっていない店の設定の 'derby' は無視する
+     （レースのたびに進行役が 'derby' を書くので、期限が切れた瞬間にレースも無いのに DERBY へ行かないように。設定が変わるか、次の投票の始まりで今までどおり） */
 (function () {
   'use strict';
   const DOC = 'https://firestore.googleapis.com/v1/projects/casa-derby/databases/(default)/documents/derbySwitch/tv?key=AIzaSyDuElvskkcKBs4XisXjTe7-mSxjq3KuswA';
@@ -27,7 +31,7 @@
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // js/cloud.js と同じ版
   const MAP = [[/渋谷/, 'shibuya'], [/上野/, 'ueno'], [/札幌/, 'sapporo']];
   const SCHED = 'https://firestore.googleapis.com/v1/projects/casa-derby/databases/(default)/documents/derbySchedule/public?key=AIzaSyDuElvskkcKBs4XisXjTe7-mSxjq3KuswA';
-  const SCHED_MS = 5 * 60000, AUTO_KEY = 'casa.tvAutoAt';
+  const SCHED_MS = 5 * 60000, AUTO_KEY = 'casa.tvAutoAt', HOLD_KEY = 'casa.tvHold', HOLD_G_KEY = 'casa.tvHoldG';
   const QS = location.search, UA_TV = /casaTV/.test(navigator.userAgent || '');
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   const S = (st) => ({ get(k) { try { return st().getItem(k); } catch (e) { return null; } }, set(k, v) { try { if (v == null) st().removeItem(k); else st().setItem(k, v); } catch (e) { /* noop */ } } });
@@ -55,7 +59,12 @@
     return hit ? hit[1] : null;
   }
   const idle = () => { const s = st(), ui = document.getElementById('ui'); return !!s && !s.play && !(s.credits > 0) && !(s.dud > 0) && !(ui && ui.children.length) && !document.getElementById('calib'); };
-  const state = { last: null, at: 0, err: '', target: null, leaving: false, local: null, via: '' };
+  const state = { last: null, at: 0, err: '', target: null, leaving: false, local: null, via: '', hold: null };
+  /* 〜まで casa SLOT のまま（b176） */
+  const holdNorm = (h) => { const u = h && Number(h.until); return u > 0 ? { until: u, setAt: Number(h.setAt) || 0 } : null; };
+  try { state.hold = holdNorm(JSON.parse(ls.get(HOLD_KEY) || 'null')); } catch (e) { state.hold = null; }
+  const hold = () => (state.hold && state.hold.until > Date.now() ? state.hold : null);
+  function setHold(h) { const n = holdNorm(h); if (JSON.stringify(n) === JSON.stringify(state.hold)) return; state.hold = n; ls.set(HOLD_KEY, n ? JSON.stringify(n) : null); if (active() && !state.leaving) later(300); }
   const gameOf = (doc, id) => (doc && doc[id] === 'derby' ? 'derby' : 'slot');
 
   /* ---------- 変更の通知（2026-10-19） ---------- */
@@ -168,6 +177,10 @@
     let wait = live.on ? SAFE_MS : POLL_MS;
     state.at = Date.now(); state.local = loc;
     if (g) state.last = g;
+    const hd = hold(); // b176: 〜まで casa SLOT のまま
+    if (hd) { if (g) ls.set(HOLD_G_KEY, g); }
+    else { const hg = ls.get(HOLD_G_KEY); if (hg) { if (g && g !== hg) ls.set(HOLD_G_KEY, null); else if (g === 'derby') { g = 'slot'; state.via += '+hold'; } } } // 期限中から変わっていない 'derby' は無視
+    if (hd && loc !== 'derby') { state.auto = null; return later(Math.max(1000, Math.min(wait, hd.until - Date.now() + 1500))); }
     let auto = null; // v4: 投票の始まりで DERBY へ（固定のテレビ・このレースでもう動いたときは動かない）
     if ((loc || g) !== 'derby' && loc !== 'slot') {
       const w = await voteWindow(id); // その店だけの時刻表の決まりも入れる
@@ -189,6 +202,6 @@
   }
   /* 設定画面から: v = 'slot' | 'derby' | null（店の設定どおり）。すぐ確かめ直す（設定画面を閉じて待機中になってから移る） */
   function setLocal(v) { ls.set(LKEY, v === 'slot' || v === 'derby' ? v : null); state.local = local(); if (active() && !state.leaving) later(300); }
-  window.SlotTvSwitch = { check, state, active, derbyId, local, setLocal, watch, live, readDoc, gameOf, MAP, sched, voteWindow, readSched };
+  window.SlotTvSwitch = { check, state, active, derbyId, local, setLocal, watch, live, readDoc, gameOf, MAP, sched, voteWindow, readSched, hold, setHold };
   if (active()) { watch(() => { if (active() && !state.leaving) later(200); }); later(FIRST_MS); }
 })();
