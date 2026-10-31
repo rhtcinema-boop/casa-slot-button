@@ -956,7 +956,7 @@ const Game = (function () {
         s.playsRecent = ((s.playsRecent || []).concat({ ts: s.play.ts, stage: res.stage, value: res.value, free: !!((s.credits || 0) > 0), test: test || undefined, check: chk || undefined })).slice(-20); // b91: スマホの設定画面に出す直近 20 件
         if (test) s.play.test = true; else s.play.bestBefore = bestBefore;
         if ((s.credits || 0) > 0) { s.credits -= 1; s.play.free = true; } // CREDIT（獲得した FREE SPIN）を 1 使って回す（テスト用プリセットでも同じ）
-        if (res.value > 0 && !test && !off && !s.play.free && !s.play.sup && rollDoor()) s.play.door = true; // b108: 当たりの回の一部を 3 つの扉で見せる（FREE SPIN・スーパーモードの回は出さない）
+        if (res.value > 0 && !test && !off && !s.play.free && !s.play.sup && !s.single && rollDoor()) s.play.door = true; // b108: 当たりの回の一部を 3 つの扉で見せる（FREE SPIN・スーパーモードの回は出さない）
         s.locked = true;
         Store.log('PLAY', { sup: s.play.sup || undefined, door: s.play.door || undefined, playNo: ses.playNo, stage: res.stage, value: res.value, key: res.key, path: Engine.pathFor(res.stage), blocked: blocked.length ? blocked : undefined, test: test || undefined, free: s.play.free || undefined });
       });
@@ -1291,13 +1291,14 @@ const Game = (function () {
     const lockFree = (!!play.free && (!!play.dud || Store.state.noRetrigger !== false)) || (storeMode() && !netOk) || doorPlay; // 当たりなしの FREE SPIN（dud）の回と、オフラインの間は、FREE SPIN もロゴも出さない（b75）
     const lastSpin = sym !== 'NEXT'; // b121（オーナー指摘「フリースピンが当たった回数以上に回る」）: FREE SPIN・ロゴはそのゲームの最後の 1 回にだけ出す。
     // NEXT STAGE の途中で出ると、そろったゲームの続きが上のステージへ進む分だけ回る回数が増えて見えていた
-    const logoHit = lastSpin && !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
-    const freeN = lastSpin && !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
+    const sgl = isSingle(); // 1 本モード（2026-10-31）: FREE SPIN・ロゴ・扉・WARP・逆回転・プチュン・回り直しは出さない
+    const logoHit = !sgl && lastSpin && !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
+    const freeN = !sgl && lastSpin && !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
-    const rev = !doorPlay && !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
-    const pat = doorPlay || oneMore || freeN || logoHit || noSp ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
-    if (!doorPlay && !oneMore && !freeN && !logoHit && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
-    const warpTo = doorPlay || oneMore || freeN || logoHit || noSp ? 0 : pickWarp(play, st);
+    const rev = !sgl && !doorPlay && !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
+    const pat = sgl ? pickPatternSingle(sym) : doorPlay || oneMore || freeN || logoHit || noSp ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
+    if (!sgl && !doorPlay && !oneMore && !freeN && !logoHit && !rev && pat.type !== 'respin') planPuchun(play, st); else puchunPlan = null;
+    const warpTo = sgl || doorPlay || oneMore || freeN || logoHit || noSp ? 0 : pickWarp(play, st);
     showCredits();
     if (warpTo) { // 普通に回り始めて 5 秒たったところで、いきなり上のステージへ（途中のステージは回さない）
       puchunPlan = null;
@@ -1317,7 +1318,7 @@ const Game = (function () {
       return runStage(play, warpTo);
     }
     if ((play.free || play.freeCont) && !sureShown) setPlate('spin', 'FREE SPIN', 'CREDIT 残り ' + creditsLeft()); // CREDIT を使って回している
-    else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : 'STAGE ' + st);
+    else setPlate(sureShown ? 'spin sure' : 'spin', sureShown ? sureText[0] : 'GOOD LUCK', sureShown ? sureText[1] : isSingle() ? '' : 'STAGE ' + st); // 1本モードはステージの文言なし
 
     const extra = { fast: !!play.free, noFree: lockFree, noTension: !!play.dud }; // FREE SPIN で回る分は、どのステージでも STAGE 1 と同じ速さ。noFree: FREE SPIN の絵柄も出さない
     if (!window.LITE) FX.cards(10, 0.3, { sweep: true });
@@ -1394,6 +1395,8 @@ const Game = (function () {
       win.classList.remove('win', 'lose');
       await wait(300);
       return runStage(play, st);
+    } else if (sgl) {
+      await spinSingle(st, sym, pat, extra);
     } else {
       await spinReel(st, sym, pat, extra);
     }
@@ -1554,6 +1557,34 @@ const Game = (function () {
         restart(cabinet, 'thud');
         bump();
       },
+    });
+  }
+
+  /* 1 本モード（2026-10-31）: 中央の列だけで回し、止まった絵柄がそのまま結果（金額 or 0）。
+     止まり方は「そのまま」「止まりかけて 1 コマ滑る」「止まりかけて 2 コマ滑る」の 3 つ。止まりかけの絵柄は、結果と違う金額または 0 */
+  function pickPatternSingle(sym) {
+    const r = Math.random();
+    if (r < 0.45) return { type: 'plain' };
+    return { type: r < 0.8 ? 'slip' : 'slip2' };
+  }
+  function spinSingle(st, sym, pat, extra) {
+    extra = extra || {};
+    const show = sym === 0 ? 'BAR' : sym; // 止まる絵柄
+    const combo = ['BLANK', show, 'BLANK'];
+    const vals = (Engine.tableOf(Store.state.probs)[0] || { values: [] }).values.filter((v) => v > 0);
+    const alts = ['BAR'].concat(vals).filter((x) => x !== show);
+    const nb = pat.type === 'slip2' ? 2 : pat.type === 'slip' ? 1 : 0;
+    const bait = [];
+    for (let i = 0; i < nb; i++) bait.push(alts.length ? alts[Math.floor(Math.random() * alts.length)] : null);
+    const p = Object.assign({}, pat, { bait, timingStage: 1 });
+    const stop = 4.6 + Math.random() * 0.8; // 約 5 秒
+    lastCombo = { st, read: sym, combo };
+    return Reel.spin(st, combo, [0, 2, 1], [stop - 0.02, stop - 0.01, stop], p, {
+      onStart: () => { Sfx.play('reelStart'); extra.onStart && extra.onStart(); },
+      onTick: (n) => Sfx.tick(n),
+      onSpeed: (n) => Sfx.spin(n),
+      onTease: (dur) => { Sfx.play('tease', dur); stageEl.classList.add('reach'); $('content').querySelector('.spot').style.opacity = 1; },
+      onStop: () => { stageEl.classList.remove('reach'); $('content').querySelector('.spot').style.opacity = ''; Sfx.play('stop', 2); restart(cabinet, 'thud'); bump(); },
     });
   }
 
@@ -2171,7 +2202,8 @@ const Game = (function () {
     if (!p) return;
     if (busy || (Store.state.play && Store.state.play.phase !== 'shown')) { pendingPreset = p; return; }
     pendingPreset = null;
-    const v = p.probs ? Engine.validateProbs(p.probs) : { ok: false, errors: ['確率表がありません。'] };
+    const single = !!p.single, probs = single && p.probs ? Engine.singleProbs(p.probs) : p.probs; // 1 本モード（2026-10-31）: STAGE 1 の表だけ使う
+    const v = probs ? Engine.validateProbs(p.probs, single) : { ok: false, errors: ['確率表がありません。'] };
     if (!v.ok) {
       presetWarn = { id: p.id, name: String(p.name || ''), errors: v.errors.slice() };
       const sig = p.id + '|' + v.errors.join('|');
@@ -2180,7 +2212,7 @@ const Game = (function () {
       return;
     }
     presetWarn = null; presetWarnSig = '';
-    const same = JSON.stringify(Store.state.probs) === JSON.stringify(p.probs) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
+    const same = JSON.stringify(Store.state.probs) === JSON.stringify(probs) && !!Store.state.single === single && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
     const num = (v, d) => (typeof v === 'number' ? v : d);
     const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0), noRe = p.noRetrigger !== false;
     const st0 = Store.state;
@@ -2188,7 +2220,8 @@ const Game = (function () {
     if (same && st0.presetId === p.id && st0.freeRate === fr[0] && st0.freeRate2 === fr[1] && st0.freeRate3 === fr[2] && !!st0.testMode === test && (st0.logoRate || 0) === lg && (st0.noRetrigger !== false) === noRe && st0.presetName === pname && (st0.presetColor || '') === pcolor) return;
     try {
       Store.transact((s) => {
-        s.probs = JSON.parse(JSON.stringify(p.probs));
+        s.probs = JSON.parse(JSON.stringify(probs));
+        s.single = single;
         s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
         s.presetId = p.id;
         s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2]; s.logoRate = lg; s.noRetrigger = noRe;
@@ -2198,8 +2231,16 @@ const Game = (function () {
       });
     } catch (err) { /* 保存のみ */ }
     syncTable();
+    applySingle();
     showCredits(); // プリセット名と、TEST の帯（#stage.testmode）をその場で描き直す。b69 までは showPreset() だけで、帯は次の描き直しまで前のプリセットのまま残っていた
     if (Admin.isOpen()) Admin.rerender();
+  }
+  /* 1 本モード（2026-10-31）: body.single と Reel.setSingle。待機中・結果の表示中なら、その場で描き直す */
+  const isSingle = () => !!(Store.state && Store.state.single);
+  function applySingle() {
+    const on = isSingle();
+    document.body.classList.toggle('single', on);
+    if (Reel.single !== on) { Reel.setSingle(on); if (!busy && !(Store.state.play && Store.state.play.phase !== 'shown')) { try { setStage(curStage, Store.state.play ? Store.state.play.value : undefined); } catch (e) { /* 次の描き直しで */ } } }
   }
   /* いま使っているプリセットの名前を、左上（casa のエンブレムの右）に出す。色はマスターのプリセット編集で選んだ色。店舗モードのときだけ */
   function showPreset() {
@@ -2435,6 +2476,7 @@ const Game = (function () {
     stageEl = $('stage'); cabinet = $('cabinet'); win = $('window'); plate = $('plate'); lockbar = $('lockbar'); banner = $('banner');
     layout();
     window.addEventListener('resize', layout);
+    applySingle();
     setInterval(() => { creditWatch(); idleWatch().catch(() => {}); attractWatch(); updWatch(); recentWatch(); reelWatch(); maintWatch(); presetTick(); resumeWatch(); phaseWatch(); hitWatch(); timedWatch(); pubWatch(); }, 500);
     setInterval(statWatch, 5000); // b91: 端末の状態をスマホの設定画面へ（変わったときだけ書く）
     // リールの描き直し（b76）: 画面が戻ってきたとき・大きさが変わったときに、いま見えているべき絵柄を描き直す
