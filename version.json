@@ -1,9 +1,9 @@
 {
- "v": "b173",
+ "v": "b174",
  "files": [
   {
    "path": "index.html",
-   "sha256": "5c239b26b07b5cba1f95e46abeca3aaed83c6bc0e0f0673415f92d81d064559d"
+   "sha256": "fa0b0297db79e7e355d04cfa0f20abdf59d221accdcceb24af9940092fa63504"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,7 +31,7 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "92010e02f5fe1a17aa00a28ec83cd32b03ba0402aa900c927cb94f67bcd1a418"
+   "sha256": "9c7a9b33c301ee453d92fb9bcb9f7500516b71c29e9287f162acb7716beb121d"
   },
   {
    "path": "js/admin.js",
@@ -51,7 +51,7 @@
   },
   {
    "path": "js/cloud.js",
-   "sha256": "496783dcada839cd0640f3e969109ee7aa3321e34ac9d279da693cb6f2635fd0"
+   "sha256": "ffc559d4230d529202af97f28b12576a18c695ccbb4388628329e1a2952eb2fb"
   },
   {
    "path": "js/derbyswitch-master.js",
@@ -59,7 +59,7 @@
   },
   {
    "path": "js/engine.js",
-   "sha256": "445189d96c98f44d15d187b107a28e9532343de894d166fda49eecff1a967944"
+   "sha256": "35259c58fdb84385d70ff2633ec61f93bdc1b8d01c2460df5bc621b767e28682"
   },
   {
    "path": "js/fx.js",
@@ -67,11 +67,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "8d41cd9fe759bb9a05f18173cf557915800f7fd9b28953dba44fa1e8ce335aea"
+   "sha256": "bb6e9911a53d5ee9b8e486fab60168a5307c5d38876eb9996ae443822adf8ca6"
   },
   {
    "path": "js/master.js",
-   "sha256": "6fac3b3a91f8aeb5c00c29fad054bec852ba57f4e357b153bc7a4f57bb57de3a"
+   "sha256": "f5f0a95a9a7e783e96010312ba97980823fcf4f5d07fca195d3151c12efa994c"
   },
   {
    "path": "js/phoneswitch.js",
@@ -79,7 +79,7 @@
   },
   {
    "path": "js/reel.js",
-   "sha256": "906188f4df07fe31c7feb64f7e048d1302ed1df85b1bb8ee87e2af9235b8a980"
+   "sha256": "9d9634b68b7796a0dafd47defe5aeec1569629e7b4853d1d8576d7e5f50d3030"
   },
   {
    "path": "js/store.js",
