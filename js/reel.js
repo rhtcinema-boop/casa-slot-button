@@ -50,6 +50,8 @@ const Reel = (function () {
   // 極太書体（iPad 標準搭載の Impact）。数字もラベルも同じ書体でそろえる
   const NUM_FONT = 'Impact,"Haettenschweiler","Arial Narrow Bold","Arial Black",sans-serif';
   const LBL_FONT = NUM_FONT;
+  // かな漢字を含む文字の当たり用（2026-10-31）: 極太ゴシック。Fire TV（Android）は Noto Sans CJK、iPad/Mac はヒラギノ W8
+  const JP_FONT = '"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans CJK JP","Noto Sans JP","Yu Gothic","BIZ UDPGothic",sans-serif';
   /* 彫金クロームの配色。face: 文字の面（上半分=空の映り込み / 中央の暗い水平線 / 下半分=地面の照り返し）
      ext: 側面の厚み [奥, 手前] / rim: 縁のハイライト */
   const STOPS = [0, 0.18, 0.38, 0.49, 0.51, 0.58, 0.78, 1];
@@ -108,8 +110,8 @@ const Reel = (function () {
   };
   /* 彫金クロームの文字を描く:
      落ち影 → 側面の厚み（奥ほど暗い）→ 黒い縁 → 明るい縁 → 面（2段の映り込み）→ 内側の面取り → 斜めの光沢 */
-  function metalText(c, text, cx, cy, px, font, pal, maxW, italic) {
-    const setFont = (k) => { k.font = (italic ? 'italic ' : '') + '400 ' + px + 'px ' + font; k.textAlign = 'center'; k.textBaseline = 'alphabetic'; k.lineJoin = 'round'; };
+  function metalText(c, text, cx, cy, px, font, pal, maxW, italic, weight) {
+    const setFont = (k) => { k.font = (italic ? 'italic ' : '') + (weight || '400') + ' ' + px + 'px ' + font; k.textAlign = 'center'; k.textBaseline = 'alphabetic'; k.lineJoin = 'round'; };
     setFont(c);
     const w0 = c.measureText(text).width;
     if (w0 > maxW) { px = Math.floor(px * maxW / w0); setFont(c); }
@@ -156,6 +158,26 @@ const Reel = (function () {
     c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(faceCv, 0, 0); c.restore();
   }
 
+  /* 文字の当たり（1 本モード）の文字（2026-10-31 デザイン見直し）: 金属の彫り込みを減らし、明るい面＋細い縁＋短い影で読みやすく。
+     英数字だけなら極太ゴシック（Arial Black 系）、かな漢字を含むなら太いゴシック 1 書体で全体をそろえる。幅 maxW に収まるまで縮小（最小 minPx）。横つぶしはしない */
+  const TX_FONT_EN = '"Arial Black","Arial Narrow Bold",Impact,"Hiragino Sans",sans-serif';
+  const TX_WIN = { face: ['#fff6d2', '#f6de8e', '#f1d17a', '#d6a64a'], edge: '#4a3112', lw: 6, shadow: { y: 4, blur: 6, color: 'rgba(30,20,8,.45)' } }; // 縁 3px
+  const TX_LOSE = { face: ['#ffffff', '#f1f3f6', '#c9ced6', '#8d949d'], edge: '#222831', lw: 6, shadow: { y: 3, blur: 4, color: 'rgba(16,19,23,.38)' } };
+  function plateText(c, text, cx, cy, basePx, font, weight, pal, maxW, minPx) {
+    let px = basePx;
+    const setFont = () => { c.font = weight + ' ' + px + 'px ' + font; c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.lineJoin = 'round'; };
+    setFont();
+    const w0 = c.measureText(text).width;
+    if (w0 > maxW) { px = Math.max(minPx, Math.floor(px * maxW / w0)); setFont(); }
+    const m = c.measureText(text), asc = m.actualBoundingBoxAscent || px * 0.75, desc = m.actualBoundingBoxDescent || 0, y = cy + (asc - desc) / 2;
+    const sh = pal.shadow || { y: 3, blur: 4, color: 'rgba(0,0,0,.6)' };
+    c.save(); c.shadowColor = sh.color; c.shadowBlur = sh.blur; c.shadowOffsetY = sh.y; c.fillStyle = pal.edge; c.fillText(text, cx, y); c.restore(); // 影
+    c.lineWidth = pal.lw || 4; c.strokeStyle = pal.edge; c.strokeText(text, cx, y); // 縁取り（面で半分隠れる）
+    const g = c.createLinearGradient(0, y - asc, 0, y + desc); pal.face.forEach((col, i) => g.addColorStop(i / (pal.face.length - 1), col));
+    c.fillStyle = g; c.fillText(text, cx, y);
+    c.save(); c.globalAlpha = 0.55; c.lineWidth = 1; c.strokeStyle = 'rgba(255,255,255,.9)'; c.strokeText(text, cx, y - 1); c.restore(); // 上辺の細いハイライト（金属の面取りの名残）
+    return px;
+  }
   function chevrons(c, cx, cy, dir, pal) {
     for (let i = 0; i < 3; i++) {
       const x = cx + dir * i * 26;
@@ -206,7 +228,9 @@ const Reel = (function () {
     else if (sym === 'NEXT') { metalText(x, 'NEXT STAGE', cx, SCH / 2, 60, LBL_FONT, PAL.next, SCOLW - 40, true); }
     else if (sym === 'FREE' || sym === 'FREE2' || sym === 'FREE3') { metalText(x, 'FREE SPIN', cx, SCH / 2, 60, LBL_FONT, PAL.free, SCOLW - 40, true); }
     else if (sym === 'LOGO') { if (imgs.LOGO && imgs.LOGO.sharp) { const im = imgs.LOGO.sharp; const h = SCH - 12, w = h * (im.width / im.height); x.drawImage(im, cx - w / 2, 6, w, h); } }
-    else if (typeof sym === 'string' && sym.slice(0, 2) === 'TX') { const it = TEXTS && TEXTS[+sym.slice(2)], t = it ? it.t : '?'; metalText(x, t, cx, SCH / 2, t.length > 6 ? 58 : 70, LBL_FONT, it && it.lose ? PAL.silver : PAL.gold, SCOLW - 60); } // 文字の当たり: 当たりは金、ハズレは銀
+    else if (typeof sym === 'string' && sym.slice(0, 2) === 'TX') { // 文字の当たり（2026-10-31）: 英数字だけなら金額と同じ極太書体、かな漢字を含むなら全体を太いゴシック 1 書体で（英数字と漢字の太さをそろえる）
+      const it = TEXTS && TEXTS[+sym.slice(2)], t = it ? it.t : '?', jp = /[^\x20-\x7e]/.test(t), num = /^[\d,.]+$/.test(t), pal = it && it.lose ? TX_LOSE : TX_WIN;
+      plateText(x, t, cx, SCH / 2, num ? 58 : 52, jp ? JP_FONT : TX_FONT_EN, '900', pal, 440, 38); } // 文字の当たり: 当たりは金、ハズレは銀
     else if (sym === 'BAR') { metalText(x, '0', cx, SCH / 2, 86, NUM_FONT, PAL.silver, SCOLW - 40); }
     else { metalText(x, fmt(sym), cx, SCH / 2, 86, NUM_FONT, palOf(sym), SCOLW - 40); }
     return c;
@@ -220,33 +244,70 @@ const Reel = (function () {
     for (let i = 0; i < n; i++) { const dy = -smear + (2 * smear * i) / (n - 1); x.drawImage(sharp, 0, SPAD + dy, SCOLW, SCH); }
     return c;
   }
-  const mkS = (sym) => { const sharp = renderSharpS(sym); return { sharp, mid: renderBlurS(sharp, 12, 7), heavy: renderBlurS(sharp, SPAD, 9) }; };
+  function renderDimS(sharp) { // 停止時の上下のコマ用: 彩度を半分に落とし、2px ぼかした写し（filter が使えない WebView ではそのまま）
+    const c = document.createElement('canvas'); c.width = SCOLW * S; c.height = SCH * S; const x = c.getContext('2d');
+    try { x.filter = 'saturate(40%) blur(3px)'; } catch (e) { /* noop */ }
+    x.drawImage(sharp, 0, 0); return c;
+  }
+  const mkS = (sym) => { const sharp = renderSharpS(sym); return { sharp, mid: renderBlurS(sharp, 7, 5), heavy: renderBlurS(sharp, 14, 9), dim: renderDimS(sharp) }; };
   const simgOf = (sy) => { const k = (sy === 'READY' || sy === 'TO' || sy === 'SPIN') ? 'RTS' : sy; if (!simgs[k] && ctx) { try { simgs[k] = mkS(sy); } catch (e) { return null; } } return simgs[k]; };
+  /* 1 本モードの停止後の演出（2026-10-31）: 当たりは 0.15 秒後に 100→108→100%（0.35 秒）＋金の光（0.8 秒で弱まり、少し残す）。ハズレは 0.2 秒で銀白の文字がくっきり。
+     fxS = { t0, win } を drawColS が見る。回転が始まると消す（interrupt） */
+  let fxS = null, fxRaf = 0;
+  const isWinSym = (sy) => (typeof sy === 'string' && sy.slice(0, 2) === 'TX') ? !!(TEXTS && TEXTS[+sy.slice(2)] && !TEXTS[+sy.slice(2)].lose) : (sy === 'LOGO' || sy === 'FREE' || sy === 'FREE2' || sy === 'FREE3' || (typeof sy === 'number' && sy > 0));
+  function startFxS() {
+    const sy = symAt(reels[1], reels[1].pos);
+    if (sy === 'BLANK' || sy === 'READY' || sy === 'TO' || sy === 'SPIN' || sy === 'NEXT') { fxS = null; return; }
+    fxS = { t0: performance.now(), win: isWinSym(sy) };
+    cancelAnimationFrame(fxRaf);
+    const loop = () => { if (!fxS || live) return; const t = (performance.now() - fxS.t0) / 1000; try { drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); } catch (e) { /* noop */ } if (t < 1.1) fxRaf = requestAnimationFrame(loop); };
+    fxRaf = requestAnimationFrame(loop);
+  }
   function drawColS(p, speed) { // 1本モードの描画（中央の列 ri=1 の位置を使う）
     const rl = reels[1], xc = W / 2;
     const sp = Math.abs(speed);
     let aS = 0, aM = 0, aH = 0;
     if (sp < 2.5) aS = 1; else if (sp < 9) { aM = (sp - 2.5) / 6.5; aS = 1 - aM; } else if (sp < 20) { aH = (sp - 9) / 11; aM = 1 - aH; } else aH = 1;
     const base = Math.floor(p), vis = Math.ceil(H / SCH / 2) + 1;
+    const still = sp < 0.01, slow = sp < 2.5, ft = fxS ? (performance.now() - fxS.t0) / 1000 : -1; // still: 停止中、slow: ゆっくり（上下のコマは中央からの距離に応じて薄く）
     ctx.save();
     ctx.beginPath(); ctx.rect(xc - SCOLW / 2 - 2, 0, SCOLW + 4, H); ctx.clip();
-    for (let i = base - vis; i <= base + vis; i++) {
+    // 中央のコマの背景を少し明るく（主役が中央と分かるように）。当たりの直後は淡い金の光
+    ctx.globalAlpha = 1;
+    { const cg = ctx.createLinearGradient(xc - SCOLW / 2, 0, xc + SCOLW / 2, 0); cg.addColorStop(0, 'rgba(255,255,255,0)'); cg.addColorStop(0.5, 'rgba(255,255,255,.2)'); cg.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = cg; ctx.fillRect(xc - SCOLW / 2, H / 2 - SCH / 2, SCOLW, SCH); }
+    if (fxS && fxS.win && ft >= 0) { const a = ft < 0.8 ? 0.24 * (1 - ft / 0.8) + 0.05 : 0.05; const gg = ctx.createRadialGradient(xc, H / 2, 10, xc, H / 2, SCOLW * 0.44); gg.addColorStop(0, 'rgba(242,211,106,' + a + ')'); gg.addColorStop(1, 'rgba(242,211,106,0)'); ctx.fillStyle = gg; ctx.fillRect(xc - SCOLW / 2, H / 2 - SCH / 2 - 10, SCOLW, SCH + 20); }
+    const cSym = symAt(rl, Math.round(p)), rts = cSym === 'READY' || cSym === 'TO' || cSym === 'SPIN'; // 待機中（READY TO SPIN）は上下を出さない（どの経路で止まっても同じ見た目）
+    const order = []; for (let i = base - vis; i <= base + vis; i++) order.push(i); order.sort((a, b) => Math.abs(p - b) - Math.abs(p - a)); // 中央のコマを最後（最前面）に
+    order.forEach((i) => {
       const d = p - i, y = H / 2 + d * SCH;
-      if (y < -SCH || y > H + SCH) continue;
+      if (y < -SCH || y > H + SCH) return;
       const sy = symAt(rl, i);
-      if (sy === 'BLANK') continue;
+      if (sy === 'BLANK') return;
       const im = simgOf(sy);
-      if (!im) continue;
-      const k = 1 - 0.06 * Math.min(1, (d * d) / 4); // 中央から離れるほど少し小さく（ドラムの丸み）
-      const w = SCOLW * k;
-      if (aH > 0.01) { ctx.globalAlpha = aH * 0.92; const h = (SCH + SPAD * 2) * k; ctx.drawImage(im.heavy, xc - w / 2, y - h / 2, w, h); }
-      if (aM > 0.01) { ctx.globalAlpha = aM; const h = (SCH + SPAD * 2) * k; ctx.drawImage(im.mid, xc - w / 2, y - h / 2, w, h); }
-      if (aS > 0.01) { ctx.globalAlpha = aS; const h = SCH * k; ctx.drawImage(im.sharp, xc - w / 2, y - h / 2, w, h); }
-      // コマの境界線
-      ctx.globalAlpha = 0.3 * (1 - aH);
+      if (!im) return;
+      const dd = Math.min(1, d * d), center = Math.abs(d) < 0.5;
+      if (still && rts && !center) return;
+      const k = 1 - 0.13 * dd, dim = 1 - 0.42 * dd;
+      let w = SCOLW * k, hS = SCH * k, alpha = aS * dim;
+      if (slow && !center) { // ゆっくり・停止中の上下のコマ: 中央から離れるほど薄く（1 コマ離れで 28%）・ぼかし・彩度半分
+        ctx.globalAlpha = aS * (1 - 0.8 * Math.min(1, Math.abs(d))); ctx.drawImage(im.dim || im.sharp, xc - w / 2, y - hS / 2, w, hS);
+        if (aM > 0.01) { ctx.globalAlpha = aM * dim; const h = (SCH + SPAD * 2) * k; ctx.drawImage(im.mid, xc - w / 2, y - h / 2, w, h); }
+      } else {
+        if (aH > 0.01) { ctx.globalAlpha = aH * 0.92 * dim; const h = (SCH + SPAD * 2) * k; ctx.drawImage(im.heavy, xc - w / 2, y - h / 2, w, h); }
+        if (aM > 0.01) { ctx.globalAlpha = aM * dim; const h = (SCH + SPAD * 2) * k; ctx.drawImage(im.mid, xc - w / 2, y - h / 2, w, h); }
+        if (aS > 0.01) {
+          if (center && still && fxS && ft >= 0) {
+            if (fxS.win) { const u = (ft - 0.15) / 0.35, sc = u > 0 && u < 1 ? 1 + 0.05 * Math.sin(Math.PI * u) : 1; w *= sc; hS *= sc; ctx.save(); ctx.shadowColor = '#f2d36a'; ctx.shadowBlur = 12; ctx.globalAlpha = ft < 0.8 ? 0.24 : 0.14; ctx.drawImage(im.sharp, xc - w / 2, y - hS / 2, w, hS); ctx.restore(); }
+            else alpha = Math.min(1, 0.6 + 0.4 * (ft / 0.2));
+          }
+          ctx.globalAlpha = alpha; ctx.drawImage(im.sharp, xc - w / 2, y - hS / 2, w, hS);
+        }
+      }
+      // コマの境界線（金のまま・中央は常に鮮明）
+      ctx.globalAlpha = (center ? 0.5 : 0.3) * (1 - aH * (center ? 0 : 1));
       ctx.fillStyle = lineGrad(1, xc, SCOLW);
       ctx.fillRect(xc - SCOLW / 2 + 16, y + SCH / 2 - 1, SCOLW - 32, 2);
-    }
+    });
     ctx.restore();
     // 上下を暗く（窓の奥行き）、中央のコマの枠（針）
     ctx.globalAlpha = 1;
@@ -556,7 +617,7 @@ const Reel = (function () {
     Object.keys(ov).forEach((k) => { if (Math.abs(k - p0) > 2) delete ov[k]; });
     [T - 3, T - 2, T - 1, T, T + 1].forEach((i) => delete ov[i]);
     ov[T] = sym; // 止まる絵柄は必ず位置指定で置く（帯は見た目用）
-    if (single && !o.attract) { const alt = SSTRIP.filter((x) => x !== sym); if (alt.length) { const k = Math.floor(Math.random() * alt.length); ov[T - 1] = alt[k]; ov[T + 1] = alt[(k + 1) % alt.length]; } } // 1本モード: 上下のコマは止まる絵柄と別のものにする（同じ文字が並ばない）
+    if (single && !o.attract) { const alt = SSTRIP.filter((x, i, a) => x !== sym && a.indexOf(x) === i); if (alt.length) { const k = Math.floor(Math.random() * alt.length); ov[T - 1] = alt[k]; ov[T + 1] = alt.length > 1 ? alt[(k + 1 + Math.floor(Math.random() * (alt.length - 1))) % alt.length] : alt[k]; } } // 1本モード: 上下のコマは止まる絵柄と別のものにする（同じ文字が並ばない）
     if (o.attract) { ov[T - 1] = 'BLANK'; ov[T + 1] = 'BLANK'; } // READY / TO / SPIN の上下は空ける（待機表示と同じ）
     if (type === 'seq') { const pre = Math.max(1, Math.min(3, o.pre | 0)); for (let i = 0; i < pre; i++) put(T - pre + i, bait[i]); if (o.over) put(T + 1, bait[pre]); }
     else if (type === 'slip') put(T - 1, bait[0]);
@@ -572,6 +633,7 @@ const Reel = (function () {
      見せ回しの Promise は false で解決する（待っている側が止まったままにならないように） */
   let live = null, attractDone = null;
   function interrupt() {
+    fxS = null; cancelAnimationFrame(fxRaf); fxRaf = 0;
     cancelAnimationFrame(raf); raf = 0;
     if (live) { const t = ((live.holdAt || performance.now()) - live.t0) / 1000; reels.forEach((rl, i) => { rl.pos = live.profs[i].at(t); }); live = null; }
     if (attractDone) { const r = attractDone; attractDone = null; r(false); }
@@ -666,8 +728,9 @@ const Reel = (function () {
         lastT = t;
         if (t >= lastProf.total) {
           for (let i = 0; i < NR; i++) reels[i].pos = profs[i].T;
-          try { drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); } catch (e) { /* 次の描き直しで */ }
           if (live === me) live = null;
+          if (single && !(pat && pat.attract)) { try { startFxS(); } catch (e) { /* 演出なしで */ } } // 1 本モード: 停止後の光と拡大（2026-10-31）
+          try { drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); } catch (e) { /* 次の描き直しで */ }
           raf = 0;
           resolve();
           return;
@@ -694,7 +757,7 @@ const Reel = (function () {
       rl.ov = {};
       rl.pos = Math.round(rl.pos);
       if (combo) rl.ov[rl.pos] = combo[i];
-      else if (single) { if (i === 1) rl.ov[rl.pos] = 'READY'; } // 1本モード: 中央に READY TO SPIN（上下はそのまま帯が見える）
+      else if (single) { if (i === 1) { rl.ov[rl.pos] = 'READY'; rl.ov[rl.pos - 1] = 'BLANK'; rl.ov[rl.pos + 1] = 'BLANK'; } } // 1本モード: 中央に READY TO SPIN、上下は空ける（2026-10-31。前は帯の文字がそのまま見えていた）
       else { rl.ov[rl.pos] = words[i]; rl.ov[rl.pos - 1] = 'BLANK'; rl.ov[rl.pos + 1] = 'BLANK'; } // 待機中は READY / TO / SPIN
     });
     drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
