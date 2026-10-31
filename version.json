@@ -1,9 +1,9 @@
 {
- "v": "b174",
+ "v": "b175",
  "files": [
   {
    "path": "index.html",
-   "sha256": "fa0b0297db79e7e355d04cfa0f20abdf59d221accdcceb24af9940092fa63504"
+   "sha256": "038356b19c8fdf4d4bcb9d9c6553a3db3717282891a40336693e46efa788bb46"
   },
   {
    "path": "manifest.webmanifest",
@@ -59,7 +59,7 @@
   },
   {
    "path": "js/engine.js",
-   "sha256": "35259c58fdb84385d70ff2633ec61f93bdc1b8d01c2460df5bc621b767e28682"
+   "sha256": "fc211ddf3280dbc701f59e2c93da90a227b2cfcfe59b8c6615dc4c38284df500"
   },
   {
    "path": "js/fx.js",
@@ -67,11 +67,11 @@
   },
   {
    "path": "js/game.js",
-   "sha256": "bb6e9911a53d5ee9b8e486fab60168a5307c5d38876eb9996ae443822adf8ca6"
+   "sha256": "2422b06e4eddb60a3bd63597c2e735e5fd1b057ad49213b34584ec31c8916925"
   },
   {
    "path": "js/master.js",
-   "sha256": "f5f0a95a9a7e783e96010312ba97980823fcf4f5d07fca195d3151c12efa994c"
+   "sha256": "b7497989d3e51b1e476db5d07df15d94b58190a8d54d2bf57b5614bc4afba679"
   },
   {
    "path": "js/phoneswitch.js",
@@ -79,7 +79,7 @@
   },
   {
    "path": "js/reel.js",
-   "sha256": "9d9634b68b7796a0dafd47defe5aeec1569629e7b4853d1d8576d7e5f50d3030"
+   "sha256": "297975d1d751ca9d0c4310848ff709f9c9447c7d3aeb7c63f782356e31feb975"
   },
   {
    "path": "js/store.js",
