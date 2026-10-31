@@ -1921,5 +1921,26 @@ body.single .window::before { background: radial-gradient(ellipse at 50% 50%, rg
 body.single .pointer { display: none; }
 
 /* 文字の当たり（2026-10-31）: 配当履歴と LAST に文字をそのまま出す */
-.rc b.txt { font: 700 24px/1.1 var(--font-ui); letter-spacing: 0; text-align: right; }
-.lockbar .res b.txt { font: 700 34px/1 var(--font-ui); letter-spacing: 0; }
+/* 配当履歴の文字の行: 上に日付・時刻・店名を 1 行で、下に文字を行いっぱいの幅で（金額の行は今までどおり横並び） */
+.rc.tx { flex-direction: column; align-items: stretch; justify-content: center; gap: 3px; }
+.rc.tx small { flex-direction: row; align-items: baseline; gap: 8px; font-size: 19px; }
+.rc.tx small i { transform: translateY(3px); }
+.rc.tx b.txt { width: 100%; min-width: 0; margin-top: 7px; }
+.rc b.txt { font: 900 20px/1.1 var(--font-ui); letter-spacing: 0; text-align: right; overflow-wrap: anywhere; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .8)) drop-shadow(0 2px 3px rgba(0, 0, 0, .6)) drop-shadow(0 0 10px rgba(248, 215, 122, .3)); }
+/* 文字の当たり・ハズレの LAST（2026-10-31 b177）: 箱に収まるまで小さくし、1 行で 24px を切るなら 2 行に（js/game.js の fitLast）。WIN／MISS の小さな札で当たりかハズレかを示す */
+/* 文字のときの箱: 少し広く（中心は同じ）・LAST は小さく・結果の文字は太く。必ず 1 行（fitLast が 23px まで縮める） */
+.lockbar .res.txt { width: 316px; left: -16px; height: 104px; top: -7px; padding: 0 18px; gap: 3px; }
+.lockbar .res.txt small { font-size: 14px; letter-spacing: .4em; padding-left: .4em; }
+.lockbar .res.txt b.txt { margin-top: 3px; }
+.lockbar .res b.txt { font: 900 33px/1.05 var(--font-ui); letter-spacing: 0; white-space: nowrap; display: block; max-width: 100%; overflow: hidden; text-align: center; padding: 0 2px; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .9)) drop-shadow(0 0 1px rgba(0, 0, 0, .7)) drop-shadow(0 3px 4px rgba(0, 0, 0, .7)); }
+.lockbar .res b.txt.amt { background: linear-gradient(180deg, #fff6d2 0%, #f1d17a 42%, #c99a3a 52%, #f5dc8e 70%, #fff1c2 100%); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .9)) drop-shadow(0 0 1px rgba(0, 0, 0, .7)) drop-shadow(0 3px 4px rgba(0, 0, 0, .7)) drop-shadow(0 0 12px rgba(248, 215, 122, .35)); }
+.lockbar .res b.txt.zero, .lockbar .sand .last b.txt.zero, .plate.result.txt .plate-main { background: linear-gradient(180deg, #ffffff 0%, #e2e5e9 45%, #b9bec6 55%, #f2f4f6 100%); -webkit-background-clip: text; background-clip: text; }
+.lockbar .res b.txt.pop, .lockbar .sand .last b.txt.pop { animation: txtpop .35s ease-out .15s both; }
+@keyframes txtpop { 0% { transform: scale(1); } 45% { transform: scale(1.08); } 100% { transform: scale(1); } }
+.lockbar .res small .tg, .lockbar .sand .last small .tg { display: inline-block; min-width: 38px; box-sizing: border-box; text-align: center; margin-left: 8px; padding: 4px 7px 3px 9px; border-radius: 6px; font: 700 11px/1 var(--font-label); letter-spacing: .2em; vertical-align: 1px; }
+.lockbar .res small .tg.win, .lockbar .sand .last small .tg.win { background: rgba(233, 194, 94, .16); color: #f3d77a; box-shadow: inset 0 0 0 1px rgba(233, 194, 94, .55); }
+.lockbar .res small .tg.miss, .lockbar .sand .last small .tg.miss { background: rgba(255, 255, 255, .05); color: #9f978a; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
+.lockbar .sand .last { max-width: 300px; }
+.lockbar .sand .last b.txt { font: 900 30px/1.05 var(--font-ui); letter-spacing: 0; white-space: nowrap; display: block; max-width: 100%; overflow: hidden; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .9)) drop-shadow(0 3px 4px rgba(0, 0, 0, .7)); }
+.lockbar .sand .last b.txt.amt { filter: drop-shadow(0 0 1px rgba(0, 0, 0, .9)) drop-shadow(0 3px 4px rgba(0, 0, 0, .7)) drop-shadow(0 0 12px rgba(248, 215, 122, .35)); }
+.plate.result.txt .plate-main { font: 900 46px/1 var(--font-ui); letter-spacing: .02em; padding: 0; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .9)) drop-shadow(0 3px 4px rgba(0, 0, 0, .7)); }
