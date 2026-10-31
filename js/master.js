@@ -125,7 +125,7 @@
   }
   function storeWarn(s) {
     const p = presets.find((x) => x.id === s.activePresetId);
-    return p && !Engine.validateProbs(p.probs).ok ? '<div class="swarn">⚠ この当たりの設定に誤りがあり、お店では前の設定のまま動いています</div>' : '';
+    return p && !Engine.validateProbs(p.probs, !!p.single).ok ? '<div class="swarn">⚠ この当たりの設定に誤りがあり、お店では前の設定のまま動いています</div>' : '';
   }
   /* 店舗の状態（2026-10-19）: 端末は 10 分ごとに lastSeen・deviceVersion を書く（game.js の生存報告）。today.js・bill.js と同じく 25 分以内なら「動いています」
      2026-10-19 その 2: 言葉を店長向けに（版・最終連絡・端末 → 最新／古いまま・何分前・お店の画面）。版の番号は画面に出さず、押さえておく所（title）にだけ残す */
@@ -323,14 +323,14 @@
   function viewPresets() {
     const used = (id) => stores.filter((s) => s.activePresetId === id).map((s) => s.name); // いま使っている店舗（見るだけ）
     return '<div class="panel"><h3>当たりの設定<small>お店ごとに選ぶ、当たりの金額と確率のセット</small></h3>' +
-      (presets.length ? '<div class="slist">' + presets.map((p) => { const st = Engine.probStats(p.probs), u = used(p.id); return '<div class="scard"><div class="sinfo"><div class="sname"><span><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '</span>' + (p.test ? '<span class="badge warn">テスト用（集計しない）</span>' : '') + (Engine.validateProbs(p.probs).ok ? '' : '<span class="badge ng">⚠ 設定に誤り</span>') + '</div>' +
+      (presets.length ? '<div class="slist">' + presets.map((p) => { const st = Engine.probStats(p.probs), u = used(p.id); return '<div class="scard"><div class="sinfo"><div class="sname"><span><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '</span>' + (p.test ? '<span class="badge warn">テスト用（集計しない）</span>' : '') + (p.single ? '<span class="badge">リール 1 本</span>' : '') + (Engine.validateProbs(p.probs, !!p.single).ok ? '' : '<span class="badge ng">⚠ 設定に誤り</span>') + '</div>' +
         '<div class="smeta"><span>当たる確率 <b>' + pct(st.win) + '</b></span><span title="1プレイあたりの平均（ハズレも含む）">平均当たり額 <b>' + fmtN(Math.round(st.ev)) + '</b></span>' + (u.length ? '<span>使っているお店: <b>' + esc(u.join('・')) + '</b></span>' : '<span>使っているお店: なし</span>') + '</div>' +
         '<div class="smeta sm">' + [p.limits && p.limits.on ? '1日 ' + (p.limits.total || '—') + '本まで' : '', earlyOf(p.limits).on ? 'その日の最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : ''].filter(Boolean).map((x) => '<span>' + x + '</span>').join('') + '</div>' +
-        (Engine.validateProbs(p.probs).ok ? '' : '<div class="swarn">⚠ 設定に誤りがあり、お店では使えません。「金額・確率を直す」から直してください</div>') + '</div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">金額・確率を直す</button></div>'; }).join('') + '</div>' : '<div class="empty">まだ当たりの設定がありません</div>') +
+        (Engine.validateProbs(p.probs, !!p.single).ok ? '' : '<div class="swarn">⚠ 設定に誤りがあり、お店では使えません。「金額・確率を直す」から直してください</div>') + '</div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">金額・確率を直す</button></div>'; }).join('') + '</div>' : '<div class="empty">まだ当たりの設定がありません</div>') +
       '<div class="acts start"><button class="btn ghost" data-act="preset-new">＋ 当たりの設定を新しく作る</button></div></div>';
   }
   function probSummary(p) {
-    const v = Engine.validateProbs(p.probs), st = Engine.probStats(p.probs);
+    const v = Engine.validateProbs(p.probs, !!p.single), st = Engine.probStats(p.single ? Engine.singleProbs(p.probs) : p.probs);
     return '<div class="summary"><div class="stat"><small>当たる確率</small><b>' + pct(st.win) + '</b></div><div class="stat"><small>STAGE 2 に進む</small><b>' + pct(st.reach[2]) + '</b></div><div class="stat"><small>STAGE 3 に進む</small><b>' + pct(st.reach[3]) + '</b></div>' +
       '<div class="stat"><small title="1プレイあたりの平均（ハズレも含む）">平均当たり額</small><b>' + fmtN(Math.round(st.ev)) + '</b></div></div>' +
       (v.ok ? '' : '<div class="err">' + v.errors.map(esc).join('<br>') + '</div>');
@@ -340,7 +340,7 @@
     const s = r2(Engine.probStats(p.probs).sums[stage]);
     return '<span class="sum ' + (s === 100 ? 'ok' : 'ng') + '" data-sum="' + stage + '">合計 ' + s + '%' + (s === 100 ? ' ✓' : s < 100 ? '（あと ' + r2(100 - s) + '%）' : '（' + r2(s - 100) + '% 多い）') + '</span>';
   }
-  const saveMsg = (p) => { const v = Engine.validateProbs(p.probs); const btn = main.querySelector('[data-act="preset-save"]'); if (btn) btn.disabled = !v.ok; return v.ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">' + esc(v.errors[0]) + (/種類まで/.test(v.errors[0]) ? '（× で行を消してください）' : '') + '</span>'; };
+  const saveMsg = (p) => { const v = Engine.validateProbs(p.probs, !!p.single); const btn = main.querySelector('[data-act="preset-save"]'); if (btn) btn.disabled = !v.ok; return v.ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">' + esc(v.errors[0]) + (/種類まで/.test(v.errors[0]) ? '（× で行を消してください）' : '') + '</span>'; };
   /* 配当表の1行。金額の行は、金額そのものを書き換えられて × で消せる。0（ハズレ）と NEXT STAGE は固定 */
   function probRow(p, d, k) {
     const attr = 'data-p="' + d.stage + ':' + k + '"', fixed = k === '0' || k === 'NEXT';
@@ -351,7 +351,7 @@
   }
   function probStage(p, d) {
     const n = d.values.length - 1, full = n >= Engine.MAX_AMOUNTS;
-    return '<div class="stage"><h4><span>STAGE ' + d.stage + '</span>' + sumBadge(p, d.stage) + '</h4>' + PKEYS(d).map((k) => probRow(p, d, k)).join('') +
+    return '<div class="stage"><h4><span>' + (p.single ? '金額と確率' : 'STAGE ' + d.stage) + '</span>' + sumBadge(p, d.stage) + '</h4>' + PKEYS(d).filter((k) => !(p.single && k === 'NEXT')).map((k) => probRow(p, d, k)).join('') +
       '<div class="addrow"><button class="btn sm ghost" data-act="amt-add" data-s="' + d.stage + '"' + (full ? ' disabled' : '') + '>＋ 金額を追加</button><small>' + (full ? '金額は ' + Engine.MAX_AMOUNTS + ' 種類までです' : '金額 ' + n + ' 種類（最大 ' + Engine.MAX_AMOUNTS + '）') + '</small></div></div>';
   }
   function viewPresetEdit() {
@@ -367,10 +367,11 @@
       '<div class="row"><div class="lbl">名前の色<small>お店の画面の左上に、この色で出ます</small></div><div class="swatches">' +
       PRESET_COLORS.map((c) => '<button class="sw' + ((p.color || PRESET_COLORS[0][0]) === c[0] ? ' on' : '') + '" data-act="pcolor" data-c="' + c[0] + '" style="--c:' + c[0] + '" aria-label="' + c[1] + '" title="' + c[1] + '"></button>').join('') + '</div></div>' +
       '<div class="row"><div class="lbl">テスト用<small>ON の間は集計に数えません（画面に「TEST」）</small></div>' + tgl(p.test, 'test-on') + '</div>' +
+      '<div class="row"><div class="lbl">リール 1 本<small>ON にすると、大きな縦のリール 1 本で回り、止まった絵柄がそのまま結果です（ステージなし・1 回で結果。FREE SPIN や扉などの演出は出ません）</small></div>' + tgl(p.single, 'single-on') + '</div>' +
       more('h-ptest', '名前の色: 店舗の端末の左上に、このプリセットの名前がこの色で出ます（いま何のプリセットで回っているかが分かります）。<br>テスト用プリセット: ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます。') + '</div>' +
       '<div class="panel"><h3>当たりの金額と確率</h3><p class="hint">各 STAGE の合計を <b style="color:var(--text)">100%</b> に（ずれると保存できません）。数字を押すと直接入力。</p>' +
       more('h-probs', '<b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。<b style="color:var(--text)">数字を押すと、直接入力もできます</b>（小数も可。ほかの欄の数字も同じです）。各ステージの合計をちょうど 100% にしてください。下の「平均当たり額」は、1プレイあたりの平均の当たり額です（ハズレも含めて平均。予算の目安）。<br>金額を増やしたり消したりしたプリセットは、店舗の端末が b52 以上になってから反映されます（端末は 1 時間以内に自動でアップデートします。店舗一覧で端末の版を確認できます）。') +
-      '<div class="cols pcols">' + Engine.tableOf(p.probs).map((d) => probStage(p, d)).join('') + '</div>' +
+      '<div class="cols pcols">' + (p.single ? [Engine.tableOf(p.probs)[0]].map((d) => probStage(p, d)) : Engine.tableOf(p.probs).map((d) => probStage(p, d))).join('') + '</div>' +
       '<div id="psum">' + probSummary(p) + '</div></div>' +
       fold('p-free', fhead('FREE SPIN', 'free'),
         '<p class="hint">そろうと自動で回る回数が増えます。この回は<b style="color:var(--text)">必ずハズレ</b>（予算は変わりません）。</p>' +
@@ -398,16 +399,16 @@
         stepRow('最初の何回まで（X）', E.plays, 'data-e="plays"', '回', '1〜999 回') +
         stepRow('いくら以上を出さないか（Y）', fmtN(E.min), 'data-e="min"', '以上', '例: 2,000 にすると、2,000・3,000・5,000・10,000… が出ません'), { cls: 'panel' }); })() +
       (p.id ? fold('p-rare', '<h3>めったに使わない操作</h3><span class="fsum">この当たりの設定の削除</span>', '<div class="rare"><div><b>この当たりの設定を削除</b><small>お店の画面からも消えます</small></div><button class="btn danger" data-act="preset-del">削除する</button></div>', { cls: 'panel' }) : '') +
-      '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save"' + (Engine.validateProbs(p.probs).ok ? '' : ' disabled') + '>保存</button></div>';
+      '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save"' + (Engine.validateProbs(p.probs, !!p.single).ok ? '' : ' disabled') + '>保存</button></div>';
   }
   async function savePreset() {
     const p = editPreset, name = $('pname').value.trim(), err = $('perr');
     err.textContent = '';
     if (!name) { err.textContent = '名前を入力してください。'; return; }
-    const v = Engine.validateProbs(p.probs);
+    const v = Engine.validateProbs(p.probs, !!p.single);
     if (!v.ok) { err.textContent = v.errors.join(' / '); return; }
     if (staleMsg()) { err.textContent = staleMsg(); return; }
-    await Cloud.savePreset(p.id || null, { name, probs: p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] });
+    await Cloud.savePreset(p.id || null, { name, single: !!p.single, probs: p.single ? Engine.singleProbs(p.probs) : p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] });
     toast('「' + name + '」を保存しました。使っているお店にすぐ反映されます');
     editPreset = null; await reload(); render();
   }
@@ -672,7 +673,7 @@
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。端末はログアウトされます。過去の集計の記録はクラウドに残ります（画面からは見えなくなります）。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
         case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], logoRate: 0, noRetrigger: true, test: false, color: PRESET_COLORS[0][0] }; return render();
-        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] })); return render(); }
+        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, single: !!p.single, color: p.color || PRESET_COLORS[0][0] })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
         case 'preset-save': if (b.disabled) return; b.disabled = true; try { return await savePreset(); } finally { b.disabled = false; }
         case 'preset-del': {
@@ -683,6 +684,7 @@
           if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
         }
         case 'test-on': editPreset.test = !editPreset.test; return render();
+        case 'single-on': editPreset.single = !editPreset.single; if (editPreset.single && editPreset.probs && editPreset.probs[1]) { const row = editPreset.probs[1], nx = Number(row.NEXT) || 0; if (nx > 0) { row[0] = (Number(row[0]) || 0) + nx; row.NEXT = 0; } } return render(); // 1 本: NEXT の分はハズレへ
         case 'pcolor': { const top = window.scrollY; editPreset.color = b.dataset.c; editPreset.name = $('pname').value; render(); window.scrollTo(0, top); return; }
         case 'retrig-on': { const top = window.scrollY; editPreset.noRetrigger = !noRetrig(editPreset); render(); window.scrollTo(0, top); return; }
         case 'lim-on': editPreset.limits.on = !editPreset.limits.on; return render();
