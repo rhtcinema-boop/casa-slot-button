@@ -79,6 +79,10 @@
   /* 期間限定の当たりの設定（2026-10-24）: 店舗の presetTimed = { presetId, from, to, setAt }。from〜to の間だけ、お店の画面はこの設定で動き、
      終わると「いま使う当たりの設定」（activePresetId）に自動で戻る（activePresetId は書き換えない）。js/game.js の effPid と同じ判定 */
   const timedOf = (s) => { const t = s && s.presetTimed; return t && t.presetId && Number(t.from) > 0 && Number(t.to) > Number(t.from) ? t : null; };
+  /* テレビを casa SLOT のままにする（2026-10-31 b176）: 店舗の slotHold = { until, setAt }。期限中はその店のテレビ（js/tvswitch.js）が競馬（casa DERBY）へ移らない */
+  const holdOf = (s) => { const h = s && s.slotHold; return h && Number(h.until) > Date.now() ? h : null; };
+  const next6 = () => { const d = new Date(); d.setHours(6, 0, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); return d.getTime(); }; // 次の朝 6 時
+  function holdNote(s) { const h = holdOf(s); return h ? '<div class="swarn" style="border-color:rgba(120,170,255,.6);color:#cfe3ff;background:rgba(120,170,255,.08)">📺 ' + fmtDate(h.until) + ' まで casa SLOT のまま（競馬の時刻になっても切り替わりません）</div>' : ''; }
   function timedNote(s) {
     const t = timedOf(s), n = Date.now();
     if (!t || n >= t.to) return '';
@@ -180,7 +184,7 @@
     const nOk = stores.filter((s) => aliveOf(s) === 'ok').length, nWarn = stores.filter((s) => aliveOf(s) === 'warn').length, nNone = stores.length - nOk - nWarn;
     return '<div class="panel" id="storesPanel"><div class="phead"><h3>お店のようす</h3><span class="fsum">全 ' + stores.length + ' 店' + (stores.length ? '：動いている ' + nOk + (nWarn ? '・つながっていない ' + nWarn : '') + (nNone ? '・未使用 ' + nNone : '') : '') + '</span></div>' +
       (stores.length ? '<div class="slist">' + stores.map((s) => '<div class="scard"><div class="sinfo"><div class="sname"><span>' + esc(s.name) + '</span>' + verBadge(s.deviceVersion) + '</div>' +
-        '<div class="smeta">' + aliveBadge(s) + '</div><div data-warn="' + esc(s.id) + '">' + storeWarn(s) + timedNote(s) + pubNote(s) + '</div></div>' +
+        '<div class="smeta">' + aliveBadge(s) + '</div><div data-warn="' + esc(s.id) + '">' + storeWarn(s) + timedNote(s) + holdNote(s) + pubNote(s) + '</div></div>' +
         '<div class="sctl">' + presetSelect(s) + '<button class="btn sm ghost sedit" data-act="store-edit" data-id="' + esc(s.id) + '">お店の設定</button></div></div>').join('') + '</div>' : '<div class="empty">まだお店がありません</div>') +
       '<div class="updbox" id="updBox"><div class="oldnote" id="oldNote"></div><button class="btn" data-act="update-all"' + (stores.length ? '' : ' disabled') + '>全 ' + stores.length + ' 店の画面を最新にする</button></div>' +
       '<div class="acts start"><button class="btn ghost" data-act="store-new">＋ お店を追加</button><button class="btn ghost" data-act="stores-reload">読み直す</button></div>' +
@@ -221,6 +225,13 @@
           '<div class="cols"><label class="f"><span>始まり</span><input type="datetime-local" id="stfrom" value="' + (live ? dtl(t.from) : '') + '"></label>' +
           '<label class="f"><span>終わり</span><input type="datetime-local" id="stto" value="' + (live ? dtl(t.to) : '') + '"></label></div>' +
           '<p class="hint">' + (live ? (n >= t.from ? 'いま期間中です。' : 'まだ始まっていません。') + '「（使わない）」にして保存すると、すぐ取り消せます。' : '終わった期間は自動で消えます。始まりを今より前にすると、保存してすぐ切り替わります（ゲームの途中なら、終わってから）。') + '</p></div>';
+      })() +
+      (function () { // テレビを casa SLOT のままにする（2026-10-31）
+        const h = holdOf(s), n6 = next6(), is6 = !!h && Math.abs(h.until - n6) < 60000;
+        return '<div class="sub"><h4>テレビを casa SLOT のままにする<small>決めた時刻まで、競馬（casa DERBY）のレースの時刻になっても、このお店のテレビは casa SLOT のまま。終わると今までどおり（店の設定と時刻表）に戻ります</small></h4>' +
+          '<label class="f"><span>いつまで</span><select id="shold"><option value="">（しない）</option><option value="6"' + (is6 ? ' selected' : '') + '>次の朝 6 時まで（' + fmtDate(n6) + '）</option><option value="dt"' + (h && !is6 ? ' selected' : '') + '>日時を決める</option></select></label>' +
+          '<label class="f" id="sholdRow"' + (h && !is6 ? '' : ' hidden') + '><span>この日時まで</span><input type="datetime-local" id="sholdto" value="' + (h && !is6 ? dtl(h.until) : '') + '"></label>' +
+          '<p class="hint">' + (h ? 'いま ' + fmtDate(h.until) + ' まで casa SLOT のままです。「（しない）」にして保存すると、すぐ解除されます。' : '保存するとすぐ効きます。') + 'テレビがいま競馬の画面なら、保存のときに casa SLOT に戻します（この画面で casa DERBY にログインしているとき。していないときは「テレビに映すゲーム」で casa SLOT にしてください。レースの途中なら終わってから戻ります）。</p></div>';
       })() +
       fold('st-play', '<h4>遊び方と飾り</h4><span class="fsum" id="playSum">' + playSum(s.billMode, s.doors, s.halloween) + '</span>',
         chk('sbill', s.billMode, 'スマホの紙幣でゲームを始める（紙幣モード）', 'ON にすると、この店舗の画面から NEXT GAME ボタンが消え、スタッフのスマホの紙幣ページ（公開 URL の bill.html）で紙幣をスライドしたときだけゲームが始まります。スマホが使えないときは、テレビはリモコンの決定を 2 秒長押し、iPad は左上のロゴを 2 秒長押しで始められます。', 'h-bill') +
@@ -273,11 +284,19 @@
         if (to <= Date.now()) { err.textContent = '期間限定の「終わり」がもう過ぎています。'; return; }
         presetTimed = { presetId: tp, from, to, setAt: Date.now() };
       } }
-    const data = { name, presetIds, activePresetId: active || null, presetTimed, presetPub, notes, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
+    let slotHold = null; // テレビを casa SLOT のままにする（2026-10-31）
+    { const k = $('shold') ? $('shold').value : '';
+      if (k === '6') slotHold = { until: next6(), setAt: Date.now() };
+      else if (k === 'dt') { const to = Date.parse(($('sholdto') || {}).value || ''); if (!Number.isFinite(to)) { err.textContent = '「テレビを casa SLOT のままにする」の日時を入れてください。'; return; } if (to <= Date.now()) { err.textContent = '「テレビを casa SLOT のままにする」の日時がもう過ぎています。'; return; } slotHold = { until: to, setAt: Date.now() }; } }
+    const data = { name, presetIds, activePresetId: active || null, presetTimed, presetPub, notes, slotHold, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
     if (pin) data.pin = Engine.makePin(pin);
     try { await Cloud.saveStore(s.id || null, data); }
     catch (e) { err.textContent = '保存できませんでした。通信を確認して、もう一度押してください。'; throw e; }
-    toast((name || 'お店') + ' を保存しました');
+    let holdMsg = '';
+    if (slotHold && s.id && window.DerbySwitchMaster && DerbySwitchMaster.setGame) { // いま競馬の画面のテレビを casa SLOT に戻す（casa DERBY にログインしているときだけ）
+      try { const r = await DerbySwitchMaster.setGame(name, 'slot'); holdMsg = r === 'done' ? '（テレビを casa SLOT に戻しました）' : r === 'same' ? '' : r === 'nologin' ? '（競馬の画面のテレビは「テレビに映すゲーム」で casa SLOT にしてください）' : ''; }
+      catch (e) { holdMsg = '（競馬の画面のテレビを戻せませんでした: ' + (e && e.message || '') + '）'; } }
+    toast((name || 'お店') + ' を保存しました' + holdMsg);
     editStore = null; await reload(); render();
   }
 
@@ -555,13 +574,14 @@
     try { await Cloud.saveStore(s.id, { presetIds, activePresetId: active }); s.presetIds = presetIds; s.activePresetId = active; toast(s.name + ' の当たりの設定を「' + presetName(active) + '」にしました'); }
     catch (err) { back('保存できませんでした。通信を確認して、もう一度選んでください'); }
     sel.disabled = false; if (btn) { btn.hidden = true; btn.disabled = false; if (btn.nextElementSibling) btn.nextElementSibling.hidden = true; }
-    const w = main.querySelector('[data-warn="' + s.id + '"]'); if (w) w.innerHTML = storeWarn(s) + timedNote(s) + pubNote(s);
+    const w = main.querySelector('[data-warn="' + s.id + '"]'); if (w) w.innerHTML = storeWarn(s) + timedNote(s) + holdNote(s) + pubNote(s);
   }
   main.addEventListener('change', (e) => {
     if (editPreset && editPreset.texts && e.target.dataset && e.target.dataset.tl !== undefined && editPreset.texts[+e.target.dataset.tl]) { editPreset.texts[+e.target.dataset.tl].lose = e.target.checked; return updateTextSum(); } // 文字の当たり: ハズレのチェック
     if (editPreset && editPreset.texts && e.target.dataset && e.target.dataset.te !== undefined && editPreset.texts[+e.target.dataset.te]) { editPreset.texts[+e.target.dataset.te].early = e.target.checked; return updatePresetSums(); } // 最初は出さない文字
     if (e.target.dataset && e.target.dataset.qid) return quickPick(e.target);
     if (e.target.id === 'stsel') return loadStats(e.target.value);
+    if (e.target.id === 'shold' && $('sholdRow')) { $('sholdRow').hidden = e.target.value !== 'dt'; return; } // テレビを casa SLOT のままにする: 日時の欄
     if (e.target.dataset && e.target.dataset.pk) { const id = e.target.dataset.pk, k = e.target.value, q = (a) => document.querySelector('[' + a + '="' + id + '"]'); q('data-px').hidden = !k; q('data-pd').hidden = k !== 'date'; q('data-pw').hidden = k !== 'weekly'; return; } // 公開期間の種類（2026-10-24）
     if (/^(sbill|sdoor|shw)$/.test(e.target.id) && $('playSum')) { $('playSum').innerHTML = playSum($('sbill').checked, $('sdoor').checked, $('shw').checked); return; } // 畳んだ見出しの ON/OFF（保存はまだ）
     // 集計の期間（開始・終了）を変えた
