@@ -135,5 +135,13 @@
     paint();
     if (!doc && !loading) loading = readDoc().then(() => { loading = null; paint(); });
   }
-  window.DerbySwitchMaster = { mount, state: () => ({ loggedIn: !!sess, doc, docErr, busy, msg }) };
+  /* 店舗の編集の保存から（2026-10-31 b176 「テレビを casa SLOT のままにする」）: 店舗名から casa DERBY の店舗を探し、ログインしているときだけ書く。
+     返り値: 'done'（書いた）・'same'（もう slot）・'nologin'（ログインしていない）・'nostore'（対応する店舗なし） */
+  async function setGameByName(storeName, game) {
+    const id = derbyIdOf(storeName); if (!id) return 'nostore';
+    if (!sess) return 'nologin';
+    await readDoc(); const cur = doc; if (cur && (cur[id] || 'slot') === (game === 'derby' ? 'derby' : 'slot')) return 'same';
+    await setGame(id, game); if (doc) doc[id] = game === 'derby' ? 'derby' : 'slot'; return 'done';
+  }
+  window.DerbySwitchMaster = { mount, setGame: setGameByName, state: () => ({ loggedIn: !!sess, doc, docErr, busy, msg }) };
 })();
