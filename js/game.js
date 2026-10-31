@@ -1299,9 +1299,9 @@ const Game = (function () {
     const lockFree = (!!play.free && (!!play.dud || Store.state.noRetrigger !== false)) || (storeMode() && !netOk) || doorPlay; // 当たりなしの FREE SPIN（dud）の回と、オフラインの間は、FREE SPIN もロゴも出さない（b75）
     const lastSpin = sym !== 'NEXT'; // b121（オーナー指摘「フリースピンが当たった回数以上に回る」）: FREE SPIN・ロゴはそのゲームの最後の 1 回にだけ出す。
     // NEXT STAGE の途中で出ると、そろったゲームの続きが上のステージへ進む分だけ回る回数が増えて見えていた
-    const sgl = isSingle(); // 1 本モード（2026-10-31）: FREE SPIN・ロゴ・扉・WARP・逆回転・プチュン・回り直しは出さない
-    const logoHit = !sgl && lastSpin && !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
-    const freeN = !sgl && lastSpin && !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
+    const sgl = isSingle(); // 1 本モード（2026-10-31）: 扉・WARP・逆回転・プチュン・回り直しは出さない（FREE SPIN・ロゴは 1 本の絵柄として出す）
+    const logoHit = lastSpin && !oneMore && !noSp && !lockFree && rollLogo();           // casa ロゴ3本 → 10 FREE SPIN（当たりなしの回）
+    const freeN = lastSpin && !oneMore && !noSp && !logoHit && !lockFree ? rollFree() : 0; // FREE SPIN ×N 3本 → N 回の FREE SPIN（当たりなし）
     // 逆回転: 金額が当たるプレイの、結果が出るスピンでだけ。ほかの演出とは重ねない
     const rev = !sgl && !doorPlay && !oneMore && !freeN && !logoHit && sym !== 'NEXT' && play.value > 0 && rollReverse();
     const pat = sgl ? pickPatternSingle(sym) : doorPlay || oneMore || freeN || logoHit || noSp ? { type: 'plain' } : rev ? { type: 'plain', reverse: true } : pickPattern(st, sym, play.free ? 1 : st); // 回り直しのときは引かない（未使用のパターン id を記録しないため）
@@ -1340,7 +1340,7 @@ const Game = (function () {
       await spinReel(st, sym, { type: Math.random() < 0.5 ? 'slip' : 'plain' }, extra); // 回り直しも通常と同じ速さ・間隔
     } else if (logoHit) {
       // casa ロゴが3本そろう → 10 FREE SPIN（当たりなしの回）を獲得。CREDIT が増える。このゲームは続けて回り、結果を出す
-      await spinReel(st, 'LOGO', { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
+      if (sgl) await spinSingle(st, sym, { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra, 'LOGO'); else await spinReel(st, 'LOGO', { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
       win.classList.add('win');
       Sfx.play('revive');
       Sfx.play('kyuin');
@@ -1361,7 +1361,7 @@ const Game = (function () {
     } else if (freeN) {
       // FREE SPIN ×N が3本そろう → CREDIT が N 増える。このゲームは続けて回って結果を出し、そのあと N 回、自動で回る。
       // その N 回は演出で、抽選しない。必ず 0 で止まる（当たりは出ない。出る金額の合計は変わらない）
-      await spinReel(st, FREE_SYM[freeN], { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
+      if (sgl) await spinSingle(st, sym, { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra, FREE_SYM[freeN]); else await spinReel(st, FREE_SYM[freeN], { type: Math.random() < 0.6 ? 'slip' : 'plain' }, extra);
       win.classList.add('win');
       Sfx.play('revive');
       flash(false);
@@ -1575,10 +1575,10 @@ const Game = (function () {
     if (r < 0.45) return { type: 'plain' };
     return { type: r < 0.8 ? 'slip' : 'slip2' };
   }
-  function spinSingle(st, sym, pat, extra) {
+  function spinSingle(st, sym, pat, extra, forceSym) { // forceSym: FREE SPIN・ロゴで止める
     extra = extra || {};
     const pl = Store.state.play, ti = textsOn() ? (pl && pl.ti >= 0 ? pl.ti : textIndexOf(sym)) : -1; // 文字の当たり: 抽選のときに決めた文字
-    const show = ti >= 0 ? 'TX' + ti : sym === 0 ? 'BAR' : sym; // 止まる絵柄
+    const show = forceSym || (ti >= 0 ? 'TX' + ti : sym === 0 ? 'BAR' : sym); // 止まる絵柄
     const combo = ['BLANK', show, 'BLANK'];
     const vals = (Engine.tableOf(Store.state.probs)[0] || { values: [] }).values.filter((v) => v > 0);
     const alts = (ti >= 0 ? Store.state.texts.map((_, i) => 'TX' + i) : ['BAR'].concat(vals)).filter((x) => x !== show);
@@ -2213,8 +2213,9 @@ const Game = (function () {
     if (busy || (Store.state.play && Store.state.play.phase !== 'shown')) { pendingPreset = p; return; }
     pendingPreset = null;
     const single = !!p.single; // 1 本モード（2026-10-31）: STAGE 1 の表だけ使う
-    const texts = single && p.textMode && Array.isArray(p.texts) && p.texts.length ? p.texts.map((x) => ({ t: String((x && x.t) || '').trim(), p: Number(x && x.p) || 0, lose: !!(x && x.lose) })) : null; // 文字の当たり（2026-10-31）
+    const texts = single && p.textMode && Array.isArray(p.texts) && p.texts.length ? p.texts.map((x) => ({ t: String((x && x.t) || '').trim(), p: Number(x && x.p) || 0, lose: !!(x && x.lose), max: Number(x && x.max) || 0, early: !!(x && x.early) })) : null; // 文字の当たり（2026-10-31）。max/early は文字ごとの上限・最初は出さない
     const probs = texts ? Engine.textProbs(texts) : single && p.probs ? Engine.singleProbs(p.probs) : p.probs;
+    const lim = texts ? Engine.textLimits(texts, p.limits) : p.limits; // 文字の当たりの上限
     const v = texts ? Engine.validateTexts(texts) : probs ? Engine.validateProbs(p.probs, single) : { ok: false, errors: ['確率表がありません。'] };
     if (!v.ok) {
       presetWarn = { id: p.id, name: String(p.name || ''), errors: v.errors.slice() };
@@ -2224,7 +2225,7 @@ const Game = (function () {
       return;
     }
     presetWarn = null; presetWarnSig = '';
-    const same = JSON.stringify(Store.state.probs) === JSON.stringify(probs) && !!Store.state.single === single && JSON.stringify(Store.state.texts || null) === JSON.stringify(texts) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}));
+    const same = JSON.stringify(Store.state.probs) === JSON.stringify(probs) && !!Store.state.single === single && JSON.stringify(Store.state.texts || null) === JSON.stringify(texts) && JSON.stringify(Store.state.limits) === JSON.stringify(Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, lim || {}));
     const num = (v, d) => (typeof v === 'number' ? v : d);
     const fr = [num(p.freeRate, FREE_DEFAULTS[0]), num(p.freeRate2, FREE_DEFAULTS[1]), num(p.freeRate3, FREE_DEFAULTS[2])], test = !!p.test, lg = num(p.logoRate, 0), noRe = p.noRetrigger !== false;
     const st0 = Store.state;
@@ -2234,7 +2235,7 @@ const Game = (function () {
       Store.transact((s) => {
         s.probs = JSON.parse(JSON.stringify(probs));
         s.single = single; s.texts = texts;
-        s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {});
+        s.limits = Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, lim || {});
         s.presetId = p.id;
         s.freeRate = fr[0]; s.freeRate2 = fr[1]; s.freeRate3 = fr[2]; s.logoRate = lg; s.noRetrigger = noRe;
         s.testMode = test;
@@ -2266,6 +2267,7 @@ const Game = (function () {
     const on = isSingle();
     document.body.classList.toggle('single', on);
     Reel.setTexts(textsOn() ? Store.state.texts : null); // 文字の当たり
+    if (on) { const ex = [], fr = freeRates(); [1, 2, 3].forEach((n) => { if (fr[n - 1] > 0) ex.push(FREE_SYM[n]); }); if (logoOn() && Reel.hasLogo) ex.push('LOGO'); Reel.setSingleExtra(ex); } // 設定で出る種類だけ帯に混ぜる
     if (Reel.single !== on) { Reel.setSingle(on); if (!busy && !(Store.state.play && Store.state.play.phase !== 'shown')) { try { setStage(curStage, Store.state.play ? Store.state.play.value : undefined); } catch (e) { /* 次の描き直しで */ } } }
   }
   /* いま使っているプリセットの名前を、左上（casa のエンブレムの右）に出す。色はマスターのプリセット編集で選んだ色。店舗モードのときだけ */
