@@ -2332,6 +2332,7 @@ const Game = (function () {
       if (!doc) return unbindStore('この店舗はマスターで削除されました。');
       if (doc.logoutAt && (me.logoutSeen === undefined ? doc.logoutAt > me.boundAt : doc.logoutAt !== me.logoutSeen)) return unbindStore(); // b80: ログイン時に見た値から変わったら（古い端末は従来の時刻比較）
       cloudStore = doc;
+      try { if (window.SlotTvSwitch && SlotTvSwitch.setHold) SlotTvSwitch.setHold(doc.slotHold || null); } catch (e) { /* 切り替えが無い端末 */ } // b176: 「〜まで casa SLOT のままにする」
       document.body.classList.toggle('hw', !!doc.halloween); // b98: ハロウィンの飾り（マスターの店舗設定）
       { // 待機中に左側へ出す説明（マスターの店舗の編集で入力。3つまで）。変わったら端末に覚えて、すぐ画面に反映する
         const nt = (Array.isArray(doc.notes) ? doc.notes : []).map((x) => String(x || '').slice(0, 80)).filter(Boolean).slice(0, 3);
