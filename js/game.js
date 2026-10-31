@@ -227,17 +227,28 @@ const Game = (function () {
   /* ---------- 状態 → 画面 ---------- */
   /* 待機中: 下の大きな NEXT GAME ボタンだけを出す */
   let barText = null; // 文字の当たり: LAST の箱に出す文字（結果の表示中はその回の文字、待機中は直前の回の文字）
-  const lastBox = (v) => { const t = barText; return '<div class="res"><small>LAST</small><b class="' + (t ? (v === 0 ? 'zero txt' : 'amt lv2 txt') : v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + (t ? escT(t) : fmtN(v)) + '</b></div>'; }; // 文字の当たりは文字のまま
+  const lastTag = (t, v) => (t ? (v === 0 ? '<em class="tg miss">MISS</em>' : '<em class="tg win">WIN</em>') : ''); // 文字のときだけ、当たりかハズレかの小さな札
+  const lastBox = (v) => { const t = barText; return '<div class="res' + (t ? ' txt' : '') + '"><small>LAST' + lastTag(t, v) + '</small><b class="' + (t ? (v === 0 ? 'zero txt' : 'amt lv2 txt') : v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + (t ? escT(t) : fmtN(v)) + '</b></div>'; }; // 文字の当たりは文字のまま
   /* b83: NEXT GAME ボタンは無くし、サンド（紙幣投入口）を出す。スマホの紙幣が入ると回る。
      隠しボタン（data-act="next"）は残し、CREDIT の自動回転・読み直し後の自動再開・長押し開始・紙幣の受け取りが押す（画面には出ない） */
   function sandBar(v) {
     const has = typeof v === 'number';
     const t = barText, lv = has ? '<b class="' + (t ? (v === 0 ? 'zero txt' : 'amt lv2 txt') : v === 0 ? 'zero' : 'amt lv' + Math.max(1, WIN_LEVELS.filter((x) => x <= v).length)) + '">' + (t ? escT(t) : fmtN(v)) + '</b>' : '<b class="none">—</b>'; // 文字の当たりは文字のまま
-    return '<div class="sand" id="sand"><span class="led l"></span><span class="led r"></span><div class="last"><small>LAST</small>' + lv + '</div><span class="emb r"></span><span class="arrow l">▶</span><span class="arrow r">◀</span><div class="lbl">INSERT BILL · 1 GAME</div><div class="slit"></div></div>' +
+    return '<div class="sand" id="sand"><span class="led l"></span><span class="led r"></span><div class="last"><small>LAST' + (has ? lastTag(t, v) : '') + '</small>' + lv + '</div><span class="emb r"></span><span class="arrow l">▶</span><span class="arrow r">◀</span><div class="lbl">INSERT BILL · 1 GAME</div><div class="slit"></div></div>' +
       '<div class="billwrap" id="billwrap"></div><button class="btn hidden-next" data-act="next" tabindex="-1" aria-hidden="true">NEXT GAME</button>';
   }
   const billMode = () => !!(cloudStore && cloudStore.billMode); // マスターの店舗の設定「スマホの紙幣で始める」が ON のときだけサンドを出す（OFF なら今までどおり NEXT GAME ボタン）
   const nextBar = (v, solo) => (typeof v === 'number' ? lastBox(v) : '') + '<div class="side' + (solo && typeof v !== 'number' ? ' solo' : '') + '"><button class="btn" data-act="next">NEXT GAME</button></div>';
+  /* 文字の当たりの LAST（2026-10-31 b177）: 長い文字は箱に収まるまで小さくする（2 行にはみ出さない） */
+  function fitLast() {
+    lockbar.querySelectorAll('b.txt').forEach((b) => {
+      const box = b.parentElement; if (!box) return;
+      const cs = getComputedStyle(box), max = Math.max(40, box.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - 8);
+      b.style.fontSize = '';
+      let fs = parseFloat(getComputedStyle(b).fontSize) || 35;
+      while (b.scrollWidth > max && fs > 21) { fs -= 1; b.style.fontSize = fs + 'px'; } // 必ず 1 行（21px まで小さくする。それでも入らない長さは入力の上限 12 文字では起きない）
+    });
+  }
   function idleBar() {
     plate.classList.add('hidden');
     const lv = Store.state.lastValue; // 直前のゲームの結果（自動で待機画面に戻ったあとも LAST に残す）
@@ -247,7 +258,7 @@ const Game = (function () {
     lockbar.classList.add('show');
     resultSince = 0;
     stageEl.dataset.lamp = 'idle';
-    fitSide();
+    fitSide(); fitLast();
   }
   /* b84（オーナー指示）: 紙幣モードのときは、右の配当履歴と左の説明をサンドの下端まで伸ばす。ボタンのときは CSS の高さのまま */
   function fitSide() {
@@ -461,10 +472,11 @@ const Game = (function () {
       volume: typeof s.settings.volume === 'number' ? s.settings.volume : 0.5,
       recent: (s.playsRecent || []).slice(-20).reverse(),
       checks: (s.checks || []).slice(-40).reverse(), // b97: 会計番号ごとの当たり（新しい順）
+      screen: { single: !!s.single, text: !!(s.single && Array.isArray(s.texts) && s.texts.length), preset: String(s.presetName || '').slice(0, 20), mode: s.play ? (s.play.phase === 'shown' ? 'shown' : 'spin') : 'idle', last: s.lastText ? String(s.lastText).slice(0, 12) : (typeof s.lastValue === 'number' ? s.lastValue : null), ver: APP_V, w: window.innerWidth, h: window.innerHeight }, // b177: テレビが今映しているもの（マスター画面の店舗カードに出す）
     };
   }
   function statWatch() {
-    if (!storeMode() || !Store.state.store || !billMode()) return;
+    if (!storeMode() || !Store.state.store) return; // b177: 紙幣モード以外の店も送る（マスター画面の「画面のようす」のため）
     if (Date.now() - statFailAt < 60000) return;
     const st = statOf(), sig = JSON.stringify(st);
     if (sig === statSig && Date.now() - statAt < 60000) return;
@@ -626,7 +638,7 @@ const Game = (function () {
   const storeLabel = (name) => { const e = STORE_EMOJI.find((x) => String(name).indexOf(x[0]) >= 0); return (e ? '<em>' + e[1] + '</em>' : '') + escH(name); };
   function renderRecent() {
     const list = $('recentList');
-    const row = (x, isNew) => '<div class="rc' + (isNew ? ' new' : '') + (x.value >= 1000000 ? ' wider' : x.value >= 100000 ? ' wide' : '') + '"><small>' + hhmm(x.ts).replace(/<\/i>$/, (x.store ? '<u>' + storeLabel(x.store) + '</u>' : '') + '</i>') + '</small><b' + (x.text ? ' class="txt"' : '') + '>' + (x.text ? escT(x.text) : fmtN(x.value)) + '</b></div>'; // 店舗名は時刻の横に小さく。文字の当たりは文字のまま
+    const row = (x, isNew) => '<div class="rc' + (isNew ? ' new' : '') + (x.text ? ' tx' : '') + (x.value >= 1000000 ? ' wider' : x.value >= 100000 ? ' wide' : '') + '"><small>' + hhmm(x.ts).replace(/<\/i>$/, (x.store ? '<u>' + storeLabel(x.store) + '</u>' : '') + '</i>') + '</small><b' + (x.text ? ' class="txt"' : '') + '>' + (x.text ? escT(x.text) : fmtN(x.value)) + '</b></div>'; // 店舗名は時刻の横に小さく。文字の当たりは文字のまま
     $('recent').classList.toggle('all', !!feed);
     if (feed) { // 全店舗ぶん
       const top = feed.length ? feed[0].ts : 0, grew = feedTop > 0 && top > feedTop;
@@ -650,6 +662,16 @@ const Game = (function () {
   const RECENT_MAX = 40, RECENT_HOLD_SEC = 5, RECENT_ROW_SEC = 2; // 先頭で止めておく秒数 / 1 行ぶん流れるのにかける秒数
   let recentHtml = null, recentN = 0, recentFlowing = false;
   const recentPlain = () => (recentHtml || '').split('class="rc new').join('class="rc'); // 「新しい行」の動きは、流すときには付けない
+  /* 配当履歴の文字の行（2026-10-31 b177）: 全部の文字が見えるように、1 行で入るまで縮め（最小 16px）、それでも入らない長さだけ 2 行にする */
+  function fitRecentTxt(list) {
+    list.querySelectorAll('.rc.tx b.txt').forEach((b) => {
+      b.style.fontSize = ''; b.style.whiteSpace = 'nowrap';
+      const max = b.clientWidth; if (!max) { b.style.whiteSpace = ''; return; } // 隠れているときは測れない（そのまま）
+      let fs = parseFloat(getComputedStyle(b).fontSize) || 20;
+      while (b.scrollWidth > max && fs > 16) { fs -= 1; b.style.fontSize = fs + 'px'; }
+      if (b.scrollWidth > max) b.style.whiteSpace = 'normal';
+    });
+  }
   function putRecent(list, html, n) {
     recentN = n;
     if (html === recentHtml) return; // 同じ内容なら描き直さない（流れている途中で先頭に戻さないため）
@@ -657,6 +679,7 @@ const Game = (function () {
     recentFlowing = false;
     list.style.animation = '';
     list.innerHTML = html;
+    fitRecentTxt(list);
   }
   function startRecentFlow() {
     const list = $('recentList'), view = list.parentNode, first = list.firstElementChild;
@@ -665,6 +688,7 @@ const Game = (function () {
     if (total <= view.clientHeight + 4) return; // 全部入っている
     const marked = recentPlain().replace('class="rc', 'class="rc loop'); // 先頭の行に目印（細い線）。1 周目と 2 周目を同じ見た目にして、戻る瞬間に何も変わらないようにする
     list.innerHTML = marked + marked;
+    fitRecentTxt(list);
     let st = document.getElementById('rcflowStyle');
     if (!st) { st = document.createElement('style'); st.id = 'rcflowStyle'; document.head.appendChild(st); }
     st.textContent = '@keyframes rcflow{from{transform:translate3d(0,0,0)}to{transform:translate3d(0,-' + total + 'px,0)}}';
@@ -863,7 +887,8 @@ const Game = (function () {
     lockbar.innerHTML = billMode() ? sandBar(p.value) : nextBar(p.value, false);
     lockbar.classList.toggle('sandbar', billMode());
     resultSince = Date.now(); // ここから 10 秒で待機画面へ戻す
-    fitSide();
+    fitSide(); fitLast();
+    lockbar.querySelectorAll('b.txt.amt').forEach((b) => b.classList.add('pop')); // 文字の当たり: 止まった直後に少しふくらむ（ハズレは動かない）
   }
   /* 結果表示中のプレイを片付けて STAGE 1 に戻す（CREDIT の FREE SPIN も、毎回 STAGE 1 から回す） */
   async function clearShown() {
@@ -1842,7 +1867,7 @@ const Game = (function () {
       await wait(250);
       win.classList.add('lose');
       Sfx.play('zero');
-      setPlate('result zero', txt || '0', '');
+      setPlate('result zero' + (txt ? ' txt' : ''), txt || '0', ''); // 文字のハズレは読みやすい字で
       await wait(1700);
       return;
     }
@@ -2267,7 +2292,7 @@ const Game = (function () {
     const on = isSingle();
     document.body.classList.toggle('single', on);
     Reel.setTexts(textsOn() ? Store.state.texts : null); // 文字の当たり
-    if (on) { const ex = [], fr = freeRates(); [1, 2, 3].forEach((n) => { if (fr[n - 1] > 0) ex.push(FREE_SYM[n]); }); if (logoOn() && Reel.hasLogo) ex.push('LOGO'); Reel.setSingleExtra(ex); } // 設定で出る種類だけ帯に混ぜる
+    if (on) { const ex = [], fr = freeRates(); if (fr[0] > 0) ex.push(FREE_SYM[1]); if (logoOn() && Reel.hasLogo) ex.push('LOGO'); Reel.setSingleExtra(ex); } // 設定で出る種類だけ帯に混ぜる
     if (Reel.single !== on) { Reel.setSingle(on); if (!busy && !(Store.state.play && Store.state.play.phase !== 'shown')) { try { setStage(curStage, Store.state.play ? Store.state.play.value : undefined); } catch (e) { /* 次の描き直しで */ } } }
   }
   /* いま使っているプリセットの名前を、左上（casa のエンブレムの右）に出す。色はマスターのプリセット編集で選んだ色。店舗モードのときだけ */
