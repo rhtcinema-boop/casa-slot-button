@@ -125,7 +125,7 @@
   }
   function storeWarn(s) {
     const p = presets.find((x) => x.id === s.activePresetId);
-    return p && !Engine.validateProbs(p.probs, !!p.single).ok ? '<div class="swarn">⚠ この当たりの設定に誤りがあり、お店では前の設定のまま動いています</div>' : '';
+    return p && !validP(p).ok ? '<div class="swarn">⚠ この当たりの設定に誤りがあり、お店では前の設定のまま動いています</div>' : '';
   }
   /* 店舗の状態（2026-10-19）: 端末は 10 分ごとに lastSeen・deviceVersion を書く（game.js の生存報告）。today.js・bill.js と同じく 25 分以内なら「動いています」
      2026-10-19 その 2: 言葉を店長向けに（版・最終連絡・端末 → 最新／古いまま・何分前・お店の画面）。版の番号は画面に出さず、押さえておく所（title）にだけ残す */
@@ -323,14 +323,31 @@
   function viewPresets() {
     const used = (id) => stores.filter((s) => s.activePresetId === id).map((s) => s.name); // いま使っている店舗（見るだけ）
     return '<div class="panel"><h3>当たりの設定<small>お店ごとに選ぶ、当たりの金額と確率のセット</small></h3>' +
-      (presets.length ? '<div class="slist">' + presets.map((p) => { const st = Engine.probStats(p.probs), u = used(p.id); return '<div class="scard"><div class="sinfo"><div class="sname"><span><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '</span>' + (p.test ? '<span class="badge warn">テスト用（集計しない）</span>' : '') + (p.single ? '<span class="badge">リール 1 本</span>' : '') + (Engine.validateProbs(p.probs, !!p.single).ok ? '' : '<span class="badge ng">⚠ 設定に誤り</span>') + '</div>' +
-        '<div class="smeta"><span>当たる確率 <b>' + pct(st.win) + '</b></span><span title="1プレイあたりの平均（ハズレも含む）">平均当たり額 <b>' + fmtN(Math.round(st.ev)) + '</b></span>' + (u.length ? '<span>使っているお店: <b>' + esc(u.join('・')) + '</b></span>' : '<span>使っているお店: なし</span>') + '</div>' +
+      (presets.length ? '<div class="slist">' + presets.map((p) => { const st = Engine.probStats(p.probs), u = used(p.id); return '<div class="scard"><div class="sinfo"><div class="sname"><span><i class="pdot" style="background:' + esc(p.color || PRESET_COLORS[0][0]) + '"></i>' + esc(p.name) + '</span>' + (p.test ? '<span class="badge warn">テスト用（集計しない）</span>' : '') + (p.single ? '<span class="badge">' + (p.textMode ? 'リール 1 本・文字' : 'リール 1 本') + '</span>' : '') + (validP(p).ok ? '' : '<span class="badge ng">⚠ 設定に誤り</span>') + '</div>' +
+        '<div class="smeta"><span>当たる確率 <b>' + pct(st.win) + '</b></span>' + (p.textMode ? '<span>文字: <b>' + esc((p.texts || []).map((x) => x.t).join('・')) + '</b></span>' : '<span title="1プレイあたりの平均（ハズレも含む）">平均当たり額 <b>' + fmtN(Math.round(st.ev)) + '</b></span>') + (u.length ? '<span>使っているお店: <b>' + esc(u.join('・')) + '</b></span>' : '<span>使っているお店: なし</span>') + '</div>' +
         '<div class="smeta sm">' + [p.limits && p.limits.on ? '1日 ' + (p.limits.total || '—') + '本まで' : '', earlyOf(p.limits).on ? 'その日の最初の ' + earlyOf(p.limits).plays + ' 回は ' + fmtN(earlyOf(p.limits).min) + ' 未満' : ''].filter(Boolean).map((x) => '<span>' + x + '</span>').join('') + '</div>' +
-        (Engine.validateProbs(p.probs, !!p.single).ok ? '' : '<div class="swarn">⚠ 設定に誤りがあり、お店では使えません。「金額・確率を直す」から直してください</div>') + '</div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">金額・確率を直す</button></div>'; }).join('') + '</div>' : '<div class="empty">まだ当たりの設定がありません</div>') +
+        (validP(p).ok ? '' : '<div class="swarn">⚠ 設定に誤りがあり、お店では使えません。「金額・確率を直す」から直してください</div>') + '</div><button class="btn sm ghost" data-act="preset-edit" data-id="' + esc(p.id) + '">金額・確率を直す</button></div>'; }).join('') + '</div>' : '<div class="empty">まだ当たりの設定がありません</div>') +
       '<div class="acts start"><button class="btn ghost" data-act="preset-new">＋ 当たりの設定を新しく作る</button></div></div>';
   }
+  /* 文字の当たり（2026-10-31）: 1 本モードで「文字で当たりを出す」。texts = [{t, p, lose}] */
+  const validP = (p) => (p.single && p.textMode ? Engine.validateTexts(p.texts) : Engine.validateProbs(p.probs, !!p.single));
+  const TEXT_DEFAULTS = [{ t: 'ドリンク1杯', p: 20, lose: false }, { t: 'もう1回', p: 20, lose: false }, { t: '残念', p: 60, lose: true }];
+  const sumOf = (T, f) => Math.round((T || []).filter(f || (() => true)).reduce((a, x) => a + (Number(x.p) || 0), 0) * 100) / 100;
+  function textPanel(p) {
+    const T = p.texts || [], v = Engine.validateTexts(T), sum = sumOf(T), win = sumOf(T, (x) => !x.lose);
+    return '<div class="panel"><h3>文字と確率</h3><p class="hint">リールに出す文字と、それぞれの確率です。合計を <b style="color:var(--text)">100%</b> に（ずれると保存できません）。<b style="color:var(--text)">「ハズレ」にチェックした文字</b>で止まるとハズレの演出になります。</p>' +
+      more('h-texts', '文字は 1 つ ' + Engine.MAX_TEXT_LEN + ' 文字まで、全部で ' + Engine.MAX_TEXTS + ' 個まで（ハズレ以外は ' + Engine.MAX_AMOUNTS + ' 個まで）。当たりの文字で止まると BIG WIN の演出と配当履歴に文字がそのまま入ります。ハズレの文字が複数あるときは、確率の重みで 1 つが出ます。<br>文字の当たりは金額ではないので、集計の「当たりの合計額」には足しません（当たり数には数えます）。他のお店への当たりの通知は出しません。1日の本数の上限は使えません。') +
+      '<div class="trows">' + T.map((x, i) => '<div class="row trow"><input type="text" class="txtin" data-ti="' + i + '" value="' + esc(x.t || '') + '" maxlength="' + Engine.MAX_TEXT_LEN + '" placeholder="文字（例: ドリンク1杯）"><div class="tp"><input type="number" class="tpin" data-tp="' + i + '" value="' + (Number(x.p) || 0) + '" min="0" max="100" step="1" inputmode="decimal"><i>%</i></div><label class="tl"><input type="checkbox" data-tl="' + i + '"' + (x.lose ? ' checked' : '') + '> ハズレ</label><button class="del" data-act="txt-del" data-i="' + i + '" aria-label="この文字を消す">×</button></div>').join('') + '</div>' +
+      '<div class="addrow"><button class="btn sm ghost" data-act="txt-add"' + (T.length >= Engine.MAX_TEXTS ? ' disabled' : '') + '>＋ 文字を追加</button><small>' + T.length + ' 個（最大 ' + Engine.MAX_TEXTS + '）</small></div>' +
+      '<div id="psum">' + textSum(p) + '</div></div>';
+  }
+  function textSum(p) {
+    const T = p.texts || [], v = Engine.validateTexts(T), sum = sumOf(T), win = sumOf(T, (x) => !x.lose);
+    return '<div class="summary"><div class="stat"><small>合計</small><b style="color:' + (sum === 100 ? '#6fd39a' : '#ff8080') + '">' + sum + '%</b></div><div class="stat"><small>当たる確率（ハズレ以外）</small><b>' + win + '%</b></div><div class="stat"><small>ハズレ</small><b>' + sumOf(T, (x) => !!x.lose) + '%</b></div></div>' + (v.ok ? '' : '<div class="err">' + v.errors.map(esc).join('<br>') + '</div>');
+  }
+  function updateTextSum() { const p = editPreset; if (!p) return; const el = $('psum'); if (el) el.innerHTML = textSum(p); const ps = $('pstate'); if (ps) ps.innerHTML = saveMsg(p); }
   function probSummary(p) {
-    const v = Engine.validateProbs(p.probs, !!p.single), st = Engine.probStats(p.single ? Engine.singleProbs(p.probs) : p.probs);
+    const v = validP(p), st = Engine.probStats(p.single ? Engine.singleProbs(p.probs) : p.probs);
     return '<div class="summary"><div class="stat"><small>当たる確率</small><b>' + pct(st.win) + '</b></div><div class="stat"><small>STAGE 2 に進む</small><b>' + pct(st.reach[2]) + '</b></div><div class="stat"><small>STAGE 3 に進む</small><b>' + pct(st.reach[3]) + '</b></div>' +
       '<div class="stat"><small title="1プレイあたりの平均（ハズレも含む）">平均当たり額</small><b>' + fmtN(Math.round(st.ev)) + '</b></div></div>' +
       (v.ok ? '' : '<div class="err">' + v.errors.map(esc).join('<br>') + '</div>');
@@ -340,7 +357,7 @@
     const s = r2(Engine.probStats(p.probs).sums[stage]);
     return '<span class="sum ' + (s === 100 ? 'ok' : 'ng') + '" data-sum="' + stage + '">合計 ' + s + '%' + (s === 100 ? ' ✓' : s < 100 ? '（あと ' + r2(100 - s) + '%）' : '（' + r2(s - 100) + '% 多い）') + '</span>';
   }
-  const saveMsg = (p) => { const v = Engine.validateProbs(p.probs, !!p.single); const btn = main.querySelector('[data-act="preset-save"]'); if (btn) btn.disabled = !v.ok; return v.ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">' + esc(v.errors[0]) + (/種類まで/.test(v.errors[0]) ? '（× で行を消してください）' : '') + '</span>'; };
+  const saveMsg = (p) => { const v = validP(p); const btn = main.querySelector('[data-act="preset-save"]'); if (btn) btn.disabled = !v.ok; return v.ok ? '<span class="okmsg">保存できます</span>' : '<span class="err">' + esc(v.errors[0]) + (/種類まで/.test(v.errors[0]) ? '（× で行を消してください）' : '') + '</span>'; };
   /* 配当表の1行。金額の行は、金額そのものを書き換えられて × で消せる。0（ハズレ）と NEXT STAGE は固定 */
   function probRow(p, d, k) {
     const attr = 'data-p="' + d.stage + ':' + k + '"', fixed = k === '0' || k === 'NEXT';
@@ -368,12 +385,13 @@
       PRESET_COLORS.map((c) => '<button class="sw' + ((p.color || PRESET_COLORS[0][0]) === c[0] ? ' on' : '') + '" data-act="pcolor" data-c="' + c[0] + '" style="--c:' + c[0] + '" aria-label="' + c[1] + '" title="' + c[1] + '"></button>').join('') + '</div></div>' +
       '<div class="row"><div class="lbl">テスト用<small>ON の間は集計に数えません（画面に「TEST」）</small></div>' + tgl(p.test, 'test-on') + '</div>' +
       '<div class="row"><div class="lbl">リール 1 本<small>ON にすると、大きな縦のリール 1 本で回り、止まった絵柄がそのまま結果です（ステージなし・1 回で結果。FREE SPIN や扉などの演出は出ません）</small></div>' + tgl(p.single, 'single-on') + '</div>' +
+      (p.single ? '<div class="row"><div class="lbl">文字で当たりを出す<small>ON にすると、金額の代わりに文字（例: ドリンク1杯・もう1回・残念）で止まります。文字ごとに確率と「ハズレ」を決めます</small></div>' + tgl(p.textMode, 'text-on') + '</div>' : '') +
       more('h-ptest', '名前の色: 店舗の端末の左上に、このプリセットの名前がこの色で出ます（いま何のプリセットで回っているかが分かります）。<br>テスト用プリセット: ON にすると、このプリセットで回した結果は配当履歴・合計・マスターの集計・当たり本数の制限のどれにも数えません。画面に「TEST」と表示されます。') + '</div>' +
-      '<div class="panel"><h3>当たりの金額と確率</h3><p class="hint">各 STAGE の合計を <b style="color:var(--text)">100%</b> に（ずれると保存できません）。数字を押すと直接入力。</p>' +
+      (p.single && p.textMode ? textPanel(p) : '<div class="panel"><h3>当たりの金額と確率</h3><p class="hint">各 STAGE の合計を <b style="color:var(--text)">100%</b> に（ずれると保存できません）。数字を押すと直接入力。</p>' +
       more('h-probs', '<b style="color:var(--text)">金額は数字を直接書き換えられます。</b>「＋ 金額を追加」で行を増やし、× で消せます（消した行の確率は 0 に足されます）。確率は ◀ ▶ で 1% ずつ（押しっぱなしで連続）。<b style="color:var(--text)">数字を押すと、直接入力もできます</b>（小数も可。ほかの欄の数字も同じです）。各ステージの合計をちょうど 100% にしてください。下の「平均当たり額」は、1プレイあたりの平均の当たり額です（ハズレも含めて平均。予算の目安）。<br>金額を増やしたり消したりしたプリセットは、店舗の端末が b52 以上になってから反映されます（端末は 1 時間以内に自動でアップデートします。店舗一覧で端末の版を確認できます）。') +
       '<div class="cols pcols">' + (p.single ? [Engine.tableOf(p.probs)[0]].map((d) => probStage(p, d)) : Engine.tableOf(p.probs).map((d) => probStage(p, d))).join('') + '</div>' +
-      '<div id="psum">' + probSummary(p) + '</div></div>' +
-      fold('p-free', fhead('FREE SPIN', 'free'),
+      '<div id="psum">' + probSummary(p) + '</div></div>') +
+      (p.single ? '' : fold('p-free', fhead('FREE SPIN', 'free'),
         '<p class="hint">そろうと自動で回る回数が増えます。この回は<b style="color:var(--text)">必ずハズレ</b>（予算は変わりません）。</p>' +
         more('h-free', 'リールに同じ FREE SPIN が3本そろう割合です（1回のスピンあたり）。そろうと端末の CREDIT が 1・2・3 増え、その回数だけ自動で回ります。<b style="color:var(--text)">この回は演出で、抽選しません。必ず 0 で止まります</b>（当たりは出ません。当選確率・期待値・集計の回転数は変わりません）。0% にした種類は、絵柄も出なくなります。') +
         stepRow('FREE SPIN ×1 が出る割合', freeN(p, 1), 'data-f="1"', '%', 'CREDIT +1・当たりなし（0〜50%）') +
@@ -385,30 +403,31 @@
         stepRow('casa ロゴが3本そろう割合', logoOf(p).toFixed(1), 'data-g="1"', '%', '1回のスピンあたり（0〜5%、0.1% きざみ）') +
         '<div class="ccost" style="margin-top:8px;font-size:14px">' + creditCost(p) + '</div>' +
         '<div class="row" style="margin-top:10px"><div class="lbl">FREE SPIN で回っている間は、FREE SPIN を出さない<small>スタッフが入れたクレジットで回っているゲームだけに効きます</small></div>' + tgl(noRetrig(p), 'retrig-on') + '</div>' +
-        more('h-retrig', '獲得した FREE SPIN（当たりなしの回）では、この設定に関係なく、FREE SPIN ×1〜×3 も casa ロゴも出ません。この設定が効くのは、スタッフが設定画面で入れたクレジットで回っているゲームだけです。ON: その間は出ません（絵柄も出ません）。OFF: その間にもそろうことがあります（予算は変わりません）'), { cls: 'panel' }) +
-      fold('p-lim', fhead('1日の当たりの本数の上限', 'lim'),
+        more('h-retrig', '獲得した FREE SPIN（当たりなしの回）では、この設定に関係なく、FREE SPIN ×1〜×3 も casa ロゴも出ません。この設定が効くのは、スタッフが設定画面で入れたクレジットで回っているゲームだけです。ON: その間は出ません（絵柄も出ません）。OFF: その間にもそろうことがあります（予算は変わりません）'), { cls: 'panel' })) +
+      (p.single && p.textMode ? '' : fold('p-lim', fhead('1日の当たりの本数の上限', 'lim'),
         '<p class="hint">1日に出る当たりの本数に上限をつけます（上限を超えた分はハズレになります）。</p>' +
         '<div class="row"><div class="lbl">制限を使う</div>' + tgl(L.on, 'lim-on') + '</div>' +
         stepRow('リセット時刻', L.resetHour, 'data-l="hour"', ':00', '毎日この時刻にカウントが 0 に戻ります') +
         stepRow('1日の当たり本数の上限（合計）', L.total, 'data-l="total"', '本', '0 は無制限') +
         '<p class="hint" style="margin:18px 0 8px"><b style="color:var(--text)">金額ごとの上限</b>（任意。0 は制限なし）</p><div class="cols">' +
-        Engine.tableOf(p.probs).map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + (d.values.filter((v) => v > 0).map((v) => stepRow(fmtN(v), L.max[d.stage + ':' + v] || 0, 'data-l="' + d.stage + ':' + v + '"', '回')).join('') || '<div class="empty" style="padding:8px 0">金額がありません</div>') + '</div>').join('') + '</div>', { cls: 'panel' }) +
-      (function () { const E = L.early; return fold('p-early', fhead('その日の最初は高額を出さない', 'early'),
+        Engine.tableOf(p.probs).map((d) => '<div class="stage"><h4><span>STAGE ' + d.stage + '</span></h4>' + (d.values.filter((v) => v > 0).map((v) => stepRow(fmtN(v), L.max[d.stage + ':' + v] || 0, 'data-l="' + d.stage + ':' + v + '"', '回')).join('') || '<div class="empty" style="padding:8px 0">金額がありません</div>') + '</div>').join('') + '</div>', { cls: 'panel' })) +
+      (p.single && p.textMode ? '' : (function () { const E = L.early; return fold('p-early', fhead('その日の最初は高額を出さない', 'early'),
         '<p class="hint">1日の<b style="color:var(--text)">最初の X 回は、Y 以上が当たらない</b>ようにします（お店の画面ごとに数えます）。</p>' +
         '<div class="row"><div class="lbl">この制限を使う</div>' + tgl(E.on, 'early-on') + '</div>' +
         stepRow('最初の何回まで（X）', E.plays, 'data-e="plays"', '回', '1〜999 回') +
-        stepRow('いくら以上を出さないか（Y）', fmtN(E.min), 'data-e="min"', '以上', '例: 2,000 にすると、2,000・3,000・5,000・10,000… が出ません'), { cls: 'panel' }); })() +
+        stepRow('いくら以上を出さないか（Y）', fmtN(E.min), 'data-e="min"', '以上', '例: 2,000 にすると、2,000・3,000・5,000・10,000… が出ません'), { cls: 'panel' }); })()) +
       (p.id ? fold('p-rare', '<h3>めったに使わない操作</h3><span class="fsum">この当たりの設定の削除</span>', '<div class="rare"><div><b>この当たりの設定を削除</b><small>お店の画面からも消えます</small></div><button class="btn danger" data-act="preset-del">削除する</button></div>', { cls: 'panel' }) : '') +
-      '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save"' + (Engine.validateProbs(p.probs, !!p.single).ok ? '' : ' disabled') + '>保存</button></div>';
+      '<div class="savebar"><div class="msg"><span id="pstate">' + saveMsg(p) + '</span><div class="err" id="perr"></div></div><button class="btn ghost" data-act="preset-cancel">戻る</button><button class="btn" data-act="preset-save"' + (validP(p).ok ? '' : ' disabled') + '>保存</button></div>';
   }
   async function savePreset() {
     const p = editPreset, name = $('pname').value.trim(), err = $('perr');
     err.textContent = '';
     if (!name) { err.textContent = '名前を入力してください。'; return; }
-    const v = Engine.validateProbs(p.probs, !!p.single);
+    const v = validP(p);
     if (!v.ok) { err.textContent = v.errors.join(' / '); return; }
     if (staleMsg()) { err.textContent = staleMsg(); return; }
-    await Cloud.savePreset(p.id || null, { name, single: !!p.single, probs: p.single ? Engine.singleProbs(p.probs) : p.probs, limits: p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] });
+    const tm = !!(p.single && p.textMode), texts = tm ? p.texts.map((x) => ({ t: String(x.t || '').trim(), p: Number(x.p) || 0, lose: !!x.lose })) : null; // 文字の当たり: 抽選の表は文字から作る。金額の表は probsNum に取っておく（OFF に戻したとき用）
+    await Cloud.savePreset(p.id || null, { name, single: !!p.single, textMode: tm, texts, probs: tm ? Engine.textProbs(texts) : p.single ? Engine.singleProbs(p.probs) : p.probs, probsNum: tm ? (p.single ? Engine.singleProbs(p.probs) : p.probs) : null, limits: tm ? Object.assign({}, p.limits, { on: false }) : p.limits, freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, color: p.color || PRESET_COLORS[0][0] });
     toast('「' + name + '」を保存しました。使っているお店にすぐ反映されます');
     editPreset = null; await reload(); render();
   }
@@ -462,7 +481,7 @@
       (all ? '<h4 style="margin:14px 0 6px">お店ごと</h4><table><tr><th>お店</th><th class="n">プレイ数</th><th class="n">当たり数</th><th class="n">当たり額</th></tr>' + d.byStore.map((x) => '<tr><td>' + esc(x.name) + '</td><td class="n">' + fmtN(x.plays) + '</td><td class="n">' + fmtN(x.wins) + '</td><td class="n">' + fmtN(x.awarded) + '</td></tr>').join('') + '</table><h4 style="margin:14px 0 6px">日ごと（全店舗の合計）</h4>' : '') +
       '<table><tr><th>日</th><th class="n">プレイ数</th><th class="n">当たり数</th><th class="n">当たり額</th></tr>' + ((all ? d.dayTotals : d.days).length ? (all ? d.dayTotals : d.days).map((x) => '<tr><td>' + fmtDay(x.day) + '</td><td class="n">' + fmtN(x.plays || 0) + '</td><td class="n">' + fmtN(x.wins || 0) + '</td><td class="n">' + fmtN(x.awarded || 0) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のデータはありません</td></tr>') + '</table></div>' +
       fold('st-plays', '<h3>1回ずつの記録</h3><span class="fsum">' + (d.plays.length ? '新しい順に ' + fmtN(d.plays.length) + ' 件' : 'なし') + '</span>', (tot.plays > d.plays.length && d.plays.length >= PLAY_MAX ? '<p class="hint">この期間のプレイは ' + fmtN(tot.plays) + ' 回あります。新しい ' + PLAY_MAX + ' 件を表示しています。</p>' : '') +
-      '<div class="tscroll"><table><tr><th>日時</th>' + (all ? '<th>店舗</th>' : '') + '<th>STAGE</th><th class="n">当たり額</th><th>当たりの設定</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td>' + (all ? '<td>' + esc(nameOf(x.storeId)) + '</td>' : '') + '<td>STAGE ' + x.stage + '</td><td class="n">' + fmtN(x.value) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のプレイはありません</td></tr>') + '</table></div>', { cls: 'panel' });
+      '<div class="tscroll"><table><tr><th>日時</th>' + (all ? '<th>店舗</th>' : '') + '<th>STAGE</th><th class="n">当たり額</th><th>当たりの設定</th></tr>' + (d.plays.length ? d.plays.map((x) => '<tr><td>' + fmtDate(x.ts) + '</td>' + (all ? '<td>' + esc(nameOf(x.storeId)) + '</td>' : '') + '<td>STAGE ' + x.stage + '</td><td class="n">' + (x.text ? esc(x.text) : fmtN(x.value)) + '</td><td>' + esc(presetName(x.presetId)) + '</td></tr>').join('') : '<tr><td colspan="4" class="empty">この期間のプレイはありません</td></tr>') + '</table></div>', { cls: 'panel' });
   }
   async function loadStats(id, range) {
     if (id !== statsStore) statsRange = null; // 店舗を変えたら、期間は直近31日に戻す
@@ -539,6 +558,7 @@
     const w = main.querySelector('[data-warn="' + s.id + '"]'); if (w) w.innerHTML = storeWarn(s) + timedNote(s) + pubNote(s);
   }
   main.addEventListener('change', (e) => {
+    if (editPreset && editPreset.texts && e.target.dataset && e.target.dataset.tl !== undefined && editPreset.texts[+e.target.dataset.tl]) { editPreset.texts[+e.target.dataset.tl].lose = e.target.checked; return updateTextSum(); } // 文字の当たり: ハズレのチェック
     if (e.target.dataset && e.target.dataset.qid) return quickPick(e.target);
     if (e.target.id === 'stsel') return loadStats(e.target.value);
     if (e.target.dataset && e.target.dataset.pk) { const id = e.target.dataset.pk, k = e.target.value, q = (a) => document.querySelector('[' + a + '="' + id + '"]'); q('data-px').hidden = !k; q('data-pd').hidden = k !== 'date'; q('data-pw').hidden = k !== 'weekly'; return; } // 公開期間の種類（2026-10-24）
@@ -565,7 +585,12 @@
     }
   });
   main.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset && e.target.dataset.amt) e.target.blur(); }); // Enter で確定
-  main.addEventListener('input', (e) => { if (e.target.id === 'pname' && editPreset) editPreset.name = e.target.value; }); // 途中で画面を作り直しても名前が消えないように
+  main.addEventListener('input', (e) => {
+    if (e.target.id === 'pname' && editPreset) editPreset.name = e.target.value;
+    const d = e.target.dataset || {}; // 文字の当たり: 文字と確率は打つたびに控える（画面は作り直さない）
+    if (editPreset && editPreset.texts && d.ti !== undefined && editPreset.texts[+d.ti]) { editPreset.texts[+d.ti].t = e.target.value; updateTextSum(); }
+    if (editPreset && editPreset.texts && d.tp !== undefined && editPreset.texts[+d.tp]) { editPreset.texts[+d.tp].p = e.target.value === '' ? 0 : Number(e.target.value); updateTextSum(); }
+  }); // 途中で画面を作り直しても名前が消えないように
   /* ◀ ▶ 1回ぶん（d = ±1）の増減。数字の直接入力からは、d に「入力した値 − いまの値」を渡す（上限・下限・丸めは同じ決まり） */
   function doStep(b, d) {
     const pv = b.parentNode.querySelector('.pv');
@@ -673,7 +698,7 @@
         case 'store-logout': if (!confirm('この店舗の端末をログアウトさせます。端末は次回起動時に店舗の選び直しとパスワード入力が必要になります。')) return; await Cloud.saveStore(editStore.id, { logoutAt: Date.now() }); toast('ログアウトを指示しました'); return;
         case 'store-del': if (!confirm('店舗「' + editStore.name + '」を削除します。端末はログアウトされます。過去の集計の記録はクラウドに残ります（画面からは見えなくなります）。')) return; await Cloud.deleteStore(editStore.id); editStore = null; await reload(); return render();
         case 'preset-new': editPreset = { name: '', probs: Engine.defaultProbs(), limits: { on: false, total: 0, max: {}, resetHour: 19 }, freeRate: FREE_DEFAULTS[0], freeRate2: FREE_DEFAULTS[1], freeRate3: FREE_DEFAULTS[2], logoRate: 0, noRetrigger: true, test: false, color: PRESET_COLORS[0][0] }; return render();
-        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.probs, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, single: !!p.single, color: p.color || PRESET_COLORS[0][0] })); return render(); }
+        case 'preset-edit': { const p = presets.find((x) => x.id === b.dataset.id); editPreset = JSON.parse(JSON.stringify({ id: p.id, name: p.name, probs: p.textMode && p.probsNum ? p.probsNum : p.probs, textMode: !!p.textMode, texts: Array.isArray(p.texts) ? p.texts : null, limits: Object.assign({ on: false, total: 0, max: {}, resetHour: 19 }, p.limits || {}), freeRate: freeN(p, 1), freeRate2: freeN(p, 2), freeRate3: freeN(p, 3), logoRate: logoOf(p), noRetrigger: noRetrig(p), test: !!p.test, single: !!p.single, color: p.color || PRESET_COLORS[0][0] })); return render(); }
         case 'preset-cancel': editPreset = null; return render();
         case 'preset-save': if (b.disabled) return; b.disabled = true; try { return await savePreset(); } finally { b.disabled = false; }
         case 'preset-del': {
@@ -684,6 +709,9 @@
           if (!confirm('プリセット「' + editPreset.name + '」を削除します。')) return; await Cloud.deletePreset(editPreset.id); editPreset = null; await reload(); return render();
         }
         case 'test-on': editPreset.test = !editPreset.test; return render();
+        case 'text-on': editPreset.textMode = !editPreset.textMode; if (editPreset.textMode && !(editPreset.texts && editPreset.texts.length)) editPreset.texts = JSON.parse(JSON.stringify(TEXT_DEFAULTS)); return render(); // 文字の当たり（2026-10-31）
+        case 'txt-add': { const T = editPreset.texts = editPreset.texts || []; if (T.length >= Engine.MAX_TEXTS) return; T.push({ t: '', p: 0, lose: false }); const top = window.scrollY; render(); window.scrollTo(0, top); const inp = main.querySelector('[data-ti="' + (T.length - 1) + '"]'); if (inp) inp.focus(); return; }
+        case 'txt-del': { const T = editPreset.texts || []; T.splice(+b.dataset.i, 1); const top = window.scrollY; render(); window.scrollTo(0, top); return; }
         case 'single-on': editPreset.single = !editPreset.single; if (editPreset.single && editPreset.probs && editPreset.probs[1]) { const row = editPreset.probs[1], nx = Number(row.NEXT) || 0; if (nx > 0) { row[0] = (Number(row[0]) || 0) + nx; row.NEXT = 0; } } return render(); // 1 本: NEXT の分はハズレへ
         case 'pcolor': { const top = window.scrollY; editPreset.color = b.dataset.c; editPreset.name = $('pname').value; render(); window.scrollTo(0, top); return; }
         case 'retrig-on': { const top = window.scrollY; editPreset.noRetrigger = !noRetrig(editPreset); render(); window.scrollTo(0, top); return; }
