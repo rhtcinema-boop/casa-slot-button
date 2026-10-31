@@ -728,7 +728,13 @@
     async function publishWith(changed) {
       try { const base = live.races || await getRaces(true); await publishLive(base.filter((x) => x.id !== changed.id).concat([changed])); } catch (e) { /* 次の見回りで直る */ }
     }
+    /* まんべんなく出走（2026-10-31。Core.freshPick）: このレースより前のレースを新しい順に読んで、本物のレースの馬名を返す。読めなければ null（＝今までどおりの抽選。レースは止めない） */
+    async function recentHorsesFor(at) {
+      try { const q = await db.collection(COL.races).where('at', '<', at).orderBy('at', 'desc').limit(Core.FRESH_RACES + 10).get(); return Core.recentHorseNames(q.docs.map((d) => d.data()), at); } catch (e) { return null; }
+    }
     async function writeRace(entry, sc, opt) {
+      opt = Object.assign({}, opt);
+      if (opt.recent === undefined) opt.recent = await recentHorsesFor(entry.at);
       const built = Core.buildRace(Engine, Outcome, entry, sc.tuning, sc.salt, now(), opt);
       const r = built.race;
       const b = db.batch();
@@ -972,9 +978,9 @@
         const fresh = await secretConfig(true), fe = Core.scheduleAround(t, fresh.timetable.rules || []).find((x) => x.id === e.id);
         if (!fe) return null;
         sc = fresh; e = fe;
-        let odds = null;
-        if (env.oddsAsync) { try { const base = Core.raceBase(Engine, Outcome, sc.salt, e.id, sc.tuning); odds = await withTimeout(env.oddsAsync(base, Outcome.hash(sc.salt, e.id, 'odds'), sc.tuning.oddsSims), Math.max(TICK_TIMEOUT_MS / 2, Math.min(45000, TICK_TIMEOUT_MS - 5000)), 'odds'); } catch (err) { odds = null; } } // Worker が使えない・返事が来ない（2026-10-28 上限つき）ならその場で計算
-        await writeRace(e, sc, { odds });
+        let odds = null; const recent = await recentHorsesFor(e.at); // 倍率の計算とレースの馬を同じにするため 1 回だけ読む
+        if (env.oddsAsync) { try { const base = Core.raceBase(Engine, Outcome, sc.salt, e.id, sc.tuning, recent); odds = await withTimeout(env.oddsAsync(base, Outcome.hash(sc.salt, e.id, 'odds'), sc.tuning.oddsSims), Math.max(TICK_TIMEOUT_MS / 2, Math.min(45000, TICK_TIMEOUT_MS - 5000)), 'odds'); } catch (err) { odds = null; } } // Worker が使えない・返事が来ない（2026-10-28 上限つき）ならその場で計算
+        await writeRace(e, sc, { odds, recent });
         return e.id; // 1 回に 1 レース（オッズの計算が重い）
       }
       return null;
