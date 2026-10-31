@@ -10,7 +10,7 @@ const Reel = (function () {
   let single = false;
   let SSTRIP = ['BAR', 500, 'BAR', 1000, 'BAR']; // 1本モードの帯（setTable で配当表から作る）
   const simgs = {}; // 1本モード用の絵柄画像（横長）
-  let TEXTS = null, lastPays = []; // 文字の当たり（2026-10-31）: [{t, lose}]。絵柄は 'TX0','TX1',…（並び順）
+  let TEXTS = null, lastPays = [], SEXTRA = []; // SEXTRA: 1 本の帯に混ぜる FREE SPIN・ロゴの絵柄（設定で出る種類だけ） // 文字の当たり（2026-10-31）: [{t, lose}]。絵柄は 'TX0','TX1',…（並び順）
   let S = 2, MIN_FRAME = 0; // S はキャンバス解像度倍率。軽量モードでは init で 1 と 24fps 上限にする
   const BLUR_S = 0.5, PAD = 80;
   // 回転中に流れる絵柄の帯（見た目用。止まる絵柄は位置指定で差し替えるので、帯の並びは結果に影響しない）
@@ -726,12 +726,23 @@ const Reel = (function () {
   }
   /* キャンバスと絵柄の元画像を作り直して描き直す（b78）。復帰したときに isBlank() なら呼ぶ */
   function buildSStrip() { // 1本モードの帯（止まる絵柄は位置指定で差し替えるので、並びは結果に影響しない）
-    if (TEXTS && TEXTS.length) { const a = []; while (a.length < 4) TEXTS.forEach((_, i) => a.push('TX' + i)); SSTRIP = a; return; } // 文字の当たり: 並び順のまま（4 コマ以上になるまで繰り返す）
-    // 金額: 配当表の金額を小さい順→大きい順を交互に、間に 0 を挟む
-    const vals = lastPays.slice().sort((a, b) => a - b), order = [];
-    for (let i = 0, j = vals.length - 1; i <= j; i++, j--) { order.push(vals[i]); if (i !== j) order.push(vals[j]); }
-    const st2 = []; (order.length ? order : [500]).forEach((v, i) => { st2.push(v); if (i % 2 === 1) st2.push('BAR'); }); if (st2[st2.length - 1] !== 'BAR') st2.push('BAR');
-    SSTRIP = st2;
+    let base;
+    if (TEXTS && TEXTS.length) { base = []; while (base.length < 4) TEXTS.forEach((_, i) => base.push('TX' + i)); } // 文字の当たり: 並び順のまま（4 コマ以上になるまで繰り返す）
+    else { // 金額: 配当表の金額を小さい順→大きい順を交互に、間に 0 を挟む
+      const vals = lastPays.slice().sort((a, b) => a - b), order = [];
+      for (let i = 0, j = vals.length - 1; i <= j; i++, j--) { order.push(vals[i]); if (i !== j) order.push(vals[j]); }
+      base = []; (order.length ? order : [500]).forEach((v, i) => { base.push(v); if (i % 2 === 1) base.push('BAR'); }); if (base[base.length - 1] !== 'BAR') base.push('BAR');
+    }
+    // FREE SPIN・ロゴの絵柄を、帯の中に間隔をあけて混ぜる
+    if (SEXTRA.length) { const step = Math.max(2, Math.floor(base.length / SEXTRA.length)); SEXTRA.forEach((x, i) => base.splice(Math.min(base.length, 1 + i * (step + 1)), 0, x)); }
+    SSTRIP = base;
+  }
+  function setSingleExtra(list) { // 1 本の帯に混ぜる FREE SPIN・ロゴ（2026-10-31）
+    const next = Array.isArray(list) ? list.slice() : [];
+    if (JSON.stringify(next) === JSON.stringify(SEXTRA)) return;
+    SEXTRA = next;
+    buildSStrip();
+    if (ctx && !live) drawAll(reels.map((rl) => rl.pos), [0, 0, 0]);
   }
   function setTexts(list) { // 文字の当たり（2026-10-31）: null で金額に戻す
     const next = Array.isArray(list) && list.length ? list.map((x) => ({ t: String((x && x.t) || '').trim(), lose: !!(x && x.lose) })) : null;
@@ -800,5 +811,5 @@ const Reel = (function () {
     if (ctx && !raf) { strip = STRIPS[stage]; drawAll(reels.map((rl) => rl.pos), [0, 0, 0]); }
   }
 
-  return { init, spin, attract, setStage, setTable, setSingle, setTexts, hold, resume, relaunch, redraw, restore, lost, drawText, get stage() { return stage; }, get single() { return single; }, get hasLogo() { return !!imgs.LOGO; }, NR };
+  return { init, spin, attract, setStage, setTable, setSingle, setTexts, setSingleExtra, hold, resume, relaunch, redraw, restore, lost, drawText, get stage() { return stage; }, get single() { return single; }, get hasLogo() { return !!imgs.LOGO; }, NR };
 })();
