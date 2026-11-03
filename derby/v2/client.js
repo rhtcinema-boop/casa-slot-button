@@ -158,7 +158,7 @@
       get offset() { return impl ? impl.offset : 0; }, get synced() { return impl ? impl.synced : false; },
       get link() { return impl ? impl.link : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
-      vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'),
+      vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'), stamps: call('stamps'), /* スタンプラリー（2026-11-02。オフなら null） */
       staffLogin: call('staffLogin'), release: call('release'), wins: call('wins'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
       testRace: call('testRace'), testRaceStatus: call('testRaceStatus'), // この店だけテストレース（2026-10-19）
       deciderHealth: call('deciderHealth'), // 進行役のテレビが止まっていないか（2026-10-28）→ { lock, stall, text }
