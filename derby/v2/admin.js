@@ -28,7 +28,7 @@
   /* 確定演出（店舗には見せない。v4 でも「1 着の馬だけ教える」）: 演出名 → [表示名, どう見えるか]。割合の初期値は v2/core.js の DEFAULT_CUES と同じ */
   const CUES = [['fruit', '木の実の色', 'コース脇の木の実が、その馬の枠の色になる'], ['crowd', '観客の服の色', '観客の服がその馬の枠の色に寄る'], ['sign', '看板の絵柄', '向こう正面の看板にその馬の枠の色が出る'], ['cloud', '雲の形', 'その馬の番号の形をした雲が浮かぶ'], ['gateLate', 'ゲートインで遅れた馬', 'その馬だけゲートに入るのをためらう'], ['eye', '最終コーナーで目が光る', '最終コーナーでその馬の目が光る']];
   const DEF_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
-  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false }; // noRepeatWin・noRepeatRaces・favorBigStore: 2026-10-31（v2/core.js の DEFAULT_TUNING と同じ）
+  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false, stamp: { on: false, cost: 10, vote: 1, win: 3, near: 1 } }; // noRepeatWin・noRepeatRaces・favorBigStore: 2026-10-31（v2/core.js の DEFAULT_TUNING と同じ）
   const TUNE_PRESETS = [['steady', '堅め', { volatility: 0.7, shiftUp: 0.05, shiftDown: 0.05 }, '人気の組み合わせが来やすい・倍率のずらしは小さめ'], ['normal', 'ふつう', { volatility: 1.0, shiftUp: 0.1, shiftDown: 0.1 }, '今の作り'], ['wild', '荒れやすい', { volatility: 1.5, shiftUp: 0.15, shiftDown: 0.15 }, '人気薄も来る・倍率のずらしは大きめ']];
   const BIG_SHIFT = 50; // ずらし幅がこれ（%）より大きいと「見た倍率と大きく変わります」
 
@@ -1133,6 +1133,12 @@
   /* オン・オフの行（2026-10-31）: 右に「使う」のチェック。id は n-<key>（保存のときに DOM から読む） */
   const toggleRow = (label, hint, key, on) => '<div class="row tog" id="row-' + key + '"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div>' +
     '<label class="check tog"><input type="checkbox" id="n-' + key + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(label) + '"><span>' + (on ? '使う' : '使わない') + '</span></label></div>';
+  /* スタンプラリー（2026-11-03）: 調整の stamp = { on, cost, vote, win, near }（v2/core.js の stampOf と同じ既定） */
+  const stampOfT = (T) => { const s = (T && T.stamp && typeof T.stamp === 'object') ? T.stamp : {}, D = DEF_TUNING.stamp, n = (k) => (Number.isInteger(Number(s[k])) ? Number(s[k]) : D[k]); return { on: s.on === true, cost: Math.max(1, n('cost')), vote: n('vote'), win: n('win'), near: n('near') }; };
+  const stampExample = (S) => (S.on
+    ? 'いま: <b>使う</b>。投票で +' + S.vote + '・当たりで +' + S.win + '・1 頭からみで +' + S.near + '（1 レースで最大 ' + (S.vote + Math.max(S.win, S.near)) + ' 個）。<b>' + S.cost + ' 個</b>で そのレースの 2 票目。スタンプが付くのは結果の発表のとき。初参加ボーナスが使える人はそちらが先。スタッフが番号を空けて 2 票目が消えたら ' + S.cost + ' 個戻ります。スマホごと（匿名ログインの端末）にたまり、会計番号やニックネームにはひもづきません'
+    : 'いま: <b>使わない</b>。スマホにスタンプのカードは出ず、たまりません（使うに戻すと、前にたまっていた分はそのまま残っています）');
+  const stampForm = (T) => { const S = stampOfT(T), g = (k, key) => (numOk(key) ? Math.round(numOf(key)) : S[k]); return { on: ckOf('stampOn'), cost: g('cost', 'stampCost'), vote: g('vote', 'stampVote'), win: g('win', 'stampWin'), near: g('near', 'stampNear') }; };
   const ckOf = (key) => { const el = $('n-' + key); return el ? !!el.checked : !!(cfg.tuning && cfg.tuning[key] === true); };
   /* 直近の当たり端末を当てない（2026-10-31）: 数えるレースは 1〜50（v2/core.js の NOREPEAT_MAX）・初期 10 */
   const NOREPEAT_MAX = 50;
@@ -1176,6 +1182,13 @@
       '<p class="hint" id="noRepeatEx">' + noRepeatExample(T.noRepeatWin === true, nrRacesOf(T)) + '</p>' +
       toggleRow('参加人数が多い店から当たりを出す', 'そのレースで参加がいちばん多い店の票を先に当てる', 'favorBigStore', T.favorBigStore === true) +
       '<p class="hint" id="bigStoreEx">' + bigStoreExample(T.favorBigStore === true) + '</p>' +
+      /* スタンプラリー（2026-11-03 公開。オーナー 11/2「10 個で 2 票目、投票 1・当たり 3・1 頭からみ 1」）: 端末（スマホ）ごとにたまる。付くのは結果の発表のとき。保存は下の「保存」 */
+      toggleRow('スタンプラリー', '投票するとスマホにスタンプがたまり、決めた数で そのレースの 2 票目を入れられる', 'stampOn', stampOfT(T).on) +
+      stepRow('2 票目に使う数', '何個たまったら 2 票目を入れられるか', 'stampCost', stampOfT(T).cost, '個', 1, 100, 1) +
+      stepRow('投票で付く数', '1 票ごと', 'stampVote', stampOfT(T).vote, '個', 0, 100, 1) +
+      stepRow('当たりで付く数', '当たった票', 'stampWin', stampOfT(T).win, '個', 0, 100, 1) +
+      stepRow('1 頭からみで付く数', 'はずれでも、選んだ 2 頭のどちらかが 1 着か 2 着', 'stampNear', stampOfT(T).near, '個', 0, 100, 1) +
+      '<p class="hint" id="stampEx">' + stampExample(stampOfT(T)) + '</p>' +
       '<details class="fold" id="explainFold"><summary>勝ち馬の決まり方（くわしく）</summary><div class="in explain">' + explainHtml(T) + '</div></details>' +
       '</div>' +
       viewHorseLook(T) +
@@ -1236,7 +1249,7 @@
     finally { btns.forEach((x) => { if (document.contains(x)) x.disabled = false; }); }
   }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
-  const TUN_KEYS = ['voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutSpread', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'noRepeatRaces', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
+  const TUN_KEYS = ['stampCost', 'stampVote', 'stampWin', 'stampNear', 'voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutSpread', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'noRepeatRaces', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
   function validateTuning() {
     if (!$('tumsg')) return 1;
     const badKeys = TUN_KEYS.filter((k) => !numOk(k) || (k === 'maxBillsPerDevice' && $('n-' + k) && Number($('n-' + k).value) === 1)), bad = badKeys.length;
@@ -1245,9 +1258,10 @@
     if ($('bandEx') && numOk('bandBelow') && numOk('bandAbove')) $('bandEx').innerHTML = bandExample(numOf('bandBelow') / 100, numOf('bandAbove') / 100);
     if ($('spreadEx') && numOk('payoutSpread')) $('spreadEx').innerHTML = spreadExample(numOf('payoutSpread') / 100);
     { // 直近の当たり端末・参加の多い店（2026-10-31）: 「使う／使わない」の字と例文をその場で
-      ['noRepeatWin', 'favorBigStore'].forEach((k) => { const el = $('n-' + k), sp = el && el.parentNode.querySelector('span'); if (sp) sp.textContent = el.checked ? '使う' : '使わない'; });
+      ['noRepeatWin', 'favorBigStore', 'stampOn'].forEach((k) => { const el = $('n-' + k), sp = el && el.parentNode.querySelector('span'); if (sp) sp.textContent = el.checked ? '使う' : '使わない'; });
       if ($('noRepeatEx')) $('noRepeatEx').innerHTML = noRepeatExample(ckOf('noRepeatWin'), numOk('noRepeatRaces') ? Math.round(numOf('noRepeatRaces')) : nrRacesOf(cfg.tuning));
       if ($('bigStoreEx')) $('bigStoreEx').innerHTML = bigStoreExample(ckOf('favorBigStore'));
+      if ($('stampEx')) $('stampEx').innerHTML = stampExample(stampForm(cfg.tuning)); /* スタンプラリー（2026-11-03） */
     }
     if (numOk('shiftUp') && numOk('shiftDown')) {
       const up = numOf('shiftUp'), down = numOf('shiftDown');
@@ -1279,6 +1293,7 @@
     const T0 = cfg.tuning, near = (a, b) => Math.abs(Number(a || 0) - Number(b || 0)) < 1e-9;
     Object.keys(t).forEach((k) => { if (typeof t[k] === 'boolean' ? t[k] === (T0[k] === true) : near(t[k], T0[k] != null ? T0[k] : DEF_TUNING[k])) delete t[k]; }); // オン・オフは true / false で比べる（保存していない古いデータは初期値と比べる）
     { const cz = {}; CUES.forEach(([k]) => { const cur = (T0.cues && T0.cues[k]) || DEF_CUES[k], sh = Math.round(numOf('cueShow_' + k)), hi = Math.round(numOf('cueHit_' + k)), d = {}; if (!near(sh, cur.show)) d.show = sh; if (!near(hi, cur.hit)) d.hit = hi; if (Object.keys(d).length) cz[k] = d; }); if (Object.keys(cz).length) t.cues = cz; } /* 演出: 変えた演出・項目だけ */
+    { const S0 = stampOfT(T0), S1 = stampForm(T0), d = {}; ['on', 'cost', 'vote', 'win', 'near'].forEach((k) => { if (S1[k] !== S0[k]) d[k] = S1[k]; }); if (Object.keys(d).length) t.stamp = d; } /* スタンプラリー（2026-11-03）: 変えた項目だけ */
     if (!Object.keys(t).length) { tunDirty = false; toast('変更はありません'); return keepScroll(render); }
     const big = (t.shiftUp != null && t.shiftUp * 100 > BIG_SHIFT) || (t.shiftDown != null && t.shiftDown * 100 > BIG_SHIFT);
     if (big && !confirm('倍率のずらし幅が大きいので、お客さんが見た倍率と確定の倍率が大きく変わります。\n（上げ ' + fmtN(pct(t.shiftUp != null ? t.shiftUp : T0.shiftUp)) + '%・下げ ' + pct(t.shiftDown != null ? t.shiftDown : T0.shiftDown) + '%）\n保存しますか？')) return;
