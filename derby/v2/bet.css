@@ -305,8 +305,8 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
    済み＝灰 #AEB8CB（✓ も灰・時刻の右 8px）、次＝金枠 2px #F5CB62＋「次」、これから＝白。ラベルは上に 1 行（12px）、カードの上下余白 20px */
 .today { flex-direction: column; align-items: stretch; gap: 8px; padding: 20px 10px; }
 .today .tl { align-self: center; font-size: 12px; margin: 0; }
-.today .chips { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; flex-wrap: nowrap; }
-.today .rc { min-height: 44px; height: auto; padding: 12px 8px; justify-content: center; gap: 8px; border-radius: 10px; min-width: 0; overflow: hidden; }
+.today .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 6px; } /* 2026-11-02 オーナー「みづらい」: 札を縮めて 1 列に押し込まない。1 列に 4 つまで・入らなければ折り返す（時刻が切れない） */
+.today .rc { flex: 0 0 calc(25% - 5px); height: 44px; padding: 0 6px; justify-content: center; gap: 6px; border-radius: 10px; min-width: 0; }
 .today .rc b { font-size: 14px; letter-spacing: -.02em; }
 .today .rc i { font-size: 12px; }
 .today .rc.done { opacity: 1; color: #aeb8cb; background: var(--card); }
@@ -325,3 +325,53 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .waitbox .prepdot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--gold); vertical-align: middle; animation: prepblink 1.2s ease-in-out infinite; }
 @keyframes prepblink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .waitbox .prepstaff { margin: 8px 0 0; font-size: 13px; color: var(--dim, #a89f89); }
+
+/* スタンプラリー（2026-11-02。仮・デモで確かめる）: 端末ごとのスタンプのカード（10 マス）・結果の「スタンプ +n」。.stamp（受け取り済み）とは別の名前 */
+.stampcard { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 16px; border: 1px solid rgba(255, 215, 115, .35); background: var(--card2); }
+.stampcard .sh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0; }
+.stampcard .sh > b { font-size: 15px; font-weight: 900; color: var(--gold); letter-spacing: .06em; }
+.stampcard .sn { font-size: 14px; color: var(--dim); font-weight: 700; font-variant-numeric: tabular-nums; }
+.stampcard .sn b { font-size: 24px; color: var(--gold); font-weight: 900; margin-right: 2px; }
+.stampcard .cells { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.stampcard .sc { display: block; aspect-ratio: 1; border-radius: 50%; border: 2px dashed rgba(255, 255, 255, .22); }
+.stampcard .sc.on { border: 2px solid var(--gold); background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--gold) 55%, #b8862b); box-shadow: 0 0 8px rgba(255, 215, 115, .35); }
+.stampcard .sl { margin: 0; font-size: 14px; font-weight: 700; text-align: center; word-break: auto-phrase; }
+.stampcard .sr { margin: 0; font-size: 12px; color: var(--dim); text-align: center; word-break: auto-phrase; }
+.stampgot { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 14px; border-radius: 14px; border: 2px solid var(--gold); background: var(--card2); text-align: center; }
+.stampgot b { font-size: 22px; font-weight: 900; color: var(--gold); letter-spacing: .04em; }
+.stampgot span { font-size: 13px; color: var(--dim); font-weight: 600; }
+/* スタンプが押されたような動き（2026-11-02 オーナー）: 増えたマスは大きく出てから縮んで着地（少し回る・にじみの輪）。結果の「スタンプ +n」も同じ着地。動きを減らす設定の端末では出さない */
+@keyframes stampHit { 0% { transform: scale(2.1) rotate(-18deg); opacity: 0; } 55% { transform: scale(.86) rotate(4deg); opacity: 1; } 75% { transform: scale(1.08) rotate(-1deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes stampRing { 0% { box-shadow: 0 0 0 0 rgba(255, 215, 115, .7); } 100% { box-shadow: 0 0 0 14px rgba(255, 215, 115, 0); } }
+@keyframes stampCardPop { 0% { transform: scale(1); } 45% { transform: scale(1.03); } 100% { transform: scale(1); } }
+.stampcard .sc.on.hit { animation: stampHit .55s cubic-bezier(.2, 1.4, .4, 1) both, stampRing .7s ease-out .35s both; animation-delay: calc(var(--d, 0) * 120ms), calc(var(--d, 0) * 120ms + .35s); }
+.stampcard.hit { animation: stampCardPop .5s ease-out both; }
+.stampgot { animation: stampHit .6s cubic-bezier(.2, 1.4, .4, 1) both; transform-origin: 50% 50%; }
+@media (prefers-reduced-motion: reduce) { .stampcard .sc.on.hit, .stampcard.hit, .stampgot { animation: none; } }
+/* スタンプのマス（2026-11-02 見直し）: 押したマスは金の判子（★）、まだのマスは薄い番号。数は「n 個」（10 個より多いときも 10 マスは全部埋まる） */
+.stampcard .sc { position: relative; display: grid; place-items: center; font-family: var(--display); font-weight: 900; font-size: 13px; color: rgba(255, 255, 255, .28); font-style: normal; }
+.stampcard .sc::before { content: attr(data-n); }
+.stampcard .sc.on { color: #5a3d05; font-size: 20px; }
+.stampcard .sc.on::before { content: "★"; text-shadow: 0 1px 0 rgba(255, 255, 255, .35); }
+.stampcard .sn b { font-size: 26px; }
+/* デザイン審査 1 回目（ChatGPT 88 点・2026-11-02）の直し: ①未獲得のマスを見える明るさに ②金の光彩を半分に ③ルールの文字を 1 段大きく・間を広く ④達成の文を短く大きく ⑤結果は数字を主役に */
+.stampcard .sc { border: 2px dashed #65738e; color: #8491ab; opacity: .8; }
+.stampcard .sc.on { opacity: 1; border: 2px solid var(--gold2); background: linear-gradient(180deg, #ffe6a0, var(--gold) 60%, #d9b04a); box-shadow: 0 0 4px rgba(255, 215, 115, .25), inset 0 1px 0 rgba(255, 255, 255, .55); }
+.stampcard .sr { font-size: 13px; color: #c4ccdd; display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 14px; }
+.stampcard .sl { font-size: 15px; margin-top: 6px; }
+.stampcard .cells { margin-bottom: 4px; }
+.stampgot { padding: 18px 14px 16px; gap: 4px; }
+.stampgot b { display: flex; align-items: baseline; justify-content: center; gap: 8px; font-size: 24px; }
+.stampgot b em { font-style: normal; font-size: 40px; line-height: 1; letter-spacing: 0; }
+.stampgot span { font-size: 18px; color: #b8c2d5; }
+/* デザイン審査 2 回目（ChatGPT 95 点）の直し: 結果は数字をさらに大きく・マスを 5% 小さく・「10 個達成！」だけ金・ルールの間を 16px */
+.stampgot b { font-size: 20px; gap: 12px; }
+.stampgot b em { font-size: 46px; }
+.stampcard .cells { gap: 6px 10px; padding: 0 6px; }
+.stampcard .sl { margin-top: 2px; }
+.stampcard .sl .hi { color: #ffd978; font-weight: 900; }
+.stampcard .sr { gap: 4px 16px; }
+.stampcard .sr span:last-child { font-size: 12px; }
+/* 2026-11-02 オーナー「スタンプの中に数字を入れて、今何ポイントか直感で分かるように」: 押したマスも ★ ではなく番号（1〜10）。いちばん新しいマスの番号＝いまの数 */
+.stampcard .sc.on::before { content: attr(data-n); text-shadow: 0 1px 0 rgba(255, 255, 255, .45); }
+.stampcard .sc.on { font-size: 19px; color: #3f2a03; letter-spacing: -.02em; }
