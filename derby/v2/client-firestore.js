@@ -17,7 +17,7 @@
   'use strict';
 
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // casa SLOT と同じ版（compat）
-  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
+  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev', stamps: 'derbyStamps' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
   const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
@@ -455,11 +455,40 @@
       }
       bonusMemo[v1.vid] = ok; return ok;
     }
+    /* スタンプラリー（2026-11-02。v2/core.js の「スタンプラリー」）: この端末のスタンプ（derbyStamps/<uid>。自分のだけ読める）。設定がオフのときは何も読まない（null） */
+    async function stampConf() { try { const S = Core.stampOf(await getPublic(local() - pubAt > 10000)); return S.on ? S : null; } catch (e) { return null; } } // 公開の設定は 10 秒より古ければ読み直す（見張り中は読み直さない決まりだと、管理画面でオンにしても開きっぱなしのスマホに届かないので。2026-11-03）
+    async function myStampDoc() { try { return data(await doc(COL.stamps, uid()).get()) || {}; } catch (e) { return null; } } // まだ無い ＝ 0 個（{}）・読めない ＝ null
+    async function stamps() {
+      await ready(); const S = await stampConf(); if (!S) return null;
+      const d = await myStampDoc(); if (!d) return null;
+      return { cost: S.cost, vote: S.vote, win: S.win, near: S.near, bal: Core.stampBalance(d), earned: Number(d.earned) || 0, spent: Number(d.spent) || 0, h: d.h || {} };
+    }
+    // いまスタンプで 2 票目を入れられるか: { cost, bal, can } | null（オフ・読めない）。初参加ボーナスが使えるときは出さない（そちらが先・無料）
+    async function stampCan(v1, r, v2, bonus) {
+      const S = await stampConf(); if (!S || !v1 || !r) return null;
+      const d = await myStampDoc(); if (!d) return null; const bal = Core.stampBalance(d);
+      return { cost: S.cost, bal, can: !v2 && !bonus && !v1.test && !r.test && Core.votingOpen(r, now()) && bal >= S.cost };
+    }
+    /* 発表のときに、そのレースの本物の票の持ち主へスタンプを付ける（進行役）。同じレースは h の印で 2 回付けない。返り値: 付けた端末の数 */
+    async function awardStamps(race, tuning) {
+      const S = Core.stampOf(tuning); if (!S.on || !race || race.test || race.refunded) return 0;
+      const vq = await db.collection(COL.votes).where('raceId', '==', race.id).get();
+      const by = Core.stampsForRace(race, vq.docs.map((d) => d.data()), S), owners = Object.keys(by), CH = cap(10, 5); let n = 0;
+      for (let i = 0; i < owners.length; i += CH) {
+        const part = owners.slice(i, i + CH);
+        n += await db.runTransaction(async (tx) => {
+          const cur = await Promise.all(part.map((o) => tx.get(doc(COL.stamps, o)).then(data)));
+          let k = 0; part.forEach((o, j) => { const nx = Core.stampAward(cur[j], race.id, by[o]); if (nx) { tx.set(doc(COL.stamps, o), nx); k++; } });
+          return k;
+        });
+      }
+      return n;
+    }
     async function readVote(vid) { if (live.votes[vid]) return live.votes[vid]; try { return data(await doc(COL.votes, vid).get()); } catch (e) { return null; } }
-    // スマホに返す票の組: { vote（1 票目）, vote2（2 票目 | null）, bonus（いま 2 票目を入れられる）, r（レース） }
+    // スマホに返す票の組: { vote（1 票目）, vote2（2 票目 | null）, bonus（いま 2 票目を入れられる）, stamp（スタンプラリー: { cost, bal, can } | null）, r（レース） }
     async function pairOf(v1, v2, rHint) { // rHint: 手元にあるそのレース（投票の直後。読み直さない）
-      const b1 = await voteBundle(v1, rHint), b2 = v2 ? await voteBundle(v2, rHint) : null;
-      return { vote: Core.voteView(v1, b1.r, b1.p), vote2: v2 ? Core.voteView(v2, b2.r, b2.p) : null, bonus: await bonusCan(v1, b1.r, v2), r: b1.r };
+      const b1 = await voteBundle(v1, rHint), b2 = v2 ? await voteBundle(v2, rHint) : null, bonus = await bonusCan(v1, b1.r, v2);
+      return { vote: Core.voteView(v1, b1.r, b1.p), vote2: v2 ? Core.voteView(v2, b2.r, b2.p) : null, bonus, stamp: await stampCan(v1, b1.r, v2, bonus), r: b1.r };
     }
     async function vote(o) {
       await ready(); o = o || {};
@@ -480,9 +509,18 @@
         const vid1 = Core.voteId(r.id, sid, c.bill), vid2 = vid1 + '~2', ref2 = doc(COL.votes, vid2);
         let v1 = null; try { v1 = live.votes[vid1] || data(await doc(COL.votes, vid1).get()); } catch (e) { if (!(e && e.code === 'permission-denied')) throw mapErr(e); }
         if (!v1 || v1.owner !== uid()) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill });
-        let v2 = await readVote(vid2);
+        let v2 = await readVote(vid2), useStamp = false;
         try {
           if (v2) { const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t }; await ref2.update(patch); v2 = Object.assign(v2, patch); }
+          else if (o.stamp && !(await bonusCan(v1, r, null))) { // スタンプラリー（2026-11-02）: cost 個で 2 票目。票とスタンプの使った数を同じ書き込みで（ルールが両方を確かめる）
+            useStamp = true;
+            const sc2 = await stampCan(v1, r, null, false);
+            if (!sc2 || !sc2.can) throw E(409, 'no_stamp', 'スタンプが足りないか、このレースでは使えません');
+            v2 = { vid: vid2, raceId: r.id, storeId: sid, bill: v1.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: false, n: 2, stamp: true };
+            const b = db.batch(); b.set(ref2, v2); b.update(doc(COL.stamps, uid()), { spent: FieldValue.increment(sc2.cost), use: vid2 });
+            await b.commit();
+            bonusMemo[vid1] = false;
+          }
           else {
             if (!(await bonusCan(v1, r, null))) throw E(409, 'no_bonus', '初参加ボーナスの 2 票目は使えません（このスマホの初めてのレースで、その日その番号で 1 回だけ）');
             v2 = { vid: vid2, raceId: r.id, storeId: sid, bill: v1.bill, nick: c.nick, first: c.first, second: c.second, owner: uid(), votedAt: t, updatedAt: t, test: !!v1.test, n: 2 };
@@ -494,13 +532,13 @@
             bonusMemo[vid1] = false;
           }
         } catch (e) {
-          if (e && e.code === 'no_bonus') throw e;
-          if (e && e.code === 'permission-denied') { bonusMemo[vid1] = false; const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) throw E(409, 'no_bonus', '初参加ボーナスの 2 票目は使えません'); throw E(409, 'closed', '締め切りました', { openId: openId() }); }
+          if (e && (e.code === 'no_bonus' || e.code === 'no_stamp')) throw e;
+          if (e && e.code === 'permission-denied') { bonusMemo[vid1] = false; const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) throw useStamp ? E(409, 'no_stamp', 'スタンプが足りないか、このレースでは使えません') : E(409, 'no_bonus', '初参加ボーナスの 2 票目は使えません'); throw E(409, 'closed', '締め切りました', { openId: openId() }); }
           throw mapErr(e);
         }
         if (live.votes[vid2]) live.votes[vid2] = v2;
         const pr = await pairOf(v1, v2);
-        return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
+        return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, key: 'uid', race: raceOut() };
       }
       const vid = Core.voteId(r.id, sid, c.bill), ref = doc(COL.votes, vid);
       const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t };
@@ -545,7 +583,7 @@
       if (live.votes[vid]) live.votes[vid] = v; // 見張り中の写しだけ直す（見張っていない票は写しを持たない＝決める係の書いた当たりの印を見落とさない）
       if (!mine && !v.test && !devSame) await touchDevice(r, sid, t); // 端末のリスト（本物のレースの 1 票目だけ。同じ書き込みで書けなかったときだけ）
       const pr = await pairOf(v, mine ? await readVote(vid + '~2') : null, r); // 新しい 1 票目に 2 票目は無い（番号を空けると両方消える）
-      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, key: 'uid', race: raceOut() };
+      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, key: 'uid', race: raceOut() };
     }
     async function voteBundle(v, rHint) {
       const r = rHint && rHint.id === v.raceId && rHint.status === 'upcoming' ? rHint : await raceFor(v.raceId);
@@ -562,7 +600,7 @@
       if (!v || v.owner !== uid()) throw E(404, 'no_vote', '票が見つかりません（番号を空けられたか、別のスマホの票です）');
       const v2 = live.watch2[base] ? live.votes[base + '~2'] || null : await readVote(base + '~2'); // 見張っていれば写しが正しい（読まない）
       const pr = await pairOf(v, v2 && v2.owner === uid() ? v2 : null);
-      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, race: Core.publicRace(pr.r, { role: 'phone', store: v.storeId }) };
+      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, race: Core.publicRace(pr.r, { role: 'phone', store: v.storeId }) };
     }
     // 受け取りの確かめ（取引の中。スタッフ・お客さんのスライド共通）
     function claimCheck(s, rr, names) {
@@ -656,6 +694,8 @@
         const v1 = data(await ref.get()), v2 = data(await ref2.get()), v = v1 || v2; // 初参加ボーナスの 2 票目も一緒に消す（使った印 derbyBonus は残る）
         if (!v) return { ok: true, released: false, vid, raceId: r.id, bill };
         const b = db.batch(); if (v1) b.delete(ref); if (v2) b.delete(ref2);
+        const SR = v2 && v2.stamp === true && v2.owner ? Core.stampOf(await getPublic()) : null;
+        if (SR && SR.on) b.update(doc(COL.stamps, v2.owner), { spent: FieldValue.increment(-SR.cost), refund: vid + '~2' }); // スタンプラリー: スタンプで入れた 2 票目が消える → 使った数を戻す（2026-11-02。オフにしたあとは戻さない）
         b.set(doc(COL.logs, 'rel_' + vid.replace(/[^A-Za-z0-9_-]/g, '_') + '_' + t), { at: t, date: Core.bizDate(t, (await getPublic()).dayStartHour), cal: Core.dateStr(t), type: 'release', storeId: store, bill, nick: v.nick, combo: Core.comboOf(v), vid, raceId: r.id });
         await b.commit();
         return { ok: true, released: true, vid, raceId: r.id, bill };
@@ -856,6 +896,7 @@
         ws.push((b) => b.set(doc(COL.logs, 'win_' + p.pid), Object.assign({ at: t, date: Core.bizDate(t, h), cal: Core.dateStr(t), type: 'win', storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null, vid: p.vid || null, pid: p.pid, raceId }, p.flag ? { flag: p.flag } : {}))); // flag: 1 台で番号が多いスマホの当たり（2026-10-27）
       });
       await commitChunks(ws);
+      try { await awardStamps(Object.assign({}, out, { id: raceId }), sc.tuning); } catch (e) { logD([now(), 'stamps ' + raceId + ' ' + ((e && (e.code || e.message)) || e)]); } // スタンプラリー（2026-11-02）: 付けられなくても発表は止めない
       return out;
     }
     async function expirePayouts(o) {
@@ -887,12 +928,14 @@
       if (!['closing', 'decided', 'done'].includes(r.status)) throw E(409, 'not_closed', '締切前のレースは取り消せません');
       if (r.status === 'closing') throw E(409, 'busy', 'いま結果を決めているところです。少し待ってからもう一度');
       const t = now(), day = r.day, payIds = (await db.collection(COL.payouts).where('raceId', '==', raceId).get()).docs.map((d) => d.id);
+      const SR = Core.stampOf(await getPublic()), stampV2 = SR.on ? (await db.collection(COL.votes).where('raceId', '==', raceId).get()).docs.map((d) => d.data()).filter((v) => v && v.stamp === true && v.n === 2 && v.owner) : []; // スタンプラリー（2026-11-03）: 取り消すレースのスタンプの 2 票目 → 使った数を戻す（下の取引で）
       const got = await db.runTransaction(async (tx) => {
         const rr = data(await tx.get(ref));
         if (!rr) throw E(404, 'no_race', 'レースが見つかりません');
         if (rr.refunded) throw E(409, 'already_refunded', 'もう取り消し済みです');
         if (!['decided', 'done'].includes(rr.status)) throw E(409, 'busy', 'いま結果を決めているところです。少し待ってからもう一度');
         const pays = []; for (const id of payIds) { const p = data(await tx.get(doc(COL.payouts, id))); if (p) pays.push(p); }
+        const stampDocs = []; for (const v of stampV2) stampDocs.push([v, data(await tx.get(doc(COL.stamps, v.owner)))]); // 読むのは書く前に（Firestore の取引の決まり）
         const pl = Core.voidPlan(pays), wd = rr.status === 'done';
         const inc = { date: day, committed: FieldValue.increment(-pl.voided), byStore: {} };
         if (wd && !rr.test) { inc.paid = FieldValue.increment(-pl.voided); const by = {}; pl.voids.forEach((p) => { by[p.storeId] = (by[p.storeId] || 0) + p.amount; }); Object.keys(by).forEach((s) => { inc.byStore[s] = { paid: FieldValue.increment(-by[s]) }; }); }
@@ -900,6 +943,7 @@
         tx.update(ref, { refunded: true, refundedAt: t, voided: pl.voided, winners: [] });
         tx.set(doc(COL.secrets, raceId), { decision: { paid: pl.kept.reduce((a, p) => a + p.amount, 0), refunded: true } }, { merge: true });
         pl.voids.forEach((p) => tx.update(doc(COL.payouts, p.pid), { status: 'void', voidAt: t }));
+        stampDocs.forEach(([v, sd]) => { if (sd && (Number(sd.spent) || 0) >= SR.cost && sd.refund !== v.vid) tx.update(doc(COL.stamps, v.owner), { spent: FieldValue.increment(-SR.cost), refund: v.vid }); }); // スタンプの 2 票目のぶんを戻す（無い・足りない・もう戻した人は何もしない。2026-11-03）
         return { pl, wd };
       });
       if (!got.wd) await revealRace(raceId, true); else { const fresh = data(await ref.get()); if (fresh) await publishWith(fresh); }
@@ -1350,7 +1394,7 @@
           const pushVote = async () => {
             if (!got1 || !got2) return; // 2 つとも最初の値が届いてから
             if (!v1L) { const k = 'released'; if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote({ vote: null, released: true, vid: vid1 }); } return; }
-            const pr = await pairOf(v1L, v2L), view = { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus }, k = JSON.stringify(view);
+            const pr = await pairOf(v1L, v2L), view = { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp }, k = JSON.stringify(view);
             if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote(view); }
           };
           const watchPayout = (v) => {
@@ -1611,7 +1655,7 @@
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
       get link() { return linkState ? Object.assign({}, linkState) : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
-      state, race, vote, myVote, claimSelf,
+      state, race, vote, myVote, claimSelf, stamps, // stamps: スタンプラリー（2026-11-02。オフなら null）
       staffLogin, release, wins, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
       deciderHealth: (sid) => deciderHealth(sid === undefined ? store : sid), // 進行役のテレビが止まっていないか（2026-10-28）
       admin, subscribe,
