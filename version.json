@@ -1,9 +1,9 @@
 {
- "v": "b178",
+ "v": "b179",
  "files": [
   {
    "path": "index.html",
-   "sha256": "1baa3dbe926fce973674a66174a2d85e90570adf6d5d06c70bc09223eab9bc5f"
+   "sha256": "d3b9e8aeba4d75660403954074af51fa00f6b897988891b0c1081037d936c397"
   },
   {
    "path": "manifest.webmanifest",
@@ -251,7 +251,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "284b6e97bf7225eed9918652e4a063747533a6b8d9bc2a0c287e2cb09d57218d"
+   "sha256": "68431dc173d4ae0fd5b10808526c7ce6c4475aa61c8c03fe4a3195a1d614620c"
   },
   {
    "path": "derby/js/audio.js",
@@ -339,11 +339,11 @@
   },
   {
    "path": "derby/v2/client-firestore.js",
-   "sha256": "39b1559866462802654b6039663705d5ed5a600eb3c0584f445f4ac76b352791"
+   "sha256": "36c2eab5ff63c5e22f32af6f1ee5fcd49a1276ed884b5e11fce014538a5f879e"
   },
   {
    "path": "derby/v2/client.js",
-   "sha256": "26f5d281428605e1bbe790e0afd8a8dd15a7429e1ccd310fd5a90cd2960acbf0"
+   "sha256": "2f9fedd24050165ea7d1cb2e3e44ecc1084b05160d63797d482f8a7f5737788e"
   },
   {
    "path": "derby/v2/config.js",
@@ -351,7 +351,7 @@
   },
   {
    "path": "derby/v2/core.js",
-   "sha256": "b70e82951655f160d89535221dd5ff140d02199516342981407f7b27da799ff7"
+   "sha256": "59e2490850db7c3be919cc81b128d689608cc8fbe92d510d0f2ab4452a4bc95c"
   },
   {
    "path": "derby/v2/form.js",
