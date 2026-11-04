@@ -354,7 +354,7 @@
       const miss = () => { st.next = local() + RESULT_RETRY_MS[Math.min(st.n, RESULT_RETRY_MS.length - 1)]; st.n++; return null; };
       const keep = (sn) => { // 12 秒を過ぎてから届いた返事も使う（とても遅い電波でも、届いた本物の結果は捨てない）
         if (!sn || !sn.exists) return null;
-        if (!resultCache[id]) { const x = sn.data(); resultCache[id] = { winner: x.winner, second: x.second, combo: x.combo, comboOdds: x.comboOdds, order: x.order, finalExacta: x.finalExacta, finalOdds: x.finalOdds, seed: x.seed, finishTimes: x.finishTimes, winTime: x.winTime, natural: x.natural, cues: x.cues || null }; } /* cues: 確定演出（derbyResults にだけ。derbyRaces・derbyLive には写さない） */
+        if (!resultCache[id]) { const x = sn.data(); resultCache[id] = { winner: x.winner, second: x.second, combo: x.combo, comboOdds: x.comboOdds, order: x.order, finalExacta: x.finalExacta, finalOdds: x.finalOdds, seed: x.seed, finishTimes: x.finishTimes, winTime: x.winTime, natural: x.natural, cues: x.cues || null, incident: x.incident || null }; } /* cues: 確定演出（derbyResults にだけ。derbyRaces・derbyLive には写さない） */
         delete resultTry[id]; return resultCache[id];
       };
       const g = doc(COL.results, id).get(); g.then(keep, () => {});
@@ -869,7 +869,7 @@
         const r = data(await tx.get(ref)); if (!r || r.status !== 'decided' || !!r.refunded !== !!r0.refunded) return null;
         const revealAt = Math.min(r.revealAt, t);
         const patch = { status: 'done', revealAt, revealedAt: t, endAt: revealAt + (r.resultSec || 300) * 1000, revealAtTs: Ts(revealAt),
-          result: res ? { winner: res.winner, second: res.second, combo: res.combo, comboOdds: res.comboOdds, order: res.order, finalExacta: res.finalExacta, finalOdds: res.finalOdds, seed: res.seed, finishTimes: res.finishTimes, winTime: res.winTime, natural: res.natural } : null,
+          result: res ? { winner: res.winner, second: res.second, combo: res.combo, comboOdds: res.comboOdds, order: res.order, finalExacta: res.finalExacta, finalOdds: res.finalOdds, seed: res.seed, finishTimes: res.finishTimes, winTime: res.winTime, natural: res.natural, incident: res.incident || null } : null,
           winners: r.refunded ? [] : Core.winnersView(dc.winnerList || [], names) };
         tx.update(ref, patch);
         if (!r.test) { // テストのレースは集計に入れない
