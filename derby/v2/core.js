@@ -32,7 +32,7 @@
   const CUE_KEYS = ['fruit', 'crowd', 'sign', 'cloud', 'gateLate', 'eye'];
   const DEFAULT_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
   /* 調整の初期値（ver: 4 ＝ v4 の形。ver のない以前の保存データは、投票の秒数の意味が違う＝2 段の 2 段目だったので初期値 180 秒に読み替える） */
-  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false, stamp: { on: false, cost: 10, vote: 1, win: 3, near: 1 } }; /* noRepeatWin・noRepeatRaces（直近の当たり端末を当てない）・favorBigStore（参加人数が多い店から当たりを出す）。2026-10-31: どちらも初期は使わない（オーナーが管理画面で入れる）・裏の設定＝public に入れない。下の「直近の当たり端末」「参加の多い店」 */ /* payoutSpread（配当のぶれ。2026-10-29）: レースごとに目標を ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）でばらつかせる（0 ＝ 目標ちょうどのまわり・0〜0.8。裏の設定）。v2/outcome.js の spreadFactor */ /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
+  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, incident: { rate: 0, fall: 50 }, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false, stamp: { on: false, cost: 10, vote: 1, win: 3, near: 1 } }; /* noRepeatWin・noRepeatRaces（直近の当たり端末を当てない）・favorBigStore（参加人数が多い店から当たりを出す）。2026-10-31: どちらも初期は使わない（オーナーが管理画面で入れる）・裏の設定＝public に入れない。下の「直近の当たり端末」「参加の多い店」 */ /* payoutSpread（配当のぶれ。2026-10-29）: レースごとに目標を ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）でばらつかせる（0 ＝ 目標ちょうどのまわり・0〜0.8。裏の設定）。v2/outcome.js の spreadFactor */ /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
   const PUBLIC_TUNING_KEYS = ['ver', 'stamp', 'shiftUp', 'shiftDown', 'voteSec', 'resultSec', 'gateSec', 'postSec', 'photoExtraSec', 'closeLeadSec', 'scenes', 'dayStartHour', 'horizonMin', 'horseLook', 'horseLookPrev', 'horseLookAt']; /* cues（演出の割合）・当たりの幅・上限・払い戻し率は裏＝入れない */
   const LEGACY_TUNING_KEYS = ['exchangeSec', 'betSec', 'bountyPerTicket', 'shiftWidth']; // 以前の形の項目（読むときに捨てる）
   const SHIFT_UP_MAX = 10000, SHIFT_DOWN_MAX = 1; // 締切のあとの倍率のずらし幅（2026-10-20「上限なしで管理画面から全部決められる」）: 上げ幅は事実上上限なし・下げ幅は 100% まで（倍率は 1.0 倍より下げない）
@@ -54,6 +54,22 @@
       out[k] = { horse: others[Math.min(others.length - 1, Math.floor(rnd() * others.length))] };
     });
     return out;
+  }
+  /* 脱落（2026-11-04 オーナー「落馬とかゲートインできないみたいな演出いれたい」→「本当に脱落、票は外れ」「たまに＝10 レースに 1 回くらい」）
+     調整 tuning.incident = { rate: 出す割合 %, fall: そのうち落馬の割合 %（残りは競走除外＝ゲートに入れない） }。
+     incidentFor: レースごとに seed から決める（同じなら必ず同じ）。馬は 6 頭から同じ割合で。落馬の場所は進み具合 0.3〜0.75。
+     返り値 { type: 'scratch' | 'fall', horse, at } か null。決めた馬が入った組み合わせは当たりにしない（v2/outcome.js の input.out） */
+  const SCRATCH_EXTRA_SEC = 14; // 競走除外のレースはゲートが開くのを 14 秒遅らせる（2026-11-04 オーナー「ゲートイン嫌がるやつは 20 秒使って」。js/race3d.js の GI_SCR_EXTRA と同じ数）
+  const DEFAULT_INCIDENT = { rate: 0, fall: 50 }; // 初期は出さない（管理画面の「調整」で割合を入れる。2026-11-04 公開時に 10% にした）
+  function incidentTuning(x) { const s = x && typeof x === 'object' ? x : {}; return { rate: pct(s.rate, DEFAULT_INCIDENT.rate), fall: pct(s.fall, DEFAULT_INCIDENT.fall) }; }
+  function incidentFor(Outcome, salt, raceId, tuning, n, horses) {
+    const I = incidentTuning(tuning && tuning.incident), N = n || 6, rnd = mulberry(Outcome.hash(salt, raceId, 'incident'));
+    if (!(rnd() * 100 < I.rate) || N < 4) return null;
+    const type = rnd() * 100 < I.fall ? 'fall' : 'scratch', at = Math.round((0.3 + rnd() * 0.2) * 1000) / 1000;
+    /* 落馬は前を走る馬（逃げ・先行）から選ぶ（2026-11-04 オーナー「カメラワークを変えずに」: いつものカメラは先頭の集団を映すので、後ろの馬だと映らない）。いなければ 6 頭から */
+    const front = type === 'fall' && Array.isArray(horses) ? horses.map((h, i) => (h && (h.type === 'nige' || h.type === 'senko') ? i : -1)).filter((i) => i >= 0 && i < N) : [];
+    const pool = front.length ? front : Array.from({ length: N }, (_, i) => i), horse = pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
+    return type === 'fall' ? { type, horse, at } : { type, horse };
   }
   const withoutCues = (result) => { if (!result || result.cues === undefined) return result; const o = Object.assign({}, result); delete o.cues; return o; };
   /* 馬の見た目（全店共通。'cute' | 'real'）: 変えた時刻 horseLookAt から HORSE_LOOK_GRACE_MS 後より後に投票が始まる（openAt）レースから新しい見た目 */
@@ -332,6 +348,7 @@
     t.ver = 4;
     LEGACY_TUNING_KEYS.forEach((k) => { delete t[k]; });
     t.cues = cuesOf(src.cues);
+    t.incident = incidentTuning(src.incident); // 脱落（落馬・競走除外。2026-11-04）: 裏の設定＝public に入れない
     t.stamp = stampOf(src); // スタンプラリー（2026-11-02）: 無い・まちがい ＝ 使わない
     { const hs = horsesOf(src.horses); if (hs) t.horses = hs; else delete t.horses; } // 馬の一覧（2026-10-30）: 無い・まちがい ＝ 初期の一覧（項目なし）
     return t;
@@ -366,6 +383,12 @@
         ['show', 'hit'].forEach((f) => { if (c[f] == null) return; const v = Number(c[f]); if (!Number.isFinite(v) || v < 0 || v > 100) throw err(400, 'bad_tuning', 'cues.' + k + '.' + f + ' は 0〜100 です'); next[k][f] = Math.round(v); });
       });
       t.cues = next;
+    }
+    if (b.incident != null) { // 脱落（2026-11-04）: { rate: 0〜100（出す割合 %）, fall: 0〜100（そのうち落馬の割合 %。残りは競走除外） }
+      if (typeof b.incident !== 'object' || Array.isArray(b.incident)) throw err(400, 'bad_tuning', 'incident は { rate, fall } です');
+      const nx = incidentTuning(t.incident);
+      ['rate', 'fall'].forEach((k) => { if (b.incident[k] == null || b.incident[k] === '') return; const v = Number(b.incident[k]); if (!Number.isFinite(v) || v < 0 || v > 100) throw err(400, 'bad_tuning', 'incident.' + k + ' は 0〜100 です'); nx[k] = Math.round(v); });
+      t.incident = nx;
     }
     if (b.stamp != null) { // スタンプラリー（2026-11-02）: { on, cost, vote, win, near } の変えたい所だけ
       if (typeof b.stamp !== 'object' || Array.isArray(b.stamp)) throw err(400, 'bad_tuning', 'stamp は { on, cost, vote, win, near } です');
@@ -445,7 +468,7 @@
     if (!M) return { sigmaMul: r3(Engine.TUNE.sigmaMul * vol), payoutRate }; // 古いエンジン（作り 1）
     return { model: 2, theta: M.theta, sigmaMul: r3(M.sigmaMul * vol), formSigma: Math.round(M.formSigma * vol * 10000) / 10000, payoutRate }; // 走りの作り 2（2026-11-04 入れ替わりを減らしてリアルに。js/engine.js の createRun）
   }
-  const engineRace = (r) => ({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta });
+  const engineRace = (r) => Object.assign({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta }, (r.incident || (r.result && r.result.incident)) ? { incident: r.incident || r.result.incident } : {}); // incident: 脱落（2026-11-04）
   function raceBase(Engine, Outcome, salt, id, tuning, recent) {
     const pool = horsePool(tuning), src = Array.isArray(recent) ? freshPick(pool || Engine.POOL, recent, Engine.rng(Outcome.hash(salt, id, 'fresh'))) : pool; // まんべんなく出走（2026-10-31）
     const base = Engine.makeRace(Engine.rng(Outcome.hash(salt, id, 'horses')), src); // 馬は管理画面の一覧（無ければ Engine.POOL。2026-10-30）
@@ -788,22 +811,27 @@
     const isBlocked = (v) => { if (!recentDev || isT(v)) return false; const o = ownerOf(v); return o != null && Object.prototype.hasOwnProperty.call(recentDev, o); };
     const honest = basis.filter((v) => !isHeavy(v) && !isBlocked(v)), extra = basis.filter((v) => isHeavy(v) && !isBlocked(v)), block = basis.filter(isBlocked); // 外す票が無ければ今までと同じ honest・extra
     const t0 = Date.now(), cap = real.length ? effectiveCap(T, usedToday) : 0, er = engineRace(race); // テストの票だけのときは払わないので上限は見ない
+    const incident = incidentFor(Outcome, salt, race.id, T, (race.horses || []).length || 6, race.horses); // 脱落（2026-11-04）: 走りにも入れる（その馬は最後）
+    if (incident) er.incident = incident;
     const vin = (v) => ({ first: v.first, second: v.second, group: v.storeId });
     const input = { exacta: race.exacta, comboProb: secret.comboProb, n: (race.horses || []).length || 6, votes: honest.map(vin), target: secret.payoutTarget, scope: secret.scope, up: T.shiftUp, down: T.shiftDown, bandBelow: T.bandBelow, bandAbove: T.bandAbove, cap, seed: Outcome.hash(salt, race.id, 'decide') };
     const spread = Number(T.payoutSpread) || 0; if (spread > 0) input.spread = spread; // 配当のぶれ（2026-10-29）。0 なら入れない＝目標ちょうどのまわり
     if (extra.length) input.extra = extra.map(vin); // 多いスマホが無いレースは今までとまったく同じ入力
     if (block.length) input.block = block.map(vin); // 直近の当たり端末の票（2026-10-31）。無ければ今までとまったく同じ入力
+    if (incident) input.out = [incident.horse]; // 脱落した馬が入った組み合わせは選ばない（その馬を選んだ票は外れ）
     /* 参加の多い店（2026-10-31）: 本物の票（多いスマホの票は数えない）で参加がいちばん多い店。テストのレースは使わない */
     const big = T.favorBigStore === true && !race.test ? bigStoreOf(race, real.filter((v) => !isHeavy(v))) : null;
     if (big && big.store) input.favor = big.store;
     const res = Outcome.resolveExacta(Engine, er, input);
     const run = Engine.replayRun(er, res.seed, { order: res.order });
     const cues = cuesFor(Outcome, salt, race.id, res.first, T, (race.horses || []).length || 6);
+    if (incident) ['gateLate', 'eye', 'fruit', 'crowd', 'sign', 'cloud'].forEach((k) => { if (cues[k] && cues[k].horse === incident.horse) cues[k] = null; }); // 脱落する馬を指す演出は出さない
     const result = { winner: res.first, second: res.second, combo: res.combo, comboOdds: res.comboOdds, order: res.order, finalExacta: res.finalExacta, finalOdds: race.odds, seed: res.seed, finishTimes: run.finishTimes.map((x) => Math.round(x * 1000) / 1000), winTime: Math.round(run.winTime * 1000) / 1000, natural: res.natural, cues };
+    if (incident) result.incident = incident;
     const decision = { target: res.target, targetEff: res.targetEff != null ? res.targetEff : res.target, spreadF: res.spreadF != null ? res.spreadF : 1, scope: res.scope, /* target: 時刻表の目標（集計はこれ）・targetEff: このレースで寄せた額（目標 × spreadF。2026-10-29） */ payout: res.payout, perGroup: res.perGroup, reason: res.reason, band: res.band || null, tries: res.tries, swapsNeeded: res.swapsNeeded, swaps: run.swaps || null, noWinner: res.noWinner, ms: Date.now() - t0, cap, cues, combo: res.combo, comboOdds: res.comboOdds,
       cands: res.cands.map((c) => ({ combo: c.combo, votes: c.votes, odds: c.odds, payout: c.payout, dist: c.dist, inBand: !!c.inBand })) };
     let runAt = race.runAt, revealAt, shift = Math.max(0, t + RUN_LEAD_MS - race.runAt), late = false;
-    if (shift > LATE_CAP_MS) { shift = 0; late = true; } else runAt = race.runAt + shift;
+    if (shift > LATE_CAP_MS) { shift = 0; late = true; } else runAt = race.runAt + shift + (incident && incident.type === 'scratch' ? SCRATCH_EXTRA_SEC * 1000 : 0); // 競走除外: ゲートインを長く
     // 写真判定: 1 着争い（photo）と 2 着争い（photo2。2026-10-20「2 着争いが接戦のときも写真判定とスロー」）。どちらも 0.05 秒以内。発表はそれぞれ photoExtraSec ずつ遅らせる
     const ft = result.finishTimes.slice().sort((a, b) => a - b); // テレビ（Race3D.photoOf）と同じ値（ミリ秒に丸めた result.finishTimes）で判定
     let photo = ft.length > 1 && ft[1] - ft[0] <= 0.05, photo2 = ft.length > 2 && ft[2] - ft[1] <= 0.05;
@@ -840,6 +868,7 @@
     if (big) decision.bigStore = Object.assign({ store: big.store, count: big.count || 0, applied: !!(res.favor && res.favor.applied) }, big.why ? { why: big.why } : {});
     const participants = countVotes(list);
     decision.runShift = shift; decision.lateReveal = late;
+    if (incident) decision.incident = incident;
     return { result, decision, cues, runAt, revealAt, endAt, photo, photo2, payouts, winners, participants, runShift: shift, lateReveal: late };
   }
   /* 同じ人（店・会計番号）の当たりは 1 行にまとめる（初参加ボーナスの 2 票が同じ組み合わせで当たったとき。額は 2 票分・votes: 2）。list をその場で書き換えて返す */
@@ -954,6 +983,6 @@
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
-    CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues,
+    CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues, DEFAULT_INCIDENT, SCRATCH_EXTRA_SEC, incidentTuning, incidentFor,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, TV_STRIP_KEYS, TV_STRIP_A, TV_STRIP_B, tvStripOf, tvStripCode, PW_CHARS, genTvPassword };
 });
