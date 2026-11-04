@@ -1464,3 +1464,7 @@
 
 /* スタンプの枠の見出しは高さの決まり（h3 44px）の対象外（2026-11-04） */
 #stage.v2 .v2wait .stamp .st-hd h3 { height: auto; font-size: 56px; line-height: 1.05; }
+/* 脱落（2026-11-04）: 結果の着順で「中止」（落馬）・「除外」の馬。着の数字の代わりに赤い文字、名前は少し暗く */
+.v2res .ord .o.out .rk { color: #ff6b5e; font: 900 26px/1 var(--font-tv); letter-spacing: .04em; }
+.v2res .ord .o.out .nm { opacity: .7; }
+.v2res .ord .o.out .mg { color: #ff9b8f; font-size: 20px; }
