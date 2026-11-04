@@ -761,6 +761,55 @@
      p: { races: [{ id, day, test }], votes: [票（owner か device）], payouts: [当たり（owner か device・flag）], bonus: [ボーナスの印（day・storeId・owner か device）], tuning, from?, to?, store? }
      注意の決まり: 1 レースで maxBillsPerDevice（初期 4）個以上の番号・1 営業日に 3 回以上の当たり・1 営業日に 2 回以上のボーナス（1 日 1 回にしたので起きないはず）・当たりに many_bills の印。
      テストのレース・テストの票は入れない。返り値 { from, to, threshold, days: [{ date, stores: [{ storeId, votes, bonus, devices, maxBills, top: [{ dev, bills, billsDay, races, wins, pt }] }] }], flags: [{ date, dev, stores, bills, wins, pt, bonus, reasons }] } */
+  /* ---------- スタンプラリーの効果（2026-11-05 オーナー「スタンプの貯めてる人の状況、誰がどれくらい 1 日で貯めたか、どれだけ使われたか、入れる前と比べたい」） ----------
+     管理画面「スタンプ」のタブ。読むのはマスターが今までも読めるものだけ（その期間のレース・票・derbyStamps）。決め方・票には何も書かない。
+     p = { races: [{ id, day, at, test, refunded, status, result }], votes, stamps: [{ id（端末＝uid）, earned, spent }], tuning, launch（スタンプを始めた営業日 'YYYY-MM-DD'）,
+           before（前と比べる日数）, to（最後の営業日）, day（「この日に貯めた人」の日）, store（店。省くと全店） }
+     返り値 { launch, from, to, day, days: [{ date, after, races, votes, people, perPerson, multi, multiRate, back, backRate, perRace, earned, used, usedVotes, bonusVotes }],
+              before: 前の平均, after: 後の平均（どちらも 1 日あたり）, people: [{ id, nick, store, bill, earned, spent, bal, uses, days, votes, today }], dist: [{ k, n }], totals }
+     付いた数は票と結果から計算し直す（stampsForRace と同じ決まり＝発表で実際に付いた数と同じ）。使った数＝スタンプの 2 票目（stamp: true）× cost */
+  const STAMP_LAUNCH = '2026-11-04'; // 本番で始めた日（2026-11-04 06:33）。裏の設定 tuning.stampSince（'YYYY-MM-DD'）があればそちら
+  function stampReport(p) {
+    p = p || {}; const T = tuningOf(p.tuning), S = stampOf(T), launch = p.launch || T.stampSince || STAMP_LAUNCH;
+    const H = T.dayStartHour, to = p.to || launch, before = Math.max(1, Math.min(31, Math.floor(Number(p.before) || 7)));
+    const addD = (d, n) => dateStr(Date.parse(d + 'T00:00:00Z') + n * DAY), from = addD(launch, -before);
+    const store = p.store || null, dayOf = (r) => r.day || bizDate(r.at, H);
+    const races = {}; (p.races || []).forEach((r) => { if (r && r.id && !r.test && !r.refunded) races[r.id] = r; });
+    const D = {}, dd = (d) => (D[d] = D[d] || { date: d, after: d >= launch, races: {}, votes: 0, own: {}, earned: 0, used: 0, usedVotes: 0, bonusVotes: 0 });
+    for (let d = from; d <= to; d = addD(d, 1)) dd(d);
+    const byRace = {}, who = {}, W = (o) => (who[o] = who[o] || { id: o, nick: '', store: '', bill: '', at: 0, earned: 0, spent: 0, uses: 0, days: {}, votes: 0, today: 0 });
+    (p.votes || []).forEach((v) => {
+      const r = races[v && v.raceId]; if (!r || v.test) return;
+      (byRace[r.id] = byRace[r.id] || []).push(v.owner ? v : Object.assign({}, v, { owner: ownerOf(v) })); // 付いた数は店で絞らずに（その人の数）。模擬クラウドの票は device が持ち主
+      const d = dayOf(r); if (d < from || d > to) return;
+      if (store && v.storeId !== store) return;
+      const x = dd(d), o = ownerOf(v); x.races[r.id] = 1; x.votes++;
+      if (v.stamp === true) { x.usedVotes++; x.used += S.cost; } else if (v.n === 2) x.bonusVotes++;
+      if (!o) return; const c = (x.own[o] = x.own[o] || { races: {} }); c.races[r.id] = 1;
+      const w = W(o); if ((v.votedAt || r.at || 0) >= w.at) { w.at = v.votedAt || r.at || 0; w.nick = v.nick || w.nick; w.store = v.storeId || w.store; w.bill = v.bill || w.bill; }
+      if (d >= launch) { w.days[d] = 1; w.votes++; if (v.stamp === true) w.uses++; }
+    });
+    Object.keys(byRace).forEach((id) => {
+      const r = races[id], d = dayOf(r); if (d < launch || d > to || !r.result) return;
+      const g = stampsForRace(r, byRace[id], S);
+      Object.keys(g).forEach((o) => { const w = store ? who[o] : W(o); if (!w) return; w.earned += g[o]; if (d === (p.day || to)) w.today += g[o]; if (!store || w.store === store || byRace[id].some((v) => ownerOf(v) === o && v.storeId === store)) dd(d).earned += g[o]; });
+    });
+    (p.stamps || []).forEach((s) => { if (!s || !s.id) return; const w = who[s.id] || (store ? null : W(s.id)); if (!w) return; w.docEarned = Number(s.earned) || 0; w.spent = Number(s.spent) || 0; });
+    const seen = {}, days = Object.keys(D).sort().map((d) => {
+      const x = D[d], own = Object.keys(x.own), people = own.length, races = Object.keys(x.races).length, multi = own.filter((o) => Object.keys(x.own[o].races).length >= 2).length;
+      const back = own.filter((o) => seen[o]).length; own.forEach((o) => { seen[o] = 1; });
+      const r1 = (a, b) => (b ? Math.round(a / b * 100) / 100 : 0);
+      return { date: d, after: x.after, races, votes: x.votes, people, perPerson: r1(x.votes, people), multi, multiRate: r1(multi, people), back, backRate: r1(back, people), perRace: r1(x.votes, races), earned: x.earned, used: x.used, usedVotes: x.usedVotes, bonusVotes: x.bonusVotes };
+    });
+    const K = ['races', 'votes', 'people', 'perPerson', 'multiRate', 'backRate', 'perRace', 'earned', 'used', 'usedVotes'];
+    const avg = (list) => { const o = { days: list.length }; K.forEach((k) => { o[k] = list.length ? Math.round(list.reduce((a, x) => a + x[k], 0) / list.length * 100) / 100 : 0; }); return o; };
+    const active = (x) => x.races > 0; // レースの無かった日（休み）は平均に入れない
+    const people = Object.values(who).map((w) => { const earned = w.docEarned != null ? Math.max(w.docEarned, 0) : w.earned; return { id: w.id, nick: w.nick, store: w.store, bill: w.bill, earned, spent: w.spent || w.uses * S.cost, bal: Math.max(0, earned - (w.spent || w.uses * S.cost)), uses: w.uses, days: Object.keys(w.days).length, votes: w.votes, today: w.today }; })
+      .filter((w) => w.earned > 0 || w.votes > 0).sort((a, b) => b.earned - a.earned || b.votes - a.votes || (a.id < b.id ? -1 : 1));
+    const c = S.cost, dist = [['0', (w) => w.bal === 0], ['1〜' + Math.max(1, Math.floor(c / 2) - 1), (w) => w.bal >= 1 && w.bal < Math.floor(c / 2)], [Math.floor(c / 2) + '〜' + (c - 1), (w) => w.bal >= Math.floor(c / 2) && w.bal < c], [c + '個以上（使える）', (w) => w.bal >= c]].map(([k, f]) => ({ k, n: people.filter(f).length }));
+    const totals = { people: people.length, earned: people.reduce((a, w) => a + w.earned, 0), spent: people.reduce((a, w) => a + w.spent, 0), uses: people.reduce((a, w) => a + w.uses, 0), canUse: people.filter((w) => w.bal >= c).length, todayEarned: people.reduce((a, w) => a + w.today, 0), todayPeople: people.filter((w) => w.today > 0).length };
+    return { launch, from, to, day: p.day || to, store, cost: c, on: S.on, days, before: avg(days.filter((x) => !x.after && active(x))), after: avg(days.filter((x) => x.after && active(x))), people, dist, totals };
+  }
   function abuseReport(p) {
     p = p || {}; const T = tuningOf(p.tuning), N = maxBillsOf(T.maxBillsPerDevice) || 4, from = p.from || '', to = p.to || '\uffff';
     const raceDay = {}; (p.races || []).forEach((r) => { if (r && r.id && !r.test) raceDay[r.id] = r.day || bizDate(r.at, T.dayStartHour); });
@@ -975,7 +1024,7 @@
   // 決まった id（同じレース・同じ票ならいつも同じ。決める係がやり直しても二重にならない）
   function pidFor(Outcome, salt, raceId, vid, kind) { return 'p' + Outcome.hash(salt, raceId, vid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', vid, raceId, salt).toString(36); }
 
-  return { TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
+  return { stampReport, STAMP_LAUNCH, TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
     isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
