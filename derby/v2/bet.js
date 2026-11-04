@@ -15,7 +15,7 @@
     prep: '準備中です。少しお待ちください（自動で始まります）', prepStaff: 'スタッフにお知らせください', /* 2026-10-28: 投票の始まりを過ぎたのにレースがまだできていない（0:00 のまま止まって見えた） */
     billHead: '会計番号', billSub: '伝票の番号（2けた）', nickHead: 'ニックネーム', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
     errBill: '会計番号を 2 けたで入れてください', errNick: 'ニックネームを入れてください',
-    pickHead: '1着と2着をえらぶ', pickAxis: '上が1着・左が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
+    pickHead: '1着と2着をえらぶ', pickAxisT: '2連単：1着と2着を順番どおりに当てる', pvHorse: '馬を選ぶ', pvPop: '人気順で選ぶ', first: '1着', second: '2着', colNo: '馬番', colName: '馬名', colOdds: 'の倍率', pickStep1: '① 1着になる馬を選んでください', pickStep2: '② 2着になる馬を選んでください', toConfirm: 'この予想で次へ', ifHit: '的中すると', pickDone: '予想が決まりました', pick2SubT: '同じ組み合わせでもえらべます', pickAxis: '上が1着・左が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
     confHead: 'この予想で投票しますか？', ifWin: '当たれば', shiftNote: '倍率は締切のときに少し変わることがあります',
     voteBtn: '投票する', changeBtn: 'この予想に変える', back: '戻る', sending: '送っています…',
     voted: '投票しました', yourPick: 'あなたの予想', closeIn: '締切まで', redo: '選び直す',
@@ -253,23 +253,36 @@
       '<span class="hc"><b>' + esc(h.cond) + '</b></span>' +
       '<span class="hy">' + (h.type ? '<span class="ht" style="background:' + h.typeColor + '">' + esc(h.type) + '</span>' : '') + '</span>' +
       '<span class="hf"><b>' + esc(h.recent) + '</b></span></div>').join('') + '</div>';
-    const has = d.first != null && d.second != null; // 選び直し: 今の予想の行（1 着）と列（2 着）を少し明るく・交わるマスに金の枠（2026-10-23 デザイン見直し 1 回目）
-    const v1 = d.n === 2 && my && my.vote ? my.vote : null; // 2 票目をえらぶとき: 1 票目のマスに小さな「1」（同じマスも押せる）
-    let g ='<div class="grid" role="grid" aria-label="2連単の倍率の表"><div class="gc corner"><small>上＝1着<br>左＝2着</small></div>' + hs.map((h) => '<div class="gc ch' + (has && d.first === h.i ? ' on' : '') + '">' + waku(h, 'sm') + '</div>').join('');
-    /* 2026-11-04 オーナー「表どおりに押すと 1 着 2 着が逆」: 上の番号＝1 着・左の番号＝2 着に入れ替え（お客さんの読み方に合わせる）。下の a＝1 着（列）・b＝2 着（行） */
-    hs.forEach((rowH) => {
-      g += '<div class="gc rh' + (has && d.second === rowH.i ? ' on' : '') + '">' + waku(rowH, 'sm') + '</div>';
-      hs.forEach((colH) => { const a = colH, b = rowH;
-        if (a.i === b.i) { g += '<div class="gc x" aria-hidden="true"></div>'; return; }
-        const o = exOdds(r, a.i, b.i), sel = d.first === a.i && d.second === b.i, ax = has && !sel && (d.first === a.i || d.second === b.i);
-        const m1 = v1 && v1.first === a.i && v1.second === b.i;
-        g += '<button type="button" class="gc cell' + (sel ? ' sel' : ax ? ' ax' : '') + (m1 ? ' m1' : '') + (o && o < 10 ? ' lo' : o && o >= 100 ? ' hi' : '') + '" data-a="' + a.i + '" data-b="' + b.i + '" aria-label="1着 ' + a.no + '番 2着 ' + b.no + '番 ' + oddsTxt(o) + '倍' + (m1 ? '（' + TX.vote1 + '）' : '') + '">' + oddsTxt(o) + '</button>';
-      });
-    });
-    g += '</div>';
-    return '<div class="scr pickscr">' + checkNote() + testTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1><p class="sub b2sub">' + esc(TX.pick2Sub) + '</p>' : '<h1>' + esc(TX.pickHead) + '</h1>') + info +
-      '<p class="axis">' + esc(TX.pickAxis) + '・' + esc(TX.pickTap) + '</p>' + g +
-      (d.redo || d.n === 2 ? '<button class="btn ghost" data-act="cancelRedo">' + esc(TX.back) + '</button>' :'<button class="link" data-act="toEntry"><span class="nw">' + esc(bill2(d.bill)) + '番・' + esc(d.nick) + '</span>　<span class="nw">' + esc(TX.back) + '</span></button>') + '</div>';
+    /* 2026-11-05 オーナー「本物の競馬アプリの 2 連単のオッズの見方と一緒に」: 投票アプリ（馬単の「通常」）と同じく、出馬表の行ごとに「1着」「2着」を押す形。
+       1 着を選ぶと 2 着の欄にその組み合わせの倍率が出る（オッズの見方も同じ）。「人気順で選ぶ」は 30 通りを倍率の低い順に（押すとそのまま確認へ）。
+       以前の 6×6 の表（上＝1 着・左＝2 着）はやめた（表の読み方を取り違えるお客さんがいた） */
+    const both = d.first != null && d.second != null, pv = d.pv === 'pop' ? 'pop' : 'horse';
+    const v1 = d.n === 2 && my && my.vote ? my.vote : null; // 2 票目をえらぶとき: 1 票目の組み合わせを上に出す（同じ組み合わせも選べる）
+    const tabs = '<div class="pvtabs" role="tablist">' + [['horse', TX.pvHorse], ['pop', TX.pvPop]].map(([k, l]) => '<button type="button" class="pvt' + (pv === k ? ' on' : '') + '" role="tab" aria-selected="' + (pv === k) + '" data-act="pv" data-v="' + k + '">' + esc(l) + '</button>').join('') + '</div>';
+    const rows = hs.map((h) => {
+      const is1 = d.first === h.i, is2 = d.second === h.i, o = d.first != null && !is1 ? exOdds(r, d.first, h.i) : null;
+      const sub = [h.cond, h.type, h.recent ? TX.recent + ' ' + h.recent : ''].filter(Boolean).map((x) => '<span class="nw">' + esc(x) + '</span>').join('<i>・</i>');
+      return '<div class="btr' + (is1 ? ' s1' : '') + (is2 ? ' s2' : '') + '" role="row">' + waku(h, 'lg') +
+        '<span class="bn"><b data-fit="15">' + esc(h.name) + '</b><small>' + sub + '</small></span>' +
+        '<button type="button" class="pk k1' + (is1 ? ' on' : '') + '" data-act="p1" data-i="' + h.i + '" aria-pressed="' + is1 + '" aria-label="1着 ' + h.no + '番 ' + esc(h.name) + '">' + (is1 ? '<span class="ck" aria-hidden="true">✓</span><b>' + esc(TX.first) + '</b>' : esc(TX.first)) + '</button>' +
+        '<button type="button" class="pk k2' + (is2 ? ' on' : '') + (o != null ? ' od' : '') + '" data-act="p2" data-i="' + h.i + '"' + (d.first == null || is1 ? ' disabled' : '') + ' aria-pressed="' + is2 + '" aria-label="2着 ' + h.no + '番 ' + esc(h.name) + (o != null ? ' ' + oddsTxt(o) + '倍' : '') + '">' +
+          (is2 ? '<span class="ck" aria-hidden="true">✓</span>' : '') + (o != null ? '<b>' + oddsTxt(o) + '</b><i>倍</i>' : is1 ? '<small>1着</small>' : esc(TX.second)) + '</button></div>';
+    }).join('');
+    const step = d.first == null ? 1 : d.second == null ? 2 : 0;
+    const head = '<div class="bth" role="row"><span>' + esc(TX.colNo) + '</span><span>' + esc(TX.colName) + '</span><span class="c' + (step === 1 ? ' now' : '') + '">' + esc(TX.first) + '</span><span class="c' + (step === 2 ? ' now' : '') + '">' + esc(TX.second) + (d.first != null ? '<small>' + esc(TX.colOdds) + '</small>' : '') + '</span></div>';
+    const horseView = '<div class="bt step' + step + '" role="table" aria-label="2連単 1着と2着をえらぶ"' + (pv === 'horse' ? '' : ' hidden') + '>' + head + rows + '</div>';
+    const pop = []; hs.forEach((a) => hs.forEach((b) => { if (a.i !== b.i) pop.push({ a, b, o: exOdds(r, a.i, b.i) }); }));
+    pop.sort((x, y) => (x.o || 1e9) - (y.o || 1e9) || x.a.i - y.a.i || x.b.i - y.b.i);
+    const popView = '<ol class="poplist"' + (pv === 'pop' ? '' : ' hidden') + '>' + pop.map((x, k) => { const sel = d.first === x.a.i && d.second === x.b.i, m1 = v1 && v1.first === x.a.i && v1.second === x.b.i;
+      return '<li><button type="button" class="cell pop' + (sel ? ' sel' : '') + (m1 ? ' m1' : '') + '" data-a="' + x.a.i + '" data-b="' + x.b.i + '" aria-label="' + (k + 1) + '番人気 1着 ' + x.a.no + '番 2着 ' + x.b.no + '番 ' + oddsTxt(x.o) + '倍"><span class="rk">' + (k + 1) + '</span><span class="cb">' + waku(x.a, '') + '<i>→</i>' + waku(x.b, '') + '</span><span class="nm2">' + esc(x.a.name) + '<br>' + esc(x.b.name) + '</span><b class="po">' + oddsTxt(x.o) + '<small>倍</small></b>' + (m1 ? '<em>' + esc(TX.vote1) + '</em>' : '') + (sel ? '<span class="ck" aria-hidden="true">✓</span>' : '') + '</button></li>'; }).join('') + '</ol>';
+    const o = both ? exOdds(r, d.first, d.second) : null;
+    const dock = '<div class="pickdock" aria-live="polite">' + (both
+      ? '<p class="pdok">✓ ' + esc(TX.pickDone) + '</p><div class="pdsel"><span class="pdc">' + waku(hs[d.first], '') + '<i>→</i>' + waku(hs[d.second], '') + '</span><span class="pdo"><b>' + oddsTxt(o) + '</b>倍</span><span class="pdw">' + esc(TX.ifHit) + ' <b>' + ptT(o ? payFor(o) : 0) + '</b></span></div><button class="btn" data-act="toConfirm">' + esc(TX.toConfirm) + '</button>'
+      : '<p class="pdh">' + esc(d.first == null ? TX.pickStep1 : TX.pickStep2) + '</p>') + '</div>';
+    const v1Line = v1 ? '<p class="v1line">' + esc(TX.vote1) + ' ' + arrowNum(v1.first, v1.second) + '</p>' : '';
+    return '<div class="scr pickscr">' + checkNote() + testTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1><p class="sub b2sub">' + esc(TX.pick2SubT) + '</p>' + v1Line : '<h1>' + esc(TX.pickHead) + '</h1>') +
+      '<p class="axis">' + esc(TX.pickAxisT) + '</p>' + tabs + horseView + popView +
+      (d.redo || d.n === 2 ? '<button class="btn ghost" data-act="cancelRedo">' + esc(TX.back) + '</button>' :'<button class="link" data-act="toEntry"><span class="nw">' + esc(bill2(d.bill)) + '番・' + esc(d.nick) + '</span>　<span class="nw">' + esc(TX.back) + '</span></button>') + dock + '</div>';
   };
 
   /* ④ 確認: 組み合わせ・倍率・当たれば ○pt */
@@ -617,6 +630,17 @@
     if (a === 'toEntry') { draft.err = null; return go('entry'); }
     if (a === 'toPick2') { draft.err = null; return go('pick'); }
     if (a === 'cancelRedo') { draft = null; return route(); }
+    /* ③ 予想（2026-11-05 出馬表の行で 1着・2着）: p1 ＝ 1 着（同じ馬が 2 着なら 2 着は外す）・p2 ＝ 2 着・pv ＝ 馬を選ぶ／人気順・toConfirm ＝ 確認へ */
+    if (a === 'p1' || a === 'p2' || a === 'pv' || a === 'toConfirm') {
+      if (!draft) return;
+      if (a === 'pv') { draft.pv = el.dataset.v === 'pop' ? 'pop' : 'horse'; return draw(); }
+      if (a === 'toConfirm') { if (draft.first == null || draft.second == null) return; shownAt = performance.now(); return go('confirm'); }
+      const i = Number(el.dataset.i); if (!Number.isInteger(i)) return;
+      if (a === 'p1') { draft.first = i; if (draft.second === i) draft.second = null; }
+      else { if (draft.first == null || draft.first === i) return; draft.second = i; }
+      draft.err = null; draft.sendLabel = draft.sendMsg = ''; draft.sendDis = false; draft.waitResend = false;
+      return draw();
+    }
     if (a === 'redo') {
       const v = my && my.vote; if (!v) return;
       draft = { raceId: my.raceId, bill: v.bill, nick: v.nick, first: v.first, second: v.second, redo: true, err: null };
