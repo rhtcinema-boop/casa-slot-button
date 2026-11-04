@@ -323,10 +323,11 @@
   const CUE_Q = (() => { const m = QS.match(/[?&]cues=([^&#]*)/); if (!m) return null; const o = {}; decodeURIComponent(m[1]).split(',').forEach((p) => { const kv = /^([A-Za-z]+):(\d)$/.exec(p.trim()); if (kv) o[kv[1]] = { horse: Number(kv[2]) }; }); return Object.keys(o).length ? o : null; })();
   const cuesOf = (R) => (R && R.cues) || (R && R.result && R.result.cues) || null;
   function applyCues(R) {
-    const c = cuesOf(R) || (R && R.result ? null : CUE_Q) || null, key = JSON.stringify(c);
+    const c = cuesOf(R) || (R && R.result ? null : CUE_Q) || null, inc = (R && R.result && R.result.incident) || null, key = JSON.stringify([c, inc]);
     if (TV.cuesKey === key && TV.cuesId === (R && R.id)) return;
-    TV.cues = c; TV.cuesKey = key; TV.cuesId = R && R.id;
+    TV.cues = c; TV.incident = inc; TV.cuesKey = key; TV.cuesId = R && R.id;
     if (raceView.setCues) { try { raceView.setCues(c); } catch (e) { console.error(e); } }
+    if (raceView.setIncident) { try { raceView.setIncident(inc); } catch (e) { console.error(e); } } // 脱落（落馬・競走除外。2026-11-04）: ゲートインの前に渡す
   }
   function useRace(R, odds, force) {
     viewOdds = odds || R.odds || null;
@@ -766,7 +767,7 @@
         await until(() => now() >= Math.max(R.closeAt, showFrom) - 50);
         if (now() < R.runAt - 500) {
           raceMeterStart(id); // テレビの調子: ゲートインから数える
-          await raceView.gateIn({ onEvent: () => {}, clock: () => (now() - gateStart) / 1000 });
+          await raceView.gateIn({ onEvent: () => {}, clock: () => (now() - ((cache[id] || R).runAt - giEnd() * 1000)) / 1000 }); /* 2026-11-04: 競走除外で runAt と台本の長さが両方 14 秒のびても、始まりの時刻は同じ（結果があとから届いても続きから） */ void gateStart;
         }
       } else { await until(() => now() >= R.runAt - 1200); raceView.gateShot = true; } // ゲートインなし: 発走の直前まで今の絵のまま → 枠の中
       // 発走の時刻を 1.5 秒過ぎても結果が届かない（電波が悪い）: 映像の上に小さく「まもなく スタート」（届いたら消す）
@@ -967,7 +968,8 @@
       const f = res.finishTimes || [], ord = res.order;
       // 着差は単位つき（「2 馬身」「1 3/4 馬身」。ハナ・アタマ・クビ・大差はそのまま）。1 着はタイム。v4: 単勝の倍率の列はなくした
       const mgU = (s) => (/^[0-9]/.test(s) ? esc(s) + '<small>馬身</small>' : esc(s));
-      $('v2resOrd').innerHTML = ord.map((i, k) => { const h = R.horses[i]; return '<div class="o' + (k < 2 ? ' top2' : '') + '"><span class="rk">' + (k + 1) + '<small>着</small></span><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span class="nm">' + esc(h.name) + '</span><span class="mg">' + (k === 0 ? (f[i] ? '<small>タイム</small>' + fmtTime(f[i]) : '') : f[i] && f[ord[k - 1]] ? mgU(margin(f[i] - f[ord[k - 1]])) : '') + '</span></div>'; }).join('');
+      const inc = res.incident || null, outI = inc ? inc.horse : -1, outTx = inc ? (inc.type === 'fall' ? '中止' : '除外') : ''; // 脱落（2026-11-04）: 着順の代わりに「中止」（落馬）・「除外」
+      $('v2resOrd').innerHTML = ord.map((i, k) => { const h = R.horses[i]; if (i === outI) return '<div class="o out"><span class="rk">' + outTx + '</span><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span class="nm">' + esc(h.name) + '</span><span class="mg">' + (inc.type === 'fall' ? '落馬' : 'ゲート入りできず') + '</span></div>'; return '<div class="o' + (k < 2 ? ' top2' : '') + '"><span class="rk">' + (k + 1) + '<small>着</small></span><i style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</i><span class="nm">' + esc(h.name) + '</span><span class="mg">' + (k === 0 ? (f[i] ? '<small>タイム</small>' + fmtTime(f[i]) : '') : f[i] && f[ord[k - 1]] ? mgU(margin(f[i] - f[ord[k - 1]])) : '') + '</span></div>'; }).join('');
       $('v2resOrd').querySelectorAll('.nm').forEach((e, k) => fitText(e, k === 0 ? 42 : k === 1 ? 36 : 30, 20));
       // 2 連単の組み合わせ（2026-10-21 オーナー「1着 3番 → 2着 5番 12.4倍」）＋当選額（100pt × 倍率 の 100pt 切り上げ。出てから 0.6 秒だけ 1.08 倍に弾む）
       const c = comboOf(R);
