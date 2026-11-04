@@ -15,7 +15,7 @@
     prep: '準備中です。少しお待ちください（自動で始まります）', prepStaff: 'スタッフにお知らせください', /* 2026-10-28: 投票の始まりを過ぎたのにレースがまだできていない（0:00 のまま止まって見えた） */
     billHead: '会計番号', billSub: '伝票の番号（2けた）', nickHead: 'ニックネーム', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
     errBill: '会計番号を 2 けたで入れてください', errNick: 'ニックネームを入れてください',
-    pickHead: '1着と2着をえらぶ', pickAxis: '左が1着・上が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
+    pickHead: '1着と2着をえらぶ', pickAxis: '上が1着・左が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
     confHead: 'この予想で投票しますか？', ifWin: '当たれば', shiftNote: '倍率は締切のときに少し変わることがあります',
     voteBtn: '投票する', changeBtn: 'この予想に変える', back: '戻る', sending: '送っています…',
     voted: '投票しました', yourPick: 'あなたの予想', closeIn: '締切まで', redo: '選び直す',
@@ -255,10 +255,11 @@
       '<span class="hf"><b>' + esc(h.recent) + '</b></span></div>').join('') + '</div>';
     const has = d.first != null && d.second != null; // 選び直し: 今の予想の行（1 着）と列（2 着）を少し明るく・交わるマスに金の枠（2026-10-23 デザイン見直し 1 回目）
     const v1 = d.n === 2 && my && my.vote ? my.vote : null; // 2 票目をえらぶとき: 1 票目のマスに小さな「1」（同じマスも押せる）
-    let g ='<div class="grid" role="grid" aria-label="2連単の倍率の表"><div class="gc corner"><small>左＝1着<br>上＝2着</small></div>' + hs.map((h) => '<div class="gc ch' + (has && d.second === h.i ? ' on' : '') + '">' + waku(h, 'sm') + '</div>').join('');
-    hs.forEach((a) => {
-      g += '<div class="gc rh' + (has && d.first === a.i ? ' on' : '') + '">' + waku(a, 'sm') + '</div>';
-      hs.forEach((b) => {
+    let g ='<div class="grid" role="grid" aria-label="2連単の倍率の表"><div class="gc corner"><small>上＝1着<br>左＝2着</small></div>' + hs.map((h) => '<div class="gc ch' + (has && d.first === h.i ? ' on' : '') + '">' + waku(h, 'sm') + '</div>').join('');
+    /* 2026-11-04 オーナー「表どおりに押すと 1 着 2 着が逆」: 上の番号＝1 着・左の番号＝2 着に入れ替え（お客さんの読み方に合わせる）。下の a＝1 着（列）・b＝2 着（行） */
+    hs.forEach((rowH) => {
+      g += '<div class="gc rh' + (has && d.second === rowH.i ? ' on' : '') + '">' + waku(rowH, 'sm') + '</div>';
+      hs.forEach((colH) => { const a = colH, b = rowH;
         if (a.i === b.i) { g += '<div class="gc x" aria-hidden="true"></div>'; return; }
         const o = exOdds(r, a.i, b.i), sel = d.first === a.i && d.second === b.i, ax = has && !sel && (d.first === a.i || d.second === b.i);
         const m1 = v1 && v1.first === a.i && v1.second === b.i;
