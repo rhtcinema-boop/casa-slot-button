@@ -428,13 +428,15 @@
     return s.modeDefault || 'auto';
   }
   // テレビ・スマホ・スタッフに配る設定（/api/state の settings）。当たりの幅・上限・払い戻し率・演出の割合は入れない
+  const stampTv = (x) => { if (!x || x.on !== true) return null; const n = (v, d) => (Number.isInteger(v) && v >= 0 ? v : d); const c = n(x.cost, 10); return c > 0 ? { cost: c, vote: n(x.vote, 1), win: n(x.win, 3), near: n(x.near, 1) } : null; };
   function settingsFor(tuning, storeSettings, t) {
     const T = tuningOf(tuning), s = storeSettings || {};
     return { voteSec: T.voteSec, testVoteSec: TEST_RACE.voteSec, stake: STAKE, resultSec: s.resultSec != null ? s.resultSec : T.resultSec, gateSec: T.gateSec, postSec: T.postSec, photoExtraSec: T.photoExtraSec, closeLeadSec: T.closeLeadSec,
       scenes: Object.assign({}, T.scenes, s.scenes || {}), sceneSec: Object.assign({ gate: T.gateSec, replay: T.postSec }, s.sceneSec || {}),
       modes: Array.isArray(s.modes) ? s.modes : [], modeDefault: s.modeDefault || 'auto', mode: modeNow(s, t), test: !!s.test, dayStartHour: T.dayStartHour,
       horseLook: T.horseLook || 'cute', horseLookPrev: T.horseLookPrev || 'cute', horseLookAt: Number(T.horseLookAt) || 0, horseLookFrom: (Number(T.horseLookAt) || 0) ? Number(T.horseLookAt) + HORSE_LOOK_GRACE_MS : 0,
-      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, tvQuality: tvQualityOf(s), tvStrip: tvStripOf(s), tvGame: tvGameOf(s) };
+      shiftUp: Number(T.shiftUp) || 0, shiftDown: Number(T.shiftDown) || 0, tvQuality: tvQualityOf(s), tvStrip: tvStripOf(s), tvGame: tvGameOf(s),
+      stamp: stampTv(T.stamp) }; // stamp: スタンプラリーがオンなら { cost, vote, win, near }（テレビの待ち時間に説明の枠を出す。2026-11-04）
   }
 
   /* ---------- レースを作る ---------- */
