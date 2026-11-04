@@ -590,7 +590,8 @@ window.Race3D = (function () {
     // 確定演出: 発走前（このレースのために）に setCues で渡された分は残し、前のレースの分は消す（何も無ければ ?cues= の上書き）
     if (!this.cuesFresh) this.cues = normCues(CUES_Q, race.horses.length); else this.cues = normCues(this.cues, race.horses.length);
     this.cuesFresh = false; this.eyeAt = null; this.eyeFired = false; this.eyeFireAt = null;
-    this.gi = null; this.giPlan = giPlanFor(race.horses.length, this.cueHorse('gateLate')); this.rearKey = null; // ゲートイン（枠入り）の台本（gateLate の馬は枠の前で一度ためらう）
+    if (!this.incFresh) this.incident = null; this.incFresh = false; this.fallJP0 = null; if (this.fallJ) this.fallJ.visible = false; // 脱落（2026-11-04）: setIncident で渡した分だけ
+    this.gi = null; this.giPlan = giPlanFor(race.horses.length, this.cueHorse('gateLate'), this.scratchHorse()); this.rearKey = null; // ゲートイン（枠入り）の台本（gateLate の馬は枠の前で一度ためらう）
     this.boostFn = null; this.boostK = null; this.boostOn = null; this.clearFoods();
     if (this.venueLowPending) { this.venueLowPending = false; this.rebuildVenue('low'); }
     this.ext = race.horses.map(() => 0); this.vel = race.horses.map(() => 0); this.spd = race.horses.map(() => 0);
@@ -763,8 +764,67 @@ window.Race3D = (function () {
   Race3D.prototype.setCues = function (cues) {
     const n = this.race ? this.race.horses.length : 0;
     this.cues = normCues(cues, n); this.cuesFresh = true;
-    if (this.race && (!this.gi || (!this.gi.finished && this.gi.t < 0.3))) this.giPlan = giPlanFor(n, this.cueHorse('gateLate')); // ゲートインがまだなら台本を組み直す
+    if (this.race && (!this.gi || (!this.gi.finished && this.gi.t < 0.3))) this.giPlan = giPlanFor(n, this.cueHorse('gateLate'), this.scratchHorse()); // ゲートインがまだなら台本を組み直す
     this.forwardCues();
+  };
+  /* ---------- 脱落（2026-11-04 オーナー「落馬とかゲートインできないみたいな演出いれたい」→「本当に脱落、票は外れ」） ----------
+     setIncident(x): x = { type: 'scratch' | 'fall', horse, at } | null（サーバー／決める係が結果と一緒に決めた result.incident）。setCues と同じく setRace・ゲートインの前に渡す。
+       scratch（競走除外）: ゲートの手前で止まって何度も立ち上がり、係員 2 人が引いても入らない（字幕「○番 ○○ ゲート入りを嫌がっています」→「競走除外」）。発走したら映さない。
+       fall（落馬）: 走りの記録（Engine.replayRun の run.fallT）の時刻につまずいて騎手が落ちる。騎手は芝の上に倒れ、馬はカラ馬で走る（大きく遅れて最後に入る）。
+     走り（どこで・何秒に）は run（Engine）が決める＝どの店のテレビも同じ。ここは見た目だけ */
+  Race3D.prototype.setIncident = function (x) {
+    const n = this.race ? this.race.horses.length : 6, ok = x && (x.type === 'scratch' || x.type === 'fall') && Number.isInteger(x.horse) && x.horse >= 0 && x.horse < n;
+    this.incident = ok ? { type: x.type, horse: x.horse, at: x.at } : null; this.incFresh = true;
+    if (this.race && (!this.gi || (!this.gi.finished && this.gi.t < 0.3))) this.giPlan = giPlanFor(n, this.cueHorse('gateLate'), this.scratchHorse());
+  };
+  Race3D.prototype.incOf = function () { return (this.run && this.run.incident) || this.incident || null; };
+  Race3D.prototype.scratchHorse = function () { const x = this.incOf(); return x && x.type === 'scratch' ? x.horse : -1; };
+  // 字幕（映像の上の真ん中。赤い帯）: ゲートインで嫌がる → 発走から 7 秒は「競走除外」／落馬から 6 秒は「落馬 競走中止」
+  Race3D.prototype.incCaption = function () {
+    const x = this.incOf(), race = this.race; if (!x || !race) return '';
+    const h = race.horses[x.horse]; if (!h) return '';
+    const who = (h.no || x.horse + 1) + '番 ' + h.name;
+    if (x.type === 'scratch') {
+      const P = this.giPlan, pl = P && P.H[x.horse], G = this.gi;
+      if (G && !G.finished && pl && pl.scratch && G.t > P.ready - 2.6) return who + '　競走除外'; // 嫌がっている間は字幕なし（2026-11-04 オーナー「嫌がってますは書かなくていい」）
+      if (this.run && (this.phase === 'run' || this.phase === 'replay') && this.run.t < 7) return who + '　競走除外';
+      return '';
+    }
+    const run = this.run; if (!run || run.fallT == null || !(this.phase === 'run' || this.phase === 'replay')) return '';
+    const u = run.t - run.fallT - FALL_THROW; return u >= 0.1 && u < 6.5 ? who + '　落馬！ 競走中止' : ''; // 騎手が落ちてから
+  };
+  // 落ちた騎手（勝負服の色・白いズボン・黒い長靴・ヘルメット）。1 つだけ作って使い回す
+  Race3D.prototype.fallJockey = function (h) {
+    if (!this.fallJ) {
+      const g = new THREE.Group(), lam = (c) => new THREE.MeshLambertMaterial({ color: c });
+      const silk = lam(0xffffff), white = lam(0xf2f2f2), black = lam(0x1a1a1a), skin = lam(0xe8c4a0);
+      const box = (w, hh, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), m); b.position.set(x, y, z); b.castShadow = true; g.add(b); return b; };
+      box(0.34, 0.5, 0.24, silk, 0, 0.95, 0);                          // 胴（勝負服）
+      box(0.1, 0.42, 0.1, silk, -0.24, 0.98, 0.02).rotation.z = 0.5;    // 腕
+      box(0.1, 0.42, 0.1, silk, 0.24, 0.98, -0.02).rotation.z = -0.6;
+      box(0.13, 0.5, 0.14, white, -0.09, 0.45, 0); box(0.13, 0.5, 0.14, white, 0.09, 0.45, 0); // 脚
+      box(0.14, 0.2, 0.2, black, -0.09, 0.1, 0.03); box(0.14, 0.2, 0.2, black, 0.09, 0.1, 0.03); // 長靴
+      const hd = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 10), silk); hd.position.set(0, 1.33, 0); hd.castShadow = true; g.add(hd); // ヘルメット（勝負服の色）
+      const fc = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), skin); fc.position.set(0, 1.28, 0.08); g.add(fc);
+      g.userData.silk = silk; g.visible = false; g.scale.setScalar(1.25); this.scene.add(g); this.fallJ = g;
+    }
+    if (h && this.fallJ.userData.color !== h.color) { this.fallJ.userData.color = h.color; try { this.fallJ.userData.silk.color.set(h.color); } catch (e) { } }
+    return this.fallJ;
+  };
+  // 落ちた騎手の位置と姿勢（落馬からの秒 u。0.7 秒で前へ投げ出されて倒れ、3.5m 前・1.2m 外で止まる。そのあとは横になったまま）
+  Race3D.prototype.updateFallJockey = function () {
+    const x = this.incOf(), run = this.run, J = this.fallJ;
+    const on = !!(x && x.type === 'fall' && run && run.fallT != null && run.t >= run.fallT && (this.phase === 'run' || this.phase === 'replay' || this.phase === 'winner'));
+    if (!on) { if (J) J.visible = false; return; }
+    const i = x.horse, g = this.fallJockey(this.race.horses[i]);
+    if (!this.fallJP0) { const s = this.horseS(i), r = this.lane ? this.lane[i] : laneR(i); this.fallJP0 = { s, r }; } // 落ちた所（最初に見えたコマの馬の位置。リプレイでも同じ所）
+    const u = run.t - run.fallT - FALL_THROW, P0 = this.fallJP0;
+    if (u < 0) { g.visible = false; return; }
+    const k = smooth01(u / 0.8), fk = Math.min(1, u / 0.55), P1 = { s: this.horseS(i), r: this.lane ? this.lane[i] : laneR(i) }; // 投げ出された所＝そのときの馬の位置
+    if (!this.fallJP1 || this.fallJP1.id !== this.runSeq + ':' + run.fallT) this.fallJP1 = { id: this.runSeq + ':' + run.fallT, s: P1.s, r: P1.r };
+    const Q = this.fallJP1, p = pointAt(Q.s + 0.8 * k, Math.min(Q.r + 1.6 * k, RO - 0.6)), y = 2.0 + 1.0 * fk - 3.0 * fk * fk; // 少し上へ飛んでから落ちる
+    g.visible = true; g.position.set(p.x, Math.max(0.1, y), p.z);
+    g.rotation.order = 'YXZ'; g.rotation.y = Math.atan2(-p.hz, p.hx) - Math.PI / 2 + 0.8 * k; g.rotation.x = (Math.PI / 2) * smooth01(u / 0.6); g.rotation.z = 0.5 * Math.sin(Math.PI * Math.min(1, u / 0.8)); void P0;
   };
   // 確定演出のカメラ用: 遅れる馬が止まっている度合い（0〜1。横のカメラが少し寄る）と、目の光の度合い（0〜1。最終コーナーのカメラが少し寄る）。どちらも共有の時計から
   Race3D.prototype.giBalkK = function () { const P = this.giPlan, G = this.gi, pl = P && P.late >= 0 ? P.H[P.late] : null; if (!pl || !G) return 0; const u = G.t - pl.balk; return smooth01((u + 0.1) / 0.5) * (1 - smooth01((u - (pl.hold || GI_LATE.hold) + 0.1) / 0.5)); };
@@ -933,8 +993,22 @@ window.Race3D = (function () {
     const Li = this.leaderIdx(), u = this.run ? Math.min(1, this.run.pos[Li]) : 0;
     return { phase, t: this.t, raceT: this.run ? this.run.t : 0, dist: race.dist, startS: this.startS, horses, leader: Li, remain: race.dist * (1 - u), gone: race.dist * u, paddockIdx: this.paddockIdx(), winnerIdx: this.winnerIdx, winStage: this.phase === 'winner' ? this.winStage || '' : '', winFocus: this.phase === 'winner' && this.winStage === 'second' && this.winSecond >= 0 ? this.winSecond : -1, winPair: this.phase === 'winner' && this.winStage === 'both' && this.winSecond >= 0 ? [this.winnerIdx, this.winSecond] : null, replayStage: this.phase === 'replay' ? this.replayStage || '' : '', photoPair: this.phase === 'replay' && this.replayStage === 'photo' && this.photoPairIdx ? this.photoPairIdx : null, slow: this.slow, gateOpen: !!(this.run && this.run.t > 0.05), gateS: this.gateS, gateIn: this.gi && phase === 'gatein' ? { t: this.gi.t, cue: this.gi.cue, focus: this.giPlan.sideFocus != null ? this.giPlan.sideFocus : this.giPlan.focus, side: this.giPlan.late >= 0 ? this.giPlan.side : '', late: this.giPlan.late, balkK: this.giBalkK(), order: this.giPlan.order } : null, eyeGlow: this.eyeGlowK(), eyeHorse: this.cueHorse('eye'), snap: !!snap, surface: race.surface, weather: race.weather, boost: this.phase === 'run' ? this.boostK : null }; // boost: 応援の加速の強さ（馬ごと 0..1。カメラが低い横の絵を差し込む）
   };
+  /* 落馬のカメラ（2026-11-04）: 落ちた瞬間から 3.6 秒だけ、落ちた所の外ラチの外（14m 先・高さ 3.2m）から振り返って撮る（つまずく馬・投げ出される騎手・走り去るカラ馬）。
+     レース中（run）だけ。時刻は走りの時計 run.t＝どの店も同じ */
+  const FALL_CAM = 3.2, FALL_REAR = 1.2, FALL_THROW = 1.75; // 落馬（run.fallT から）: 2 秒かけて遅くなり、FALL_REAR 秒から暴れ、FALL_THROW 秒で騎手が落ちる（js/engine.js の fallMul と同じ時刻）
+  Race3D.prototype.fallCam = function () {
+    const x = this.incOf(), run = this.run;
+    if (!x || x.type !== 'fall' || !run || run.fallT == null || this.phase !== 'run' || this.gateShot) { this.fallCamOn = false; return false; }
+    const u = run.t - run.fallT; if (u < 0 || u > FALL_CAM) { this.fallCamOn = false; return false; }
+    const P0 = this.fallJP0 || { s: this.horseS(x.horse), r: this.lane ? this.lane[x.horse] : laneR(x.horse) };
+    const cp = pointAt(P0.s + 14, RO + 9), k = smooth01(u / 1.4), tg = pointAt(P0.s + 1 + 3 * k, P0.r + 0.8 * k);
+    const cam = this.cam; cam.p = { x: cp.x, y: 3.2, z: cp.z }; cam.t = { x: tg.x, y: 0.9, z: tg.z }; cam.vfov = 24; cam.fov = v2h(cam.vfov); cam.mode = 'race'; this.dirLabel = '';
+    if (!this.fallCamOn) { this.fallCamOn = true; this.cut = 0.22; this.cutNo = (this.cutNo || 0) + 1; }
+    return true;
+  };
   Race3D.prototype.placeCamera = function (dt, snap) {
     if (!this.race) return;
+    /* 落馬のカメラ（fallCam）は使わない（2026-11-04 オーナー「カメラワークを変えずに」） */
     if (this.director && !this.directorBroken) {
       try {
         const ctx = this.dirCtx(snap || this.cam.mode === ''), out = this.director.update(dt || 0, ctx);
@@ -1422,7 +1496,9 @@ window.Race3D = (function () {
      カメラの切り替え（dep0・arr0）は遅れの無い台本から決める。遅れた馬の扉が閉まりきるのは約 7.1〜7.2 秒（体勢完了の 0.5 秒以上前）。
      横のカメラ（2.5〜5.0 秒）の主役（sideFocus）はこの馬。外の 7.5m・高さ 4m から見下ろす（隣の馬が通っても騎手の頭より上から顔が見える。director3d の GI_LATE_OUT） */
   const GI_LATE = { at: GI_HAND - 0.45 - 1.1, stop: 0.4, hold: 2.0, rear: 0.7, back: 0.22, backT: 0.8, go: 0.5, hurry: 1.3, tosses: 3, arrMax: 6.8 };   // hold: ためらう秒（2026-10-16 夜「もっと強調」で 1.3→2.0）、rear: そのうち最初に立ち上がる秒、arrMax: 遅くともこの秒までに枠に入る
-  function giPlanFor(n, late) {
+  const GI_SCR_EXTRA = 14;
+  function giPlanFor(n, late, scratch) {
+    const isScr = scratch >= 0 && scratch < n; if (isScr) late = -1; // 除外の馬がいるレースはゲートインの遅れ（確定演出）を出さない
     const order = []; for (let i = 0; i < n; i += 2) order.push(i); for (let i = 1; i < n; i += 2) order.push(i);
     const nOdd = Math.ceil(n / 2), H = [];
     order.forEach((i, k) => {
@@ -1430,7 +1506,8 @@ window.Race3D = (function () {
       const dep = k < nOdd ? GI_ODD0 + k * GI_ODD_GAP : GI_ODD0 + (nOdd - 1) * GI_ODD_GAP + (k - nOdd) * GI_EVEN_GAP, dur = D / v + 0.7;   // 歩き出し 0.6 秒・止まる 0.8 秒の台形の速さ
       H[i] = { k, from, D, v, dep, dur, arr: dep + dur, toss: dep + dur - 1.5, dep0: dep, arr0: dep + dur };   // toss: 枠に近づいて係員が綱を放すころ、首をくいっと振る時刻
     });
-    const last = order[order.length - 1], ready = H[last].arr + GI_SHUT + GI_STILL, lastArr = H[last].arr, isLate = late >= 0 && late < n && !!H[late];
+    const last = order[order.length - 1], ready = H[last].arr + GI_SHUT + GI_STILL, lastArr = H[last].arr, isLate = (late >= 0 && late < n && !!H[late]) || isScr;
+    if (isScr) late = scratch;
     if (isLate) {
       const pl = H[late], L = GI_LATE, D1 = Math.min(L.at - pl.from, pl.D - 1), D2 = pl.D - (D1 - L.back), v2 = pl.v * L.hurry;
       const segs = [{ D: D1, v: pl.v, ta: 0.6, td: L.stop }, { hold: true, back: L.back, tb: L.backT, dur: L.hold }, { D: D2, v: v2, ta: L.go, td: 0.8 }];
@@ -1441,11 +1518,16 @@ window.Race3D = (function () {
       const dur = segs.reduce((a, sg) => a + sg.dur, 0), dep = balk - segs[0].dur, arr = balk + dur - segs[0].dur;
       // balk: 止まった時刻（立ち上がる・首を振る・鼻を鳴らす）、hold: 止まっている秒、rearT: そのうち立ち上がっている秒
       Object.assign(pl, { segs, dur, dep, arr, toss: arr - 1.5, balk, hold: segs[1].dur, rearT: Math.min(L.rear, segs[1].dur * 0.4), late: true });
+      if (isScr) { // 競走除外: 止まった所から 0.7m 下がり、そのまま入らない（後ろの扉も閉まらない）
+        pl.segs = [segs[0], { hold: true, back: 0.7, tb: 2.2, dur: 1e9 }]; pl.dur = 1e9; pl.arr = Infinity; pl.toss = Infinity; pl.hold = 1e9; pl.rearT = 0.7; pl.scratch = true;
+      }
     }
     // 横のカメラは外の少し高い所から（内側からだと放したあと下がる係員の頭やほかの馬が手前にかぶった。2026-10-16 の写真で確認）。'in' にすると係員は馬の右（外）に立つ
     const side = 'out';
     // focus: 時計の主役＝遅れの無い台本で最後に入る馬（大外。カメラの切り替えの時刻）。sideFocus: 横のカメラが追う馬（遅れる馬がいればその馬）。lastIn: 実際に最後に入る馬（字幕）
-    return { order, nOdd, H, last, focus: last, sideFocus: isLate ? late : last, lastIn: isLate ? late : last, side, ready, end: ready + GI_PAUSE, late: isLate ? late : -1 };
+    const lastIn = isScr ? order.filter((i) => i !== scratch).sort((a, b) => H[b].arr - H[a].arr)[0] : isLate ? late : last;
+    const rd = isScr ? ready + GI_SCR_EXTRA : ready; // 競走除外: ほかの馬が入ってから 14 秒、嫌がる馬を見せる（v2/core.js の SCRATCH_EXTRA_SEC だけゲートが開くのも遅い）
+    return { order, nOdd, H, last, focus: last, sideFocus: isLate ? late : last, lastIn, side, ready: rd, end: rd + GI_PAUSE, late: isLate ? late : -1, scratch: isScr ? scratch : -1 };
   }
   // 台形の速さ（歩き出し ta 秒・止まる td 秒・あいだは v m/秒）で D m: 始めから tau 秒で [進んだ m, 速さ m/秒]
   function trapAt(D, v, ta, td, tau) {
@@ -1488,7 +1570,13 @@ window.Race3D = (function () {
     const P = this.giPlan, pl = P && P.H[i], G = this.gi; if (!pl || !G) return;
     const T = G.t, u = (T - pl.toss) / 0.16;
     if (u > 0 && u < 1) st.toss = Math.sin(Math.PI * u);
-    if (pl.late) {
+    if (pl.scratch) {
+      const u = T - pl.balk; if (u < 0) { /* まだ歩いている */ }
+      else { const c = u % 2.4, rr = c / 0.75;
+        if (c < 0.75 && st.gait === 'stand') { st.gait = 'rear'; st.rearAmp = Math.max(0.1, 0.7 * smooth01(rr / 0.45) * (1 - 0.85 * smooth01((rr - 0.55) / 0.45))); st.toss = Math.max(st.toss || 0, 0.9 * Math.sin(Math.PI * rr)); }
+        else { st.balk = smooth01((c - 0.65) / 0.3); const w = (c - 0.75) / 1.65; if (w > 0 && w < 1) st.toss = Math.max(st.toss || 0, 1.5 * Math.pow(Math.abs(Math.sin(Math.PI * 2 * w)), 0.8)); } }
+    }
+    else if (pl.late) {
       // 遅れる馬: 止まった所でまず後ろ脚で立ち上がり（gait 'rear'、高さ rearAmp。rearT 秒）、着地してからは脚を踏ん張って前を持ち上げ（balk 0〜1）、
       // 残りの時間で首を 3 回大きく振り上げる（toss は 1.5 まで＝ふつうの 1.5 倍）。立ち上がっている間も首を振る
       const hold = pl.hold || GI_LATE.hold, rT = pl.rearT || 0, u = T - pl.balk;
@@ -1513,6 +1601,7 @@ window.Race3D = (function () {
   // 遅れる馬の係員の綱の引き（0〜1）: 止まっている間、立ち上がる間は強く引きっぱなし、そのあと首振りに合わせて 3 回引く
   function giTug(pl, T) {
     if (!pl || !pl.late) return 0;
+    if (pl.scratch) { const u = T - pl.balk; if (u < -0.1) return 0; const env = smooth01((u + 0.1) / 0.3); return env * (0.45 + 0.55 * Math.pow(Math.abs(Math.sin(Math.PI * u / 1.2 + 0.5)), 1.5)); } // 除外: 入るまで引き続ける
     const hold = pl.hold || GI_LATE.hold, rT = pl.rearT || 0, u = T - pl.balk;
     if (u < -0.1 || u > hold + 0.1) return 0;
     const env = smooth01((u + 0.1) / 0.3) * (1 - smooth01((u - hold + 0.2) / 0.3));
@@ -1589,6 +1678,7 @@ window.Race3D = (function () {
     if (P.order.length > P.nOdd) ev.push([P.H[lastOdd].arr + 0.6, '続いて 偶数番の馬がゲートへ']);
     const lastIn = P.lastIn != null ? P.lastIn : last;
     ev.push([P.H[lastIn].arr - 1.2, '最後に ' + (lastIn + 1) + '番が入って'], [P.ready, '体勢 完了']);
+    if (P.scratch >= 0) { const sp = P.H[P.scratch], nm = (P.scratch + 1) + '番 ' + name(P.scratch); ev.push([sp.balk + 0.4, nm + ' ゲート入りを嫌がっています'], [sp.balk + 6, '係員が 2人がかりで 誘導します'], [sp.balk + 12, nm + ' まだ 入りません'], [P.ready - 2.6, nm + ' は 競走除外となりました']); } // 脱落（2026-11-04）
     ev.sort((a, b) => a[0] - b[0]);
     this.gateShot = true; this.cam.mode = '';
     const G = this.gi = { t: 0, ev, k: 0, onEvent: opt.onEvent, cue: 'wide', finished: false, done: null, clock: typeof opt.clock === 'function' ? opt.clock : null };
@@ -1604,6 +1694,7 @@ window.Race3D = (function () {
     while (G.k < G.ev.length && G.t >= G.ev[G.k][0]) { const e = G.ev[G.k++]; try { if (G.onEvent) G.onEvent(e[1]); } catch (er) { console.error(er); } }
     // 全景 約 2.5 秒（主役が歩き出すまで）→ 横 約 2.5 秒（主役の頭が枠に入るまで。そこからは枠の端に隠れるので切る）→ 正面 約 3 秒（主役が枠に収まり扉が閉まる → 静止 0.9 秒 → 体勢完了 → 間 0.3 秒 → 開く）
     { const F = P.H[P.focus]; G.cue = G.t < F.dep0 + 0.1 ? 'wide' : G.t < F.arr0 - 1.25 ? 'close' : G.t < P.ready - 0.15 ? 'front' : 'ready'; } // 主役が遅れる馬でもカメラの切り替えは遅れの無い時刻
+    if (P.scratch >= 0) { const b = P.H[P.scratch].balk, T = G.t; G.cue = T < b - 0.1 ? 'wide' : T < b + 7 ? 'close' : T < b + 11 ? 'wide' : T < P.ready - 3.2 ? 'close' : T < P.ready - 0.15 ? 'front' : 'ready'; } // 競走除外: 横（嫌がる馬）→ 全景 → 横 → 正面
     this.giSound(G, P);
     if (G.t >= P.end) this.giFinish();
   };
@@ -1649,6 +1740,7 @@ window.Race3D = (function () {
   Race3D.prototype.updateWorld = function (dt) {
     const race = this.race, run = this.run, n = race.horses.length, pad = this.inPaddock(), phase = this.phase;
     const L_ = this.leaderIdx(), dist = race.dist;
+    this.updateFallJockey(); // 落馬した騎手（2026-11-04）
     // 直線（残り 420m から）では先頭 2 頭の足元の土煙を強く（講評 r2 の 6。馬の部品の dustBoost）
     const dustTop = run && phase === 'run' && (1 - Math.min(1, run.pos[L_])) * dist < 420 ? race.horses.map((_, i) => i).sort((a, b) => run.pos[b] - run.pos[a]).slice(0, 2) : null;
     for (let i = 0; i < n; i++) {
@@ -1691,7 +1783,11 @@ window.Race3D = (function () {
       if (!pad && !run) yaw += 0.1 * Math.sin(this.t * 0.37 + i * 1.9) * Math.max(0, 1 - this.giSpeed(i) / 0.6) * clamp((this.stallOf(i) - this.giDs(i)) / 2, 0, 1); // 待っている馬は少しずつ首・体の向きを変える（枠に近づいたら止める。枠の中で向きを変えていると、発走の瞬間に向きが飛ぶ）
       o.position.set(p.x, 0, p.z); o.rotation.y = yaw;
       o.visible = !(phase === 'winner' && this.winHide && this.winHide[i]); // 勝ち馬のアップ: 手前・横の負けた馬は映さない（winnerClear）
-      const jk = !pad; // 騎手はパドック以外ずっと乗せる（勝ち馬のアップも騎手つきで速歩）
+      const incX = run && !pad ? this.incOf() : null, isInc = !!(incX && incX.horse === i);
+      if (isInc && incX.type === 'scratch') o.visible = false; // 競走除外: 発走したら映さない（ゲートの後ろで係員と下がった扱い）
+      const fu = isInc && incX.type === 'fall' && run.fallT != null ? run.t - run.fallT : -1; // 落馬からの秒（まだなら負）
+      const jk = !pad && !(fu >= FALL_THROW); // 騎手はパドック以外ずっと乗せる（勝ち馬のアップも騎手つきで速歩）。落馬した馬は暴れて FALL_THROW 秒で振り落とす（落ちた騎手は updateFallJockey）
+      if (fu >= FALL_REAR && fu < FALL_REAR + 1.55 && st) { const rr = (fu - FALL_REAR) / 1.55; st.gait = 'rear'; st.speed = Math.min(st.speed, 2); st.whip = 0; st.lean = 0; st.rearAmp = Math.max(0.12, 0.78 * smooth01(rr / 0.18) * (1 - smooth01((rr - 0.72) / 0.28))); st.toss = 1.5 * Math.abs(Math.sin(Math.PI * 3 * rr)); } // 急に立ち上がって暴れる（首を 3 回振る）
       if (hz.setJockey && hz._jockey !== jk) { hz._jockey = jk; try { hz.setJockey(jk); } catch (e) { warnOnce('Horse.setJockey', e); } }
       st.surface = race.surface;
       if ('dustBoost' in hz) { const k = dustTop && dustTop.indexOf(i) >= 0 && !run.finish[i] ? 1.7 : 1; if (hz._dk !== k) { hz._dk = k; try { hz.dustBoost = k; } catch (e) { warnOnce('Horse.dustBoost', e); } } }
@@ -1708,6 +1804,8 @@ window.Race3D = (function () {
         else if (el >= EYE_WAIT || !this.eyeOccluded(i)) { this.eyeFired = true; this.eyeFireAt = run.t; if (hz.flashEye) { try { hz.flashEye(EYE_DUR, 0); } catch (e) { warnOnce('Horse.flashEye', e); } } }
       }
       try { hz.update(dt, st); } catch (e) { warnOnce('Horse.update', e); }
+      if (fu >= FALL_REAR && fu < FALL_REAR + 1.55) { const kk = Math.sin(Math.PI * 4 * (fu - FALL_REAR) / 1.55); o.rotation.order = 'YZX'; o.rotation.x = 0.12 * kk; hz._pitch = true; } // 暴れる: 体を左右にひねる
+      else if (hz._pitch) { o.rotation.x = 0; o.rotation.z = 0; o.position.y = 0; hz._pitch = false; }
       if (pad && hd.userData.rope && hz.getHeadPosition) {
         try {
           // 厩務員は馬の頭の外側 0.9m・少し前を歩く（パドックのカメラは楕円の内側から撮るので、内側に立つと馬が隠れる。
@@ -2135,6 +2233,7 @@ window.Race3D = (function () {
     if (!this.band) { this.band = c.createLinearGradient(0, H - 92, 0, H); this.band.addColorStop(0, 'rgba(0,0,0,0)'); this.band.addColorStop(1, 'rgba(0,0,0,.42)'); }
     c.fillStyle = this.band; c.fillRect(0, H - 92, W, 92);
     const dom = !!this.onPhase; // game.js が REPLAY・PHOTO FINISH・勝ち馬のカードを画面の部品で出す（講評 r2 の 2・7）。そのときはここでは描かない
+    { const ic = this.incCaption(); if (ic) { c.save(); c.font = '900 30px ' + NOTO; const w = Math.min(W - 40, c.measureText(ic).width + 56); c.fillStyle = 'rgba(200,24,24,.92)'; roundRect(c, (W - w) / 2, 14, w, 50, 10); c.fill(); c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 2; c.stroke(); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(ic, W / 2, 40, w - 30); c.restore(); } } // 脱落の字幕（2026-11-04）
     if (this.label && !dom) { c.font = '900 20px ' + NOTO; const w = c.measureText(this.label).width + 30; c.fillStyle = this.label === 'REPLAY' || this.label === 'PHOTO FINISH' ? 'rgba(220,40,40,.85)' : 'rgba(0,0,0,.6)'; roundRect(c, 14, 12, w, 34, 8); c.fill(); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(this.label, 14 + w / 2, 29); }
     const bugH = 40, bug = hudLogo(bugH * (this.k || 1));
     if (bug) { const bugW = bugH * bug.width / bug.height, a0 = c.globalAlpha; c.globalAlpha = a0 * 0.9; c.drawImage(bug, 12, H - 34 - bugH, bugW, bugH); c.globalAlpha = a0; }
