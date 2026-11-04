@@ -1,9 +1,9 @@
 {
- "v": "b179",
+ "v": "b180",
  "files": [
   {
    "path": "index.html",
-   "sha256": "d3b9e8aeba4d75660403954074af51fa00f6b897988891b0c1081037d936c397"
+   "sha256": "23501c82874e9a61321316323390ab6689315cd44bf07b545626d443807ad2b9"
   },
   {
    "path": "manifest.webmanifest",
@@ -251,7 +251,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "68431dc173d4ae0fd5b10808526c7ce6c4475aa61c8c03fe4a3195a1d614620c"
+   "sha256": "71b134319a3e10ecaca3e58ed691dd49fe6b18fe17049e1438d5418ec45b4f64"
   },
   {
    "path": "derby/js/audio.js",
@@ -267,7 +267,7 @@
   },
   {
    "path": "derby/js/engine.js",
-   "sha256": "0a0d9245affe9134231b02bb65a4363777bba87d4d997b123f1dd458cfb74f4a"
+   "sha256": "7519f5610833c6063b56276b88b1e88c5eae671c27a78a61762cef45b7e00095"
   },
   {
    "path": "derby/js/game.js",
@@ -343,7 +343,7 @@
   },
   {
    "path": "derby/v2/client.js",
-   "sha256": "2f9fedd24050165ea7d1cb2e3e44ecc1084b05160d63797d482f8a7f5737788e"
+   "sha256": "778e734497ca2427f22b196d1a426bc6e1c0cb8afe05377c35e9df0d9dc8d510"
   },
   {
    "path": "derby/v2/config.js",
@@ -351,7 +351,7 @@
   },
   {
    "path": "derby/v2/core.js",
-   "sha256": "59e2490850db7c3be919cc81b128d689608cc8fbe92d510d0f2ab4452a4bc95c"
+   "sha256": "b9d8d61a4d0a20be1a946930e5bb45f586448047ed8cf701ff1050053ae26331"
   },
   {
    "path": "derby/v2/form.js",
