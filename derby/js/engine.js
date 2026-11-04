@@ -116,6 +116,26 @@
   const DASH = { nige: [1.6, 0.5], senko: [2.1, 0.47], sashi: [2.9, 0.43], oikomi: [3.4, 0.4] }, DASH0 = [2.5, 0.45];
   const TYPE_BIAS = { nige: 0.016, senko: 0.008, sashi: -0.006, oikomi: -0.009 };
   const MODEL2 = { model: 2, theta: 0.04, sigmaMul: 0.16, formSigma: 0.012 }; // v2/core.js の tuneOf が race.tune に入れる（荒れやすさで sigmaMul と formSigma を掛ける）
+  /* 脱落（2026-11-04 オーナー「落馬とかゲートインできないみたいな演出いれたい」→「本当に脱落、票は外れ」「たまに」）
+     race.incident（テレビでは race.result.incident）= { type: 'scratch' | 'fall', horse: 0 始まり, at: 落馬する進み具合 0.2〜0.9 }
+     scratch: ゲートに入れず競走除外＝走らない。fall: 進み具合 at で落馬（つまずいて騎手が落ちる）。騎手のいない馬（カラ馬）は大きく遅れてから 86% の速さで走り、最後にゴールを過ぎる。
+     どちらも着順は最後（finish = OUT_T + 添字＝ふつうのゴール時刻より必ず後）。run.out[i]: 脱落した馬・run.outAt[i]: 走り終えた（除外はすぐ・カラ馬はゴールを過ぎた）時刻。
+     incident の無いレースは今までとまったく同じ走り（乱数の使い方も同じ） */
+  const OUT_T = 300;
+  function incidentOf(race) {
+    const x = race && (race.incident || (race.result && race.result.incident));
+    if (!x || (x.type !== 'scratch' && x.type !== 'fall')) return null;
+    const h = Number(x.horse), n = (race.horses || []).length;
+    if (!(Number.isInteger(h) && h >= 0 && h < n)) return null;
+    const at = Number(x.at);
+    return { type: x.type, horse: h, at: Number.isFinite(at) ? Math.min(0.9, Math.max(0.2, at)) : 0.55 };
+  }
+  // 落馬からの秒 → 速さに掛ける数（2026-11-04 オーナー「急に馬が暴れて騎手が落ちる感じ」: 0.3 秒で急に止まり、1.5 秒まで立ち上がって暴れる → 3 秒で 0.86 まで走り出す）
+  /* 2 回目（2026-11-04 オーナー「少しづつスピード落としてから暴れる感じ」）: 2 秒かけて 0.45 まで落ち（様子がおかしい）→ 0.3 秒で止まりかけ → 1.2 秒 立ち上がって暴れる（騎手はその途中で落ちる）
+     → 1.5 秒で 0.86 まで走り出す（カラ馬）。js/race3d.js の FALL_REAR・FALL_THROW と同じ時刻 */
+  const sm01 = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+  const fallMul = (d) => (d < 1.2 ? 1 - 0.3 * sm01(d / 1.2) : d < 1.45 ? 0.7 - 0.6 * ((d - 1.2) / 0.25) : d < 2.7 ? 0.1 : d < 4.2 ? 0.1 + 0.76 * ((d - 2.7) / 1.5) : 0.86); // 1.2 秒で 0.7 まで → 止まりかけて暴れる（いつものカメラから外れないうちに）
+  const FALL_NEAR_M = 5; // 落馬は「進み具合 at を過ぎて、先頭から 8m 以内にいる」ときに起きる（いつものカメラに映る所。at + 0.2 を過ぎたらどこでも）
   const tuneOf = (race, k) => (race && race.tune && race.tune[k] != null ? race.tune[k] : TUNE[k]);
   const noiseSigma = (race) => tuneOf(race, 'sigmaMul') * (race.weather === 'rain' ? 0.075 : race.weather === 'cloudy' ? 0.065 : 0.058);
 
@@ -138,22 +158,33 @@
     const theta = M2 ? tv('theta', 0.04) : 0.6, dashK = M2 ? 1 : 0, tb = M2 ? tv('typeBias', TYPE_BIAS) : null;
     const form = M2 ? race.horses.map((h) => tv('formSigma', 0.012) * gauss(r) + ((tb && tb[h.type]) || 0)) : null;
     const length = race.dist >= 1600 ? 95 : race.dist >= 1200 ? 67 : race.dist >= 1000 ? 58 : 29; // ゴールまでの基準時間（秒。本物のタイムに合わせる）
-    const run = { t: 0, done: 0, pos, finish, speed, length, n };
+    const INC = incidentOf(race), out = new Array(n).fill(false), outAt = new Array(n).fill(0);
+    const run = { t: 0, done: 0, pos, finish, speed, length, n, out, outAt, incident: INC, fallT: null };
     run.step = function (dt) {
       dt = Math.max(0.0005, dt || 0);
       run.t += dt;
-      let lead = 0; for (let i = 0; i < n; i++) if (!finish[i] && pos[i] > lead) lead = pos[i];
+      let lead = 0; for (let i = 0; i < n; i++) if (!finish[i] && !out[i] && pos[i] > lead) lead = pos[i];
       for (let i = 0; i < n; i++) {
         if (finish[i]) continue;
+        if (INC && i === INC.horse && INC.type === 'scratch') { out[i] = true; outAt[i] = 0; finish[i] = OUT_T + i; speed[i] = 0; run.done++; continue; } // 競走除外: 走らない
         const h = race.horses[i], u = Math.min(1, pos[i]);
         noise[i] += -theta * noise[i] * dt + sigma * Math.sqrt(dt) * gauss(r);
         let v = base[i] * profile(h.type, u, race.dist) * (1 + noise[i] + (form ? form[i] : 0));
         if (dashK) { const d = DASH[h.type] || DASH0, lo = d[1]; v *= lo + (1 - lo) * Math.min(1, run.t / d[0]); } else v *= 0.45 + 0.55 * Math.min(1, run.t / 2.5);                      // スタートダッシュ（最初の 2.5 秒で加速）
-        if (TUNE.pack && u < TUNE.packEnd) { const gapM = (lead - pos[i]) * race.dist, fade = Math.min(1, (TUNE.packEnd - u) / 0.1); v *= 1 + Math.min(TUNE.packMax, TUNE.pack * gapM) * fade; }
+        const fell = INC && i === INC.horse && INC.type === 'fall';
+        if (fell && !out[i] && u >= INC.at) { // 落馬: 先頭から 5m 以内で 3 番手までにいるとき（いつものカメラは先頭の 3 頭を映す）。at + 0.3 を過ぎたらどこでも
+          let ahead = 0; for (let j = 0; j < n; j++) if (j !== i && !out[j] && pos[j] > pos[i]) ahead++;
+          if (((lead - pos[i]) * race.dist <= FALL_NEAR_M && ahead < 3) || u >= INC.at + 0.2) { out[i] = true; run.fallT = run.t; }
+        }
+        if (fell && out[i]) v *= fallMul(run.t - run.fallT);
+        else {
+          if (TUNE.pack && u < TUNE.packEnd) { const gapM = (lead - pos[i]) * race.dist, fade = Math.min(1, (TUNE.packEnd - u) / 0.1); v *= 1 + Math.min(TUNE.packMax, TUNE.pack * gapM) * fade; }
+          if (fell && u >= INC.at - 0.3) { let ahead = 0; for (let j = 0; j < n; j++) if (j !== i && !out[j] && pos[j] > pos[i]) ahead++; if (ahead >= 3 || (lead - pos[i]) * race.dist > FALL_NEAR_M) v *= 1.08; } // 落馬する馬は落ちる前に前へ上がる（いつものカメラに映る 3 番手まで。どうせ脱落する馬なので結果は変わらない）
+        }
         if (opt.boost) v *= opt.boost(i, run.t);
         speed[i] = v;
         pos[i] += v * dt / length;
-        if (pos[i] >= 1) { finish[i] = run.t - (pos[i] - 1) * length / v; run.done++; }
+        if (pos[i] >= 1) { const ft = run.t - (pos[i] - 1) * length / v; if (out[i]) { outAt[i] = ft; finish[i] = OUT_T + i; } else finish[i] = ft; run.done++; }
       }
       return run.done >= n;
     };
@@ -267,7 +298,7 @@
     let steps = 0;
     while (steps < 200 * 60) { const all = run.step(FIXED_DT); steps++; if (frames) { frames.push(new Float64Array(run.pos)); speeds.push(new Float64Array(run.speed)); } if (all) break; }
     for (let i = 0; i < n; i++) if (!run.finish[i]) run.finish[i] = 200 + i;
-    return { frames, speeds, finish: run.finish.slice(), order: run.order(), length: run.length, n };
+    return { frames, speeds, finish: run.finish.slice(), order: run.order(), length: run.length, n, out: run.out.slice(), outAt: run.outAt.slice(), incident: run.incident, fallT: run.fallT };
   }
   function replayOrder(race, seed) { return recordRun(race, seed, true).order; }
   /* 着順を決めた順にする（2026-10-21 v4・2 連単: 1 着と 2 着の両方を決めるので、入れ替えが要ることが増えた）。
@@ -322,27 +353,33 @@
       if (!forced) opt.order.forEach((h, k) => { map[h] = rec.order[k]; }); // 以前の入れ替え（最初から全部）
     }
     const finishT = forced ? forced.finish.slice() : map.map((src) => rec.finish[src]), last = rec.frames.length - 1;
+    // 脱落した馬（2026-11-04）: 着順は finishT（OUT_T + 添字）で最後。走り終えた時刻 doneT は除外ならすぐ・カラ馬はゴールを過ぎた時刻
+    const outF = map.map((src, i) => !!(rec.out && rec.out[forced ? i : src])), doneT = finishT.map((x, i) => (outF[i] ? rec.outAt[forced ? i : map[i]] : x));
+    // 除外の馬は「最後の馬がゴールした時」に数える（run.done で 1 着・2 着の決まりを見る画面が、最初から 1 頭多く数えないように）
+    if (rec.incident && rec.incident.type === 'scratch') { const last = Math.max.apply(null, finishT.filter((x, i) => !outF[i])); outF.forEach((o, i) => { if (o) doneT[i] = last; }); }
     const pos = new Array(n).fill(0), finish = new Array(n).fill(0), speed = new Array(n).fill(0);
-    const run = { t: 0, done: 0, pos, finish, speed, length: rec.length, n, natural, seed, duration: Math.max.apply(null, finishT), winTime: Math.min.apply(null, finishT), finishTimes: finishT.slice(), swaps: forced ? forced.swaps : natural ? [] : null };
+    const run = { t: 0, done: 0, pos, finish, speed, length: rec.length, n, natural, seed, duration: Math.max.apply(null, doneT), winTime: Math.min.apply(null, finishT), finishTimes: finishT.slice(), swaps: forced ? forced.swaps : natural ? [] : null,
+      out: outF, outAt: doneT.map((x, i) => (outF[i] ? x : 0)), incident: rec.incident || null, fallT: rec.fallT };
     function apply() {
       const x = Math.max(0, run.t / FIXED_DT), k = Math.min(last, Math.floor(x)), f = k >= last ? 0 : x - k, k2 = Math.min(last, k + 1);
       let done = 0;
       for (let i = 0; i < n; i++) {
         if (forced) { const Pi = forced.P[i]; pos[i] = Pi[k] + (Pi[k2] - Pi[k]) * f; speed[i] = forced.V[i][k2]; }
         else { const src = map[i]; pos[i] = rec.frames[k][src] + (rec.frames[k2][src] - rec.frames[k][src]) * f; speed[i] = rec.speeds[k2][src]; }
-        if (run.t >= finishT[i]) { finish[i] = finishT[i]; done++; } else finish[i] = 0;
+        // 脱落した馬の finish（見せる run だけ）: 除外は 0 のまま（ゴールしていない）・カラ馬はゴールを過ぎた本当の時刻（TIME・集中線・ゴール後の流しが正しく動く）。着順は order() で最後
+        if (run.t >= doneT[i]) { finish[i] = outF[i] ? (rec.incident && rec.incident.type === 'scratch' ? 0 : doneT[i]) : finishT[i]; done++; } else finish[i] = 0;
       }
       run.done = done;
       return done >= n;
     }
     run.step = function (dt) { run.t += Math.max(0, dt || 0); return apply(); };
     run.seek = function (t) { run.t = Math.max(0, t || 0); return apply(); };
-    run.order = function () { return race.horses.map((_, i) => i).sort((a, b) => (finish[a] || 99 + a) - (finish[b] || 99 + b)); };
+    run.order = function () { const k = (i) => (outF[i] ? OUT_T + i : finish[i] || 99 + i); return race.horses.map((_, i) => i).sort((a, b) => k(a) - k(b)); }; // 脱落した馬はいつも最後
     run.finalOrder = function () { return race.horses.map((_, i) => i).sort((a, b) => finishT[a] - finishT[b]); };
     apply();
     return run;
   }
 
-  return { FIXED_DT, TUNE, MODEL2, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET,
+  return { FIXED_DT, TUNE, MODEL2, OUT_T, incidentOf, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET,
  BALLS_MAX, TYPES, CONDS, POOL, COATS, ROULETTE, makeRace, simulate, createRun, calcOdds, qkey, ekey, forceOrder, EX_MIN, EX_MAX, oddsColor, totalBet, payout, carrotCount, spinFood, betHorses, ballsEarned, spinRoulette, profile, baseSpeed };
 });
