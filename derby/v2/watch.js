@@ -193,7 +193,9 @@
     let ordIdx = null, ordHead = '';
     if (rk) { ordIdx = rk.map((r, i) => [r, i]).sort((a, b) => a[0] - b[0]).map((x) => x[1]); ordHead = '位'; }
     else if (R.result && R.result.order && (D.phase === 'result' || (R.revealAt && D.now() >= R.revealAt))) { ordIdx = R.result.order.slice(); ordHead = '着'; }
-    const ord = ordIdx ? ordIdx.map((i, k) => '<div class="r' + (k === 0 ? ' lead' : '') + (mineIdx.indexOf(i) >= 0 ? ' me' : '') + '"><b>' + (k + 1) + ordHead + '</b>' + chip(R, i) + '<span class="nm">' + esc(horseOf(R, i).name) + '</span></div>').join('')
+    const incW = R.result && R.result.incident, outW = incW ? incW.horse : -1; // 脱落（2026-11-04）: 着順では「中止」（落馬）・「除外」。除外の馬はレース中も「除外」
+    const rkLb = (i, k) => (i === outW && (ordHead === '着' || incW.type === 'scratch') ? (incW.type === 'fall' ? '中止' : '除外') : (k + 1) + ordHead);
+    const ord = ordIdx ? ordIdx.map((i, k) => '<div class="r' + (k === 0 ? ' lead' : '') + (mineIdx.indexOf(i) >= 0 ? ' me' : '') + '"><b>' + rkLb(i, k) + '</b>' + chip(R, i) + '<span class="nm">' + esc(horseOf(R, i).name) + '</span></div>').join('')
       : (R.horses || []).map((h, i) => '<div class="r' + (mineIdx.indexOf(i) >= 0 ? ' me' : '') + '">' + chip(R, i) + '<span class="nm">' + esc(h.name) + '</span></div>').join('');
     setHtml('wOrd', 'ord', ord);
     // 初参加ボーナス（2 票目）がまだ入れられる: 投票ページへ戻るボタン（自動で開いた窓でも 2 票目を逃さない）
