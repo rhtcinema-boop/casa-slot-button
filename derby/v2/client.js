@@ -151,7 +151,7 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'health']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
+    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'health']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
@@ -282,6 +282,7 @@
           races: (date) => request('GET', '/api/admin/races?' + qs({ date }), undefined, h),
           stats: (from, to, s) => request('GET', '/api/admin/stats?' + qs({ from, to, store: s }), undefined, h),
           abuse: (from, to, s) => request('GET', '/api/admin/abuse?' + qs({ from, to, store: s }), undefined, h), // 見える化（集計タブの「注意」。2026-10-27）
+          stampStats: (o) => request('GET', '/api/admin/stamp-stats?' + qs(o || {}), undefined, h), // スタンプラリーの効果（管理の「スタンプ」タブ。2026-11-05）
           logs: (o) => request('GET', '/api/admin/logs?' + qs(o || {}), undefined, h),
           refund: (raceId) => post('/api/admin/refund', { raceId }, h),
           reload: (storeId) => post('/api/admin/reload', { storeId: storeId || null }, h),
