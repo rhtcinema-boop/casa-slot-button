@@ -112,6 +112,10 @@
   const TUNE = Object.assign({ pack: 0.008, packMax: 0.1, packEnd: 0.9, sigmaMul: 0.8, oddsDt: 0.1 }, // 300 レースの計測で決定: 中間の馬群の幅 38m→9m、1 馬身以内の決着 14%→42%、残り 200m の先頭交代 0.5→1.5 回
      (typeof globalThis !== 'undefined' && globalThis.__DERBY_TUNE) || {});
   // race.tune（v2: サーバーがレースごとに決めて保存する調整値 { sigmaMul, payoutRate }）があればそちらを使う（全店のテレビで同じ走りを再現するため）
+  // 走りの作り 2 の部品: 脚質ごとのスタート（加速しきるまでの秒数, 出だしの速さの割合）と、脚質ごとの補正
+  const DASH = { nige: [1.6, 0.5], senko: [2.1, 0.47], sashi: [2.9, 0.43], oikomi: [3.4, 0.4] }, DASH0 = [2.5, 0.45];
+  const TYPE_BIAS = { nige: 0.016, senko: 0.008, sashi: -0.006, oikomi: -0.009 };
+  const MODEL2 = { model: 2, theta: 0.04, sigmaMul: 0.16, formSigma: 0.012 }; // v2/core.js の tuneOf が race.tune に入れる（荒れやすさで sigmaMul と formSigma を掛ける）
   const tuneOf = (race, k) => (race && race.tune && race.tune[k] != null ? race.tune[k] : TUNE[k]);
   const noiseSigma = (race) => tuneOf(race, 'sigmaMul') * (race.weather === 'rain' ? 0.075 : race.weather === 'cloudy' ? 0.065 : 0.058);
 
@@ -123,7 +127,17 @@
     const n = race.horses.length, sigma = noiseSigma(race);
     const base = race.horses.map((h) => baseSpeed(h, race));
     const pos = new Array(n).fill(0), noise = new Array(n).fill(0), finish = new Array(n).fill(0), speed = new Array(n).fill(0);
-    const theta = 0.6, length = race.dist >= 1600 ? 95 : race.dist >= 1200 ? 67 : race.dist >= 1000 ? 58 : 29; // ゴールまでの基準時間（秒。本物のタイムに合わせる）
+    /* 走りの作り 2（2026-11-04 オーナー「入れ替わりすぎてリアルっぽくない。とことんリアルに」）: race.tune.model === 2 のときだけ。
+       ・ゆらぎ（noise）を「ゆっくり変わる」形にする（theta 0.6→0.04、強さ sigmaMul 0.8→0.16）＝ 1〜2 秒ごとの小刻みな抜きつ抜かれつをなくす
+       ・その日の調子 form（レースの間ずっと同じ、標準偏差 formSigma）＝ 走りの差が「ずっと同じ向き」に出て、隊列が保たれる
+       ・スタートの出方を脚質で変える（逃げは早く前へ、追込はゆっくり）＝ 最初の 10 秒の入れ替わりを減らす
+       ・脚質ごとの補正 typeBias（勝率が脚質で偏らないように 300 レースで合わせた）
+       300 レースの計測: 順位の入れ替わり 59→19 回、先頭交代 7.8→3.0 回（最初の 150m を除く）、残り 200m の先頭交代 2.5→1.4 回、1 馬身以内の決着 46→34%。
+       model が無いレース（作り 1。v1 の game.js・前に作ったレース）は前と同じ走り（乱数の使い方も同じ）。 */
+    const M2 = !!(race.tune && race.tune.model === 2), tv = (k, d) => (race.tune && race.tune[k] != null ? race.tune[k] : d);
+    const theta = M2 ? tv('theta', 0.04) : 0.6, dashK = M2 ? 1 : 0, tb = M2 ? tv('typeBias', TYPE_BIAS) : null;
+    const form = M2 ? race.horses.map((h) => tv('formSigma', 0.012) * gauss(r) + ((tb && tb[h.type]) || 0)) : null;
+    const length = race.dist >= 1600 ? 95 : race.dist >= 1200 ? 67 : race.dist >= 1000 ? 58 : 29; // ゴールまでの基準時間（秒。本物のタイムに合わせる）
     const run = { t: 0, done: 0, pos, finish, speed, length, n };
     run.step = function (dt) {
       dt = Math.max(0.0005, dt || 0);
@@ -133,8 +147,8 @@
         if (finish[i]) continue;
         const h = race.horses[i], u = Math.min(1, pos[i]);
         noise[i] += -theta * noise[i] * dt + sigma * Math.sqrt(dt) * gauss(r);
-        let v = base[i] * profile(h.type, u, race.dist) * (1 + noise[i]);
-        v *= 0.45 + 0.55 * Math.min(1, run.t / 2.5);                      // スタートダッシュ（最初の 2.5 秒で加速）
+        let v = base[i] * profile(h.type, u, race.dist) * (1 + noise[i] + (form ? form[i] : 0));
+        if (dashK) { const d = DASH[h.type] || DASH0, lo = d[1]; v *= lo + (1 - lo) * Math.min(1, run.t / d[0]); } else v *= 0.45 + 0.55 * Math.min(1, run.t / 2.5);                      // スタートダッシュ（最初の 2.5 秒で加速）
         if (TUNE.pack && u < TUNE.packEnd) { const gapM = (lead - pos[i]) * race.dist, fade = Math.min(1, (TUNE.packEnd - u) / 0.1); v *= 1 + Math.min(TUNE.packMax, TUNE.pack * gapM) * fade; }
         if (opt.boost) v *= opt.boost(i, run.t);
         speed[i] = v;
@@ -329,6 +343,6 @@
     return run;
   }
 
-  return { FIXED_DT, TUNE, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET,
+  return { FIXED_DT, TUNE, MODEL2, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET,
  BALLS_MAX, TYPES, CONDS, POOL, COATS, ROULETTE, makeRace, simulate, createRun, calcOdds, qkey, ekey, forceOrder, EX_MIN, EX_MAX, oddsColor, totalBet, payout, carrotCount, spinFood, betHorses, ballsEarned, spinRoulette, profile, baseSpeed };
 });
