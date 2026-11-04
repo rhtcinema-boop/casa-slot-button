@@ -214,6 +214,7 @@
 
   /* ---------- 共通の部品 ---------- */
   // 数字の入力（◀ ▶ と直接入力）。値は保存のときに DOM から読む
+  const incOfT = (T) => { const x = (T && T.incident) || {}; return { rate: x.rate != null ? Math.round(x.rate) : 0, fall: x.fall != null ? Math.round(x.fall) : 50 }; }; // 脱落の割合（2026-11-04。無ければ 出さない・落馬 50%）
   function stepRow(label, hint, key, val, unit, min, max, step) {
     return '<div class="row"><div class="lbl">' + label + (hint ? '<small>' + hint + '</small>' : '') + '</div>' +
       '<div class="stepper" data-k="' + key + '" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '"><button type="button" data-act="st" data-d="-1" aria-label="減らす">◀</button>' +
@@ -976,7 +977,7 @@
   const votesOf = (r) => Number(r.votes != null ? r.votes : r.participants && r.participants.total) || 0;
   const finished = (r) => !r.refunded && (r.status === 'decided' || r.status === 'done');
   /* 勝ち馬の決まり方（decision.reason。v2/outcome.js）を 1 行で */
-  const REASONS = { band: '目標の幅に入る組み合わせから抽選', target: '幅に入る組み合わせがなく、目標にいちばん近い組み合わせ（必ず誰かは当てる）', cap_nowin: '上限を超えるので当たりなし（票のない組み合わせ）', cap_conflict: '全部の組み合わせが上限超え。いちばん少ない組み合わせ', nobody: '投票なし（自然の結果）',
+  const REASONS = { band: '目標の幅に入る組み合わせから抽選', target: '幅に入る組み合わせがなく、目標にいちばん近い組み合わせ（必ず誰かは当てる）', cap_nowin: '上限を超えるので当たりなし（票のない組み合わせ）', cap_conflict: '全部の組み合わせが上限超え。いちばん少ない組み合わせ', nobody: '投票なし（自然の結果）', out_nowin: '票は全部、脱落した馬（落馬・競走除外）を選んでいたので当たりなし',
     heavy_only: '1台で番号が多いスマホの票だけ（起きやすさで抽選）', norepeat: '票の組み合わせが全部、直近の当たり端末の票だったので、その票の無い組み合わせから抽選', norepeat_conflict: '30 通り全部に直近の当たり端末の票。いちばん少ない組み合わせ' }; // norepeat・norepeat_conflict: 2026-10-31
   function reasonTxt(r) {
     const d = r.decision; if (!d || !d.reason) return '';
@@ -1023,7 +1024,8 @@
     const odds = res.comboOdds != null ? res.comboOdds : res.finalExacta && res.combo ? res.finalExacta[res.combo] : null;
     const ws = (r.winners || []).filter((w) => r.test || !w.test), n = ws.length;
     return '<b class="combo">' + noOf(r, res.winner) + '番 → ' + noOf(r, res.second) + '番</b> <span class="hint">' + per1(odds) + '</span>' +
-      (r.refunded ? ' <small class="hint">取り消し（受け取りなし）</small>' : r.status === 'done' || r.status === 'decided' ? ' <small class="hint">' + (n ? '当たり ' + n + '人' : '当たりなし') + '</small>' : '');
+      (r.refunded ? ' <small class="hint">取り消し（受け取りなし）</small>' : r.status === 'done' || r.status === 'decided' ? ' <small class="hint">' + (n ? '当たり ' + n + '人' : '当たりなし') + '</small>' : '') +
+      (res.incident ? ' <small class="hint" style="color:#d33">' + noOf(r, res.incident.horse) + '番 ' + (res.incident.type === 'fall' ? '落馬' : '競走除外') + '</small>' : ''); // 脱落（2026-11-04）
   }
   function viewRaces() {
     const list = racesData || [];
@@ -1198,6 +1200,10 @@
       stepRow('払い戻し率', '見せる倍率の払い戻し率', 'payoutRate', pct(T.payoutRate), '%', 50, 99, 1) +
       stepRow('荒れやすさ', '1.0 がふつう。大きいほど人気薄が来る', 'volatility', T.volatility, '倍', 0.3, 2.5, 0.1) +
       viewCues(T) +
+      /* 脱落（2026-11-04 オーナー「落馬とかゲートインできないみたいな演出」→「本当に脱落、票は外れ」「たまに」）: 裏の設定 tuning.incident = { rate, fall }（%） */
+      '<h4 class="sumh">落馬・競走除外</h4><p class="hint">1 頭がレースから脱落します（落馬＝途中で騎手が落ちる／除外＝ゲートに入れない）。その馬を選んだ票は外れになります。決まるのは締切のあと。テストレースにも出ます。</p>' +
+      stepRow('出す割合', '10 なら 10 レースに 1 回くらい。0 で出さない', 'incRate', incOfT(T).rate, '%', 0, 100, 1) +
+      stepRow('そのうち落馬', '残りはゲートに入れず競走除外', 'incFall', incOfT(T).fall, '%', 0, 100, 1) +
       '<h4 class="sumh">テレビの時間</h4>' +
       stepRow('結果を見せる時間（初期値）', '店舗を追加したときの初期値（店ごとに変えられます）', 'resultSec', T.resultSec || 300, '秒', 10, 1800, 10) +
       stepRow('ゲートイン', '走り出す時刻からゲートが開くまで', 'gateSec', T.gateSec, '秒', 0, 60, 1) +
@@ -1294,6 +1300,7 @@
     Object.keys(t).forEach((k) => { if (typeof t[k] === 'boolean' ? t[k] === (T0[k] === true) : near(t[k], T0[k] != null ? T0[k] : DEF_TUNING[k])) delete t[k]; }); // オン・オフは true / false で比べる（保存していない古いデータは初期値と比べる）
     { const cz = {}; CUES.forEach(([k]) => { const cur = (T0.cues && T0.cues[k]) || DEF_CUES[k], sh = Math.round(numOf('cueShow_' + k)), hi = Math.round(numOf('cueHit_' + k)), d = {}; if (!near(sh, cur.show)) d.show = sh; if (!near(hi, cur.hit)) d.hit = hi; if (Object.keys(d).length) cz[k] = d; }); if (Object.keys(cz).length) t.cues = cz; } /* 演出: 変えた演出・項目だけ */
     { const S0 = stampOfT(T0), S1 = stampForm(T0), d = {}; ['on', 'cost', 'vote', 'win', 'near'].forEach((k) => { if (S1[k] !== S0[k]) d[k] = S1[k]; }); if (Object.keys(d).length) t.stamp = d; } /* スタンプラリー（2026-11-03）: 変えた項目だけ */
+    { const I0 = incOfT(T0), d = {}, r = Math.round(numOf('incRate')), f = Math.round(numOf('incFall')); if (r !== I0.rate) d.rate = r; if (f !== I0.fall) d.fall = f; if (Object.keys(d).length) t.incident = d; } /* 脱落（2026-11-04）: 変えた所だけ */
     if (!Object.keys(t).length) { tunDirty = false; toast('変更はありません'); return keepScroll(render); }
     const big = (t.shiftUp != null && t.shiftUp * 100 > BIG_SHIFT) || (t.shiftDown != null && t.shiftDown * 100 > BIG_SHIFT);
     if (big && !confirm('倍率のずらし幅が大きいので、お客さんが見た倍率と確定の倍率が大きく変わります。\n（上げ ' + fmtN(pct(t.shiftUp != null ? t.shiftUp : T0.shiftUp)) + '%・下げ ' + pct(t.shiftDown != null ? t.shiftDown : T0.shiftDown) + '%）\n保存しますか？')) return;
