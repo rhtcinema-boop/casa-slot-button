@@ -231,7 +231,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
   main { padding: 12px 10px 0; }
   .dock { margin: 0 -10px; padding-left: 10px; padding-right: 10px; }
   .scr h1 { font-size: 22px; letter-spacing: .04em; }
-  .grid { grid-template-columns: 28px repeat(6, minmax(0, 1fr)); gap: 1px; } .gc.corner small { font-size: 12px; letter-spacing: -.1em; }
+  .grid { grid-template-columns: 28px repeat(6, minmax(0, 1fr)); gap: 1px; } .gc.corner small { font-size: 10px; letter-spacing: -.1em; }
   .gc.cell, .gc.cell.hi { font-size: 13px; letter-spacing: -.04em; }
   .hinfo { column-gap: 5px; padding: 6px 8px 8px; }
   .hr .hn { font-size: 13.5px; } .hr .hc, .hr .hf { font-size: 12px; }
