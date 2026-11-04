@@ -202,12 +202,13 @@
 
   function render() {
     clearInterval(racesTimer);
-    main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats' || tab === 'horses');
+    main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats' || tab === 'horses' || tab === 'stamps');
     if (tab === 'tv') { main.innerHTML = editStore ? viewStoreEdit() : viewTvPanel() + viewStores(); if (editStore) validateStore(); else if (!pairData && pairOk()) loadPair(); }
     else if (tab === 'timetable') { if (!tt) loadTT(); main.innerHTML = viewTT(); paintTT(); }
     else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
     else if (tab === 'tuning') { main.innerHTML = viewTuning(); validateTuning(); }
     else if (tab === 'horses') { main.innerHTML = viewHorses(); paintHorses(); if (!hsVoice) loadVoiceNames(); } // 声の一覧は開くたびに読み直さない（読めなかったときだけもう一度）
+    else if (tab === 'stamps') { if (!sm.to) sm.to = bizToday(); main.innerHTML = viewStamps(); if (!sm.data && !sm.err) loadStamps(); } // スタンプ（2026-11-05）
     else if (tab === 'stats') { if (!stFrom) { stTo = bizToday(); stFrom = addDays(stTo, -6); } main.innerHTML = viewStats(); if (!statsData && !statsErr) loadStats(); }
   }
   const keepScroll = (fn) => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
@@ -1461,6 +1462,91 @@
     return ids.sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999)).map((k) => Object.assign({ storeId: k }, statRow(bs[k])));
   }
   const rateTxt = (paid, target) => (target ? '目標の ' + Math.round(paid / target * 100) + '%' : '');
+  /* ======================================================================
+     スタンプ（2026-11-05 オーナー「スタンプの貯めてる人の状況、誰がどれくらい 1 日で貯めたか、どれだけ使われたか、入れる前と比べたい」）
+     api('stampStats', { to, before, day, store }) → Core.stampReport の形。入れる前と後の 1 日あたり・スタンプの動き・日ごと・この日に貯めた人・持っている人
+     ====================================================================== */
+  let sm = { to: '', before: 7, day: '', store: '', data: null, err: '', all: false, seq: 0 };
+  async function loadStamps() {
+    const my = ++sm.seq; sm.err = '';
+    try { const x = await api('stampStats', { to: sm.to, before: sm.before, day: sm.day || undefined, store: sm.store || undefined }); if (my !== sm.seq) return; sm.data = x; if (!sm.day) sm.day = x.day; }
+    catch (e) { if (my !== sm.seq) return; sm.err = e && e.code === 'not_supported' ? 'この画面の版ではまだ使えません。ページを読み込み直してください' : '読み込めませんでした（' + ((e && (e.message || e.code)) || e) + '）'; }
+    if (tab === 'stamps') keepScroll(() => { main.innerHTML = viewStamps(); });
+  }
+  const pctTxt = (r) => Math.round((Number(r) || 0) * 100) + '%';
+  const num1 = (v) => { const x = Math.round((Number(v) || 0) * 10) / 10; return x.toLocaleString('en-US', { maximumFractionDigits: 1 }); };
+  // 前と後の差: 数は「何 % 増えた」、割合は「何ポイント」（ここでは「%」の差と書く）
+  function deltaTag(b, a, isRate) {
+    if (!(b > 0) && !isRate) return '<span class="dl nd">比べる前の記録なし</span>';
+    const d = isRate ? Math.round((a - b) * 100) : Math.round((a / b - 1) * 100);
+    const cls = d > 0 ? 'up' : d < 0 ? 'dn' : 'eq', ar = d > 0 ? '▲' : d < 0 ? '▼' : '±';
+    return '<span class="dl ' + cls + '">' + ar + ' ' + Math.abs(d) + (isRate ? ' %' : '%') + (isRate ? '' : '') + '</span>';
+  }
+  function whoCell(w) {
+    const nm = w.nick ? esc(w.nick) : '<span class="dim">名前なし</span>';
+    return '<span class="who"><b>' + nm + '</b><small>' + esc(w.store ? storeName(w.store) : '') + (w.bill ? '・' + esc(w.bill) + '番' : '') + '<i>端末 …' + esc(String(w.id).slice(-4)) + '</i></small></span>';
+  }
+  function viewStamps() {
+    const R = sm.data, T = (cfg && cfg.tuning) || {}, cost = (R && R.cost) || (T.stamp && T.stamp.cost) || 10, stores = (cfg && cfg.stores) || [];
+    const head = '<div class="panel stp"><h3>スタンプ導入前後の比較<span class="sp"></span>' + (R ? '<span class="auto">導入日 ' + fmtDay(R.launch) + '</span>' : '') + '</h3>' +
+      '<p class="hint">スタンプを入れる前と後で、1 日あたりの投票数や参加人数がどう変わったか。テストを除いた本物のレースだけを数えています。</p>' +
+      '<div class="range"><label class="f"><span>最後の日</span><input type="date" id="smto" value="' + esc(sm.to) + '" max="' + esc(bizToday()) + '"></label>' +
+      '<label class="f"><span>比較する導入前の期間</span><select id="smbefore">' + [3, 7, 14].map((n) => '<option value="' + n + '"' + (sm.before === n ? ' selected' : '') + '>導入前の ' + n + ' 日間</option>').join('') + '</select></label>' +
+      '<label class="f"><span>店舗</span><select id="smstore"><option value="">全店舗</option>' + stores.map((s) => '<option value="' + esc(s.id) + '"' + (sm.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select></label></div>' +
+      (sm.err ? '<div class="err">' + esc(sm.err) + '</div>' : '');
+    if (!R) return head + (sm.err ? '' : '<div class="empty">読み込み中…（票を数えています）</div>') + '</div>';
+    const B = R.before, A = R.after, preDays = R.days.filter((x) => !x.after), postDays = R.days.filter((x) => x.after);
+    const span = (list) => (list.length ? fmtDay(list[0].date) + '〜' + fmtDay(list[list.length - 1].date) : '—');
+    const card = (lb, key, fmt, isRate, sub) => '<div class="cmp"><small>' + lb + '</small><div class="nowv"><b>' + fmt(A[key]) + '</b>' + deltaTag(B[key], A[key], isRate) + '</div><div class="was">導入前 <b>' + fmt(B[key]) + '</b><span class="ar">→</span>導入後 <b class="af">' + fmt(A[key]) + '</b>' + (sub ? '<i>' + sub + '</i>' : '') + '</div></div>';
+    const cmp = '<h4 class="sumh">導入前と導入後（1 日あたりの平均・参考の比較）</h4>' +
+      '<p class="hint cmpnote"><span class="tag pre">導入前</span>' + span(preDays) + '（レースのあった ' + B.days + ' 日）<span class="tag post">導入後</span>' + span(postDays) + '（' + A.days + ' 日）</p>' +
+      '<p class="hint cmpnote2">参加人数は 1 台のスマホを 1 人と数えます。レースの無い日は平均に入れていません。曜日やイベントでも変わるので、効果の目安として見てください。</p>' +
+      '<div class="cmpgrid">' + card('投票数', 'votes', num1) + card('参加人数', 'people', num1) + card('1 人あたりの投票数', 'perPerson', num1) +
+      card('2 レース以上 参加した人', 'multiRate', pctTxt, true) + card('以前も参加した人', 'backRate', pctTxt, true) + card('1 レースあたりの投票数', 'perRace', num1) + '</div>';
+    const to = R.totals;
+    const useRate = to.earned ? Math.round(to.spent / to.earned * 1000) / 10 : 0;
+    const move = '<h4 class="sumh">スタンプの動き（導入日から ' + fmtDay(R.to) + ' まで）</h4><div class="summary stpmove">' +
+      '<div class="stat"><small>獲得スタンプ</small><b>' + fmtN(to.earned) + '<span class="u">個</span></b><small>' + fmtN(to.people) + ' 人が獲得</small></div>' +
+      '<div class="stat"><small>使用スタンプ</small><b>' + fmtN(to.spent) + '<span class="u">個</span></b><small class="use2">2 票目の利用 <b>' + fmtN(to.uses) + '</b> 回</small></div>' +
+      '<div class="stat gold"><small>スタンプ使用率</small><b>' + useRate + '<span class="u">%</span></b><small>累計獲得に対する累計使用の割合</small></div>' +
+      '<div class="stat ok"><small>2 票目を利用できる人</small><b>' + fmtN(to.canUse) + '<span class="u">人</span></b><small>いま ' + cost + ' 個以上</small></div>' +
+      '<div class="stat"><small>' + fmtDay(R.day) + ' の獲得</small><b>' + fmtN(to.todayEarned) + '<span class="u">個</span></b><small>' + fmtN(to.todayPeople) + ' 人が獲得</small></div></div>';
+    const maxV = Math.max(1, ...R.days.map((x) => x.votes));
+    const cell = (l, v, cls) => '<td class="n' + (cls ? ' ' + cls : '') + '" data-l="' + l + '">' + v + '</td>';
+    const offDays = R.days.filter((x) => !x.races), shown = R.days.filter((x) => x.races || x.after); // レースの無い日（導入前）は 1 行にまとめる
+    const rows = (offDays.filter((x) => !x.after).length ? '<tr class="offnote"><td colspan="9">' + offDays.filter((x) => !x.after).map((x) => fmtDay(x.date)).join('・') + ' はレースが無かったので省いています</td></tr>' : '') + shown.map((x, k) => (x.after && (k === 0 || !shown[k - 1].after) ? '<tr class="launch"><td colspan="9"><span>▼ ここからスタンプ導入後</span></td></tr>' : '') +
+      '<tr class="' + (x.after ? 'post' : 'pre') + (x.races ? '' : ' off') + '"><td class="head"><b>' + fmtDay(x.date) + '</b>' + (x.races ? '' : '<small class="dim"> レースなし</small>') + '</td>' +
+      '<td class="n vbar k3" data-l="投票数"><span class="bar" style="width:' + Math.round(x.votes / maxV * 100) + '%"></span><b>' + fmtN(x.votes) + '</b></td>' +
+      cell('参加人数', fmtN(x.people), 'k3') + cell('1 人あたり', num1(x.perPerson), 'k3') + cell('2 レース以上', x.people ? pctTxt(x.multiRate) : '—') + cell('以前も参加', x.people ? pctTxt(x.backRate) : '—') +
+      cell('レース', fmtN(x.races), 'rc') + cell('獲得', x.after ? fmtN(x.earned) + '<small>個</small>' : '—') + cell('2 票目', x.after ? fmtN(x.usedVotes) + '<small>回</small>' : '—') + '</tr>').join('');
+    const daysTbl = '<h4 class="sumh">日ごと</h4><div class="tbl"><table class="cards days stpdays"><tr class="hd"><th>日付</th><th class="n">投票数</th><th class="n">参加人数</th><th class="n">1 人あたり</th><th class="n">2 レース以上</th><th class="n">以前も参加</th><th class="n">レース</th><th class="n">獲得スタンプ</th><th class="n">使った 2 票目</th></tr>' + rows + '</table></div>';
+    const dayOpts = postDays.slice().reverse().map((x) => '<option value="' + x.date + '"' + (x.date === R.day ? ' selected' : '') + '>' + fmtDay(x.date) + '</option>').join('');
+    const got = R.people.filter((w) => w.today > 0).sort((a, b) => b.today - a.today || (a.id < b.id ? -1 : 1)), gotMax = Math.max(1, ...got.map((w) => w.today));
+    const today = '<div class="panel sub stpday"><h3>この日のスタンプ獲得ランキング<span class="sp"></span><select id="smday" aria-label="日付">' + dayOpts + '</select></h3>' +
+      (got.length ? '<ol class="gotlist">' + got.slice(0, sm.gotAll ? 200 : 10).map((w, k) => '<li><span class="rk">' + (k + 1) + '</span>' + whoCell(w) + '<span class="gbar"><span style="width:' + Math.round(w.today / gotMax * 100) + '%"></span></span><b class="gn">' + w.today + '<small>個 獲得</small></b></li>').join('') + '</ol>' + (got.length > 10 ? '<div class="acts l"><button class="btn sm ghost" data-act="sm-got">' + (sm.gotAll ? '上の 10 人だけ表示' : 'ほかの ' + (Math.min(got.length, 200) - 10) + ' 人も表示') + '</button></div>' : '')
+        : '<div class="empty">この日にスタンプが付いた人はいません</div>') + '</div>';
+    const tot = Math.max(1, R.dist.reduce((a, x) => a + x.n, 0));
+    const dist = '<div class="distbar" role="img" aria-label="持っている数の分かれ方">' + R.dist.map((x, k) => (x.n ? '<span class="d' + k + '" style="flex:' + x.n + '"></span>' : '')).join('') + '</div>' +
+      '<div class="distkey">' + R.dist.map((x, k) => '<span><i class="d' + k + '"></i>' + esc(x.k) + (/個/.test(x.k) ? '' : ' 個') + ' <b>' + fmtN(x.n) + '</b>人</span>').join('') + '</div>';
+    const list = sm.all ? R.people : R.people.slice(0, 30);
+    const ppl = '<div class="panel sub stpppl"><h3>スタンプ保有状況<span class="sp"></span><span class="auto">' + fmtN(R.people.length) + ' 人・累計獲得の多い順</span></h3>' + dist +
+      (R.people.length ? '<div class="tbl"><table class="cards ppl"><tr class="hd"><th>名前</th><th class="n">いま持っている</th><th class="n">累計獲得</th><th class="n">累計使用</th><th class="n">参加日数</th><th class="n">累計投票数</th></tr>' +
+        list.map((w) => '<tr><td class="head">' + whoCell(w) + '</td><td class="n bal" data-l="いま持っている"><span class="pbar' + (w.bal >= cost ? ' full' : '') + '"><span style="width:' + Math.min(100, Math.round(w.bal / cost * 100)) + '%"></span></span><b>' + fmtN(w.bal) + '</b><small>個</small><em class="left' + (w.bal >= cost ? ' ok' : '') + '">' + (w.bal >= cost ? '2 票目を利用できる' : 'あと ' + (cost - w.bal) + ' 個') + '</em></td>' +
+          cell('累計獲得', fmtN(w.earned) + '<small>個</small>') + cell('累計使用', w.uses ? fmtN(w.uses) + '<small>回</small>' : '—') + cell('参加日数', fmtN(w.days) + '<small>日</small>') + cell('累計投票数', fmtN(w.votes)) + '</tr>').join('') + '</table></div>' +
+        (R.people.length > 30 ? '<div class="acts l"><button class="btn sm ghost" data-act="sm-all">' + (sm.all ? '上の 30 人だけ表示' : 'ぜんぶ表示（' + fmtN(R.people.length) + ' 人）') + '</button><button class="btn sm ghost" data-act="sm-csv">CSV（Excel）に書き出す</button></div>' : '<div class="acts l"><button class="btn sm ghost" data-act="sm-csv">CSV（Excel）に書き出す</button></div>')
+        : '<div class="empty">まだスタンプを持っている人はいません</div>') + '</div>';
+    const words = '<details class="fold"><summary>言葉の意味</summary><div class="in"><p class="hint">参加人数＝その日に投票したスマホの数（同じスマホは 1 人。全店舗のときは 3 店を合わせて、同じスマホは 1 人）。1 人あたりの投票数＝投票数 ÷ 参加人数。2 レース以上 参加した人＝その日に 2 レース以上投票した人の割合。' +
+      '以前も参加した人＝この表の期間で、その日より前の日にも投票していた人の割合（前の日だけではありません）。獲得スタンプ＝結果の発表で付いた数（投票 ' + ((T.stamp && T.stamp.vote) || 1) + '・当たり ' + ((T.stamp && T.stamp.win) || 3) + '・おしい ' + ((T.stamp && T.stamp.near) || 1) + '）。使った 2 票目＝スタンプ ' + cost + ' 個で入れた 2 票目の回数。使用率＝使用スタンプ ÷ 獲得スタンプ。' +
+      '名前はその人の最後の票のニックネーム。端末の末尾 4 文字で同じ人か見分けられます。平均にはレースの無かった日は入れません。</p></div></details>';
+    return head + cmp + move + daysTbl + words + '</div>' + today + ppl;
+  }
+  function stampsCsv() {
+    const R = sm.data; if (!R) return;
+    const lines = [['名前', '店舗', '会計番号', '端末', 'いま持っている', 'これまで貯めた', '使った回数', '来た日', '票', fmtDay(R.day) + 'に貯めた'].join(',')].concat(R.people.map((w) => [w.nick, storeName(w.store), w.bill, w.id, w.bal, w.earned, w.uses, w.days, w.votes, w.today].map((v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')));
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'casa-derby-stamps-' + R.to + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
   function viewStats() {
     const quick = [['today', '今日'], ['yday', '昨日'], ['7', '7 日'], ['month', '今月'], ['31', '31 日']];
     const days = statDays(), tot = statTotal(), bs = byStoreRows(), L = logsData, oneStore = !!stStore;
@@ -1641,6 +1727,10 @@
     if (el.dataset && el.dataset.stripCk) { const id = el.dataset.stripCk, o = {}; main.querySelectorAll('[data-strip-ck="' + id + '"]').forEach((c) => { o[c.dataset.k] = c.checked; }); quickTvStrip(id, o); return; }
     if (el.id && el.id.indexOf('sstrip-') === 0) { paintStripEdit(); return validateStore(); }
     if (el.id === 'rdate') { raceDate = el.value || bizToday(); racesData = null; refundOpen = null; raceAll = false; render(); return; }
+    if (el.id === 'smto' || el.id === 'smbefore' || el.id === 'smstore' || el.id === 'smday') { // スタンプ（2026-11-05）: 変えたら読み直す（この日に貯めた人は読み直さずに出し直す）
+      if (el.id === 'smday') { sm.day = el.value; sm.data = null; } else { sm.to = $('smto').value || sm.to; sm.before = Number($('smbefore').value) || 7; sm.store = $('smstore').value; sm.data = null; sm.day = ''; }
+      keepScroll(() => { main.innerHTML = viewStamps(); }); loadStamps(); return;
+    }
     if (el.id === 'stfrom' || el.id === 'stto' || el.id === 'ststore') {
       stFrom = $('stfrom').value || stFrom; stTo = $('stto').value || stTo; stStore = $('ststore').value;
       if (stFrom > stTo) { const x = stFrom; stFrom = stTo; stTo = x; }
@@ -1766,6 +1856,9 @@
           const rows = [['日付', 'レース', '店舗', '会計番号', 'ニックネーム', '当たり（1着→2着）', '額(pt)', '受け取り', '受け取りの時刻']].concat(winsData.map((x) => [x.date, x.race, storeName(x.storeId), x.bill, x.nick, x.combo, x.amount, x.st === 'paid' ? '渡した' : x.st === 'expired' ? '期限切れ' : x.st === 'void' ? '取消' : 'まだ', x.stAt ? hms(x.stAt) : '']));
           return download('casaDERBY_当たり一覧_' + (stStore ? storeName(stStore) + '_' : '') + stFrom + '_' + stTo + '.csv', rows);
         }
+        case 'sm-all': sm.all = !sm.all; return keepScroll(() => { main.innerHTML = viewStamps(); }); // スタンプ（2026-11-05）
+        case 'sm-csv': return stampsCsv();
+        case 'sm-got': sm.gotAll = !sm.gotAll; return keepScroll(() => { main.innerHTML = viewStamps(); });
         case 'st-csv': {
           const days = statDays();
           const rows = [['日付', 'レース数', '票の数（参加人数）', '会計番号の数', '当選額の目標(pt)', '当選額(pt)', '渡した額(pt)', 'まだ渡していない額(pt)', '期限切れ(pt)']].concat(days.map((x) => [x.date, x.races, x.votes, x.players, stStore ? '' : x.target, x.paid, x.claimed, x.unclaimed, x.expired]));
