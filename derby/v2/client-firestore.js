@@ -1622,6 +1622,18 @@
           let bonus = []; try { bonus = (await db.collection(COL.bonus).where('day', '>=', from).where('day', '<=', to).get()).docs.map((d) => d.data()); } catch (e) { bonus = []; } // 印が読めない（古いルール）ときは数えない
           return Core.abuseReport({ races: races.map((r) => ({ id: r.id, day: r.day, at: r.at, test: !!r.test })), votes, payouts: pq.docs.map((d) => d.data()), bonus, tuning: sc.tuning, from, to, store: s || null });
         }),
+        /* スタンプラリーの効果（2026-11-05。管理の「スタンプ」タブ。模擬クラウドの GET /api/admin/stamp-stats と同じ形 ＝ Core.stampReport）。
+           読むのはマスターが今までも読めるものだけ: 比べる期間のレース（day）→ 本物のレースの票（raceId ごと。10 本ずつ同時に）・derbyStamps（全部。id ＝ 端末） */
+        stampStats: wrap(async (o) => {
+          o = o || {}; const sc = await secretConfig(), T = sc.tuning, to = o.to || Core.bizDate(now(), T.dayStartHour);
+          const launch = o.launch || T.stampSince || Core.STAMP_LAUNCH, before = Math.max(1, Math.min(31, Number(o.before) || 7));
+          const from = Core.bizDate(Date.parse(launch + 'T12:00:00+09:00') - before * Core.DAY, 0);
+          const rq = await db.collection(COL.races).where('day', '>=', from).where('day', '<=', to).get(), races = rq.docs.map((d) => d.data()).filter((r) => r && r.id && !r.test);
+          const votes = [];
+          for (let i = 0; i < races.length; i += 10) { const qs = await Promise.all(races.slice(i, i + 10).map((r) => db.collection(COL.votes).where('raceId', '==', r.id).get())); qs.forEach((q) => q.docs.forEach((d) => votes.push(d.data()))); }
+          let stamps = []; try { stamps = (await db.collection(COL.stamps).get()).docs.map((d) => Object.assign({ id: d.id }, d.data())); } catch (e) { stamps = []; }
+          return Core.stampReport({ races: races.map((r) => ({ id: r.id, day: r.day, at: r.at, test: !!r.test, refunded: !!r.refunded, status: r.status, result: r.result || null })), votes, stamps, tuning: T, launch, before, to, day: o.day || to, store: o.store || null });
+        }),
         logs: wrap(async (o) => {
           o = o || {}; const sc = await secretConfig(), to = o.to || Core.bizDate(now(), sc.tuning.dayStartHour), from = o.from || to;
           const q = await db.collection(COL.logs).where('date', '>=', from).where('date', '<=', to).get();
