@@ -113,6 +113,13 @@
       '<li><b>会計番号と ニックネームを入れる</b></li>' /* 2026-10-24 文字帳 w0217: 「会計番号は 2 けた」を消す */ +
       '<li><b>1着と2着を 順番どおりに当てる</b><span>締切までは 選び直せます</span></li>' +
     '</ol><p class="pay">当たれば <b>100<small class="pt">pt</small> × 倍率</b><span>リングチップでお渡し</span></p></div>' +
+    /* スタンプラリーの説明（2026-11-04。デザインは deploy/promo/stamp-tv/final.html を枠の大きさに縮めたもの・ChatGPT 97 点）。数は管理画面の設定から renderStamp が入れる */
+    '<div class="wpg stamp" id="v2wpStamp"><div class="st-hd"><small>スマホで投票するたびに</small><h3>スタンプが <em>たまる</em></h3></div>' +
+      '<div class="st-row"><div class="st-box"><b class="lb">投票する</b><div class="nm">+<span id="v2stV">1</span><i>個</i></div><span class="sb">投票するだけでもらえる</span></div>' +
+      '<div class="st-box win"><b class="lb">当たり</b><div class="nm">+<span id="v2stW">3</span><i>個</i></div><span class="sb">1着・2着を順番どおりに的中</span></div>' +
+      '<div class="st-box"><b class="lb">おしい</b><div class="nm">+<span id="v2stN">1</span><i>個</i></div><span class="sb">選んだ2頭のどちらかが<br>1着か2着なら</span></div></div>' +
+      '<div class="st-band"><div class="bg"><em id="v2stC">10</em>個で 2票目</div><div class="rt">同じレースにもう1票入れられます<br>使うとスタンプが<span id="v2stC2">10</span>個減ります</div></div>' +
+      '<div class="st-ft"><span>テレビに結果が出たときに付きます</span><span>スマホのブラウザごとにたまります</span></div></div>' +
     '<div class="wpg win" id="v2wpWin"><div class="hd"><h3>前のレースの結果<small id="v2wpWinT"></small></h3><span class="cnt" id="v2wpWinCnt"></span><span class="pg"></span></div>' +
       '<div class="cmb" id="v2wpCombo"></div><div class="v2wl" id="v2wpList"><div class="inner"></div></div></div>' +
     '</div>'));
@@ -610,10 +617,11 @@
      前のレースが無い（今日の 1 レース目の前）・取り消しのレースは win・replay を飛ばす。3D が無いときは replay を飛ばす。
      投票の始まりの 45 秒前からは pad のまま（投票の画面と同じ映像につなぐ）。1 枠の秒数は ?wpsec=秒（テスト用）で変えられる */
   const WP_SEC = Number((QS.match(/[?&]wpsec=(\d+)/) || [])[1] || 0);
-  const WP_LEN = { how: 12, win: 15, pad: 14 };
+  const WP_LEN = { how: 12, stamp: 14, win: 15, pad: 14 };
   function prevRace() { const P = S && S.last; return P && P.result && !P.refunded ? P : null; }
   function wpPages(N, P) {
     const L = ['how'];
+    if (ST().stamp) L.push('stamp'); // スタンプラリーがオンのときだけ（2026-11-04）
     if (P) L.push('win');
     if (P && is3D()) L.push('replay');
     if (N && N.horses) L.push('pad');
@@ -628,6 +636,11 @@
     const W = TV.wp; W.page = page; W.since = performance.now(); W.n++;
     stageEl.dataset.wp = page;
     if (page === 'win' && P) renderWaitWin(P);
+    if (page === 'stamp') renderStamp();
+  }
+  function renderStamp() { // スタンプの数（管理画面の「調整」の値。1 レースで最大 vote+win+near 個）
+    const x = ST().stamp; if (!x) return;
+    $('v2stV').textContent = x.vote; $('v2stW').textContent = x.win; $('v2stN').textContent = x.near; $('v2stC').textContent = x.cost; $('v2stC2').textContent = x.cost;
   }
   function showWait(t) {
     if (TV.hl) return; // リプレイ中（終わったら自分で戻る）
