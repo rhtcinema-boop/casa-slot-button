@@ -383,6 +383,12 @@
       (v2 ? mineCard(r, v2, 2, false, false) : '') + watchBtn(r) + '</div>';
   };
 
+  /* 脱落（2026-11-04）: 「3番 ○○ は落馬のため競走中止」／「3番 ○○ は競走除外（ゲートに入れませんでした）」。無ければ空 */
+  function incLine(r, res) {
+    const x = (r && r.result && r.result.incident) || (res && res.incident); if (!x) return '';
+    const h = horsesOf(r)[x.horse]; if (!h) return '';
+    return '<p class="incline">' + esc(h.no + '番 ' + h.name + (x.type === 'fall' ? ' は落馬のため競走中止' : ' は競走除外（ゲートに入れませんでした）')) + '</p>';
+  }
   /* ⑦ 結果 */
   R.result = () => {
     const v = my && my.vote, r = my && my.race, res = v && v.result; if (!v || !r) return R.boot();
@@ -393,7 +399,7 @@
     const v2 = my.vote2, all = [v].concat(v2 ? [v2] : []), wins = all.filter((x) => x.result && x.result.win);
     /* 初参加ボーナスの 2 票: 票ごとに「1票目 3→5 当たり」「2票目 2→4 はずれ」（1 票だけのときは今までどおり） */
     const perVote = v2 ? '<div class="vlist">' + all.map((x) => { const w = !!(x.result && x.result.win); return '<div class="vr' + (w ? ' w' : '') + '"><span class="vk">' + esc(x.n === 2 ? TX.vote2 : TX.vote1) + '</span>' + arrowNum(x.first, x.second) + '<b class="vm">' + esc(w ? TX.hitMark : TX.missMark) + '</b></div>'; }).join('') + '</div>' : '';
-    const sg = stampGotLine(all, res);
+    const sg = stampGotLine(all, res) + incLine(r, res);
     if (!wins.length) {
       return '<div class="scr result">' + testTag(r) + '<div class="miss"><h1 class="t">' + esc(TX.lose) + '</h1><p class="rc">' + esc(TX.result) + ' ' + arrowNum(res.first, res.second) + '</p></div>' + resLine + sg +
         (v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + watchBtn(r) + nextLine() + todayRow() + nextBtn(false) + '</div>'; // 本日のレースの時刻（2026-10-27）は「次のレース」と「次のレースへ」の間
