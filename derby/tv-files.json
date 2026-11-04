@@ -193,8 +193,8 @@
   },
   {
    "path": "index.html",
-   "size": 26723,
-   "sha256": "d4ec3397be8acfefba6c718ce3529771c808af53cd4ec282ff57ca2caadca969"
+   "size": 26815,
+   "sha256": "4a4c6d4629561cd9195f3d0455b6e5a407e1f7f35f3e9a39e1d9db46d32a1cdd"
   },
   {
    "path": "js/audio.js",
@@ -213,8 +213,8 @@
   },
   {
    "path": "js/engine.js",
-   "size": 30258,
-   "sha256": "7519f5610833c6063b56276b88b1e88c5eae671c27a78a61762cef45b7e00095"
+   "size": 35577,
+   "sha256": "ecacacd212a01c0dbd0b50ae1ef517d5e71056c967557f7127c82d588d42ea92"
   },
   {
    "path": "js/game.js",
@@ -268,8 +268,8 @@
   },
   {
    "path": "js/race3d.js",
-   "size": 250143,
-   "sha256": "8d1b4692910dbfdef5b1ec8e98b764af839c1573ff3d36d8b2627b241f6e3122"
+   "size": 262245,
+   "sha256": "fccff991efdab134e8841db016b7129e22f837e5aca9166efd61702a513fed28"
   },
   {
    "path": "js/splash3d.js",
@@ -303,13 +303,13 @@
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 166557,
-   "sha256": "36c2eab5ff63c5e22f32af6f1ee5fcd49a1276ed884b5e11fce014538a5f879e"
+   "size": 166619,
+   "sha256": "a8e0a4d8d35b2a080b38afa283933021c1dd61d092f5f70ee14a1fad1bfb98eb"
   },
   {
    "path": "v2/client.js",
    "size": 32787,
-   "sha256": "778e734497ca2427f22b196d1a426bc6e1c0cb8afe05377c35e9df0d9dc8d510"
+   "sha256": "efa6490538487c2bf8e00da79a131644741db5bfd76692737f639c76c74f41cf"
   },
   {
    "path": "v2/config.js",
@@ -318,8 +318,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 107615,
-   "sha256": "98c3f2ae089de26098148cc7ffa781a1fa83d35a50264860df993c139d078a49"
+   "size": 111733,
+   "sha256": "cb97223418b3779035c446c5f104e472145176309f7e018a6600749f77db0ce0"
   },
   {
    "path": "v2/form.js",
@@ -333,8 +333,8 @@
   },
   {
    "path": "v2/outcome.js",
-   "size": 29223,
-   "sha256": "f29ba129dbca6b163e08e71259728fb0c50af4b341ed1c1f1ab2c3f050edbaf6"
+   "size": 29874,
+   "sha256": "580ee26dad8cf426f0ac392d709dbb7f1d934ffb0594379dcdadd883a9b662ec"
   },
   {
    "path": "v2/qr.js",
@@ -343,13 +343,13 @@
   },
   {
    "path": "v2/tv.css",
-   "size": 135931,
-   "sha256": "5bfe476fd383d70cc330fc5e59fa959a77a8de45042b5d3f8887085946002b48"
+   "size": 136290,
+   "sha256": "415006728e96b3a98318264d5a1b709d14a5e32bf0c2e50d3ea452c09c7bfc54"
   },
   {
    "path": "v2/tv.js",
-   "size": 135346,
-   "sha256": "edc214ca65c52f47c5abacdb68e8eb20ff098e05c8cb7a540c877f2f1b64d55c"
+   "size": 136343,
+   "sha256": "e16b30dd103d151efa506db59fd1f99c5ca1b47fcb2e2f5d473342eabd966ca2"
   },
   {
    "path": "v2/tvhealth.js",
@@ -368,8 +368,8 @@
   },
   {
    "path": "v2/watch.js",
-   "size": 24175,
-   "sha256": "bd3762509d9c0359674381cc39590baceab44c7cadd269a295792ef15535c89f"
+   "size": 24529,
+   "sha256": "ec0a6001a8c88663bac3ba27066c381093ffa753c4e7298212c16d9d75e5714e"
   }
  ]
 }
