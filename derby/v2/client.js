@@ -88,7 +88,7 @@
     return (race, seed, sims) => new Promise((res, rej) => {
       try {
         if (!w) {
-          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js?v=v4e4', location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai,exacta:o.exacta,exactaProb:o.exactaProb}});};';
+          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js?v=v4e5', location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai,exacta:o.exacta,exactaProb:o.exactaProb}});};';
           w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
           w.onmessage = (e) => { const f = pend[e.data.id]; if (f) { delete pend[e.data.id]; f(e.data.o); } };
         }
@@ -130,7 +130,7 @@
            お客さんのスマホ（phone）はレースを決めないので、エンジン（engine.js）と結果の計算（outcome.js）を読まない（決めるのはテレビ・管理だけ） */
         const L = [];
         if (opt.role !== 'phone') {
-          if (!window.Engine) L.push(DIR + '../js/engine.js?v=v4e4');
+          if (!window.Engine) L.push(DIR + '../js/engine.js?v=v4e5');
           if (!window.Outcome) L.push(DIR + 'outcome.js' + VQ); // 2026-10-20: 当選額の切り上げ（roundPay）が入ったので版の印を付ける（古い控えを使わない）
         }
         if (!window.DerbyCore) L.push(DIR + 'core.js' + VQ);
