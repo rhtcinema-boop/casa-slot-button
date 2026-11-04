@@ -193,8 +193,8 @@
   },
   {
    "path": "index.html",
-   "size": 26604,
-   "sha256": "71b134319a3e10ecaca3e58ed691dd49fe6b18fe17049e1438d5418ec45b4f64"
+   "size": 26723,
+   "sha256": "d4ec3397be8acfefba6c718ce3529771c808af53cd4ec282ff57ca2caadca969"
   },
   {
    "path": "js/audio.js",
@@ -318,8 +318,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 107197,
-   "sha256": "b9d8d61a4d0a20be1a946930e5bb45f586448047ed8cf701ff1050053ae26331"
+   "size": 107615,
+   "sha256": "98c3f2ae089de26098148cc7ffa781a1fa83d35a50264860df993c139d078a49"
   },
   {
    "path": "v2/form.js",
@@ -343,13 +343,13 @@
   },
   {
    "path": "v2/tv.css",
-   "size": 133070,
-   "sha256": "c811ba088a2d412a2b340e98d5013b4dbae3ab80102724fb1ecb91a705ca0e16"
+   "size": 135931,
+   "sha256": "5bfe476fd383d70cc330fc5e59fa959a77a8de45042b5d3f8887085946002b48"
   },
   {
    "path": "v2/tv.js",
-   "size": 133470,
-   "sha256": "306dcf4fc0ed92b3cb2c427f08e8a00b5ee41d862f193c8a57dc4952f17685ca"
+   "size": 135346,
+   "sha256": "edc214ca65c52f47c5abacdb68e8eb20ff098e05c8cb7a540c877f2f1b64d55c"
   },
   {
    "path": "v2/tvhealth.js",
