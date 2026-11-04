@@ -375,3 +375,5 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 /* 2026-11-02 オーナー「スタンプの中に数字を入れて、今何ポイントか直感で分かるように」: 押したマスも ★ ではなく番号（1〜10）。いちばん新しいマスの番号＝いまの数 */
 .stampcard .sc.on::before { content: attr(data-n); text-shadow: 0 1px 0 rgba(255, 255, 255, .45); }
 .stampcard .sc.on { font-size: 19px; color: #3f2a03; letter-spacing: -.02em; }
+/* 脱落（2026-11-04）: 結果の「3番 ○○ は落馬のため競走中止」 */
+.incline { margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; background: rgba(255, 90, 80, .14); border: 1px solid rgba(255, 110, 100, .5); color: #ffb3ab; font-size: 14px; font-weight: 700; text-align: center; line-height: 1.45; }
