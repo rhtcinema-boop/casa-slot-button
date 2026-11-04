@@ -438,7 +438,11 @@
   }
 
   /* ---------- レースを作る ---------- */
-  function tuneOf(Engine, t) { return { sigmaMul: Math.round(Engine.TUNE.sigmaMul * Math.max(0.2, Math.min(3, Number(t.volatility) || 1)) * 1000) / 1000, payoutRate: Math.max(0.3, Math.min(1.2, Number(t.payoutRate) || 0.85)) }; }
+  function tuneOf(Engine, t) {
+    const vol = Math.max(0.2, Math.min(3, Number(t.volatility) || 1)), r3 = (x) => Math.round(x * 1000) / 1000, payoutRate = Math.max(0.3, Math.min(1.2, Number(t.payoutRate) || 0.85)), M = Engine.MODEL2;
+    if (!M) return { sigmaMul: r3(Engine.TUNE.sigmaMul * vol), payoutRate }; // 古いエンジン（作り 1）
+    return { model: 2, theta: M.theta, sigmaMul: r3(M.sigmaMul * vol), formSigma: Math.round(M.formSigma * vol * 10000) / 10000, payoutRate }; // 走りの作り 2（2026-11-04 入れ替わりを減らしてリアルに。js/engine.js の createRun）
+  }
   const engineRace = (r) => ({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta });
   function raceBase(Engine, Outcome, salt, id, tuning, recent) {
     const pool = horsePool(tuning), src = Array.isArray(recent) ? freshPick(pool || Engine.POOL, recent, Engine.rng(Outcome.hash(salt, id, 'fresh'))) : pool; // まんべんなく出走（2026-10-31）
