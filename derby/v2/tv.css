@@ -971,9 +971,38 @@
 #stage.v2.m-wait .screen { opacity: 0; transition: opacity .5s, transform .7s var(--ease-out); }
 #stage.v2.m-wait[data-wp="pad"] .screen { opacity: 1; transform: scale(1.1); } /* 次のレースのパドック（x40〜1140・y100〜628） */
 .v2wait { position: absolute; z-index: 4; left: 40px; top: 96px; width: 1100px; height: 532px; opacity: 0; pointer-events: none; transition: opacity .45s; }
-#stage.v2.m-wait[data-wp="how"] .v2wait, #stage.v2.m-wait[data-wp="win"] .v2wait, #stage.v2.m-wait[data-wp="stamp"] .v2wait { opacity: 1; }
+#stage.v2.m-wait[data-wp="how"] .v2wait, #stage.v2.m-wait[data-wp="win"] .v2wait, #stage.v2.m-wait[data-wp="stamp"] .v2wait, #stage.v2.m-wait[data-wp="hint"] .v2wait, #stage.v2.m-wait[data-wp="card"] .v2wait { opacity: 1; }
 .v2wait .wpg { position: absolute; inset: 0; display: flex; flex-direction: column; border-radius: 22px; opacity: 0; transform: translateY(14px); transition: opacity .45s, transform .45s var(--ease-out); box-shadow: 0 0 0 5px var(--wood), 0 0 0 8px var(--wood-dark), 0 14px 30px rgba(0, 0, 0, .3); }
-#stage.v2[data-wp="how"] .v2wait .wpg.how, #stage.v2[data-wp="win"] .v2wait .wpg.win, #stage.v2[data-wp="stamp"] .v2wait .wpg.stamp { opacity: 1; transform: none; }
+#stage.v2[data-wp="how"] .v2wait .wpg.how, #stage.v2[data-wp="win"] .v2wait .wpg.win, #stage.v2[data-wp="stamp"] .v2wait .wpg.stamp, #stage.v2[data-wp="hint"] .v2wait .wpg.hint, #stage.v2[data-wp="card"] .v2wait .wpg.ecard { opacity: 1; transform: none; }
+/* 演出のヒント（2026-11-05）: 夜空の紺に金。場面だけ 4 つの札で */
+.v2wait .hint { padding: 26px 40px 22px; background: radial-gradient(ellipse at 50% 0%, #2b2366, #0b0f26 78%); color: #fff; align-items: center; justify-content: center; gap: 18px; text-align: center; }
+.v2wait .hint .hk { font: 900 32px/1 var(--font-tv); color: #ffd84d; letter-spacing: .16em; }
+.v2wait .hint h3 { display: block; white-space: normal; font-size: 50px; line-height: 1.3; letter-spacing: .02em; }
+.v2wait .hint h3 em { font-style: normal; font-size: 64px; color: #ffd84d; }
+.v2wait .hint .hs { display: flex; gap: 14px; justify-content: center; flex-wrap: nowrap; }
+.v2wait .hint .hs span { padding: 10px 20px; border-radius: 999px; background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 2px rgba(255, 216, 77, .65); font: 900 30px/1 var(--font-tv); white-space: nowrap; }
+.v2wait .hint .hs span::after { content: "？"; color: #ffd84d; margin-left: 2px; }
+.v2wait .hint .hw { margin: 4px 0 0; font: 900 62px/1 var(--font-tv); color: #ffd84d; letter-spacing: .06em; text-shadow: 0 0 22px rgba(255, 216, 77, .45); white-space: nowrap; }
+.v2wait .hint .hn { font: 900 22px/1 var(--font-tv); color: #b9c1e0; }
+/* 次のレースの出馬表（2026-11-05）: 投票中の出馬表と同じ中身を、枠いっぱいに大きく */
+.v2wait .ecard { padding: 20px 30px 18px; background: var(--cream); color: var(--ink); gap: 10px; }
+.v2wait .ecard .hd { display: flex; align-items: baseline; }
+.v2wait .ecard .hd h3 small { color: var(--ink-sub); }
+.v2wait .ecard .cl, .v2wait .ecard .r { display: grid; grid-template-columns: 96px 128px 156px; column-gap: 14px; }
+.v2wait .ecard .cl { margin-left: auto; padding-right: 14px; font: 900 26px/1 var(--font-tv); color: var(--ink-sub); }
+.v2wait .ecard .cl i { font-style: normal; text-align: center; }
+.v2wait .ecard .rows { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.v2wait .ecard .r { flex: 1; grid-template-columns: 64px minmax(0, 1fr) 96px 128px 156px; align-items: center; padding: 0 14px 0 8px; border-radius: 12px; background: #fff; box-shadow: 0 3px 0 rgba(90, 60, 30, .18); }
+.v2wait .ecard .r .no { width: 56px; height: 56px; border-radius: 10px; display: grid; place-items: center; font: 900 40px/1 var(--font-num); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .15); }
+.v2wait .ecard .r .nm { font: 900 46px/1.1 var(--font-tv); white-space: nowrap; overflow: hidden; text-overflow: clip; letter-spacing: -.01em; }
+.v2wait .ecard .r .ty { justify-self: center; width: 88px; padding: 5px 0; border-radius: 9px; text-align: center; font: 900 32px/1.1 var(--font-tv); font-style: normal; color: #2a1c12; }
+.v2wait .ecard .r .cd { justify-self: center; display: flex; flex-direction: column; align-items: center; line-height: 1; white-space: nowrap; }
+.v2wait .ecard .r .cd b { font: 900 36px/1 var(--font-tv); -webkit-text-stroke: 1.6px currentColor; }
+.v2wait .ecard .r .cd small { margin-top: 2px; font: 900 18px/1 var(--font-tv); color: #5e4f42; }
+.v2wait .ecard .r .cd.cu b { color: #d84300; } .v2wait .ecard .r .cd.cn b { color: #5e4f42; } .v2wait .ecard .r .cd.cw b { color: #1f5fd0; }
+.v2wait .ecard .r .fm { display: flex; gap: 4px; justify-content: center; }
+.v2wait .ecard .r .fm i { width: 44px; height: 52px; border-radius: 7px; display: grid; place-items: center; font: 900 40px/1 var(--font-num); font-style: normal; background: #ebe3d3; color: #5a4636; }
+.v2wait .ecard .r .fm i.p1 { background: #e8a200; color: #fff; } .v2wait .ecard .r .fm i.p2 { background: #8b9eab; color: #fff; } .v2wait .ecard .r .fm i.p3 { background: #b9773f; color: #fff; }
 /* スタンプラリーの説明（2026-11-04。deploy/promo/stamp-tv/final.html を 1100×532 の枠に） */
 .v2wait .stamp { padding: 18px 26px 14px; background: radial-gradient(ellipse at 50% 0%, #26407a, #0d1a33 75%); color: #fff; gap: 12px; }
 .v2wait .stamp .st-hd { text-align: center; flex: none; }
@@ -1468,3 +1497,6 @@
 .v2res .ord .o.out .rk { color: #ff6b5e; font: 900 26px/1 var(--font-tv); letter-spacing: .04em; }
 .v2res .ord .o.out .nm { opacity: .7; }
 .v2res .ord .o.out .mg { color: #ff9b8f; font-size: 20px; }
+/* 2026-11-05: 共通の h3（高さ 44px）を外す */
+#stage.v2 .v2wait .hint h3, #stage.v2 .v2wait .ecard h3 { height: auto; }
+#stage.v2 .v2wait .hint h3 { display: block; white-space: normal; }
