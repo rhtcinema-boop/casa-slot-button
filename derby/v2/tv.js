@@ -120,6 +120,12 @@
       '<div class="st-box"><b class="lb">おしい</b><div class="nm">+<span id="v2stN">1</span><i>個</i></div><span class="sb">選んだ2頭のどちらかが<br>1着か2着なら</span></div></div>' +
       '<div class="st-band"><div class="bg"><em id="v2stC">10</em>個で 2票目</div><div class="rt">同じレースにもう1票入れられます<br>使うとスタンプが<span id="v2stC2">10</span>個減ります</div></div>' +
       '<div class="st-ft"><span>テレビに結果が出たときに付きます</span><span>スマホのブラウザごとにたまります</span></div></div>' +
+    /* 演出のヒント（2026-11-05 オーナー「演出あるかものやつってモニターに流した方がいい」）: 文は deploy/演出ほのめかし告知文_2026-11-04.txt の案 3。どれが・どう は言わず、場面だけ */
+    '<div class="wpg hint" id="v2wpHint"><small class="hk">ご存じですか？</small><h3>このレースには <em>1着のヒント</em>が<br>隠れていることがあります</h3>' +
+      '<div class="hs"><span>パドック</span><span>ゲートイン</span><span>レース中の景色</span><span>最後のコーナー</span></div>' +
+      '<p class="hw">見てる人だけ、当たる。</p><small class="hn">出ない回もあります</small></div>' +
+    /* 次のレースの出馬表（2026-11-05 オーナー「投票前でも次のレースの出走表ぐらいは流してもいい」）: 投票中の出馬表と同じ中身（脚質・調子・近 3 走）を大きく。renderWaitCard */
+    '<div class="wpg ecard" id="v2wpCard"><div class="hd"><h3>次のレースの出馬表<small id="v2wpCardT"></small></h3><span class="cl"><i>脚質</i><i>調子</i><i>近3走</i></span></div><div class="rows" id="v2wpCardRows"></div></div>' +
     '<div class="wpg win" id="v2wpWin"><div class="hd"><h3>前のレースの結果<small id="v2wpWinT"></small></h3><span class="cnt" id="v2wpWinCnt"></span><span class="pg"></span></div>' +
       '<div class="cmb" id="v2wpCombo"></div><div class="v2wl" id="v2wpList"><div class="inner"></div></div></div>' +
     '</div>'));
@@ -618,14 +624,15 @@
      前のレースが無い（今日の 1 レース目の前）・取り消しのレースは win・replay を飛ばす。3D が無いときは replay を飛ばす。
      投票の始まりの 45 秒前からは pad のまま（投票の画面と同じ映像につなぐ）。1 枠の秒数は ?wpsec=秒（テスト用）で変えられる */
   const WP_SEC = Number((QS.match(/[?&]wpsec=(\d+)/) || [])[1] || 0);
-  const WP_LEN = { how: 12, stamp: 14, win: 15, pad: 14 };
+  const WP_LEN = { how: 12, stamp: 14, hint: 11, win: 15, card: 15, pad: 14 };
   function prevRace() { const P = S && S.last; return P && P.result && !P.refunded ? P : null; }
   function wpPages(N, P) {
     const L = ['how'];
     if (ST().stamp) L.push('stamp'); // スタンプラリーがオンのときだけ（2026-11-04）
+    L.push('hint'); // 演出のヒント（2026-11-05）
     if (P) L.push('win');
     if (P && is3D()) L.push('replay');
-    if (N && N.horses) L.push('pad');
+    if (N && N.horses) L.push('card', 'pad'); // 次のレースの出馬表 → パドック（2026-11-05）
     return L;
   }
   function wpLen(page) {
@@ -638,6 +645,18 @@
     stageEl.dataset.wp = page;
     if (page === 'win' && P) renderWaitWin(P);
     if (page === 'stamp') renderStamp();
+    if (page === 'card') renderWaitCard();
+  }
+  function renderWaitCard() { // 次のレースの出馬表（映像に入れた次のレース view の馬。投票中の出馬表 renderHorses と同じ中身）
+    const box = $('v2wpCardRows'); if (!view || !view.horses) { box.innerHTML = ''; return; }
+    $('v2wpCardT').textContent = view.at ? hhmm(view.at) + ' 発走' : '';
+    box.innerHTML = view.horses.map((h) => {
+      const t = T[h.type] || { label: '?', color: '#ccc' }, fm = formOf(h, view), c = h.cond;
+      return '<div class="r"><span class="no" style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</span><b class="nm">' + esc(h.name) + '</b>' +
+        '<i class="ty" style="background:' + t.color + '">' + t.label + '</i>' +
+        (c ? '<span class="cd c' + (c.mul > 1 ? 'u' : c.mul < 1 ? 'w' : 'n') + '"><b>' + esc(c.mark) + '</b><small>' + esc(c.label) + '</small></span>' : '<span class="cd"></span>') +
+        '<span class="fm">' + fm.recent.map((p) => '<i class="p' + p + '">' + p + '</i>').join('') + '</span></div>';
+    }).join('');
   }
   function renderStamp() { // スタンプの数（管理画面の「調整」の値。1 レースで最大 vote+win+near 個）
     const x = ST().stamp; if (!x) return;
