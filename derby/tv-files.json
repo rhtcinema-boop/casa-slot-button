@@ -193,8 +193,8 @@
   },
   {
    "path": "index.html",
-   "size": 26969,
-   "sha256": "9e7efe16a268802d95bc09b4bc92c61938808c3d4f3cdeb13819b9e29b15ab86"
+   "size": 27086,
+   "sha256": "013a1327a05e9b2ef81ccd5021ec93a9f1393eddad425e9f256d93b679a3abed"
   },
   {
    "path": "js/audio.js",
@@ -343,13 +343,13 @@
   },
   {
    "path": "v2/tv.css",
-   "size": 136290,
-   "sha256": "415006728e96b3a98318264d5a1b709d14a5e32bf0c2e50d3ea452c09c7bfc54"
+   "size": 140321,
+   "sha256": "cbc7a7354dfb231cc85fa2ef427438ac612fe1ed9b899cbcf7cc89fbcf64ba10"
   },
   {
    "path": "v2/tv.js",
-   "size": 136343,
-   "sha256": "e16b30dd103d151efa506db59fd1f99c5ca1b47fcb2e2f5d473342eabd966ca2"
+   "size": 138783,
+   "sha256": "362f825f037ca21b919d54ee576c24319d6881ffe5b24a9eb63157d7bf0e6037"
   },
   {
    "path": "v2/tvhealth.js",
