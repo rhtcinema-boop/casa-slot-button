@@ -1,9 +1,9 @@
 {
- "v": "b189",
+ "v": "b190",
  "files": [
   {
    "path": "index.html",
-   "sha256": "3f5ff1261de1e65bf8c36dc8e57ffd31ef2a7b602fe23afe91e992acd807f4d7"
+   "sha256": "5e50324b0347e23fd52469cfe462ebc5e7f79be4aeba4764bb7f030f9bb2f3eb"
   },
   {
    "path": "manifest.webmanifest",
@@ -31,7 +31,7 @@
   },
   {
    "path": "css/style.css",
-   "sha256": "f6df1d1112dc3c5453b107d207c65bbbc500f2cd4e43ccd99136ab2bb16b49a4"
+   "sha256": "72184fba92c1671896fe8b19750744e5c7e64d627c3452ae8dc3a0b53ee48514"
   },
   {
    "path": "js/admin.js",
