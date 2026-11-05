@@ -2,7 +2,7 @@
    通信は v2/client.js（DerbyCloud）だけ。模擬クラウドも Firestore も同じ呼び方。
    流れ: ①待ち（次のレース・投票の始まり）→ ②会計番号 2 けた（数字のボタン）＋ニックネーム → ③予想（馬の情報＋6×6 の表）→ ④確認 → 投票する
          → ⑤投票済み（あなたの予想・選び直す・締切まで）→ ⑥レース中（あなたの予想だけ）→ ⑦結果（当たり: 額・会計番号・スタッフが動かすスライド／はずれ: 結果と次のレース）
-   覚えるもの: 会計番号・ニックネームは覚えない（毎回入れる）。そのレースの票の持ち主であることだけ（DerbyCloud.myVotes。client.js が自動で覚える）。
+   覚えるもの: ニックネーム（投票できたら。次からは会計番号だけ。2026-11-05）と、そのレースの票の持ち主のしるし（DerbyCloud.myVotes。client.js が自動で覚える）。
    言葉は下の TX にまとめた（文字帳で直す。ふつうの文字のまま）。音は鳴らさない。テスト用に window.BET を出す。 */
 (function () {
   'use strict';
@@ -13,7 +13,7 @@
     test: 'テストレース',
     waitHead: '次のレース', waitVoteFrom: '投票は {t} から', waitLeft: '投票の始まりまで', dayOver: '本日のレースは終わりました',
     prep: '準備中です。少しお待ちください（自動で始まります）', prepStaff: 'スタッフにお知らせください', /* 2026-10-28: 投票の始まりを過ぎたのにレースがまだできていない（0:00 のまま止まって見えた） */
-    billHead: '会計番号', billSub: '伝票の番号（2けた）', nickHead: 'ニックネーム', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
+    billHead: '会計番号', billSub: '伝票の番号（2けた）', nickHead: 'ニックネーム', nickChange: '変える', nickSaved: '前回の名前で投票します', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
     errBill: '会計番号を 2 けたで入れてください', errNick: 'ニックネームを入れてください',
     pickHead: '1着と2着をえらぶ', pickAxisT: '2連単：1着と2着を順番どおりに当てる', pvHorse: '馬を選ぶ', pvPop: '人気順で選ぶ', first: '1着', second: '2着', colNo: '馬番', colName: '馬名', colOdds: 'の倍率', pickStep1: '① 1着になる馬を選んでください', pickStep2: '② 2着になる馬を選んでください', toConfirm: 'この予想で次へ', ifHit: '的中すると', pickDone: '予想が決まりました', pick2SubT: '同じ組み合わせでもえらべます', pickAxis: '上が1着・左が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
     confHead: 'この予想で投票しますか？', ifWin: '当たれば', shiftNote: '倍率は締切のときに少し変わることがあります',
@@ -59,7 +59,9 @@
   const DC = window.DerbyCloud || null, MV = DC && DC.myVotes, F = window.DerbyForm || null;
   const C = DC && STORE ? DC.create({ store: STORE, role: 'phone' }) : null;
   const now = () => (C ? C.serverNow() : Date.now());
-  const MAX_NICK = 8, VKEY = 'casa.derby.vote.'; // VKEY: client.js の myVotes の置き場所（受け取っていない当たりを探すときだけ読む）
+  const MAX_NICK = 8, VKEY = 'casa.derby.vote.', NKEY = 'casa.derby.nick';
+  const savedNick = () => { try { return cleanNick(localStorage.getItem(NKEY) || ''); } catch (e) { return ''; } };
+  const saveNick = (n) => { n = cleanNick(n); if (!n) return; try { localStorage.setItem(NKEY, n); } catch (e) { /* 覚えられない端末は毎回入れる */ } }; // VKEY: client.js の myVotes の置き場所（受け取っていない当たりを探すときだけ読む）
   const FRAME = ['#f4f4f4', '#1a1a1e', '#d6332b', '#2459c9', '#f2c531', '#2a9a4a'], INK = ['#111', '#fff', '#fff', '#fff', '#111', '#fff'];
 
   /* ================= 小さな道具 ================= */
@@ -238,7 +240,7 @@
       '<div class="sec"><h1>' + esc(TX.billHead) + '</h1><p class="sub">' + esc(TX.billSub) + '</p>' +
       '<div class="digits' + (b ? '' : ' empty') + '" id="digits" aria-live="polite" aria-label="会計番号 ' + esc(b) + '">' + digitsHtml(b) + '</div>' +
       '<div class="keypad">' + keys.map((k) => '<button type="button" data-key="' + k + '"' + (k === 'clr' ? ' aria-label="消す">消す' : k === 'del' ? ' aria-label="1文字消す">⌫' : '>' + k) + '</button>').join('') + '</div></div>' +
-      '<div class="sec"><h2>' + esc(TX.nickHead) + '</h2><input class="big nick" id="nick" type="text" autocomplete="off" autocapitalize="off" enterkeyhint="done" maxlength="40" value="' + esc(d.nick || '') + '" aria-label="ニックネーム（8文字まで）"><p class="sub">' + esc(TX.nickSub) + '</p></div>' +
+      (d.nickFixed ? '<div class="sec nickrow"><span class="nl">' + esc(TX.nickHead) + '</span><b class="nv" data-fit="16">' + esc(d.nick) + '</b><button type="button" class="btn ghost sm" data-act="editNick">' + esc(TX.nickChange) + '</button><p class="sub">' + esc(TX.nickSaved) + '</p></div>' : '<div class="sec"><h2>' + esc(TX.nickHead) + '</h2><input class="big nick" id="nick" type="text" autocomplete="off" autocapitalize="off" enterkeyhint="done" maxlength="40" value="' + esc(d.nick || '') + '" aria-label="ニックネーム（8文字まで）"><p class="sub">' + esc(TX.nickSub) + '</p></div>') +
       '<p class="err" id="err" role="alert">' + esc(d.err && d.err !== 'bill_taken' ? d.err : '') + '</p>' +
       '<button class="btn" data-act="toPick">' + esc(TX.toPick) + '</button></div>';
   };
@@ -446,8 +448,8 @@
     drawTop(); fitText($('main'));
     if (screen === 'entry') {
       const i = $('nick');
-      i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
-      i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); i.blur(); act('toPick'); } }); // 変換を確定する Enter では進まない
+      if (i) i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
+      if (i) i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); i.blur(); act('toPick'); } }); // 変換を確定する Enter では進まない
     }
     if (screen === 'result') { const s = $('slider'); if (s) bindSlider(s); }
     notice = screen === 'entry' ? notice : '';
@@ -555,7 +557,7 @@
     if (sg === 'vote') {
       if (draft && draft.raceId === c.id && ['entry', 'pick', 'confirm'].indexOf(screen) >= 0) return drawTop();
       if (draft && draft.raceId && draft.raceId !== c.id && ['pick', 'confirm'].indexOf(screen) >= 0) toast(TX.closed, true, 4000);
-      draft = { raceId: c.id, bill: (draft && draft.raceId === c.id && draft.bill) || '', nick: (draft && draft.raceId === c.id && draft.nick) || '', first: null, second: null, redo: false, err: null };
+      { const sn = savedNick(), keep = draft && draft.raceId === c.id; draft = { raceId: c.id, bill: (keep && draft.bill) || '', nick: (keep && draft.nick) || sn, nickFixed: keep ? !!draft.nickFixed : !!sn, first: null, second: null, redo: false, err: null }; }
       return go('entry');
     }
     if (draft && ['entry', 'pick', 'confirm'].indexOf(screen) >= 0) toast(TX.closed, true, 4000);
@@ -590,7 +592,7 @@
     unpaidList = unpaidList.filter((x) => x.vid !== m.vid);
     my = null; resubscribe();
     const c = st && st.current;
-    if (c && c.id === m.raceId && stageOf(c) === 'vote') { notice = TX.released; draft = { raceId: c.id, bill: old ? String(old.bill || '') : '', nick: old ? old.nick || '' : '', first: null, second: null, redo: false, err: null }; return go('entry'); }
+    if (c && c.id === m.raceId && stageOf(c) === 'vote') { notice = TX.released; draft = { raceId: c.id, bill: old ? String(old.bill || '') : '', nick: (old && old.nick) || savedNick(), nickFixed: !!((old && old.nick) || savedNick()), first: null, second: null, redo: false, err: null }; return go('entry'); }
     route();
   }
 
@@ -627,6 +629,7 @@
       const n = cleanNick(draft.nick); if (!n) return err(TX.errNick);
       draft.nick = n; draft.bill = bill2(draft.bill); return go('pick');
     }
+    if (a === 'editNick') { if (!draft) return; draft.nickFixed = false; draw(); const i = $('nick'); if (i) { i.focus(); try { i.select(); } catch (e) { /* noop */ } } return; }
     if (a === 'toEntry') { draft.err = null; return go('entry'); }
     if (a === 'toPick2') { draft.err = null; return go('pick'); }
     if (a === 'cancelRedo') { draft = null; return route(); }
@@ -766,7 +769,7 @@
   function voted(d, r, I) {
     /* 届いた。けれど、その間に「戻る」で選び直している（予想の表・ちがう予想の確認）なら画面はそのまま（票は覚える。続きは選び直しとして送る）。2026-10-28 */
     const rechoosing = draft === d && I && (screen === 'pick' || (screen === 'confirm' && !sameArgs(argsOf(d), I.args)));
-    busy = false; notice = ''; if (!rechoosing && draft === d) draft = null;
+    busy = false; notice = ''; if (d && d.nick) saveNick(d.nick); if (!rechoosing && draft === d) draft = null;
     const raceId = r.vote.raceId; if (MV && !MV.get(raceId)) MV.set(raceId, r.vote.vid, r.key);
     my = { raceId, vid: r.vote.vid, key: r.key, vote: r.vote, vote2: r.vote2 || null, bonus: !!r.bonus, stamp: r.stamp || null, race: r.race || (st && st.current) || null, kind: 'cur' }; resubscribe();
     online = up(); lastSig = '';
