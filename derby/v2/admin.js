@@ -98,11 +98,15 @@
     const args = Array.prototype.slice.call(arguments, 1);
     if (!A || typeof A[name] !== 'function') { const e = new Error('not_supported'); e.code = 'not_supported'; throw e; }
     try { return await A[name].apply(A, args); }
-    catch (e) { if (e && (e.status === 401 || e.code === 'bad_password')) { sessionStorage.removeItem(PW_KEY); setTimeout(() => location.reload(), 1200); toast('パスワードが違います。ログインし直してください'); } throw e; }
+    catch (e) { if (e && (e.status === 401 || e.code === 'bad_password')) { pwDel(); setTimeout(() => location.reload(), 1200); toast('パスワードが違います。ログインし直してください'); } throw e; }
   }
 
   /* ---------- 状態 ---------- */
   const PW_KEY = 'casa.derby.admin.pw';
+  // 管理パスワードはこの端末で覚える（2026-11-05 オーナー指示「一度で覚える」）。ログアウトか、パスワード違いのときだけ消す
+  const pwGet = () => { try { return localStorage.getItem(PW_KEY) || sessionStorage.getItem(PW_KEY); } catch (e) { return null; } };
+  const pwSet = (p) => { try { localStorage.setItem(PW_KEY, p); } catch (e) { try { pwSet(p); } catch (e2) {} } };
+  const pwDel = () => { try { localStorage.removeItem(PW_KEY); } catch (e) {} try { sessionStorage.removeItem(PW_KEY); } catch (e) {} };
   let cfg = null; // { stores, rules, tuning }
   let tab = 'races'; // 最初に開くのは「今日」
   let editStore = null; // 店舗の編集中のコピー（「テレビ」タブの中）
@@ -153,8 +157,11 @@
     C = DerbyCloud.create({ role: 'admin' });
     ensureCore(); // 祝日の判定（core.js）。模擬クラウドでは client.js が読まないので自分で読む（2026-10-27）
     try { await C.syncClock(); } catch (e) { /* 時刻合わせに失敗しても端末の時計で続ける */ }
-    const saved = sessionStorage.getItem(PW_KEY);
-    if (saved) { try { await login(saved); return; } catch (e) { sessionStorage.removeItem(PW_KEY); } }
+    const saved = pwGet();
+    if (saved) {
+      try { await login(saved); return; }
+      catch (e) { if (e && (e.status === 401 || e.code === 'bad_password')) pwDel(); else { showLogin('通信がうまくいきませんでした。もう一度ログインを押すか、開き直してください'); return; } }
+    }
     showLogin('');
   }
   function showLogin(msg) {
@@ -171,14 +178,14 @@
     A = C.admin(p);
     cfg = normCfg(await A.config());
     main.classList.remove('loginv');
-    sessionStorage.setItem(PW_KEY, p);
+    pwSet(p);
     $('who').textContent = '管理者';
     $('logout').style.display = '';
     $('tabs').style.display = ''; markTab();
     setInterval(tick, 1000); tick();
     render();
   }
-  $('logout').addEventListener('click', () => { if (!leaveOk()) return; sessionStorage.removeItem(PW_KEY); location.reload(); });
+  $('logout').addEventListener('click', () => { if (!leaveOk()) return; pwDel(); location.reload(); });
   async function reloadCfg() { cfg = normCfg(await api('config')); }
   function tick() { $('clock').textContent = fmtDay(todayStr()) + ' ' + hms(now()).slice(0, 5); main.querySelectorAll('[data-until]').forEach((el) => { el.textContent = leftTxt(+el.dataset.until - now()); }); }
 
