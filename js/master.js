@@ -240,10 +240,10 @@
           '<label class="f" id="sholdRow"' + (h && !is6 ? '' : ' hidden') + '><span>この日時まで</span><input type="datetime-local" id="sholdto" value="' + (h && !is6 ? dtl(h.until) : '') + '"></label>' +
           '<p class="hint">' + (h ? 'いま ' + fmtDate(h.until) + ' まで casa SLOT のままです。「（しない）」にして保存すると、すぐ解除されます。' : '保存するとすぐ効きます。') + 'テレビがいま競馬の画面なら、保存のときに casa SLOT に戻します（この画面で casa DERBY にログインしているとき。していないときは「テレビに映すゲーム」で casa SLOT にしてください。レースの途中なら終わってから戻ります）。</p></div>';
       })() +
-      fold('st-play', '<h4>遊び方と飾り</h4><span class="fsum" id="playSum">' + playSum(s.billMode, s.doors, s.halloween) + '</span>',
+      fold('st-play', '<h4>遊び方と飾り</h4><span class="fsum" id="playSum">' + playSum(s.billMode, s.doors, decorOf(s)) + '</span>',
         chk('sbill', s.billMode, 'スマホの紙幣でゲームを始める（紙幣モード）', 'ON にすると、この店舗の画面から NEXT GAME ボタンが消え、スタッフのスマホの紙幣ページ（公開 URL の bill.html）で紙幣をスライドしたときだけゲームが始まります。スマホが使えないときは、テレビはリモコンの決定を 2 秒長押し、iPad は左上のロゴを 2 秒長押しで始められます。', 'h-bill') +
         chk('sdoor', s.doors, '3つの扉を出す', '当たりの回の 5 回に 1 回くらい、最後にリールの代わりに扉が 3 つ出ます。スタッフのスマホ（またはリモコンの左右と決定）で扉を選ぶと、その回の当たり金額が出ます。見せ方が変わるだけで、当たりの確率と金額は変わりません。「スマホの紙幣で始める」が ON の店舗だけで動きます。', 'h-door') +
-        chk('shw', s.halloween, 'ハロウィンの飾り', 'この店舗の画面の光がオレンジと紫になり、四隅に薄いクモの巣、ロゴの横にかぼちゃが出ます。リールや文字は変わりません。', 'h-hw'), { cls: 'sub' }) +
+        '<div class="opt"><label class="f"><span>画面の飾り</span><select id="sdecor">' + [['none', 'なし'], ['xmas', 'クリスマス（白と氷の青・雪の結晶）'], ['halloween', 'ハロウィン']].map((o) => '<option value="' + o[0] + '"' + (decorOf(s) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></label>' + more('h-hw', 'この店舗の画面の飾りです。クリスマスは、光が白と氷の青になり、リールの枠の四隅に雪の結晶、ロゴの両側に金の星、背景に細かい雪がゆっくり降ります。ハロウィンは、光がオレンジと紫になり、四隅に薄いクモの巣、ロゴの横にかぼちゃが出ます。どちらもリールや文字は変わりません。') + '</div>', { cls: 'sub' }) +
       fold('st-notes', '<h4>待っている間に出すお知らせ</h4><span class="fsum">' + (notesN ? notesN + ' つ入力済み' : 'なし') + '</span>',
         '<p class="hint">ゲームをしていない間、画面の左に出ます。3つまで。</p>' +
         more('h-notes', 'リールが回っていない待機中だけ、この店舗の画面の左（STAGE 1〜3 の場所）に出ます。<b style="color:var(--text)">入力した数だけ枠が分かれます</b>（1つなら大きく1枠、2つなら2分割、3つなら3分割）。ゲームが始まるとステージの表示に戻り、待機画面に戻るたびに、また説明が出ます。全部空にすると、今までどおりステージが出ます。文字は枠に収まる大きさに自動で調整されます（1枠 80 文字まで。改行もできます）。') +
@@ -255,7 +255,9 @@
       '</div>' +
       '<div class="savebar"><div class="msg"><div class="err" id="serr"></div></div><button class="btn ghost" data-act="store-cancel">戻る</button><button class="btn" data-act="store-save">保存</button></div>';
   }
-  const playSum = (bill, door, hw) => [['紙幣', bill], ['3つの扉', door], ['ハロウィン', hw]].map((x) => '<span class="nw">' + x[0] + ' ' + onOff(x[1]) + '</span>').join(' '); // 名前と ON/OFF の間で改行しない
+  const DECOR_JP = { none: 'なし', xmas: 'クリスマス', halloween: 'ハロウィン' };
+  const decorOf = (s) => (s && (s.decor === 'xmas' || s.decor === 'halloween' || s.decor === 'none') ? s.decor : (s && s.halloween ? 'halloween' : 'none')); // b188: 飾り。decor が無い古い店舗は halloween を見る
+  const playSum = (bill, door, dc) => [['紙幣', onOff(bill)], ['3つの扉', onOff(door)], ['飾り', DECOR_JP[dc] || 'なし']].map((x) => '<span class="nw">' + x[0] + ' ' + x[1] + '</span>').join(' '); // 名前と ON/OFF の間で改行しない
   async function saveStore() {
     const s = editStore, name = $('sname').value.trim(), pin = $('spin').value.trim();
     const err = $('serr'); err.textContent = '';
@@ -295,7 +297,7 @@
     { const k = $('shold') ? $('shold').value : '';
       if (k === '6') slotHold = { until: next6(), setAt: Date.now() };
       else if (k === 'dt') { const to = Date.parse(($('sholdto') || {}).value || ''); if (!Number.isFinite(to)) { err.textContent = '「テレビを casa SLOT のままにする」の日時を入れてください。'; return; } if (to <= Date.now()) { err.textContent = '「テレビを casa SLOT のままにする」の日時がもう過ぎています。'; return; } slotHold = { until: to, setAt: Date.now() }; } }
-    const data = { name, presetIds, activePresetId: active || null, presetTimed, presetPub, notes, slotHold, billMode: !!($('sbill') && $('sbill').checked), halloween: !!($('shw') && $('shw').checked), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
+    const data = { name, presetIds, activePresetId: active || null, presetTimed, presetPub, notes, slotHold, billMode: !!($('sbill') && $('sbill').checked), decor: ($('sdecor') && $('sdecor').value) || 'none', halloween: !!($('sdecor') && $('sdecor').value === 'halloween'), doors: !!($('sdoor') && $('sdoor').checked) }; // b83: スマホの紙幣で始めるか / b98: ハロウィン / b110: 3つの扉
     if (pin) data.pin = Engine.makePin(pin);
     try { await Cloud.saveStore(s.id || null, data); }
     catch (e) { err.textContent = '保存できませんでした。通信を確認して、もう一度押してください。'; throw e; }
@@ -590,7 +592,7 @@
     if (e.target.id === 'stsel') return loadStats(e.target.value);
     if (e.target.id === 'shold' && $('sholdRow')) { $('sholdRow').hidden = e.target.value !== 'dt'; return; } // テレビを casa SLOT のままにする: 日時の欄
     if (e.target.dataset && e.target.dataset.pk) { const id = e.target.dataset.pk, k = e.target.value, q = (a) => document.querySelector('[' + a + '="' + id + '"]'); q('data-px').hidden = !k; q('data-pd').hidden = k !== 'date'; q('data-pw').hidden = k !== 'weekly'; return; } // 公開期間の種類（2026-10-24）
-    if (/^(sbill|sdoor|shw)$/.test(e.target.id) && $('playSum')) { $('playSum').innerHTML = playSum($('sbill').checked, $('sdoor').checked, $('shw').checked); return; } // 畳んだ見出しの ON/OFF（保存はまだ）
+    if (/^(sbill|sdoor|sdecor)$/.test(e.target.id) && $('playSum')) { $('playSum').innerHTML = playSum($('sbill').checked, $('sdoor').checked, $('sdecor').value); return; } // 畳んだ見出しの ON/OFF（保存はまだ）
     // 集計の期間（開始・終了）を変えた
     if ((e.target.id === 'stfrom' || e.target.id === 'stto') && statsStore) {
       const R = Object.assign({}, statsRange || quickRange('31', statsStore));
