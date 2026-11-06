@@ -237,7 +237,8 @@ R3D.Director = (function () {
          カメラの x はゴールの xStop（m 手前）で「なめらかに止まる」（kStop m の幅でゆっくり減速。残り約 15m までは真横のまま、
          ゴールの瞬間は真横から約 8 度だけ前向き）。柱が先頭に重なるのはゴールの 2〜3m 先になる */
   const SWING = { R0: 480, R1: 100, a0: 30, d0: 56, d1: 30, y0: 13, y1: 8, rRef: C.RI + 4.5, bias: 0.6, ahead: 1.2, rk: 1.5, tight: 22, focusK: 0.3, tw: 30, fovK: 2,
-    sA: 0.27, sB: 0.29, s1: 0.33, limX: 0.8, limY: 0.76, xStop: C.LS / 2 - 10, kStop: 4, fmin: 2, fmax: 50 };
+    sA: 0.27, sB: 0.29, s1: 0.33, limX: 0.8, limY: 0.76, xStop: C.LS / 2 - 10, kStop: 4, fmin: 2, fmax: 50,
+    kWide: 4, gapWide: 15, gapFade: 5 };   // 引きの絵（6 頭全部 → 2026-11-06 オーナー「後ろの馬が遅すぎると最終コーナーの画角がおかしい。先頭 4 頭だけ・何 m 以上離れた馬は入れない」）: 先頭から kWide 頭まで、かつ先頭から gapWide m 以内（gapFade m かけてなめらかに外す）
   // v4（2 連単。2026-10-21 仕様書「最後の直線は上位 3 頭が入るように少し引く」）: 寄りきった大きさ s1 0.38 → 0.33（先頭が画面の高さの約 3 割）、
   // 上位 3 頭を入れる枠を画面の端から 10%（横 limX 0.86 → 0.8）・12%（縦 0.8 → 0.76）内側に。1 着争いと 2 着争い（2・3 番手）が両方、端に寄らずに見える。
   // 止まる所 xStop もゴールの 5m 手前 → 10m 手前に: 5m だと、1 着より遅れてゴールする 2 着争いの鼻先が、外ラチのゴール板の脇の旗（RO+1）の後ろに入った（v4race の写真）
@@ -414,11 +415,12 @@ R3D.Director = (function () {
 
     function ensure(n) {
       if (n <= cap) return;
-      cap = Math.max(n, 18); order = new Int32Array(cap); sPrev = new Float64Array(cap); vel = new Float64Array(cap); pts = new Float64Array(cap * 2 * 4 + 16); swR = new Float64Array(cap);
+      cap = Math.max(n, 18); order = new Int32Array(cap); sPrev = new Float64Array(cap); vel = new Float64Array(cap); pts = new Float64Array(cap * 2 * 4 + 16); swR = new Float64Array(cap); swW = new Float64Array(cap);
     }
     /* ---------- 最後の 4 コーナー〜ゴールの動くカメラ（L_SWING。上の SWING の説明） ----------
        毎コマ、馬の位置と残り距離だけから out を直接決める（ばねを通さない）。order（s の大きい順）は並べ終わっていること */
     const swingRig = { name: 'SWING', x: 0, y: 10, z: 0, fx: 0, fz: 0, pan: 180, fmin: SWING.fmin, fmax: SWING.fmax, dmax: 900 };
+    let swW = null;   // 馬ごとの「引きの絵に入れる重み」（0..1。先頭 kWide 頭・先頭から gapWide m 以内）
     let swR = null;   // 馬ごとの「先頭 3 頭の重み」（0..1。順位の入れ替わりで跳ばないよう、3 番手との差 rk m でなめらかに）
     const swInfo = { R: 0, e: 0, wT: 0, a: 0, d: 0, y: 0, fov: 0, need: 0, fovSize: 0, rel: 0 };   // 確認用（d.swing）
     const smin = (a, b, k) => { const m = (b - a) / k; return m > 30 ? a : b - k * Math.log1p(Math.exp(m)); };   // なめらかな min（b に近づくとゆっくり止まる）
@@ -427,13 +429,15 @@ R3D.Director = (function () {
       const u = clamp((W.R0 - R) / (W.R0 - W.R1), 0, 1), e = u * u * u * (u * (u * 6 - 15) + 10);
       const kt = clamp((W.R1 - R) / W.tight, 0, 1), wT = kt * kt * (3 - 2 * kt);
       const k3 = Math.min(3, n), s3 = H[order[k3 - 1]].s || 0;
-      let sAll = 0, sTop = 0, cx = 0, cz = 0, ws = 0;
+      const kW = Math.min(W.kWide, n), sW = H[order[kW - 1]].s || 0, sLead = H[order[0]].s || 0;
+      let sAll = 0, wAll = 0, sTop = 0, cx = 0, cz = 0, ws = 0;
       for (let i = 0; i < n; i++) {
         const si = H[i].s || 0, g = clamp((si - s3) / W.rk + 1, 0, 1), wr = g * g * (3 - 2 * g);
-        swR[i] = wr; sAll += si; cx += H[i].x * wr; cz += H[i].z * wr; ws += wr;
+        const gk = clamp((si - sW) / W.rk + 1, 0, 1), gg = clamp((W.gapWide - (sLead - si)) / W.gapFade, 0, 1), ww = gk * gk * (3 - 2 * gk) * gg * gg * (3 - 2 * gg);
+        swR[i] = wr; swW[i] = ww; sAll += si * ww; wAll += ww; cx += H[i].x * wr; cz += H[i].z * wr; ws += wr;
       }
       for (let r = 0; r < k3; r++) sTop += H[order[r]].s || 0;
-      sAll /= n; sTop /= k3; cx /= ws; cz /= ws;
+      sAll = wAll > 0 ? sAll / wAll : sLead; sTop /= k3; cx /= ws; cz /= ws;
       // カメラの置き場所: 馬群の基準点 F（コースの s・決まった進路 rRef）から、進む向き T と外向き N の間の角 a の方へ d m
       const sF = sAll + (sTop - sAll) * (W.bias + (1 - W.bias) * wT) + W.ahead;
       // 進む向き T は、前後 tw m の 2 点を結ぶ向き（円の上では真ん中の接線と同じ。コーナーと直線のつなぎ目で向きの回る速さが急に変わらない＝カメラの速さが跳ばない）
@@ -450,7 +454,7 @@ R3D.Director = (function () {
       const fx0 = cx + Tx * W.ahead, fz0 = cz + Tz * W.ahead, fy0 = HORSE_H / 2, Dc = Math.hypot(fx0 - px, fy0 - y, fz0 - pz);
       const sizeA = W.sA + (W.sB - W.sA) * e;
       let yaw, pitch, lf;
-      if (wT < 1) { swAim(H, n, px, y, pz, fx0, fy0, fz0, null, sizeA, Dc); yaw = SWA[0]; pitch = SWA[1]; lf = Math.log(SWA[2]); swInfo.need = SWA[3]; }
+      if (wT < 1) { swAim(H, n, px, y, pz, fx0, fy0, fz0, swW, sizeA, Dc); yaw = SWA[0]; pitch = SWA[1]; lf = Math.log(SWA[2]); swInfo.need = SWA[3]; }
       if (wT > 0) {
         swAim(H, n, px, y, pz, fx0, fy0, fz0, swR, W.s1, Dc);
         if (wT >= 1) { yaw = SWA[0]; pitch = SWA[1]; lf = Math.log(SWA[2]); }
