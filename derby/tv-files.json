@@ -193,8 +193,8 @@
   },
   {
    "path": "index.html",
-   "size": 27086,
-   "sha256": "013a1327a05e9b2ef81ccd5021ec93a9f1393eddad425e9f256d93b679a3abed"
+   "size": 27208,
+   "sha256": "e22b9aaf0b94935fdb0fbb55f10db712d46aa9b2d6838dc71f0e61db431f88b9"
   },
   {
    "path": "js/audio.js",
@@ -238,8 +238,8 @@
   },
   {
    "path": "js/r3d/director3d.js",
-   "size": 110878,
-   "sha256": "2590fff823df5ab0db7fff98378920821d7e84c155eb02288815b5579e233a86"
+   "size": 111729,
+   "sha256": "db69ec2879695bb3b5a559dc22ee33d41d07ba363313002f29d2e46fc4ffdf5e"
   },
   {
    "path": "js/r3d/horse3d-real.js",
