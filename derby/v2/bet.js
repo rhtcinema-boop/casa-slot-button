@@ -394,7 +394,7 @@
   /* ⑥ レース中: 自分の予想だけ（初参加ボーナスの 2 票目もあれば 2 枚） */
   R.race = () => {
     const v = my && my.vote, v2 = my && my.vote2, r = my && my.race; if (!v || !r) return R.boot();
-    return '<div class="scr racing' + (v2 ? ' two' : ' mid') + '">' + testTag(r) + mineCard(r, v, v2 ? 1 : 0, false, true) + /* ⑤投票済みと同じ札・同じ大きさ。当たればいくら（2026-10-21 文字帳の指示） */
+    return '<div class="scr racing' + (v2 ? ' two' : ' mid') + '">' + testTag(r) + mineCard(r, v, v2 ? 1 : 0, false, true) + /* ⑤と同じ札・大きさ（2026-10-21） */
       (v2 ? mineCard(r, v2, 2, false, false) : '') + watchBtn(r) + '</div>';
   };
 
@@ -417,7 +417,7 @@
     const sg = stampGotLine(all, res) + incLine(r, res);
     if (!wins.length) {
       return '<div class="scr result">' + testTag(r) + '<div class="miss"><h1 class="t">' + esc(TX.lose) + '</h1><p class="rc">' + esc(TX.result) + ' ' + arrowNum(res.first, res.second) + '</p></div>' + resLine + sg +
-        (v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + watchBtn(r) + nextLine() + todayRow() + nextBtn(false) + '</div>'; // 本日のレースの時刻（2026-10-27）は「次のレース」と「次のレースへ」の間
+        (v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + watchBtn(r) + nextLine() + todayRow() + nextBtn(false) + '</div>'; // 時刻表は「次のレースへ」の上（2026-10-27）
     }
     /* 受け取りは 1 つのスライドで（2 票とも当たりなら 2 票分をまとめて。スタッフの操作は 1 回。2026-10-24 決め） */
     const wr = wins[0].result, total = wins.reduce((a, x) => a + (Number(x.result.amount) || 0), 0), test = wins.some((x) => x.result.test);
@@ -432,7 +432,8 @@
     return '<div class="scr result win">' + testTag(r) + '<div class="hit"><h1 class="t">' + esc(TX.win) + '</h1><div class="combo">' + esc(comboText(r, wr.first, wr.second, wr.odds)) + '</div>' +
       '<div class="k">' + esc(TX.amount) + '</div><div class="a">' + bigAmt(total, 'n') + '</div>' + (wins.length >= 2 ? '<div class="x2">' + esc(fill(TX.times, { a: ptT(wr.amount), n: wins.length })) + '</div>' : '') + '</div>' + perVote +
       '<div class="billbig"><span>' + esc(TX.billHead) + '</span><b>' + esc(v.bill) + '</b><small data-fit="13">' + esc(v.nick) + '</small></div>' + pay + sg +
-      watchBtn(r) + todayRow() + nextBtn(true) + '</div>'; // 本日のレースの時刻（2026-10-27）は「次のレースへ」のすぐ上
+      (window.BetTicket ? wins.map((x) => BetTicket(r, x, v2 ? x.n : 0, x.result)).join('') : '') + /* 的中の判子つきの券（ticket.js） */
+      watchBtn(r) + todayRow() + nextBtn(true) + '</div>';
   };
 
   /* ================= 描画 ================= */
@@ -451,7 +452,7 @@
       if (i) i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
       if (i) i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); i.blur(); act('toPick'); } }); // 変換を確定する Enter では進まない
     }
-    if (/^(confirm|voted)$/.test(screen) && !$('tkjs')) document.head.appendChild(Object.assign(document.createElement('script'), { id: 'tkjs', src: 'ticket.js' + TKQ, onload: draw }));
+    if (/^(confirm|voted|result)$/.test(screen) && !$('tkjs')) document.head.appendChild(Object.assign(document.createElement('script'), { id: 'tkjs', src: 'ticket.js' + TKQ, onload: draw }));
     if (screen === 'result') { const s = $('slider'); if (s) bindSlider(s); }
     notice = screen === 'entry' ? notice : '';
   }
