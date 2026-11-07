@@ -1,0 +1,89 @@
+/* casa DERBY スマホ（v2/bet.html）の投票済みの「馬券ふうの投票券」。bet.css のあとに bet.js が読み込む（最初の表示を重くしないため）。bet.css の色（--gold・--cream・--bg など）を使う */
+/* ---------- 2026-11-07 オーナー選定: ⑤投票済みを「紙の馬券ふうの投票券」に（bet.js ticketCard。手本は馬券の写真の並び方。見た目だけ） ----------
+   横長の白い券・薄い緑の丸い地紋（中の文字は casa DERBY と蹄鉄）・縦の帯「2連単」と左の水色の線・四角い番号・★・下に合計と通し番号風の飾り。
+   本物の団体のロゴ・文字・地紋は使わない。「投票券（参加無料）」を必ず見せる。単位は pt。紺・金・クリームは券の札・帯の字・額に使う */
+.mine.tk { padding: 0; gap: 6px; background: none; border: 0; border-radius: 0; }
+.mine.tk.b2 { border: 0; margin-top: 4px; }
+.mine.tk .mk { font-size: 14px; }
+.tkt { --tk-ink: #14203a; --tk-dim: #4c5a73; --tk-green: #2f8f63; --tk-sky: #8fd6ec; --tk-gold: #9a6d12;
+  position: relative; color: var(--tk-ink); border-radius: 6px; overflow: hidden;
+  background-color: #fdfcf5;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='120' viewBox='0 0 150 120'%3E%3Cg fill='none' stroke='%23cfeadb' stroke-width='5'%3E%3Ccircle cx='38' cy='34' r='26'/%3E%3Ccircle cx='113' cy='94' r='26'/%3E%3C/g%3E%3Cg fill='none' stroke='%23d9efe3' stroke-width='1.2'%3E%3Ccircle cx='38' cy='34' r='33'/%3E%3Ccircle cx='113' cy='94' r='33'/%3E%3C/g%3E%3Cg fill='%23cde9da' font-family='Arial,sans-serif' font-weight='700' font-style='italic' text-anchor='middle'%3E%3Ctext x='38' y='32' font-size='10'%3Ecasa%3C/text%3E%3Ctext x='38' y='43' font-size='9'%3EDERBY%3C/text%3E%3C/g%3E%3Cpath d='M105 86v9a8 8 0 0 0 16 0v-9' fill='none' stroke='%23cde9da' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"),
+    radial-gradient(circle at 85% 20%, rgba(207, 234, 219, .55), transparent 45%);
+  background-size: 150px 120px, 100% 100%;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .5);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%); /* 右上の角の切り欠き */
+}
+.tkt::before { content: ""; position: absolute; inset: 4px; border: 1px solid rgba(47, 143, 99, .35); border-radius: 4px; pointer-events: none; }
+.tkin { position: relative; padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
+.tk-body { display: grid; grid-template-columns: minmax(0, 96px) 34px minmax(0, 1fr); column-gap: 10px; align-items: stretch; }
+/* 左: 日付・店・レース番号・QR 風・casa DERBY */
+.tk-l { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tk-date { font-size: 11.5px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tk-store { font-size: 24px; font-weight: 900; line-height: 1.05; letter-spacing: .04em; white-space: nowrap; overflow: hidden; }
+.tk-rno { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.tk-rno b { display: inline-grid; place-items: center; min-width: 30px; height: 24px; padding: 0 4px; background: var(--tk-ink); color: #fff; font-size: 18px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.tk-rno span { font-size: 14px; font-weight: 900; }
+.tk-rno.tm b { font-size: 14px; min-width: 0; }
+.tk-rno.tm span { font-size: 12px; }
+.tk-foot { display: flex; align-items: flex-end; gap: 5px; margin-top: auto; padding-right: 2px; }
+.tk-qrs { display: flex; gap: 3px; color: var(--tk-ink); }
+.tk-qrs .qr { width: 32px; height: 32px; display: block; background: #fff; }
+.tk-race { font-family: Arial, var(--body); font-size: 8.5px; font-weight: 700; line-height: 1.1; color: var(--tk-dim); font-style: italic; min-width: 0; overflow: hidden; white-space: nowrap; }
+.tk-race b { font-style: normal; font-size: 11px; color: var(--tk-ink); font-variant-numeric: tabular-nums; }
+/* 真ん中: 縦の帯（左に水色の線） */
+.tk-band { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 2px 0; border: 1.5px solid var(--tk-ink); background: rgba(255, 255, 255, .7); }
+.tk-band::before { content: ""; position: absolute; top: -2px; bottom: 0; left: -7px; width: 4px; background: var(--tk-sky); }
+.tk-band i { font-style: normal; font-family: Arial, var(--body); font-size: 7px; font-weight: 700; letter-spacing: .02em; color: var(--tk-gold); }
+.tk-band b { writing-mode: vertical-rl; text-orientation: upright; font-size: 20px; font-weight: 900; letter-spacing: .1em; line-height: 1; color: var(--tk-ink); }
+/* 右: 無料の札・組み合わせ・★と当たれば pt・馬の名前 */
+.tk-r { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tk-cap { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--tk-green); white-space: nowrap; }
+.tk-cap > span:first-child { overflow: hidden; min-width: 0; white-space: nowrap !important; }
+.tk-free { flex: none; padding: 1px 7px; border-radius: 999px; background: var(--tk-ink); color: var(--gold); font-size: 10px; font-weight: 900; letter-spacing: .02em; white-space: nowrap; }
+.tk-free small { font-size: 9px; font-weight: 700; color: var(--cream); }
+.tk-combo { display: flex; align-items: center; gap: 4px; flex: none; }
+.tk-combo .bx { display: grid; place-items: center; width: 48px; height: 48px; border: 2.5px solid var(--tk-ink); background: #fff; font-size: 34px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.tk-combo i { font-style: normal; font-size: 22px; font-weight: 900; color: var(--tk-gold); }
+.tk-pay { display: flex; align-items: baseline; justify-content: flex-end; gap: 5px; min-width: 0; line-height: 1; margin-top: auto; }
+.tk-ifw { font-size: 11px; font-weight: 700; color: var(--tk-dim); white-space: nowrap; }
+.tk-pay .tk-st { font-size: 11px; letter-spacing: -.05em; color: var(--tk-ink); }
+.tk-amt { font-size: 27px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; color: var(--tk-ink); white-space: nowrap; }
+.tk-amt.l6 { font-size: 23px; } .tk-amt.l7 { font-size: 20px; }
+.tk-amt .pt { font-size: 12px; margin-left: 1px; color: var(--tk-gold); }
+.tk-names { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tk-names .tn { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.tk-names .tl { flex: none; font-size: 10px; font-weight: 700; color: var(--tk-dim); }
+.tk-names .waku.sm { width: 16px; height: 16px; border-radius: 3px; font-size: 10px; }
+.tk-names .nmx { font-size: 12.5px; font-weight: 700; white-space: nowrap !important; overflow: hidden; min-width: 0; flex: 1 1 auto; line-height: 1.2; }
+/* 下: 合計・いまの倍率／ミシン目の下に会計番号・ニックネーム・発行・通し番号風（1 行ずつ） */
+.tk-st { font-size: 11px; letter-spacing: -.05em; color: var(--tk-ink); }
+.tk-sum { display: flex; align-items: baseline; column-gap: 3px; padding-top: 3px; border-top: 1px solid rgba(20, 32, 58, .2); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.tk-sum > b { font-size: 15px; font-weight: 900; }
+.tk-sum .tk-odd { margin-left: auto; }
+.tk-sum .tk-odd b { font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.tk-stub { position: relative; display: flex; align-items: baseline; justify-content: space-between; column-gap: 6px; margin: 1px -10px 0; padding: 5px 10px 0; border-top: 2px dashed rgba(20, 32, 58, .3); white-space: nowrap; }
+.tk-stub::before, .tk-stub::after { content: ""; position: absolute; top: -8px; width: 14px; height: 14px; border-radius: 50%; background: var(--bg); } /* ミシン目の両端の切り欠き */
+.tk-stub::before { left: -7px; } .tk-stub::after { right: -7px; }
+.tk-who { flex: none; font-size: 11px; font-weight: 700; color: var(--tk-dim); }
+.tk-who b { font-size: 16px; font-weight: 900; color: var(--tk-ink); font-variant-numeric: tabular-nums; }
+.tk-who .tk-nick { display: inline-block; max-width: 150px; overflow: hidden; vertical-align: bottom; font-size: 14px; font-weight: 900; color: var(--tk-ink); }
+.tk-iss { flex: none; font-size: 10px; font-weight: 700; color: var(--tk-dim); font-variant-numeric: tabular-nums; }
+.tk-ser { font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 9.5px; letter-spacing: .04em; color: #3c4a63; white-space: nowrap; overflow: hidden; }
+.tk-note { margin: 0; text-align: center; font-size: 12px; color: var(--dim); word-break: auto-phrase; text-wrap: balance; }
+.mine.tk.b2 .tkt { --tk-sky: #f1c75b; } /* 2 枚目は帯の線を金に（1 枚目と見分ける） */
+@media (max-width: 370px) {
+  .tkin { padding: 6px 8px 5px; }
+  .tk-body { grid-template-columns: minmax(0, 86px) 30px minmax(0, 1fr); column-gap: 8px; }
+  .tk-store { font-size: 21px; }
+  .tk-qrs .qr { width: 28px; height: 28px; }
+  .tk-band b { font-size: 18px; }
+  .tk-combo .bx { width: 44px; height: 44px; font-size: 32px; }
+  .tk-combo { gap: 3px; } .tk-combo i { font-size: 18px; }
+  .tk-amt { font-size: 24px; } .tk-amt.l6 { font-size: 21px; } .tk-amt.l7 { font-size: 18px; }
+  .tk-free { padding: 1px 5px; font-size: 9px; } .tk-free small { font-size: 8.5px; } /* 「参加無料」は狭くても必ず見せる */
+  .tk-stub { margin: 1px -8px 0; padding: 5px 8px 0; }
+  .tk-who .tk-nick { max-width: 110px; }
+  .tk-ser { font-size: 8.5px; letter-spacing: .02em; }
+}
