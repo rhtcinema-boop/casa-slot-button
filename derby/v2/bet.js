@@ -55,7 +55,7 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const qs = new URLSearchParams(location.search);
-  const STORE = (qs.get('store') || '').trim().toLowerCase();
+  const STORE = (qs.get('store') || '').trim().toLowerCase(), TKQ = ((document.currentScript || {}).src || '').replace(/^[^?]*/, '');
   const DC = window.DerbyCloud || null, MV = DC && DC.myVotes, F = window.DerbyForm || null;
   const C = DC && STORE ? DC.create({ store: STORE, role: 'phone' }) : null;
   const now = () => (C ? C.serverNow() : Date.now());
@@ -299,8 +299,7 @@
       '<div class="dock"><p class="vstat" id="vstat" role="status">' + esc(d.sendMsg || '') + '</p><button class="btn" data-act="vote"' + (d.sendDis ? ' disabled' : '') + '>' + esc(d.sendLabel || (d.redo ? TX.changeBtn : d.n === 2 ? TX.vote2Btn : TX.voteBtn)) + '</button><button class="btn ghost" data-act="toPick2">' + esc(TX.back) + '</button></div></div>'; // 送っている途中も描き直しで消えない（d.sendLabel・d.sendMsg。2026-10-28）
   };
 
-  /* ⑤ 投票済み: あなたの予想・締切まで・選び直す */
-  /* 「あなたの予想」の札（⑤投票済み・⑥レース中で同じ形）。n: 0＝1 票だけ／1＝1 票目／2＝初参加ボーナスの 2 票目。combo: 組み合わせの文も出す（⑤） */
+  /* 「あなたの予想」の札（⑥レース中。⑤は券が届くまで）。n: 0＝1票/1＝1票目/2＝2票目。combo: 組み合わせの文 */
   function mineCard(r, v, n, combo, who) {
     const o = exOdds(r, v.first, v.second);
     return '<div class="mine' + (n === 2 ? ' b2' : '') + '"><p class="mk">' + esc(n === 2 ? TX.vote2 : TX.yourPick) + (n === 1 ? '<span class="vn">' + esc(TX.vote1) + '</span>' : n === 2 ? '<span class="vn bt">' + esc(v.stamp ? TX.stampTag : TX.bonusTag) + '</span>' : '') + '</p>' + pickCard(r, v.first, v.second, 'mid') +
@@ -325,15 +324,16 @@
     const parts = [[TX.stampVote, sum('vote')], [TX.stampWin, sum('win')], [TX.stampNear, sum('near')]].filter((p) => p[1] > 0).map((p) => p[0] + ' +' + p[1]).join('・');
     return '<div class="stampgot" role="status"><b>' + esc(TX.stampHead.replace('ラリー', '')) + '<em>+' + n + '</em></b><span>' + esc(parts) + '</span></div>';
   }
+  const tk = (r, v, n) => (window.BetTicket ? BetTicket(r, v, n) : mineCard(r, v, n, true, n < 2)); // ⑤ 馬券ふうの券（v2/ticket.js）
   const bonusBox = () => '<div class="bonusbox"><b>' + esc(TX.bonusHead) + '</b><span>' + esc(TX.bonusSub) + '</span><button class="btn" data-act="bonus">' + esc(TX.bonusBtn) + '</button></div>';
   let ownerChanged = false; // 匿名ログインの uid が変わった（client-firestore.js の onUser）
   R.voted = () => {
     const v = my && my.vote, v2 = my && my.vote2, r = (st && st.current && my && st.current.id === my.raceId ? st.current : my && my.race) || null;
     if (!v || !r) return R.boot();
-    const lost = !!my.lost, can = !lost && !v2 && !!my.bonus && stageOf(r) === 'vote', sCan = !lost && !v2 && !can && !!(my.stamp && my.stamp.can) && stageOf(r) === 'vote'; // sCan: スタンプで 2 票目（2026-11-02） // 初参加ボーナス: 1 票目のすぐ下に「もう1票」。lost: ログインが変わって自分の票として読めない（選び直しは出さない）
+    const lost = !!my.lost, can = !lost && !v2 && !!my.bonus && stageOf(r) === 'vote', sCan = !lost && !v2 && !can && !!(my.stamp && my.stamp.can) && stageOf(r) === 'vote'; // can: 初参加ボーナス（1 票目のすぐ下に「もう1票」）。sCan: スタンプで 2 票目（11-02）。lost: ログインが変わった（選び直しは出さない）
     return '<div class="scr voted">' + testTag(r) + '<h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' +
-      mineCard(r, v, v2 ? 1 : 0, true, true) + (can ? bonusBox() : sCan ? stampUseBox(my.stamp.cost) : '') + (v2 ? mineCard(r, v2, 2, true, false) : '') + stampCard() + watchBtn(r) +
-      '<div class="clock"><div class="k">' + esc(TX.closeIn) + '</div><div class="v">' + cd(r.closeAt) + '</div></div>' + todayRow() + /* 本日のレースの時刻（2026-10-27）: 締切の時計の下・「選び直す」の上（開いた直後の画面に入る位置。デザイン審査） */
+      tk(r, v, v2 ? 1 : 0) + (can ? bonusBox() : sCan ? stampUseBox(my.stamp.cost) : '') + (v2 ? tk(r, v2, 2) : '') + stampCard() + watchBtn(r) +
+      '<div class="clock"><div class="k">' + esc(TX.closeIn) + '</div><div class="v">' + cd(r.closeAt) + '</div></div>' + todayRow() + /* 本日のレース（10-27）: 時計の下・「選び直す」の上（開いた直後に見える位置） */
       (lost ? '<div class="note" role="status">' + esc(TX.ownerChanged) + '</div>' : v2 ? '<div class="redo2"><button class="btn ghost" data-act="redo">' + esc(TX.redo1) + '</button><button class="btn ghost" data-act="redo2">' + esc(TX.redo2) + '</button></div>'
         : '<button class="btn ghost" data-act="redo">' + esc(TX.redo) + '</button>') + '</div>';
   };
@@ -451,6 +451,7 @@
       if (i) i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
       if (i) i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); i.blur(); act('toPick'); } }); // 変換を確定する Enter では進まない
     }
+    if (/^(confirm|voted)$/.test(screen) && !$('tkjs')) document.head.appendChild(Object.assign(document.createElement('script'), { id: 'tkjs', src: 'ticket.js' + TKQ, onload: draw }));
     if (screen === 'result') { const s = $('slider'); if (s) bindSlider(s); }
     notice = screen === 'entry' ? notice : '';
   }
