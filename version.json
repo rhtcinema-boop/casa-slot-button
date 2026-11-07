@@ -1,9 +1,9 @@
 {
- "v": "b197",
+ "v": "b198",
  "files": [
   {
    "path": "index.html",
-   "sha256": "ce6458d6485104f7790e7cabae1aa661130720e3552d31701e84e84de0386711"
+   "sha256": "47f4441468f5374c2ffbdbbd729410da1532bdd2cc7f7149daade411cbf74c33"
   },
   {
    "path": "manifest.webmanifest",
@@ -251,7 +251,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "35893850530b5819349ab7cd2f3add4fd6ee7421792e01fc2c9e4b596236bd30"
+   "sha256": "2ec56142d2dfee0cba9eff8c78274dc833e9765a0712ce3d16985b07ecc3b2c6"
   },
   {
    "path": "derby/js/audio.js",
@@ -387,11 +387,11 @@
   },
   {
    "path": "derby/v2/watch.css",
-   "sha256": "407bd5d3a39240b924c0f8c5dac06a913ed0272e869733547fb03201bca67465"
+   "sha256": "19bdbe3243d7ea636e2fb0de557051cc057c5f1f066dcdf836fd41f9a6399b0b"
   },
   {
    "path": "derby/v2/watch.js",
-   "sha256": "36427fe86a3e8d3f208ad3e539e8558da92a7a0fb15ac4ec7163d23cc6a50664"
+   "sha256": "99fc003519ead62d7b6215cd47f1a1ce600744509cd56aaeb9c27b7f964862e7"
   }
  ]
 }
