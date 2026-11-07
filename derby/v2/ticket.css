@@ -107,3 +107,40 @@
 @media (max-width: 370px) {
   .tk-hit { width: 74px; height: 74px; margin: 18px 0 2px 2px; } .tk-hit-in b { font-size: 26px; }
 }
+/* ---------- 2026-11-07 オーナー「自分の予想を見るところは全部馬券のデザインに」: はずれの券・レース中の券（bet.js）・「レースを見る」の小さめの券（watch.js） ----------
+   はずれ: 判子なし。見出しに小さな灰色の「はずれ」の札、券は少し色を落とし、「当たれば ○pt」に線（作り物の言葉は出さない） */
+.mine .mk .vn.ms { border-color: #8a93a6; color: #c3c9d6; }
+.mine.tk.miss .tkt { filter: grayscale(.45); opacity: .9; }
+.mine.tk.miss .tk-amt { text-decoration: line-through; text-decoration-thickness: 3px; text-decoration-color: rgba(20, 32, 58, .55); }
+.mine.tk.miss .tk-ifw { color: var(--tk-dim); }
+/* 「レースを見る」（index.html?watch=1。bet.css が無い窓）: 色・文字の決まりはここで持つ。文字のファイル（Noto Sans JP）は読まない */
+html.watch .mine.tk { --gold: #ffd773; --gold2: #c9a03e; --cream: #ffe9a8; --bg: #131d30; --dim: #b8beca; --display: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; --body: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  display: flex; flex-direction: column; width: 100%; min-width: 0; text-align: left; }
+html.watch .mine.tk .mk { margin: 0; text-align: center; font-size: 13px; font-weight: 700; color: var(--gold); letter-spacing: .12em; }
+html.watch .mine .mk .vn { display: inline-block; margin-left: 8px; padding: 1px 10px; border-radius: 6px; border: 1px solid var(--gold2); color: var(--cream); font-size: 11px; font-weight: 700; letter-spacing: .04em; vertical-align: 1px; }
+html.watch .mine .mk .vn.bt { border-color: var(--gold); color: var(--gold); }
+html.watch .mine .mk .vn.ms { border-color: #8a93a6; color: #c3c9d6; }
+/* 小さめの券（.cmp。映像が主役＝幅いっぱい・高さ 150px 前後）: QR 風・合計・通し番号・注意書きは出さない。番号・額・店名を小さく */
+.mine.tk.cmp { gap: 3px; }
+.mine.tk.cmp .mk { display: none; }
+.mine.tk.cmp .tkin { padding: 5px 8px 4px; gap: 2px; }
+.mine.tk.cmp .tk-body { grid-template-columns: minmax(0, 84px) 24px minmax(0, 1fr); column-gap: 8px; }
+.mine.tk.cmp .tk-date { font-size: 10px; }
+.mine.tk.cmp .tk-store { margin-top: -2px; font-size: 17px; }
+.mine.tk.cmp .tk-rno { margin-top: 3px; } .mine.tk.cmp .tk-rno b { min-width: 24px; height: 19px; font-size: 14px; } .mine.tk.cmp .tk-rno span { font-size: 11px; }
+.mine.tk.cmp .tk-rno.tm { gap: 8px; margin-top: 2px; } .mine.tk.cmp .tk-rno.tm b { font-size: 12px; } .mine.tk.cmp .tk-rno.tm span { font-size: 10px; }
+.mine.tk.cmp .tk-foot, .mine.tk.cmp .tk-sum, .mine.tk.cmp .tk-ser, .mine.tk.cmp .tk-note { display: none; }
+.mine.tk.cmp .tk-band { padding: 1px 0; } .mine.tk.cmp .tk-band b { font-size: 13px; letter-spacing: .04em; } .mine.tk.cmp .tk-band i { font-size: 5.5px; }
+.mine.tk.cmp .tk-band::before { left: -5px; width: 3px; }
+.mine.tk.cmp .tk-r { gap: 2px; }
+.mine.tk.cmp .tk-cap { font-size: 9px; } .mine.tk.cmp .tk-free { padding: 0 4px; font-size: 8px; } .mine.tk.cmp .tk-free small { font-size: 7.5px; }
+.mine.tk.cmp .tk-combo { gap: 3px; } .mine.tk.cmp .tk-combo .bx { width: 34px; height: 34px; font-size: 24px; } .mine.tk.cmp .tk-combo i { font-size: 15px; }
+.mine.tk.cmp .tk-names { gap: 0; } .mine.tk.cmp .tk-names .tn { font-size: 11px; } .mine.tk.cmp .tk-names .tl { font-size: 9px; } .mine.tk.cmp .tk-names .waku.sm { width: 14px; height: 14px; font-size: 9px; }
+.mine.tk.cmp .tk-odd2 { padding: 0 4px 2px 0; font-size: 10px; } .mine.tk.cmp .tk-odd2 b { font-size: 15px; }
+.mine.tk.cmp .tk-pay { gap: 4px; } .mine.tk.cmp .tk-ifw { font-size: 10px; } .mine.tk.cmp .tk-amt { font-size: 21px; } .mine.tk.cmp .tk-amt.l6 { font-size: 18px; } .mine.tk.cmp .tk-amt.l7 { font-size: 16px; }
+.mine.tk.cmp .tk-amt .pt { font-size: 10px; }
+.mine.tk.cmp .tk-stub { margin: 0 -8px 0; padding: 3px 8px 0; border-top-width: 1.5px; } .mine.tk.cmp .tk-stub::before, .mine.tk.cmp .tk-stub::after { top: -6px; width: 10px; height: 10px; } .mine.tk.cmp .tk-stub::before { left: -5px; } .mine.tk.cmp .tk-stub::after { right: -5px; }
+.mine.tk.cmp .tk-who { font-size: 9.5px; } .mine.tk.cmp .tk-who b { font-size: 13px; } .mine.tk.cmp .tk-who .tk-nick { font-size: 11.5px; max-width: 120px; } .mine.tk.cmp .tk-iss { font-size: 9px; }
+.mine.tk.cmp .tk-hit { width: 54px; height: 54px; margin: 3px 0 0 2px; border-width: 2px; box-shadow: 0 0 0 1px #e9b84a, inset 0 0 0 1.5px #fdfcf5, inset 0 0 0 2.5px #d6332b; }
+.mine.tk.cmp .tk-hit-in b { font-size: 19px; } .mine.tk.cmp .tk-hit-in i { font-size: 5px; } .mine.tk.cmp .tk-hit-in i:first-child { margin-bottom: 1px; } .mine.tk.cmp .tk-hit-in i:last-child { margin-top: 1px; }
+.mine.tk.cmp.hit .tkt { box-shadow: 0 0 0 1.5px var(--gold2), 0 6px 16px rgba(0, 0, 0, .4); }
