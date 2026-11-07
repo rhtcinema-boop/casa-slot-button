@@ -193,8 +193,8 @@
   },
   {
    "path": "index.html",
-   "size": 27532,
-   "sha256": "35893850530b5819349ab7cd2f3add4fd6ee7421792e01fc2c9e4b596236bd30"
+   "size": 27605,
+   "sha256": "2ec56142d2dfee0cba9eff8c78274dc833e9765a0712ce3d16985b07ecc3b2c6"
   },
   {
    "path": "js/audio.js",
@@ -363,13 +363,13 @@
   },
   {
    "path": "v2/watch.css",
-   "size": 16596,
-   "sha256": "407bd5d3a39240b924c0f8c5dac06a913ed0272e869733547fb03201bca67465"
+   "size": 18168,
+   "sha256": "19bdbe3243d7ea636e2fb0de557051cc057c5f1f066dcdf836fd41f9a6399b0b"
   },
   {
    "path": "v2/watch.js",
-   "size": 24432,
-   "sha256": "36427fe86a3e8d3f208ad3e539e8558da92a7a0fb15ac4ec7163d23cc6a50664"
+   "size": 26137,
+   "sha256": "99fc003519ead62d7b6215cd47f1a1ce600744509cd56aaeb9c27b7f964862e7"
   }
  ]
 }
