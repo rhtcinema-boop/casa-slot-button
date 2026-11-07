@@ -15,16 +15,17 @@
   box-shadow: 0 10px 26px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .5);
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%); /* 右上の角の切り欠き */
 }
-.tkt::before { content: ""; position: absolute; inset: 4px; border: 1px solid rgba(47, 143, 99, .35); border-radius: 4px; pointer-events: none; }
+.tkt::before { content: ""; position: absolute; inset: 4px; border: 1px solid rgba(47, 143, 99, .35); border-radius: 4px; background: rgba(253, 252, 245, .2); pointer-events: none; } /* 地紋（緑の丸）を 2 割薄く */
 .tkin { position: relative; padding: 8px 10px 6px; display: flex; flex-direction: column; gap: 4px; }
-.tk-body { display: grid; grid-template-columns: minmax(0, 96px) 34px minmax(0, 1fr); column-gap: 10px; align-items: stretch; }
+.tk-body { display: grid; grid-template-columns: minmax(0, 104px) 34px minmax(0, 1fr); column-gap: 10px; align-items: stretch; }
 /* 左: 日付・店・レース番号・QR 風・casa DERBY */
 .tk-l { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .tk-date { font-size: 11.5px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tk-store { font-size: 24px; font-weight: 900; line-height: 1.05; letter-spacing: .04em; white-space: nowrap; overflow: hidden; }
-.tk-rno { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.tk-store { margin-top: -4px; font-size: 24px; font-weight: 900; line-height: 1.05; letter-spacing: .04em; white-space: nowrap; overflow: hidden; }
+.tk-rno { display: flex; align-items: center; gap: 3px; margin-top: 7px; white-space: nowrap; }
 .tk-rno b { display: inline-grid; place-items: center; min-width: 30px; height: 24px; padding: 0 4px; background: var(--tk-ink); color: #fff; font-size: 18px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
 .tk-rno span { font-size: 14px; font-weight: 900; }
+.tk-rno.tm { gap: 16px; margin-left: -3px; margin-top: 3px; } /* 時刻の帯を左、「発走」を右 */
 .tk-rno.tm b { font-size: 14px; min-width: 0; }
 .tk-rno.tm span { font-size: 12px; }
 .tk-foot { display: flex; align-items: flex-end; gap: 5px; margin-top: auto; padding-right: 2px; }
@@ -39,30 +40,30 @@
 .tk-band b { writing-mode: vertical-rl; text-orientation: upright; font-size: 20px; font-weight: 900; letter-spacing: .1em; line-height: 1; color: var(--tk-ink); }
 /* 右: 無料の札・組み合わせ・★と当たれば pt・馬の名前 */
 .tk-r { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.tk-cap { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--tk-green); white-space: nowrap; }
-.tk-cap > span:first-child { overflow: hidden; min-width: 0; white-space: nowrap !important; }
-.tk-free { flex: none; padding: 1px 7px; border-radius: 999px; background: var(--tk-ink); color: var(--gold); font-size: 10px; font-weight: 900; letter-spacing: .02em; white-space: nowrap; }
-.tk-free small { font-size: 9px; font-weight: 700; color: var(--cream); }
+.tk-cap { display: flex; align-items: center; justify-content: space-between; gap: 3px; font-size: 10px; font-weight: 700; color: var(--tk-green); white-space: nowrap; }
+.tk-cap > span:first-child { overflow: hidden; min-width: 0; white-space: nowrap !important; } /* b196: 左の列を 8px 広げた分、無料の札を少し細くして「1着 3番 → 2着 5番」が切れないように */
+.tk-free { flex: none; padding: 1px 4px; border-radius: 999px; background: var(--tk-ink); color: var(--gold); font-size: 9px; font-weight: 900; letter-spacing: .02em; white-space: nowrap; }
+.tk-free small { font-size: 8.5px; font-weight: 700; color: var(--cream); }
 .tk-combo { display: flex; align-items: center; gap: 4px; flex: none; }
 .tk-combo .bx { display: grid; place-items: center; width: 48px; height: 48px; border: 2.5px solid var(--tk-ink); background: #fff; font-size: 34px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
 .tk-combo i { font-style: normal; font-size: 22px; font-weight: 900; color: var(--tk-gold); }
-.tk-pay { display: flex; align-items: baseline; justify-content: flex-end; gap: 5px; min-width: 0; line-height: 1; margin-top: auto; }
-.tk-ifw { font-size: 11px; font-weight: 700; color: var(--tk-dim); white-space: nowrap; }
-.tk-pay .tk-st { font-size: 11px; letter-spacing: -.05em; color: var(--tk-ink); }
-.tk-amt { font-size: 27px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; color: var(--tk-ink); white-space: nowrap; }
-.tk-amt.l6 { font-size: 23px; } .tk-amt.l7 { font-size: 20px; }
+.tk-pay { display: flex; align-items: baseline; justify-content: flex-end; gap: 5px; min-width: 0; line-height: 1; padding-right: 8px; }
+.tk-ifw { position: relative; top: -3px; font-size: 11px; font-weight: 700; color: var(--tk-dim); white-space: nowrap; }
+.tk-amt { font-size: 29px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; color: var(--tk-ink); white-space: nowrap; }
+.tk-amt.l6 { font-size: 25px; } .tk-amt.l7 { font-size: 22px; }
 .tk-amt .pt { font-size: 12px; margin-left: 1px; color: var(--tk-gold); }
 .tk-names { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tk-names .tn { display: flex; align-items: center; gap: 3px; min-width: 0; }
 .tk-names .tl { flex: none; font-size: 10px; font-weight: 700; color: var(--tk-dim); }
 .tk-names .waku.sm { width: 16px; height: 16px; border-radius: 3px; font-size: 10px; }
 .tk-names .nmx { font-size: 12.5px; font-weight: 700; white-space: nowrap !important; overflow: hidden; min-width: 0; flex: 1 1 auto; line-height: 1.2; }
-/* 下: 合計・いまの倍率／ミシン目の下に会計番号・ニックネーム・発行・通し番号風（1 行ずつ） */
-.tk-st { font-size: 11px; letter-spacing: -.05em; color: var(--tk-ink); }
-.tk-sum { display: flex; align-items: baseline; column-gap: 3px; padding-top: 3px; border-top: 1px solid rgba(20, 32, 58, .2); font-size: 12px; font-weight: 700; white-space: nowrap; }
-.tk-sum > b { font-size: 15px; font-weight: 900; }
-.tk-sum .tk-odd { margin-left: auto; }
-.tk-sum .tk-odd b { font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums; }
+/* 下: 合計（真ん中に「合計 ★★ 1 票 ★★」）／ミシン目の下に会計番号・ニックネーム・発行・通し番号風（1 行ずつ）。倍率は右の列（額の上 .tk-odd2） */
+.tk-st { font-size: 10px; letter-spacing: -.05em; color: var(--tk-ink); } /* 星は 1 割小さく */
+.tk-sum { display: flex; align-items: center; justify-content: center; column-gap: 6px; padding-top: 5px; border-top: 1px solid rgba(20, 32, 58, .2); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.tk-sum > b { position: relative; top: 3px; font-size: 17px; font-weight: 900; }
+.tk-sum .tk-st:first-of-type { margin-right: 6px; } .tk-sum .tk-st:last-of-type { margin-left: 6px; }
+.tk-odd2 { margin-top: auto; padding: 0 8px 4px 0; text-align: right; font-size: 12px; font-weight: 700; color: var(--tk-dim); white-space: nowrap; }
+.tk-odd2 b { font-size: 19px; font-weight: 900; color: var(--tk-ink); font-variant-numeric: tabular-nums; }
 .tk-stub { position: relative; display: flex; align-items: baseline; justify-content: space-between; column-gap: 6px; margin: 1px -10px 0; padding: 5px 10px 0; border-top: 2px dashed rgba(20, 32, 58, .3); white-space: nowrap; }
 .tk-stub::before, .tk-stub::after { content: ""; position: absolute; top: -8px; width: 14px; height: 14px; border-radius: 50%; background: var(--bg); } /* ミシン目の両端の切り欠き */
 .tk-stub::before { left: -7px; } .tk-stub::after { right: -7px; }
@@ -70,51 +71,33 @@
 .tk-who b { font-size: 16px; font-weight: 900; color: var(--tk-ink); font-variant-numeric: tabular-nums; }
 .tk-who .tk-nick { display: inline-block; max-width: 150px; overflow: hidden; vertical-align: bottom; font-size: 14px; font-weight: 900; color: var(--tk-ink); }
 .tk-iss { flex: none; font-size: 10px; font-weight: 700; color: var(--tk-dim); font-variant-numeric: tabular-nums; }
-.tk-ser { font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 9.5px; letter-spacing: .04em; color: #3c4a63; white-space: nowrap; overflow: hidden; }
+.tk-ser { font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 7.8px; letter-spacing: .04em; color: #a3abbb; opacity: .92; white-space: nowrap; overflow: hidden; }
 .tk-note { margin: 0; text-align: center; font-size: 12px; color: var(--dim); word-break: auto-phrase; text-wrap: balance; }
 .mine.tk.b2 .tkt { --tk-sky: #f1c75b; } /* 2 枚目は帯の線を金に（1 枚目と見分ける） */
 @media (max-width: 370px) {
   .tkin { padding: 6px 8px 5px; }
-  .tk-body { grid-template-columns: minmax(0, 86px) 30px minmax(0, 1fr); column-gap: 8px; }
+  .tk-body { grid-template-columns: minmax(0, 94px) 30px minmax(0, 1fr); column-gap: 8px; }
   .tk-store { font-size: 21px; }
   .tk-qrs .qr { width: 28px; height: 28px; }
   .tk-band b { font-size: 18px; }
   .tk-combo .bx { width: 44px; height: 44px; font-size: 32px; }
   .tk-combo { gap: 3px; } .tk-combo i { font-size: 18px; }
-  .tk-amt { font-size: 24px; } .tk-amt.l6 { font-size: 21px; } .tk-amt.l7 { font-size: 18px; }
+  .tk-amt { font-size: 26px; } .tk-amt.l6 { font-size: 22.5px; } .tk-amt.l7 { font-size: 19.5px; }
   .tk-free { padding: 1px 5px; font-size: 9px; } .tk-free small { font-size: 8.5px; } /* 「参加無料」は狭くても必ず見せる */
   .tk-stub { margin: 1px -8px 0; padding: 5px 8px 0; }
   .tk-who .tk-nick { max-width: 110px; }
-  .tk-ser { font-size: 8.5px; letter-spacing: .02em; }
+  .tk-ser { font-size: 7.1px; letter-spacing: .02em; }
 }
+/* 2026-11-07 ChatGPT 採点（82 → 97 点）で整えた並びを、b196 から投票後の券（締切前）にも同じに使う: 左の列 104px・「上野」は日付に寄せ発走との間を空ける・時刻の帯を左「発走」を右・額は星なしで 29px 右に 8px 余白・ラベルを 3px 上・通し番号 7.8px で薄く・地紋 2 割薄く（上の決まり）。判子・金の縁・赤い字は当たりの券だけ（下） */
 /* ---------- 2026-11-07 オーナー決定「的中の記念画面」＝結果の画面（当たりだけ）の券に赤い丸い「的中」の判子（bet.js R.result → BetTicket(r, v, n, result)）----------
    写真に撮りたくなるように: 赤い二重の丸・金の縁・少し傾ける・中に「的中」と casa DERBY と日付。インクの判子らしく下の番号が透けて見える（multiply）。券は金の縁で光らせ、当選額は赤 */
 .mine.tk.hit .tkt { box-shadow: 0 0 0 2px var(--gold2), 0 0 0 3.5px rgba(255, 215, 115, .35), 0 10px 26px rgba(0, 0, 0, .45), 0 0 30px rgba(255, 215, 115, .28); }
 .mine.tk.hit .tk-ifw, .mine.tk.hit .tk-amt { color: #b8231c; }
 .mine.tk.hit .tk-amt .pt { color: #b8231c; }
-.mine.tk.hit .tk-sum .tk-odd b { color: #b8231c; }
+.mine.tk.hit .tk-odd2 b { color: #b8231c; }
 .tk-hit { position: relative; z-index: 2; flex: none; margin: 18px 0 2px 2px; width: 82px; height: 82px; border-radius: 50%; border: 3px solid #d6332b; box-shadow: 0 0 0 1.5px #e9b84a, inset 0 0 0 2.5px #fdfcf5, inset 0 0 0 4px #d6332b;
   background: rgba(214, 51, 43, .05); color: #d6332b; transform: rotate(-12deg); mix-blend-mode: multiply; opacity: .93; pointer-events: none;
   display: grid; place-items: center; animation: tkHit .55s cubic-bezier(.2, 1.5, .4, 1) both; } /* 左の列の中（日付・店・レース・発走の下）に押す＝文字に重ならない。番号・馬名・当選額も隠れない（2026-11-07 ChatGPT 採点の直し） */
-/* 当たった券の並び（2026-11-07 ChatGPT 採点 82 点 → 直し）: 左の列を 8px 広げて判子の分だけ背を高く・「上野」と発走の間を空ける・合計欄は星 2 つずつで「1 票」を大きく・当選額は星なしで少し大きく右に余白・通し番号は小さく薄く */
-.mine.tk.hit .tk-body { grid-template-columns: minmax(0, 104px) 34px minmax(0, 1fr); }
-.mine.tk.hit .tk-store { margin-top: -4px; } /* 再採点 95 点: 日付との間を 4px 戻す */ /* 2026-11-07 再採点 90 点 → 「上野」を上に・「発走」を右に・合計欄の星を外側に「1 票」を下に・当選額のラベルを上に・通し番号をさらに薄く */
-.mine.tk.hit .tk-rno { margin-top: 7px; }
-.mine.tk.hit .tk-rno.tm { gap: 16px; margin-left: -3px; } /* 再採点 93 点: 時刻の帯を 3px 左・「発走」を 4px 右 */
-.mine.tk.hit .tk-sum > b { position: relative; top: 3px; }
-.mine.tk.hit .tk-sum .tk-st { font-size: 10px; } /* 星を 1 割小さく */
-.mine.tk.hit .tkt::before { background: rgba(253, 252, 245, .2); } /* 当たりの券は地紋（緑の丸）を 2 割薄く（倍率・当選額の後ろ） */
-.mine.tk.hit .tk-sum .tk-st:first-of-type { margin-right: 6px; } .mine.tk.hit .tk-sum .tk-st:last-of-type { margin-left: 6px; }
-.mine.tk.hit .tk-ifw { position: relative; top: -3px; }
-.mine.tk.hit .tk-rno.tm { margin-top: 3px; }
-.mine.tk.hit .tk-pay { padding-right: 8px; }
-.mine.tk.hit .tk-amt { font-size: 29px; } .mine.tk.hit .tk-amt.l6 { font-size: 25px; } .mine.tk.hit .tk-amt.l7 { font-size: 22px; }
-.mine.tk.hit .tk-sum { padding-top: 5px; column-gap: 6px; align-items: center; justify-content: center; } /* 当たり: 倍率は右の列（当選額の上）に移したので、合計欄は「合計 ★★ 1 票 ★★」を真ん中に */
-.mine.tk.hit .tk-sum > b { font-size: 17px; }
-.tk-odd2 { margin-top: auto; padding: 0 8px 4px 0; text-align: right; font-size: 12px; font-weight: 700; color: var(--tk-dim); white-space: nowrap; }
-.tk-odd2 b { font-size: 19px; font-weight: 900; color: #b8231c; font-variant-numeric: tabular-nums; }
-.mine.tk.hit .tk-pay { margin-top: 0; }
-.mine.tk.hit .tk-ser { font-size: 7.8px; color: #a3abbb; opacity: .92; }
 .tk-hit-in { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1; text-align: center; }
 .tk-hit-in b { font-family: var(--display); font-weight: 900; font-size: 33px; letter-spacing: .08em; text-indent: .08em; line-height: 1; }
 .tk-hit-in i { font-style: normal; font-family: Arial, var(--body); font-size: 7.5px; font-weight: 700; letter-spacing: .06em; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -123,7 +106,4 @@
 @media (prefers-reduced-motion: reduce) { .tk-hit { animation: none; } }
 @media (max-width: 370px) {
   .tk-hit { width: 74px; height: 74px; margin: 18px 0 2px 2px; } .tk-hit-in b { font-size: 26px; }
-  .mine.tk.hit .tk-body { grid-template-columns: minmax(0, 94px) 30px minmax(0, 1fr); }
-  .mine.tk.hit .tk-amt { font-size: 26px; } .mine.tk.hit .tk-amt.l6 { font-size: 22.5px; } .mine.tk.hit .tk-amt.l7 { font-size: 19.5px; }
-  .mine.tk.hit .tk-ser { font-size: 7.1px; }
 }
