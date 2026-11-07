@@ -1500,3 +1500,46 @@
 /* 2026-11-05: 共通の h3（高さ 44px）を外す */
 #stage.v2 .v2wait .hint h3, #stage.v2 .v2wait .ecard h3 { height: auto; }
 #stage.v2 .v2wait .hint h3 { display: block; white-space: normal; }
+
+/* ======================================================================================================
+   この店の当たった人を先に大きく（2026-11-07 オーナー「3 店の一覧の前に、この店で当たった人の名前と金額を数秒、画面いっぱいに」。v2/tv.js の localWin）
+   結果の画面の上に 8 秒だけ重ねる（#v2resLw・.v2res.lw-on）。紺の地に金の額縁、当たった人は金のカード（組み合わせの帯 .pay と同じ色）。
+   1 人なら 1 枚を大きく、2〜3 人は横に並べ、4〜6 人は 3 列 2 段、7 人以上は「ほか ○ 人」
+   ====================================================================================================== */
+.v2res .lw { position: absolute; z-index: 20; inset: 0; display: flex; align-items: stretch; padding: 34px 60px; background: radial-gradient(ellipse at 50% 38%, #2a4684, #0a1322 72%); color: #fff; font-family: var(--font-tv); overflow: hidden; }
+.v2res .lw[hidden] { display: none; }
+.v2res .lw::before { content: ""; position: absolute; left: 50%; top: 40%; width: 2400px; height: 2400px; margin: -1200px 0 0 -1200px; background: repeating-conic-gradient(from 0deg, rgba(255, 213, 79, .13) 0deg 9deg, rgba(255, 213, 79, 0) 9deg 18deg); pointer-events: none; }
+.v2res .lw.in { animation: v2lwIn .5s var(--ease-out) both; }
+@keyframes v2lwIn { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
+#stage.v2.m-result .v2res.lw-on { z-index: 8; } /* 右下の QR（z-index 7）より上に */
+#stage.v2.m-result .v2res.lw-on .pay .x, #stage.v2.m-result .v2res.lw-on .pay b.o { animation-play-state: paused; } /* 当選額の弾みは大写しのあとで */
+.v2res .lw-in { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 24px 40px 20px; border-radius: 26px; background: rgba(10, 19, 34, .62); box-shadow: 0 0 0 5px #e9c25e, 0 0 0 10px #0a1322, 0 0 0 13px #e9c25e, 0 20px 60px rgba(0, 0, 0, .55); }
+.v2res .lw-hd { text-align: center; white-space: nowrap; }
+.v2res .lw-hd small { display: block; font: 800 20px/1 var(--font-num); letter-spacing: .32em; color: #e9c25e; }
+.v2res .lw-hd h3 { margin: 6px 0 0; font-size: 92px; font-weight: 900; line-height: 1.05; letter-spacing: .04em; color: #fff6c8; text-shadow: 0 4px 0 #8a5a00, 0 0 34px rgba(255, 213, 79, .55); }
+.v2res .lw-hd h3 em { font-style: normal; font-size: 54px; margin: 0 8px; color: #ffd54f; }
+.v2res .lw-sub { display: block; margin-top: 6px; font-size: 30px; font-weight: 900; color: #dfe7f3; }
+.v2res .lw-sub b { color: #ffe14d; font: 900 44px/1 var(--font-num); margin: 0 6px; }
+.v2res .lw-sub .tst { font-style: normal; margin-left: 16px; padding: 4px 12px; border-radius: 8px; background: #c62828; color: #fff; font-size: 22px; vertical-align: middle; }
+.v2res .lw-cards { flex: 1; width: 100%; min-height: 0; display: grid; gap: 22px 36px; align-content: center; justify-content: center; margin: 10px 0 8px; padding-bottom: 80px; } /* padding-bottom: 見出しに近づける（真ん中より 40px 上。2026-11-07 採点の指摘 2 回目で 12px 上に） */
+.v2res .lw-cards.n1 { grid-template-columns: 880px; }
+.v2res .lw-cards.n2 { grid-template-columns: repeat(2, 660px); }
+.v2res .lw-cards.n3 { grid-template-columns: repeat(3, 424px); }
+.v2res .lw-cards.n4, .v2res .lw-cards.n5, .v2res .lw-cards.n6 { grid-template-columns: repeat(3, 440px); }
+.v2res .lw-cards .c { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 16px 28px; border-radius: 20px; background: linear-gradient(180deg, #fff6c8, #ffd54f); color: #4a2c00; box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffb300, 0 12px 30px rgba(0, 0, 0, .45); animation: v2lwPop .55s var(--ease-out) both; }
+.v2res .lw-cards .c:nth-child(2) { animation-delay: .12s; } .v2res .lw-cards .c:nth-child(3) { animation-delay: .24s; } .v2res .lw-cards .c:nth-child(4) { animation-delay: .36s; } .v2res .lw-cards .c:nth-child(5) { animation-delay: .48s; } .v2res .lw-cards .c:nth-child(6) { animation-delay: .6s; }
+@keyframes v2lwPop { 0% { opacity: 0; transform: scale(.7); } 60% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+.v2res .lw-cards .c .bl { height: 34px; font-size: 24px; font-weight: 800; color: #6a4a00; white-space: nowrap; }
+.v2res .lw-cards .c .bl b { font: 900 34px/1 var(--font-num); color: #4a2c00; margin: 0 2px; }
+.v2res .lw-cards .c .nk { display: block; max-width: 80%; /* 名前はカードの幅の 8 割まで。超えるときだけ小さく（fitText） */ font-weight: 900; line-height: 1.12; white-space: nowrap; overflow: hidden; }
+.v2res .lw-cards.n2 .c, .v2res .lw-cards.n3 .c { padding: 23px 28px 30px; gap: 12px; } .v2res .lw-cards.n2 .c .bl, .v2res .lw-cards.n3 .c .bl { margin-bottom: 7px; } .v2res .lw-cards.n2 .c .am, .v2res .lw-cards.n3 .c .am { margin-top: -5px; } /* 会計番号を 7px 上・金額を 5px 上（採点 2 回目） */ /* 2〜3 人: 上下の余白と名前・金額の間を広く（2026-11-07 採点の指摘） */
+.v2res .lw-cards .c .am { display: block; max-width: 100%; font-family: var(--font-num); font-weight: 900; font-style: normal; line-height: 1.1; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; color: #4a2c00; }
+.v2res .lw-cards .c .am small.pt { font-size: .4em; margin-left: 6px; }
+.v2res .lw-cards .c .am small.tst { font-size: .6em; padding: 2px 14px; border-radius: 8px; background: #c62828; color: #fff; }
+.v2res .lw-cards.n1 .c { padding: 23px 40px 28px; gap: 8px; } .v2res .lw-cards.n1 .c .bl { margin-bottom: 5px; } /* 会計番号を 5px 上・名前と金額の間 8px（採点 2 回目） */ .v2res .lw-cards.n1 .c .nk { line-height: 1.04; } .v2res .lw-cards.n1 .c .am { line-height: 1; } .v2res .lw-cards.n1 .c .bl { height: 40px; font-size: 30px; } .v2res .lw-cards.n1 .c .bl b { font-size: 42px; }
+.v2res .lw-cards.n4 .c .bl, .v2res .lw-cards.n5 .c .bl, .v2res .lw-cards.n6 .c .bl { height: 28px; font-size: 20px; } .v2res .lw-cards.n4 .c .bl b, .v2res .lw-cards.n5 .c .bl b, .v2res .lw-cards.n6 .c .bl b { font-size: 28px; }
+.v2res .lw-more { min-height: 36px; font: 900 30px/1.2 var(--font-tv); color: #ffe14d; }
+.v2res .lw-more:empty { display: none; }
+.v2res .lw-ft { margin-top: 6px; font-size: 31px; font-weight: 900; color: #dfe7f3; white-space: nowrap; }
+/* 2026-11-07 レース中の右の列: 確定の倍率のときの「確定」の札 */
+.v2odds h5 small em.fix { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; background: #f2b705; color: #1d2433; font: 900 12px/1.5 var(--font-tv); font-style: normal; letter-spacing: .04em; vertical-align: 1px; }
