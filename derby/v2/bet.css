@@ -488,3 +488,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
   .pk .ck { top: 1px; right: 1px; width: 14px; height: 14px; font-size: 9px; }
   .pk.k2.on b { font-size: 14px; }
 }
+
+/* 馬券ふうの券（v2/ticket.css）が届くまで隠す */
+.mine.tk { opacity: 0; transition: opacity .18s; }
+html.tkok .mine.tk { opacity: 1; }
