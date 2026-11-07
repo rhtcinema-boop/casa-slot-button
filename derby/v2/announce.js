@@ -130,18 +130,19 @@
   // ---------- 声を鳴らす（実況の声の部品・場内スピーカーの音。scene を通さない） ----------
   /* 1 回の案内（チャイム → 声 → チャイム）を ctx の時刻 t0 から予約する。dest: 出口（本番は ctx.destination。書き出し・確かめは OfflineAudioContext）。
      返す: { dur: t0 から後のチャイムの終わりまで（秒）, parts: [チャイム, { kind: 'voice', id, at, len }, チャイム], out, nodes } か null（声の部品が無い） */
-  function schedule(ctx, dest, id, t0) {
+  function schedule(ctx, dest, id, t0, o) { // o.chime === false: チャイムなし（結果の大写しの「渋谷店で的中！」。2026-11-07）
     const C = root.Commentary && Commentary._, c = C && C.clipById && C.clipById(id); if (!c) return null;
+    const noChime = !!(o && o.chime === false);
     const out = ctx.createGain(); out.gain.value = 1;
     const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
     out.connect(lim); lim.connect(dest);
     const pa = C.buildPA(ctx, out, C.seeded(4242));
     const bus = chimeBus(ctx, out, C.seeded ? C.seeded(7171) : Math.random);
     const parts = []; let t = t0;
-    parts.push(chime(ctx, bus, 'up', t)); t += CHIME.len + CHIME.gap;
+    if (!noChime) { parts.push(chime(ctx, bus, 'up', t)); t += CHIME.len + CHIME.gap; }
     const src = ctx.createBufferSource(); src.buffer = c.buf; src.connect(pa); src.start(t, c.off, c.dur);
-    parts.push({ kind: 'voice', id, at: t, len: c.dur }); t += c.dur + CHIME.gap;
-    parts.push(chime(ctx, bus, 'down', t)); t += CHIME.len;
+    parts.push({ kind: 'voice', id, at: t, len: c.dur }); t += c.dur;
+    if (!noChime) { t += CHIME.gap; parts.push(chime(ctx, bus, 'down', t)); t += CHIME.len; }
     return { dur: t - t0, parts, out, nodes: [src, pa, bus, out, lim] };
   }
   let busyUntil = 0; // テレビの時計（DERBY.now）の ms。自分の案内（後のチャイムまで）が終わる時刻（＋1.5 秒）
@@ -154,9 +155,9 @@
       return ctx.state === 'running';
     },
     // 鳴らせたら長さ（秒。前のチャイムから後のチャイムの終わりまで）、鳴らせなければ 0。消音なら何も作らない
-    play(id) {
+    play(id, o) {
       if (A.env.muted() || !this.ready()) return 0;
-      const ctx = Sfx.ctx(), s = schedule(ctx, ctx.destination, id, ctx.currentTime + 0.05); if (!s) return 0;
+      const ctx = Sfx.ctx(), s = schedule(ctx, ctx.destination, id, ctx.currentTime + 0.05, o); if (!s) return 0;
       cur = s;
       setTimeout(() => { s.nodes.forEach((n) => { try { n.disconnect(); } catch (e) { /* noop */ } }); if (cur === s) cur = null; }, (s.dur + 3.5) * 1000); // 響きが消えてから外す
       return s.dur + 0.05;
@@ -207,7 +208,16 @@
     }
   }
 
-  const A = { plan, due, candidates, isTest, CLIP, CL, GAP, LATE, LATE_OPEN, KEY, CHIME, chime, schedule, mem, player, env, log, tick, busyUntil: () => busyUntil, reset() { busyUntil = 0; cur = null; log.length = 0; } };
+  /* 案内の決まりの外で 1 つの声を鳴らす（結果の画面の大写し「渋谷店で的中！」＝ e:hit_<店の id>。v2/tv.js の localWin。2026-11-07）:
+     チャイムなし。消音・レース中・実況・自分の案内の途中は鳴らさない（0 を返す）。鳴らしたら、その長さのあいだ投票の案内を待たせる（busyUntil） */
+  function say(id) {
+    const D = root.DERBY, t = D && D.now ? D.now() : Date.now();
+    if (env.muted() || env.busy() || t < busyUntil || !A.player.ready()) return 0;
+    const dur = A.player.play(id, { chime: false }); if (!dur) return 0;
+    busyUntil = t + dur * 1000 + 800; note({ t, key: 'say', clip: id });
+    return dur;
+  }
+  const A = { plan, due, candidates, isTest, CLIP, CL, GAP, LATE, LATE_OPEN, KEY, CHIME, chime, schedule, say, mem, player, env, log, tick, busyUntil: () => busyUntil, reset() { busyUntil = 0; cur = null; log.length = 0; } };
   if (typeof module !== 'undefined' && module.exports) { module.exports = A; return; }
   root.DerbyAnnounce = A;
   const on = /[?&]store=[^&]/.test(Q) && !/[?&]watch=1\b/.test(Q) && !(root.DERBY_FIREBASE && root.DERBY_FIREBASE.demo) && !root.__derbyDemoPage;
