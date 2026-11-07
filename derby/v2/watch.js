@@ -31,6 +31,11 @@
   const fill = (s, o) => String(s).replace(/\{(\w+)\}/g, (m, k) => (o && o[k] != null ? o[k] : ''));
   document.documentElement.classList.add('watch');
 
+  /* 馬券ふうの券（v2/ticket.js。2026-11-07 オーナー「自分の予想を見るところは全部馬券のデザインに」）: 縦向きの「下に大きく自分の予想」を小さめの券（高さ 150px 前後）で。
+     ticket.js は window.BET（bet.js）が無いので、ここから言葉・状態・時刻・当選額・倍率を渡す（window.BET_TK）。届くまでは今までの行で出す */
+  window.BET_TK = { TX: { vote1: '1票目', vote2: '2票目', yourPick: TX.mine, hitMark: '当たり', missMark: 'はずれ', stampTag: 'スタンプ', bonusTag: '初参加ボーナス', billHead: '会計番号' }, get st() { return D.state; }, hhmm: (ms) => D.hhmm(ms), payFor, oddsTxt };
+  { const me = (document.currentScript || {}).src || '', s = document.createElement('script'); s.src = /watch\.js(\?[^#]*)?$/.test(me) ? me.replace(/watch\.js(\?[^#]*)?$/, 'ticket.js$1') : 'v2/ticket.js'; s.onload = () => { last.lines = ''; }; document.head.appendChild(s); }
+
   /* ---------- 親の窓（投票ページ）: 同じサイトのときだけ ---------- */
   function parentBet() { try { const P = window.parent; if (P && P !== window && P.BETWATCH) { void P.location.href; return P.BETWATCH; } } catch (e) { /* 別のサイト */ } return null; }
   const IN_BET = !!parentBet();
@@ -159,7 +164,7 @@
   /* ---------- 描く（1 秒に 5 回まで。中身が変わったときだけ書き換える） ---------- */
   const last = { lock: '', lines: '', hype: '', res: '', rk: '', ord: '', bonus: '' };
   const celeDone = {};
-  function setHtml(id, key, html) { if (last[key] === html) return; last[key] = html; $(id).innerHTML = html; }
+  function setHtml(id, key, html) { if (last[key] === html) return false; last[key] = html; $(id).innerHTML = html; return true; }
   function lock(why) {
     const t = why === 'nogl' ? [TX.noGl, TX.noGlSub] : why === 'load' ? [TX.loading, ''] : why === 'login' ? [TX.login, TX.loginSub] : why === 'over' ? [TX.over, TX.overSub] : [TX.noVote, TX.noVoteSub];
     const k = why + '|' + t[0];
@@ -174,17 +179,22 @@
     const R = f.race, list = f.votes.list, rk = ranks(R), oc = outcome(R, list);
     // 自分の予想の行（3 票まで＋ほか n 件）
     let lines = '';
+    const tkOn = mode === 'w-port' && typeof window.BetTicket === 'function'; // 縦向きだけ券（横向きは帯が低いので今までの行）
     if (f.votes.pending && !list.length) lines = '<div class="wv wait">' + esc(TX.loadingMine) + '</div>';
     list.slice(0, 3).forEach((v, k) => {
       const od = oddsOf(R, v), p = oc && oc.per ? oc.per[k] : null;
       const lb = list.length > 1 ? (v.n === 2 ? TX.vote2 : k === 0 ? TX.mine : '予想' + (k + 1)) : TX.mine;
       const pos = rk && !oc ? '<span class="pos"><b>' + esc(horseOf(R, v.first).no) + '番</b> ' + esc(fill(TX.now, { r: rk[v.first] })) + ' <b>' + esc(horseOf(R, v.second).no) + '番</b> ' + esc(fill(TX.now, { r: rk[v.second] })) + '</span>' : '';
       const st = p ? (p.win ? ' hit' : ' miss') : rk && rk[v.first] === 1 && rk[v.second] === 2 ? ' hot' : '';
+      if (tkOn) { // 縦向き: 馬券ふうの小さめの券（ticket.js）。「いま○位」は券のすぐ上。結果が出たら当たりは判子つき・はずれは「はずれ」の札
+        lines += '<div class="wv tkw' + st + '"><span class="k">' + esc(lb) + '</span>' + pos + window.BetTicket(R, v, list.length > 1 ? (v.n === 2 ? 2 : 1) : 0, p ? { win: !!p.win, odds: od.o, amount: p.amount } : null, { cmp: true }) + '</div>';
+        return;
+      }
       lines += '<div class="wv' + st + '"><span class="k">' + esc(lb) + '</span><span class="cb"><small>1着</small>' + chip(R, v.first) + '<em>→</em><small>2着</small>' + chip(R, v.second) + '</span>' +
         (p ? '<span class="pt">' + (p.win ? esc(TX.hit) + ' <b>' + amt(p.amount) + '</b>pt' : esc(TX.miss)) + '</span>' : od.o ? '<span class="pt">当たれば <b>' + amt(payFor(od.o)) + '</b>pt</span>' : '') + pos + '</div>';
     });
     if (list.length > 3) lines += '<div class="wv more">' + esc(fill(TX.more, { n: list.length - 3 })) + '</div>';
-    setHtml('wLines', 'lines', lines);
+    if (setHtml('wLines', 'lines', lines) && tkOn && window.BetTicketFit) window.BetTicketFit($('wLines'));
     { const nv = String(Math.min(3, Math.max(1, list.length))); if ($('wLines').dataset.n !== nv) $('wLines').dataset.n = nv; } // 票の数で大きさを変える（watch.css）
     /* 順位の表（2026-10-30 オーナー「上がレースの絵・まん中に順位の表・下に大きく自分の予想」）: レース中はいまの順位（1 秒に 5 回まで）、ゴールのあとは着順、
        それより前（投票中・ゲート）は出走馬の番号と名前。自分の予想の馬は金の枠 */
