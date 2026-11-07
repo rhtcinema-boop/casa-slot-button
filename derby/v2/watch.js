@@ -181,7 +181,6 @@
       const pos = rk && !oc ? '<span class="pos"><b>' + esc(horseOf(R, v.first).no) + '番</b> ' + esc(fill(TX.now, { r: rk[v.first] })) + ' <b>' + esc(horseOf(R, v.second).no) + '番</b> ' + esc(fill(TX.now, { r: rk[v.second] })) + '</span>' : '';
       const st = p ? (p.win ? ' hit' : ' miss') : rk && rk[v.first] === 1 && rk[v.second] === 2 ? ' hot' : '';
       lines += '<div class="wv' + st + '"><span class="k">' + esc(lb) + '</span><span class="cb"><small>1着</small>' + chip(R, v.first) + '<em>→</em><small>2着</small>' + chip(R, v.second) + '</span>' +
-        '<span class="od">' + (od.o ? '<b>' + esc(oddsTxt(od.o)) + '</b>倍' : '') + '</span>' +
         (p ? '<span class="pt">' + (p.win ? esc(TX.hit) + ' <b>' + amt(p.amount) + '</b>pt' : esc(TX.miss)) + '</span>' : od.o ? '<span class="pt">当たれば <b>' + amt(payFor(od.o)) + '</b>pt</span>' : '') + pos + '</div>';
     });
     if (list.length > 3) lines += '<div class="wv more">' + esc(fill(TX.more, { n: list.length - 3 })) + '</div>';
