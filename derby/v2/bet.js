@@ -13,9 +13,9 @@
     test: 'テストレース',
     waitHead: '次のレース', waitVoteFrom: '投票は {t} から', waitLeft: '投票の始まりまで', dayOver: '本日のレースは終わりました',
     prep: '準備中です。少しお待ちください（自動で始まります）', prepStaff: 'スタッフにお知らせください', /* 2026-10-28: 投票の始まりを過ぎたのにレースがまだできていない（0:00 のまま止まって見えた） */
-    billHead: '会計番号', billSub: '伝票の番号（2けた）', nickHead: 'ニックネーム', nickChange: '変える', nickSaved: '前回の名前で投票します', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
+    billHead: '会計番号', nickHead: 'ニックネーム', nickChange: '変える', nickSaved: '前回の名前で投票します', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
     errBill: '会計番号を 2 けたで入れてください', errNick: 'ニックネームを入れてください',
-    pickHead: '1着と2着をえらぶ', pickAxisT: '2連単：1着と2着を順番どおりに当てる', pvHorse: '馬を選ぶ', pvPop: '人気順で選ぶ', first: '1着', second: '2着', colNo: '馬番', colName: '馬名', colOdds: 'の倍率', pickStep1: '① 1着になる馬を選んでください', pickStep2: '② 2着になる馬を選んでください', toConfirm: 'この予想で次へ', ifHit: '的中すると', pickDone: '予想が決まりました', pick2SubT: '同じ組み合わせでもえらべます', pickAxis: '上が1着・左が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
+    pickHead: '1着と2着をえらぶ', pvHorse: '馬を選ぶ', pvPop: '人気順で選ぶ', first: '1着', second: '2着', colNo: '馬番', colName: '馬名', colOdds: 'の倍率', pickStep1: '① 1着になる馬を選んでください', pickStep2: '② 2着になる馬を選んでください', toConfirm: 'この予想で次へ', ifHit: '的中すると', pickDone: '予想が決まりました', pick2SubT: '同じ組み合わせでもえらべます', pickAxis: '上が1着・左が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
     confHead: 'この予想で投票しますか？', ifWin: '当たれば', shiftNote: '倍率は締切のときに少し変わることがあります',
     voteBtn: '投票する', changeBtn: 'この予想に変える', back: '戻る', sending: '送っています…',
     voted: '投票しました', yourPick: 'あなたの予想', closeIn: '締切まで', redo: '選び直す',
@@ -237,7 +237,7 @@
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clr', '0', 'del'];
     return '<div class="scr entry">' + checkNote() + (notice ? '<div class="note" role="status">' + esc(notice) + '</div>' : '') + unpaidNote() + testTag(st && st.current) +
       (d.err === 'bill_taken' ? '<div class="note red" role="alert"><b>' + esc(TX.billTaken) + '</b>' + TX.billTakenSub.split('\n').map((s) => '<span class="ln">' + esc(s) + '</span>').join('') + '</div>' : '') +
-      '<div class="sec"><h1>' + esc(TX.billHead) + '</h1><p class="sub">' + esc(TX.billSub) + '</p>' +
+      '<div class="sec"><h1>' + esc(TX.billHead) + '</h1>' +
       '<div class="digits' + (b ? '' : ' empty') + '" id="digits" aria-live="polite" aria-label="会計番号 ' + esc(b) + '">' + digitsHtml(b) + '</div>' +
       '<div class="keypad">' + keys.map((k) => '<button type="button" data-key="' + k + '"' + (k === 'clr' ? ' aria-label="消す">消す' : k === 'del' ? ' aria-label="1文字消す">⌫' : '>' + k) + '</button>').join('') + '</div></div>' +
       (d.nickFixed ? '<div class="sec nickrow"><span class="nl">' + esc(TX.nickHead) + '</span><b class="nv" data-fit="16">' + esc(d.nick) + '</b><button type="button" class="btn ghost sm" data-act="editNick">' + esc(TX.nickChange) + '</button><p class="sub">' + esc(TX.nickSaved) + '</p></div>' : '<div class="sec"><h2>' + esc(TX.nickHead) + '</h2><input class="big nick" id="nick" type="text" autocomplete="off" autocapitalize="off" enterkeyhint="done" maxlength="40" value="' + esc(d.nick || '') + '" aria-label="ニックネーム（8文字まで）"><p class="sub">' + esc(TX.nickSub) + '</p></div>') +
@@ -266,7 +266,7 @@
       const sub = [h.cond, h.type, h.recent ? TX.recent + ' ' + h.recent : ''].filter(Boolean).map((x) => '<span class="nw">' + esc(x) + '</span>').join('<i>・</i>');
       return '<div class="btr' + (is1 ? ' s1' : '') + (is2 ? ' s2' : '') + '" role="row">' + waku(h, 'lg') +
         '<span class="bn"><b data-fit="15">' + esc(h.name) + '</b><small>' + sub + '</small></span>' +
-        '<button type="button" class="pk k1' + (is1 ? ' on' : '') + '" data-act="p1" data-i="' + h.i + '" aria-pressed="' + is1 + '" aria-label="1着 ' + h.no + '番 ' + esc(h.name) + '">' + (is1 ? '<span class="ck" aria-hidden="true">✓</span><b>' + esc(TX.first) + '</b>' : esc(TX.first)) + '</button>' +
+        '<button type="button" class="pk k1' + (is1 ? ' on' : '') + '" data-act="p1" data-i="' + h.i + '" aria-pressed="' + is1 + '">' + (is1 ? '<span class="ck" aria-hidden="true">✓</span><b>' + esc(TX.first) + '</b>' : esc(TX.first)) + '</button>' +
         '<button type="button" class="pk k2' + (is2 ? ' on' : '') + (o != null ? ' od' : '') + '" data-act="p2" data-i="' + h.i + '"' + (d.first == null || is1 ? ' disabled' : '') + ' aria-pressed="' + is2 + '" aria-label="2着 ' + h.no + '番 ' + esc(h.name) + (o != null ? ' ' + oddsTxt(o) + '倍' : '') + '">' +
           (is2 ? '<span class="ck" aria-hidden="true">✓</span>' : '') + (o != null ? '<b>' + oddsTxt(o) + '</b><i>倍</i>' : is1 ? '<small>1着</small>' : esc(TX.second)) + '</button></div>';
     }).join('');
@@ -283,8 +283,8 @@
       : '<p class="pdh">' + esc(d.first == null ? TX.pickStep1 : TX.pickStep2) + '</p>') + '</div>';
     const v1Line = v1 ? '<p class="v1line">' + esc(TX.vote1) + ' ' + arrowNum(v1.first, v1.second) + '</p>' : '';
     return '<div class="scr pickscr">' + checkNote() + testTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1><p class="sub b2sub">' + esc(TX.pick2SubT) + '</p>' + v1Line : '<h1>' + esc(TX.pickHead) + '</h1>') +
-      '<p class="axis">' + esc(TX.pickAxisT) + '</p>' + tabs + horseView + popView +
-      (d.redo || d.n === 2 ? '<button class="btn ghost" data-act="cancelRedo">' + esc(TX.back) + '</button>' :'<button class="link" data-act="toEntry"><span class="nw">' + esc(bill2(d.bill)) + '番・' + esc(d.nick) + '</span>　<span class="nw">' + esc(TX.back) + '</span></button>') + dock + '</div>';
+      tabs + horseView + popView +
+      (d.redo || d.n === 2 ? '<button class="btn ghost" data-act="cancelRedo">' + esc(TX.back) + '</button>' :'<button class="link" data-act="toEntry">' + esc(TX.back) + '</button>') + dock + '</div>';
   };
 
   /* ④ 確認: 組み合わせ・倍率・当たれば ○pt */
