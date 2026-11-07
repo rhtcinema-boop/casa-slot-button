@@ -87,3 +87,43 @@
   .tk-who .tk-nick { max-width: 110px; }
   .tk-ser { font-size: 8.5px; letter-spacing: .02em; }
 }
+/* ---------- 2026-11-07 オーナー決定「的中の記念画面」＝結果の画面（当たりだけ）の券に赤い丸い「的中」の判子（bet.js R.result → BetTicket(r, v, n, result)）----------
+   写真に撮りたくなるように: 赤い二重の丸・金の縁・少し傾ける・中に「的中」と casa DERBY と日付。インクの判子らしく下の番号が透けて見える（multiply）。券は金の縁で光らせ、当選額は赤 */
+.mine.tk.hit .tkt { box-shadow: 0 0 0 2px var(--gold2), 0 0 0 3.5px rgba(255, 215, 115, .35), 0 10px 26px rgba(0, 0, 0, .45), 0 0 30px rgba(255, 215, 115, .28); }
+.mine.tk.hit .tk-ifw, .mine.tk.hit .tk-amt { color: #b8231c; }
+.mine.tk.hit .tk-amt .pt { color: #b8231c; }
+.mine.tk.hit .tk-sum .tk-odd b { color: #b8231c; }
+.tk-hit { position: relative; z-index: 2; flex: none; margin: 18px 0 2px 2px; width: 82px; height: 82px; border-radius: 50%; border: 3px solid #d6332b; box-shadow: 0 0 0 1.5px #e9b84a, inset 0 0 0 2.5px #fdfcf5, inset 0 0 0 4px #d6332b;
+  background: rgba(214, 51, 43, .05); color: #d6332b; transform: rotate(-12deg); mix-blend-mode: multiply; opacity: .93; pointer-events: none;
+  display: grid; place-items: center; animation: tkHit .55s cubic-bezier(.2, 1.5, .4, 1) both; } /* 左の列の中（日付・店・レース・発走の下）に押す＝文字に重ならない。番号・馬名・当選額も隠れない（2026-11-07 ChatGPT 採点の直し） */
+/* 当たった券の並び（2026-11-07 ChatGPT 採点 82 点 → 直し）: 左の列を 8px 広げて判子の分だけ背を高く・「上野」と発走の間を空ける・合計欄は星 2 つずつで「1 票」を大きく・当選額は星なしで少し大きく右に余白・通し番号は小さく薄く */
+.mine.tk.hit .tk-body { grid-template-columns: minmax(0, 104px) 34px minmax(0, 1fr); }
+.mine.tk.hit .tk-store { margin-top: -4px; } /* 再採点 95 点: 日付との間を 4px 戻す */ /* 2026-11-07 再採点 90 点 → 「上野」を上に・「発走」を右に・合計欄の星を外側に「1 票」を下に・当選額のラベルを上に・通し番号をさらに薄く */
+.mine.tk.hit .tk-rno { margin-top: 7px; }
+.mine.tk.hit .tk-rno.tm { gap: 16px; margin-left: -3px; } /* 再採点 93 点: 時刻の帯を 3px 左・「発走」を 4px 右 */
+.mine.tk.hit .tk-sum > b { position: relative; top: 3px; }
+.mine.tk.hit .tk-sum .tk-st { font-size: 10px; } /* 星を 1 割小さく */
+.mine.tk.hit .tkt::before { background: rgba(253, 252, 245, .2); } /* 当たりの券は地紋（緑の丸）を 2 割薄く（倍率・当選額の後ろ） */
+.mine.tk.hit .tk-sum .tk-st:first-of-type { margin-right: 6px; } .mine.tk.hit .tk-sum .tk-st:last-of-type { margin-left: 6px; }
+.mine.tk.hit .tk-ifw { position: relative; top: -3px; }
+.mine.tk.hit .tk-rno.tm { margin-top: 3px; }
+.mine.tk.hit .tk-pay { padding-right: 8px; }
+.mine.tk.hit .tk-amt { font-size: 29px; } .mine.tk.hit .tk-amt.l6 { font-size: 25px; } .mine.tk.hit .tk-amt.l7 { font-size: 22px; }
+.mine.tk.hit .tk-sum { padding-top: 5px; column-gap: 6px; align-items: center; justify-content: center; } /* 当たり: 倍率は右の列（当選額の上）に移したので、合計欄は「合計 ★★ 1 票 ★★」を真ん中に */
+.mine.tk.hit .tk-sum > b { font-size: 17px; }
+.tk-odd2 { margin-top: auto; padding: 0 8px 4px 0; text-align: right; font-size: 12px; font-weight: 700; color: var(--tk-dim); white-space: nowrap; }
+.tk-odd2 b { font-size: 19px; font-weight: 900; color: #b8231c; font-variant-numeric: tabular-nums; }
+.mine.tk.hit .tk-pay { margin-top: 0; }
+.mine.tk.hit .tk-ser { font-size: 7.8px; color: #a3abbb; opacity: .92; }
+.tk-hit-in { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1; text-align: center; }
+.tk-hit-in b { font-family: var(--display); font-weight: 900; font-size: 33px; letter-spacing: .08em; text-indent: .08em; line-height: 1; }
+.tk-hit-in i { font-style: normal; font-family: Arial, var(--body); font-size: 7.5px; font-weight: 700; letter-spacing: .06em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tk-hit-in i:first-child { margin-bottom: 3px; } .tk-hit-in i:last-child { margin-top: 3px; }
+@keyframes tkHit { from { transform: rotate(-12deg) scale(1.6); opacity: 0; } 70% { opacity: .95; } to { transform: rotate(-12deg) scale(1); opacity: .93; } }
+@media (prefers-reduced-motion: reduce) { .tk-hit { animation: none; } }
+@media (max-width: 370px) {
+  .tk-hit { width: 74px; height: 74px; margin: 18px 0 2px 2px; } .tk-hit-in b { font-size: 26px; }
+  .mine.tk.hit .tk-body { grid-template-columns: minmax(0, 94px) 30px minmax(0, 1fr); }
+  .mine.tk.hit .tk-amt { font-size: 26px; } .mine.tk.hit .tk-amt.l6 { font-size: 22.5px; } .mine.tk.hit .tk-amt.l7 { font-size: 19.5px; }
+  .mine.tk.hit .tk-ser { font-size: 7.1px; }
+}
