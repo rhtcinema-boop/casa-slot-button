@@ -58,12 +58,13 @@
               (hit ? (ri >= 0 ? '<div class="tk-rno tm"><b>' + esc(at) + '</b><span>発走</span></div>' : '') + stamp /* 当たり: 発走の時刻を札で出し、その下に判子（流れの中＝重ならない）。QR 風の飾りは出さない */
                 : '<div class="tk-foot"><div class="tk-qrs">' + tkQr(seed) + tkQr(seed + 'q') + '</div>' + (ri >= 0 ? '<div class="tk-race"><b>' + esc(at) + '</b><br>発走</div>' : '') + '</div>') + '</div>' +
             '<div class="tk-band" aria-hidden="true"><i>EXACTA</i><b>2連単</b><i>EXACTA</i></div>' +
-            '<div class="tk-r"><div class="tk-cap"><span data-fit="9">' + esc(hit ? '2連単 的中' : comboText(r, v.first, v.second)) + '</span><span class="tk-free">投票券<small>（参加無料）</small></span></div>' +
+            '<div class="tk-r"><div class="tk-cap"><span data-fit="8">' + esc(hit ? '2連単 的中' : comboText(r, v.first, v.second)) + '</span><span class="tk-free">投票券<small>（参加無料）</small></span></div>' +
               '<div class="tk-combo"><span class="bx">' + no1 + '</span><i>→</i><span class="bx">' + no2 + '</span></div>' +
               '<div class="tk-names">' + nm(h1, '1着') + nm(h2, '2着') + '</div>' +
-              (hit ? '<div class="tk-odd2">確定の倍率 <b>' + esc(oddsTxt(o)) + '</b>倍</div>' : '') + '<div class="tk-pay"><span class="tk-ifw">' + (hit ? '当選額' : '当たれば') + '</span>' + (hit ? '' : '<span class="tk-st" aria-hidden="true">★★★</span>') + bigAmt(pay, 'tk-amt') + '</div></div>' +
+              '<div class="tk-odd2">' + (hit ? '確定の倍率' : 'いまの倍率') + ' <b>' + (hit || o ? esc(oddsTxt(o)) : '—') + '</b>倍</div>' + /* 2026-11-07 b196: 投票後の券も当たりの券と同じ並び＝倍率は右の列（額の上）・額に星なし */
+              '<div class="tk-pay"><span class="tk-ifw">' + (hit ? '当選額' : '当たれば') + '</span>' + bigAmt(pay, 'tk-amt') + '</div></div>' +
           '</div>' +
-          '<div class="tk-sum"><span>合計</span><span class="tk-st" aria-hidden="true">' + (hit ? '★★' : '★★★★') + '</span><b>1</b><span>票</span><span class="tk-st" aria-hidden="true">' + (hit ? '★★' : '★★★★') + '</span>' + (hit ? '' : '<span class="tk-odd">いまの倍率 <b>' + (o ? esc(oddsTxt(o)) : '—') + '</b>倍</span>') + '</div>' +
+          '<div class="tk-sum"><span>合計</span><span class="tk-st" aria-hidden="true">★★</span><b>1</b><span>票</span><span class="tk-st" aria-hidden="true">★★</span></div>' + /* 合計欄は「合計 ★★ 1 票 ★★」を真ん中に（当たり・投票後とも。2026-11-07 b196） */
           '<div class="tk-stub"><span class="tk-who"><span class="nw">' + esc(TX.billHead) + ' <b>' + esc(v.bill) + '</b></span>' + (who ? ' <span class="nw tk-nick" data-fit="11">' + esc(v.nick) + '</span>' : '') + '</span>' +
             (issued ? '<span class="tk-iss">発行 ' + esc(hhmm(issued)) + '</span>' : '') + '</div><div class="tk-ser" aria-hidden="true">' + esc(ser) + '</div>' +
         '</div></div>' +
