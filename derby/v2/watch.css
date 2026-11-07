@@ -161,3 +161,14 @@ html.w-port .wl[data-n="3"] .wv .od b, html.w-port .wl[data-n="3"] .wv .pt b { f
 html.w-port .wl[data-n="3"] .wv .pos { font-size: 14px; flex-basis: 100%; }
 /* 横向き（左右の空きにボタン）:「図で見る」は左の列の 2 段目 */
 html.w-bot.w-cols #wMap { position: absolute; left: 6px; top: 48px; max-width: calc(var(--wx) - 10px); padding: 0 8px; font-size: 12px; }
+/* 2026-11-07 オーナー「自分の予想を見るところは全部馬券のデザインに」: 縦向きの自分の予想は馬券ふうの小さめの券（v2/ticket.js・ticket.css の .mine.tk.cmp）。
+   .wv.tkw: 券の入れ物。上に「あなたの予想」と「いま○位」、その下に券（幅いっぱい・高さ 150px 前後）。票が 2 つ以上なら縦に並べて、入り切らなければ上下に動かして見る */
+html.w-port .wl .wv.tkw { flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 6px 8px 7px; overflow: visible; }
+html.w-port .wl .wv.tkw .k { text-align: center; font-size: 13px; }
+html.w-port .wl .wv.tkw .pos { flex-basis: auto; text-align: center; font-size: 17px; font-weight: 700; } html.w-port .wl .wv.tkw .pos b { font-size: 18px; }
+html.w-port .wl[data-n="2"] .wv.tkw, html.w-port .wl[data-n="3"] .wv.tkw { gap: 2px; padding: 5px 8px 6px; flex-direction: column; flex-wrap: nowrap; }
+html.w-port .wl[data-n="2"] .wv.tkw .pos, html.w-port .wl[data-n="3"] .wv.tkw .pos { font-size: 14px; flex-basis: auto; } html.w-port .wl[data-n="2"] .wv.tkw .pos b, html.w-port .wl[data-n="3"] .wv.tkw .pos b { font-size: 15px; }
+html.w-port .wl .wv.tkw.hit { background: linear-gradient(180deg, #4a3a08, #2a2006); }
+html.w-port .wl .wv.tkw.miss { opacity: 1; }
+html.w-port .wl .wv.tkw .tk-amt .pt { font-size: 10px; color: #9a6d12; } /* 券の中の「pt」は watch.css の .wv .pt（行の当たれば）の決まりを受けない */
+html.w-port .wl .wv.tkw .tk-pay { gap: 4px; }
