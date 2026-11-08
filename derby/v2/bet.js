@@ -61,6 +61,8 @@
   const now = () => (C ? C.serverNow() : Date.now());
   const MAX_NICK = 8, VKEY = 'casa.derby.vote.', NKEY = 'casa.derby.nick';
   const savedNick = () => { try { return cleanNick(localStorage.getItem(NKEY) || ''); } catch (e) { return ''; } };
+  // 初めての人への説明を出すか（2026-11-08）: 名前の覚えも票の覚えも無く、まだ閉じていないスマホ。?intro=1 で必ず出す（確かめ用）
+  const introDue = () => { try { if (qs.get('intro') === '1') return true; if (localStorage.getItem('casa.derby.intro') === '1' || savedNick()) return false; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(VKEY) === 0) return false; } return true; } catch (e) { return false; } };
   const saveNick = (n) => { n = cleanNick(n); if (!n) return; try { localStorage.setItem(NKEY, n); } catch (e) { /* 覚えられない端末は毎回入れる */ } }; // VKEY: client.js の myVotes の置き場所（受け取っていない当たりを探すときだけ読む）
   const FRAME = ['#f4f4f4', '#1a1a1e', '#d6332b', '#2459c9', '#f2c531', '#2a9a4a'], INK = ['#111', '#fff', '#fff', '#fff', '#111', '#fff'];
 
@@ -451,6 +453,7 @@
       const i = $('nick');
       if (i) i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
       if (i) i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); i.blur(); act('toPick'); } }); // 変換を確定する Enter では進まない
+      if (introDue() && !$('injs')) setTimeout(() => { if ($('injs')) return; document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'intro.css' + TKQ })); document.head.appendChild(Object.assign(document.createElement('script'), { id: 'injs', src: 'intro.js' + TKQ, onload: () => window.BetIntro && BetIntro.show() })); }, 250); // 初めての人への説明（2026-11-08。intro.js）: 会計番号の画面が出たあとに読む（最初の表示を遅らせない）
     }
     if (/^(confirm|voted|race|result)$/.test(screen) && !$('tkjs')) document.head.appendChild(Object.assign(document.createElement('script'), { id: 'tkjs', src: 'ticket.js' + TKQ, onload: draw }));
     if (screen === 'result') { const s = $('slider'); if (s) bindSlider(s); }
