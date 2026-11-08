@@ -268,8 +268,8 @@
   },
   {
    "path": "js/race3d.js",
-   "size": 262245,
-   "sha256": "fccff991efdab134e8841db016b7129e22f837e5aca9166efd61702a513fed28"
+   "size": 263458,
+   "sha256": "ad2359461e7e23642ee19624c3fcde404bc3be58a4d6c48ff9fb98ac58fce488"
   },
   {
    "path": "js/splash3d.js",
@@ -348,8 +348,8 @@
   },
   {
    "path": "v2/tv.js",
-   "size": 144517,
-   "sha256": "dd5758cbd57b6e986f5690565d38f7562ce077310e8ebcec9ccfe420270c6594"
+   "size": 144740,
+   "sha256": "e427a2590f387c8a6ef38370453efed5eaf30418e1364f92783dae61ebbec0bd"
   },
   {
    "path": "v2/tvhealth.js",
