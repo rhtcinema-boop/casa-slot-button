@@ -61,27 +61,27 @@
       const issued = [v.updatedAt, v.votedAt].map(Number).find((x) => Number.isFinite(x) && x > 0);
       const seed = (v.vid || r.id) + '|' + v.bill + '|' + v.first + '-' + v.second + '|' + (n || 1);
       const ser = String(d.getUTCFullYear()).slice(2) + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + bill2(v.bill) + no1 + no2 + tkDigits(seed, 3) + ' ' + tkDigits(seed + 'a', 13) + ' ' + tkDigits(seed + 'b', 8);
-      const nm = (h, lb) => (h ? '<span class="tn"><span class="tl">' + lb + '</span>' + waku(h, 'sm') + '<span class="nmx" data-fit="9">' + esc(h.name) + '</span></span>' : '');
+      const nm = (h, lb) => (h ? '<span class="tn"><span class="tl">' + lb + '</span>' + waku(h, 'sm') + '<span class="nmx" data-fit="7">' + esc(h.name) + '</span></span>' : '');
       /* 的中の判子（写真に撮りたくなる見た目。2026-11-07）: 赤い二重の丸・金の縁・少し傾ける・中に「的中」と casa DERBY と日付。券の右の列（番号の上）に重ねる（ticket.css .tk-hit） */
       const stamp = hit ? '<div class="tk-hit" role="img" aria-label="的中"><span class="tk-hit-in"><i>casa DERBY</i><b>的中</b><i>' + esc(ymd) + '</i></span></div>' : '';
+      const rname = (r && (r.name || r.title)) || '', raceLine = ri >= 0 ? (rname ? '<span data-fit="7">' + esc(rname) + '</span>' : '') + '<span>' + esc(at) + ' 発走</span>' : rname ? '<span data-fit="7">' + esc(rname) + '</span>' : ''; // レース番号があるときは発走の時刻をここに（無いときは上の札に時刻）
+      const stars = '<span class="tk-st" aria-hidden="true">★★★</span>';
+      /* 2026-11-08 オーナー「馬券のデザインを本物にサイズとかも全部寄せて」: 手本の写真（1.6:1）の割合で組む（scratchpad/ticket-ref-measure.md）。
+         左の列 36%＝日付・店（大）・[番号]レース・QR 風 2 つ・レース名と発走・casa DERBY 店／帯 12%＝EXACTA・2連単・EXACTA（左右に細い線）／右の列＝本物の 3 行:
+         行 1 [3]-[5] ★★★ 100pt・行 2 馬名＋いまの倍率・行 3 当たれば ○pt／下＝会計番号・名前・発行（本物の合計の位置。「合計」の行は入れない＝オーナー 11/7）、通し番号。大きさは券の幅に比例（cqw） */
       return '<div class="mine tk' + (n === 2 ? ' b2' : '') + (hit ? ' hit' : miss ? ' miss' : '') + (cmp ? ' cmp' : '') + '"><p class="mk">' + esc(hit ? (n === 2 ? TX.vote2 : n === 1 ? TX.vote1 : '的中した投票券') : n === 2 ? TX.vote2 : miss && n === 1 ? TX.vote1 : TX.yourPick) + (hit ? '<span class="vn bt">' + esc(TX.hitMark) + '</span>' : miss ? '<span class="vn ms">' + esc(TX.missMark || 'はずれ') + '</span>' : n === 1 ? '<span class="vn">' + esc(TX.vote1) + '</span>' : n === 2 ? '<span class="vn bt">' + esc(v.stamp ? TX.stampTag : TX.bonusTag) + '</span>' : '') + '</p>' +
-        /* 横長の券（手本の写真と同じ 1.6:1 くらい。2026-11-07 オーナー「縦に長い」）: 左の列＝日付・店・レース番号・QR 風・casa DERBY／真ん中＝帯／右の列＝無料の札・組み合わせ・馬名・★と額。下に合計と倍率、ミシン目の下に会計番号・名前・発行・通し番号 */
         '<div class="tkt"><div class="tkin">' +
-          '<div class="tk-body">' +
-            '<div class="tk-l"><div class="tk-date">' + esc(ymd) + '</div><div class="tk-store" data-fit="14">' + esc(store) + '</div>' +
-              (ri >= 0 ? '<div class="tk-rno"><b>' + (ri + 1) + '</b><span>レース</span></div>' : '<div class="tk-rno tm"><b>' + esc(at) + '</b><span>発走</span></div>') +
-              (hit ? (ri >= 0 ? '<div class="tk-rno tm"><b>' + esc(at) + '</b><span>発走</span></div>' : '') + stamp /* 当たり: 発走の時刻を札で出し、その下に判子（流れの中＝重ならない）。QR 風の飾りは出さない */
-                : '<div class="tk-foot"><div class="tk-qrs">' + tkQr(seed) + tkQr(seed + 'q') + '</div>' + (ri >= 0 ? '<div class="tk-race"><b>' + esc(at) + '</b><br>発走</div>' : '') + '</div>') + '</div>' +
-            '<div class="tk-band" aria-hidden="true"><i>EXACTA</i><b>2連単</b><i>EXACTA</i></div>' +
-            '<div class="tk-r"><div class="tk-cap"><span data-fit="8">' + esc(hit ? '2連単 的中' : comboText(r, v.first, v.second)) + '</span><span class="tk-free">投票券<small>（参加無料）</small></span></div>' +
-              '<div class="tk-combo"><span class="bx">' + no1 + '</span><i>→</i><span class="bx">' + no2 + '</span></div>' +
-              '<div class="tk-names">' + nm(h1, '1着') + nm(h2, '2着') + '</div>' +
-              '<div class="tk-odd2">' + (hit || miss ? '確定の倍率' : closed ? '倍率' : 'いまの倍率') + ' <b>' + (o ? esc(oddsTxt(o)) : '—') + '</b>倍</div>' + /* 2026-11-07 b196: 投票後の券も当たりの券と同じ並び＝倍率は右の列（額の上）・額に星なし */
-              '<div class="tk-pay"><span class="tk-ifw">' + (hit ? '当選額' : '当たれば') + '</span>' + bigAmt(pay, 'tk-amt') + '</div></div>' +
-          '</div>' +
-          '<div class="tk-sum"><span>合計</span><span class="tk-st" aria-hidden="true">★★</span><b>1</b><span>票</span><span class="tk-st" aria-hidden="true">★★</span></div>' + /* 合計欄は「合計 ★★ 1 票 ★★」を真ん中に（当たり・投票後とも。2026-11-07 b196） */
-          '<div class="tk-stub"><span class="tk-who"><span class="nw">' + esc(TX.billHead) + ' <b>' + esc(v.bill) + '</b></span>' + (who ? ' <span class="nw tk-nick" data-fit="11">' + esc(v.nick) + '</span>' : '') + '</span>' +
-            (issued ? '<span class="tk-iss">発行 ' + esc(hhmm(issued)) + '</span>' : '') + '</div><div class="tk-ser" aria-hidden="true">' + esc(ser) + '</div>' +
+          '<div class="tk-l"><div class="tk-date">' + esc(ymd) + '</div><div class="tk-store" data-fit="14">' + esc(store) + '</div>' +
+            (ri >= 0 ? '<div class="tk-rno"><b>' + (ri + 1) + '</b><span>レース</span></div>' : '<div class="tk-rno tm"><b>' + esc(at) + '</b><span>発走</span></div>') +
+            '<div class="tk-qrs">' + tkQr(seed) + tkQr(seed + 'q') + '</div>' +
+            '<div class="tk-race"><span class="cb" data-fit="7">' + esc(hit ? '2連単 的中 ' + comboText(r, v.first, v.second) : comboText(r, v.first, v.second)) + '</span>' + raceLine + '</div>' /* 本物のレース名の位置: 組み合わせの文（1着 3番 → 2着 5番）と、レース番号があるときは発走の時刻 */ +
+            '<div class="tk-brand"><b>casa DERBY</b><span data-fit="7">' + esc(store) + '</span></div></div>' +
+          '<div class="tk-band" aria-hidden="true"><i>EXACTA</i><b>2連単</b><i>EXACTA</i></div>' +
+          '<div class="tk-r"><span class="tk-free">投票券<small>（参加無料）</small></span>' +
+            '<div class="tk-row r1"><span class="bx">' + no1 + '</span><i>-</i><span class="bx">' + no2 + '</span><span class="tk-pts"><span class="tk-ifw">' + (hit ? '当選額' : '当たれば') + '</span>' + stars + bigAmt(pay, 'tk-amt') + '</span></div>' + /* オーナー決定 11/8: 本物の「100円」の位置に当たりの額（1票 100pt はこの行に出さない） */
+            '<div class="tk-row r2"><div class="tk-names">' + nm(h1, '1着') + nm(h2, '2着') + '</div><span class="tk-odd2"><small>' + (hit || miss ? '確定の倍率' : closed ? '倍率' : 'いまの倍率') + '</small><b>' + (o ? esc(oddsTxt(o)) : '—') + '<small>倍</small></b></span>' + stamp + '</div></div>' +
+          '<div class="tk-stub"><span class="tk-who"><span class="nw">' + esc(TX.billHead) + ' <b>' + esc(v.bill) + '</b></span>' + (who ? ' <span class="nw tk-nick" data-fit="9">' + esc(v.nick) + '</span>' : '') + '</span>' + (issued ? '<span class="tk-iss">発行 ' + esc(hhmm(issued)) + '</span>' : '') + '</div>' +
+          '<div class="tk-ser" aria-hidden="true">' + esc(ser) + '</div>' +
         '</div></div>' +
         (o && !closed && !cmp && shiftOn() ? '<p class="tk-note">倍率と当たりの額は、締切まで動きます</p>' : '') + '</div>';
     }
