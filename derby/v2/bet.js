@@ -16,8 +16,8 @@
     billHead: '会計番号', nickHead: 'ニックネーム', nickChange: '変える', nickSaved: '前回の名前で投票します', nickSub: '8文字まで・当たるとテレビに出ます', toPick: '予想をえらぶ',
     errBill: '会計番号を 2 けたで入れてください', errNick: 'ニックネームを入れてください',
     pickHead: '1着と2着をえらぶ', pvHorse: '馬を選ぶ', pvPop: '人気順で選ぶ', first: '1着', second: '2着', colNo: '馬番', colName: '馬名', colOdds: 'の倍率', pickStep1: '① 1着になる馬を選んでください', pickStep2: '② 2着になる馬を選んでください', toConfirm: 'この予想で次へ', ifHit: '的中すると', pickDone: '予想が決まりました', pick2SubT: '同じ組み合わせでもえらべます', pickAxis: '上が1着・左が2着', pickTap: 'マスを押してください', cond: '調子', style: '脚質', recent: '近走',
-    confHead: 'この予想で投票しますか？', ifWin: '当たれば', shiftNote: '倍率は締切のときに少し変わることがあります',
-    voteBtn: '投票する', changeBtn: 'この予想に変える', back: '戻る', sending: '送っています…',
+    confHead: 'この予想で投票しますか？', ifWin: '当たれば', shiftNote: '倍率は締切時に変動します',
+    voteBtn: '投票する', changeBtn: 'この予想に変える', back: '投票画面に戻る', sending: '送っています…',
     voted: '投票しました', yourPick: 'あなたの予想', closeIn: '締切まで', redo: '選び直す',
     resultWait: '結果を待っています', racing: 'レース中',
     win: '当たり', amount: '当選額', staffOps: 'スタッフが操作します', slide: 'スライドして受け取り', saving: '記録しています…',
@@ -418,7 +418,7 @@
     const perVote = v2 ? '<div class="vlist">' + all.map((x) => { const w = !!(x.result && x.result.win); return '<div class="vr' + (w ? ' w' : '') + '"><span class="vk">' + esc(x.n === 2 ? TX.vote2 : TX.vote1) + '</span>' + arrowNum(x.first, x.second) + '<b class="vm">' + esc(w ? TX.hitMark : TX.missMark) + '</b></div>'; }).join('') + '</div>' : '';
     const sg = stampGotLine(all, res) + incLine(r, res);
     if (!wins.length) {
-      return '<div class="scr result">' + testTag(r) + '<div class="miss"><h1 class="t">' + esc(TX.lose) + '</h1><p class="rc">' + esc(TX.result) + ' ' + arrowNum(res.first, res.second) + '</p></div>' + resLine + sg +
+      return '<div class="scr result">' + testTag(r) + '<div class="miss"><h1 class="t">' + esc(TX.lose) + '</h1></div>' + resLine + sg +
         (window.BetTicket ? all.map((x) => BetTicket(r, x, v2 ? x.n : 0, x.result)).join('') : v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + watchBtn(r) + nextLine() + todayRow() + nextBtn(false) + '</div>'; // はずれの券（ticket.js）
     }
     /* 受け取りは 1 つのスライドで（2 票とも当たりなら 2 票分をまとめて。スタッフの操作は 1 回。2026-10-24 決め） */
