@@ -1,9 +1,9 @@
 {
- "v": "b202",
+ "v": "b203",
  "files": [
   {
    "path": "index.html",
-   "sha256": "1b470784cbcbdd1d41e80839bc7e74415845bb71cccae9cf93e4f5d83a3fa002"
+   "sha256": "248d6163708b863e3b4f2cd228fc385797009b4655aea6023b1944e79bb2cbd5"
   },
   {
    "path": "manifest.webmanifest",
@@ -311,7 +311,7 @@
   },
   {
    "path": "derby/js/race3d.js",
-   "sha256": "fccff991efdab134e8841db016b7129e22f837e5aca9166efd61702a513fed28"
+   "sha256": "ad2359461e7e23642ee19624c3fcde404bc3be58a4d6c48ff9fb98ac58fce488"
   },
   {
    "path": "derby/js/splash3d.js",
@@ -375,7 +375,7 @@
   },
   {
    "path": "derby/v2/tv.js",
-   "sha256": "dd5758cbd57b6e986f5690565d38f7562ce077310e8ebcec9ccfe420270c6594"
+   "sha256": "e427a2590f387c8a6ef38370453efed5eaf30418e1364f92783dae61ebbec0bd"
   },
   {
    "path": "derby/v2/tvhealth.js",
