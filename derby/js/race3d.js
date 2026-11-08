@@ -1194,7 +1194,7 @@ window.Race3D = (function () {
     this.boostFn = opt.boost || null; this.boostK = race.horses.map(() => 0); this.boostOn = race.horses.map(() => false); this.clearFoods();
     this.phase = 'run'; this.t = 0; this.tape = []; this.slow = 1; this.lane = null; this.slowSaid = false; this.winnerIdx = -1; this.winSecond = -1; this.winnerIdx_set = false; this.saidStart = false; this.saidCorner = false; this.saidStraight = false; this.split1000 = null; this.lastCall = 0; this.callNo = 0; this.t600 = null; this.last3f = null; this.t800 = null; this.finalAt = 0;
     this.ext = race.horses.map(() => 0); this.vel = race.horses.map(() => 0); this.spd = race.horses.map(() => 0); this.winCamS = null;
-    this.simWall = 0; this.catchUps = 0; this.holdFn = typeof opt.hold === 'function' ? opt.hold : null;
+    this.simWall = 0; this.catchUps = 0; this.clk = null; this.holdFn = typeof opt.hold === 'function' ? opt.hold : null;
     const seq = this.runSeq = (this.runSeq || 0) + 1;
     return new Promise((resolve) => {
       let last = performance.now(), leader = -1, leaderSince = 0, finishedAt = 0, said200 = false, said2nd = false, quiet = false;
@@ -1265,7 +1265,18 @@ window.Race3D = (function () {
         let ended = false, snap = false;
         if (clock) {
           // 全店同時: サーバーの時計で「ゲートが開いてから何秒」かを見て合わせる
-          let target = NaN; try { target = clock(); } catch (e) { }
+          let srv = NaN; try { srv = clock(); } catch (e) { }
+          let target = srv;
+          if (isFinite(srv)) {
+            /* 2026-11-08 b203（レース中のカクつき）: サーバーの時計を毎コマそのまま使うと、時計の読みのゆれ（Date.now とコマの描かれる瞬間のずれ、
+               5 分ごとの時刻合わせで数十 ms 飛ぶ）がそのまま馬の歩幅のゆれになっていた（リプレイは performance.now の差分で進めるのでなめらか）。
+               → 最初の 1 回だけサーバーの時計に合わせ、あとはコマの時刻（raf の now）の差分で進める。サーバーの時計との差は 1 コマあたり最大 ±3% の速さの違いで
+               2 秒ほどかけて寄せる（0.25 秒以上ずれたときだけ、これまでどおり絵を描かずに追いつく／合わせ直す） */
+            const pn = now / 1000, A = self.clk;
+            if (!A || Math.abs(srv - (A.t + (pn - A.p) * A.rate)) > 0.25) self.clk = { t: srv, p: pn, rate: 1 };
+            else { const smooth = A.t + (pn - A.p) * A.rate; self.clk = { t: smooth, p: pn, rate: clamp(1 + (srv - smooth) * 0.5, 0.97, 1.03) }; }
+            target = self.clk.t;
+          }
           if (isFinite(target)) {
             if (target - self.simWall > 0.25) { // 遅れている: 絵を描かずに追いつく（字幕・声・土ぼこりは出さない）
               quiet = true; self.catchUps++;
