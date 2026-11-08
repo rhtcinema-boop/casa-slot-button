@@ -1,9 +1,9 @@
 {
- "v": "b200",
+ "v": "b201",
  "files": [
   {
    "path": "index.html",
-   "sha256": "b8c91f3c172ea053b6a9d142cbbf6d318beccb80e05acc0ab8ecd655f3b229f7"
+   "sha256": "92827bd33f7a8a1f2db698353151a680a5af91314e8e3968086f096572c26d75"
   },
   {
    "path": "manifest.webmanifest",
