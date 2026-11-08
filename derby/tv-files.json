@@ -213,8 +213,8 @@
   },
   {
    "path": "js/engine.js",
-   "size": 35577,
-   "sha256": "ecacacd212a01c0dbd0b50ae1ef517d5e71056c967557f7127c82d588d42ea92"
+   "size": 37172,
+   "sha256": "fb3336100ea9b4cb5982f884729ffcdb147975083bc9379e7ca34176a91196e0"
   },
   {
    "path": "js/game.js",
@@ -318,8 +318,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 118403,
-   "sha256": "ed5bcbad8a2e33c10528dccbee892ce0c9480e9a843ae6b22016d947295c145c"
+   "size": 118518,
+   "sha256": "cbd5e1399f98d108460b361e172d43d84d7294ca5002c94f96023568cd8418c5"
   },
   {
    "path": "v2/form.js",
