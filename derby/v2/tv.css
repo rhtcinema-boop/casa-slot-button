@@ -1351,6 +1351,7 @@
 #stage.v2.m-wait .v2nx .cd .left b { font-size: 88px; }
 .v2wait .how, .v2wait .win { padding: 30px 36px; gap: 14px; }
 .v2wait h3 { height: 44px; font-size: 36px; line-height: 44px; }
+.v2wait .how h3 { height: 56px; font-size: 50px; line-height: 56px; } /* 2026-11-08 文字帳 w0213 オーナー「大きくして」 */
 .v2wait h3 small { font-size: 24px; }
 /* 遊び方: 3 つの手順が主役 */
 .v2wait .how ol { gap: 16px; }
