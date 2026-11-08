@@ -466,7 +466,7 @@
   function tuneOf(Engine, t) {
     const vol = Math.max(0.2, Math.min(3, Number(t.volatility) || 1)), r3 = (x) => Math.round(x * 1000) / 1000, payoutRate = Math.max(0.3, Math.min(1.2, Number(t.payoutRate) || 0.85)), M = Engine.MODEL2;
     if (!M) return { sigmaMul: r3(Engine.TUNE.sigmaMul * vol), payoutRate }; // 古いエンジン（作り 1）
-    return { model: 2, theta: M.theta, sigmaMul: r3(M.sigmaMul * vol), formSigma: Math.round(M.formSigma * vol * 10000) / 10000, payoutRate }; // 走りの作り 2（2026-11-04 入れ替わりを減らしてリアルに。js/engine.js の createRun）
+    return Object.assign({ model: 2, theta: M.theta, sigmaMul: r3(M.sigmaMul * vol), formSigma: Math.round(M.formSigma * vol * 10000) / 10000, payoutRate }, M.lead ? { lead: M.lead, typeBias: M.typeBias } : {}); // 走りの作り 2・先頭の逃げすぎ止め（2026-11-08）（2026-11-04 入れ替わりを減らしてリアルに。js/engine.js の createRun）
   }
   const engineRace = (r) => Object.assign({ dist: r.dist, weather: r.weather, surface: r.surface, horses: r.horses, tune: r.tune, odds: r.odds, exacta: r.exacta }, (r.incident || (r.result && r.result.incident)) ? { incident: r.incident || r.result.incident } : {}); // incident: 脱落（2026-11-04）
   function raceBase(Engine, Outcome, salt, id, tuning, recent) {
