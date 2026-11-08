@@ -453,8 +453,8 @@
       const i = $('nick');
       if (i) i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
       if (i) i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); i.blur(); act('toPick'); } }); // 変換を確定する Enter では進まない
-      if (introDue() && !$('injs')) setTimeout(() => { if ($('injs')) return; document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'intro.css' + TKQ })); document.head.appendChild(Object.assign(document.createElement('script'), { id: 'injs', src: 'intro.js' + TKQ, onload: () => window.BetIntro && BetIntro.show() })); }, 250); // 初めての人への説明（2026-11-08。intro.js）: 会計番号の画面が出たあとに読む（最初の表示を遅らせない）
     }
+    if (/^(entry|wait)$/.test(screen) && introDue() && !$('injs')) setTimeout(() => { if ($('injs')) return; document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'intro.css' + TKQ })); document.head.appendChild(Object.assign(document.createElement('script'), { id: 'injs', src: 'intro.js' + TKQ, onload: () => window.BetIntro && BetIntro.show() })); }, 250); // 初めての人への説明（2026-11-08。intro.js）: 会計番号の画面か待ち画面が出たあとに読む（受付前に開いた初めての人にも出す）（最初の表示を遅らせない）
     if (/^(confirm|voted|race|result)$/.test(screen) && !$('tkjs')) document.head.appendChild(Object.assign(document.createElement('script'), { id: 'tkjs', src: 'ticket.js' + TKQ, onload: draw }));
     if (screen === 'result') { const s = $('slider'); if (s) bindSlider(s); }
     notice = screen === 'entry' ? notice : '';
