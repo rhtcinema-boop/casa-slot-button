@@ -267,7 +267,7 @@
   let subStop = null; // 見張りを止める関数（見るだけ: 窓を閉じるときに止める。投票ページの Firebase の見張りを残さない）
   if (C) {
     (async () => { try { await C.syncClock(); } catch (e) { } await refresh(); })();
-    setInterval(() => { if (C.syncClock) C.syncClock().catch(() => {}); }, 5 * 60 * 1000);
+    setInterval(() => { if (C.syncClock && !TV.playing) C.syncClock().catch(() => {}); }, 5 * 60 * 1000); // b203: レースを流している間は時刻合わせをしない（合わせ直しで馬が飛ぶ）
     setInterval(refresh, 10000); // SSE が黙って止まっていても 10 秒ごとに取り直す
     setInterval(() => { try { pruneCache(); } catch (e) { console.error(e); } }, 10 * 60 * 1000);
     try {
@@ -829,7 +829,7 @@
         onPhase: bcPhase,
         onTick: (st) => {
           // lite2: さらになめらか のときは順位の札・倍率の列の見た目の更新を 1 秒に 10 回まで（毎コマ DOM を触らない）。ゴール・字幕・音は毎コマ
-          const uiNow = !liteUi || st.t - uiAt >= 0.1 || st.t < uiAt || st.finish.some((f) => f > 0); if (uiNow) uiAt = st.t;
+          const uiNow = st.t - uiAt >= 0.1 || st.t < uiAt || st.finish.some((f) => f > 0); if (uiNow) uiAt = st.t; // b203: 画質によらず 1 秒 10 回まで（毎コマの DOM 更新がコマ落ちのもと） void liteUi;
           if (uiNow) renderRank(st);
           // 右の確定オッズ: 発走から 5 秒はそのまま → 道中は小さく → ゴール前（.bc-final）は薄く → 1 着が決まったら戻す（REVIEW_TODO 3）
           if (uiNow && !$('v2odds').classList.contains('won')) oddsState(stageEl.classList.contains('bc-final') ? 'fade' : st.t > 5 ? 'cmp' : '');
