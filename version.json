@@ -1,9 +1,9 @@
 {
- "v": "b204",
+ "v": "b205",
  "files": [
   {
    "path": "index.html",
-   "sha256": "398bf547fc19c565ca67c5e4307e9bd9718604fe780c8a2e165c06afd217a2d2"
+   "sha256": "18aa9a56e1e810c4f7442c764b737d2cc30468c082f10e60a2797a342ce22b7d"
   },
   {
    "path": "manifest.webmanifest",
@@ -311,7 +311,7 @@
   },
   {
    "path": "derby/js/race3d.js",
-   "sha256": "3666dfe295a18bc89bbaa98b96c4abf6186daceaaca31d2c83bc3f26e9cc6522"
+   "sha256": "ea326f3ad090b6ce82ee4ba1e884eab92b48830b88aa15e56b778c175f0aebd5"
   },
   {
    "path": "derby/js/splash3d.js",
