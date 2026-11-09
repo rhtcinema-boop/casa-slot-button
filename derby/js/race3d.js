@@ -1976,7 +1976,11 @@ window.Race3D = (function () {
     this.renderer.info.reset();
     try { this.look.render(this.renderer, this.scene, this.camera); }
     catch (e) { warnOnce('look.render', e); try { this.renderer.render(this.scene, this.camera); } catch (e2) { warnOnce('renderer.render', e2); } }
-    try { this.drawOverlay(this.ctx); } catch (e) { warnOnce('テロップ', e); }
+    /* 2026-11-09 b205（案 B）: さらになめらか・最もなめらかのレース中は、重ね描き（時計・通過順の帯・コース図・ゼッケンの丸・残りの距離）を 1 秒 10 回まで。
+       場面・字幕・カットの切り替わり（白いフラッシュ）・写真判定の止め・細かさが変わったコマは毎コマ描く。描かないコマは前の絵がそのまま残る（消さない） */
+    const nowO = performance.now(), ovKey = this.phase + '|' + this.label + '|' + (this.photoHold > 0 ? 1 : 0) + '|' + (this.finalAt ? 1 : 0) + '|' + this.k + '|' + (this.gateShot ? 1 : 0);
+    const ovSkip = this.xlite && this.phase === 'run' && !(this.cut > 0) && ovKey === this.ovKey && nowO - (this.ovAt || 0) < 100;
+    if (!ovSkip) { this.ovKey = ovKey; this.ovAt = nowO; try { this.drawOverlay(this.ctx); } catch (e) { warnOnce('テロップ', e); } }
     // 重さの記録と、遅い機械なら軽い描き方へ（コマの間隔が平均 40ms を超えたら）
     const pf = this.perf, now = performance.now(), ms = now - t0;
     pf.ms = pf.frames ? pf.ms * 0.95 + ms * 0.05 : ms;
@@ -2146,7 +2150,7 @@ window.Race3D = (function () {
     if (race.weather === 'rain' && this.parts.Look !== 'real') { c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 1.5; const r0 = (this.t * 900) % 40; c.beginPath(); for (let k = 0; k < 90; k++) { const x = (k * 97 + 13) % W, y = (k * 53 + r0 * (1 + k % 3)) % H; c.moveTo(x, y); c.lineTo(x - 3, y + 14); } c.stroke(); }
     // 集中線（2026-10-16 オーナー「残り100mから徐々に集中線増やす」）: 先頭の残り 100m で 0 → ゴールで最大（なめらかに増える）→ 1 着の 0.6 秒後に消える。
     // 先頭 2 頭の頭のあたりへ向かう線を画面の縁だけに（真ん中は空けて馬と番号を見せる）。ちらつきはレースの時計（run.t）で決める＝スローでゆっくり・どの店も同じ
-    if (this.run && this.phase === 'run' && !this.gateShot) {
+    if (this.run && this.phase === 'run' && !this.gateShot && !this.xmin) { // b205: 最もなめらか は集中線なし（ゴール前の毎コマの大きな塗りが重い）
       const run = this.run, rem = (1 - Math.min(1, run.pos[this.leaderIdx()])) * race.dist, f1 = run.finish.filter((x) => x > 0);
       const u = clamp((100 - rem) / 100, 0, 1), ramp = u * u * (3 - 2 * u), after = f1.length ? run.t - Math.min.apply(null, f1) : -1;
       const k = f1.length ? Math.max(0, 1 - after / 0.6) : ramp;
