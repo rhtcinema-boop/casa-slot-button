@@ -46,20 +46,15 @@ window.Race3D = (function () {
      描くのは前に描いてから 1/30 秒たった画面の更新のときだけ（60Hz の画面なら 2 回に 1 回）。30 を保てない（平均 38ms を超える）状態が 2 秒続いたら 20 コマ/秒（3 回に 1 回）に下げ、
      30 秒たったら 30 を試し直す（だめならまた 20、次に試すまでの間を倍に）。動きの量は実際の経過時間で進めるので、レースの進み・時刻は同じ。?pace=0 で止める（測定用） */
   const PACE = XLITE && !/[?&]pace=0\b/.test(QS);
-  /* 2026-11-09 b204（オーナー「ハイライトぐらいヌルヌルしてたらいいのに」）: 上限を 30 → 60 コマ/秒に。段は 60 → 30 → 20。
-     その段を保てない（1 コマの平均がその段の 1.25 倍を超える＝60 なら 21ms・30 なら 38ms）状態が 2 秒続いたら 1 段下げ、30 秒たったら 1 段上を試し直す（だめなら間を倍に・最大 4 分）。
-     60 の段は毎コマ描く（間引きなし）。持たないテレビは今までどおり 30・20 で安定する */
-  const PACE_LV = [1000 / 60, 1000 / 30, 50];
-  const pacer = { lv: 0, iv: PACE_LV[0], ema: PACE_LV[0], bad: 0, at: 0, retry: 30000, lastAt: 0, tryAt: 0, tryLv: -1 };
-  const paceLast = new WeakMap();
-  function pacerSet(lv, now) { lv = Math.max(0, Math.min(PACE_LV.length - 1, lv)); pacer.lv = lv; pacer.iv = PACE_LV[lv]; pacer.ema = pacer.iv; pacer.bad = 0; pacer.at = now; }
+  /* 2026-11-09 b206: b204 の上限 60 コマは本番のレースで 19〜20 コマ/秒・なめらかさ 40 点台に下がったので、b203 の 30 コマ（下は 20）に戻した */
+  const pacer = { iv: 1000 / 30, ema: 1000 / 30, bad: 0, at: 0, retry: 30000, lastAt: 0 }, paceLast = new WeakMap();
   function pacerNote(now) {
     const P = pacer, g = P.lastAt ? now - P.lastAt : 0; P.lastAt = now; if (!g || g > 400) return;
     P.ema += (g - P.ema) * 0.1;
-    if (P.grace && now < P.grace) { P.bad = 0; P.ema = Math.min(P.ema, P.iv); return; } // 最もなめらか: パドックの札から 3D に戻った直後の 3 秒は数えない（最初の数コマの重さで段が落ちない）
-    if (P.lv < PACE_LV.length - 1 && P.ema > P.iv * 1.25) { if (!P.bad) P.bad = now; else if (now - P.bad > 2000) { pacerSet(P.lv + 1, now); if (P.tryAt && P.tryLv === P.lv) { P.retry = Math.min(240000, P.retry * 2); P.tryAt = 0; } } } // 保てない → 1 段下げ（試し直しの直後なら次の試しまでの間を倍に）
-    else { P.bad = 0; if (P.lv > 0 && now - P.at > P.retry) { P.tryAt = now; P.tryLv = P.lv; pacerSet(P.lv - 1, now); } } // 落ち着いている → 1 段上を試す
-    if (P.tryAt && now - P.tryAt > 20000) { P.retry = 30000; P.tryAt = 0; } // 20 秒持てば試し直しは成功
+    if (P.grace && now < P.grace) { P.bad = 0; P.ema = Math.min(P.ema, P.iv); return; } // 最もなめらか: パドックの札から 3D に戻った直後の 3 秒は数えない（最初の数コマの重さで 20 コマ/秒に落ちない）
+    if (P.iv < 40) { if (P.ema > 38) { if (!P.bad) P.bad = now; else if (now - P.bad > 2000) { P.iv = 50; P.at = now; P.bad = 0; P.ema = 50; } } else P.bad = 0; }
+    else if (now - P.at > P.retry) { P.iv = 1000 / 30; P.ema = P.iv; P.bad = 0; P.tryAt = now; }
+    if (P.tryAt && P.iv === 50 && P.at > P.tryAt) { P.retry = Math.min(240000, P.retry * 2); P.tryAt = 0; } else if (P.tryAt && now - P.tryAt > 20000) { P.retry = 30000; P.tryAt = 0; }
   }
   function raf(cb) {
     if (!PACE) return requestAnimationFrame(cb);
@@ -1957,7 +1952,7 @@ window.Race3D = (function () {
       this.minPadWarm = true;
       try { this.drawMinPaddock(this.ctx); } catch (e) { warnOnce('パドックの札', e); }
       if (this._warm) { // 軽い 3D その 2: 下ごしらえを 1 コマ WARM_MS ずつ（札を描いたあと。以前は最初の 1 コマで全部＝1 回目のレースで 1.5〜2.5 秒止まっていた）
-        if (PACE) pacer.grace = performance.now() + 3000; // 下ごしらえの重いコマで段が落ちない
+        if (PACE) pacer.grace = performance.now() + 3000; // 下ごしらえの重いコマで 20 コマ/秒に落ちない
         try { this.warmStep(WARM_MS); } catch (e) { this._warm = null; warnOnce('パドックの下ごしらえ', e); }
       }
       return;
