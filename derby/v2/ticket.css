@@ -50,9 +50,10 @@
 .tk-row.r1 { gap: 1cqw; }
 .tk-row .bx { display: grid; place-items: center; width: 8.6cqw; height: 8.6cqw; border: .5cqw solid var(--tk-ink); background: #fff; font-size: 6.5cqw; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; flex: none; }
 .tk-row.r1 i { font-style: normal; font-size: 5.4cqw; font-weight: 900; line-height: 1; margin: 0 .2cqw; }
-.tk-pts { margin-left: auto; display: grid; grid-template-columns: auto auto; grid-template-areas: "st amt" "lb lb"; justify-content: end; align-items: baseline; column-gap: .7cqw; white-space: nowrap; padding-left: 4.5cqw; min-width: 0; }
+.tk-pts { margin-left: auto; display: grid; grid-template-columns: auto; grid-template-areas: "st" "amt" "lb"; justify-items: end; align-items: baseline; white-space: nowrap; padding-left: 2cqw; min-width: 0; } /* 2026-11-12 オーナー「星と数字被ってる」: ★を額の上の段へ（額が 4 桁以上だと横に入りきらず、左の番号の箱に重なっていた） */
 .tk-pts .tk-st { grid-area: st; } .tk-pts .tk-amt { grid-area: amt; font-size: 4.5cqw; } .tk-pts .tk-amt.l6 { font-size: 4cqw; } .tk-pts .tk-amt.l7 { font-size: 3.6cqw; }
 .tk-pts .tk-ifw { grid-area: lb; text-align: right; font-size: 2cqw; line-height: 1.1; margin-top: .5cqw; } /* 「当たれば」は額の下に小さく */
+.tk-pts .tk-st { line-height: 1; margin-bottom: .6cqw; }
 .tk-st { font-size: 2.2cqw; letter-spacing: -.06em; color: var(--tk-ink); }
 .tk-pts b { font-size: 4.6cqw; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
 .tk-pts small { font-size: 2.7cqw; font-weight: 900; }
