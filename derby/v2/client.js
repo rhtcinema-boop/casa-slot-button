@@ -276,7 +276,7 @@
         return {
           config: () => request('GET', '/api/admin/config', undefined, h),
           saveStores: (stores) => post('/api/admin/stores', { stores }, h),
-          saveTimetable: (rules) => post('/api/admin/timetable', { rules }, h),
+          saveTimetable: (rules, bigNames) => post('/api/admin/timetable', bigNames !== undefined ? { rules, bigNames } : { rules }, h), // bigNames: ビッグレースの名前（2026-11-11。送らなければ今の名前のまま）
           preview: (date, s) => request('GET', '/api/admin/timetable/preview?' + qs({ date, store: s }), undefined, h),
           saveTuning: (t) => post('/api/admin/tuning', t, h),
           races: (date) => request('GET', '/api/admin/races?' + qs({ date }), undefined, h),
