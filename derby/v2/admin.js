@@ -28,7 +28,7 @@
   /* 確定演出（店舗には見せない。v4 でも「1 着の馬だけ教える」）: 演出名 → [表示名, どう見えるか]。割合の初期値は v2/core.js の DEFAULT_CUES と同じ */
   const CUES = [['fruit', '木の実の色', 'コース脇の木の実が、その馬の枠の色になる'], ['crowd', '観客の服の色', '観客の服がその馬の枠の色に寄る'], ['sign', '看板の絵柄', '向こう正面の看板にその馬の枠の色が出る'], ['cloud', '雲の形', 'その馬の番号の形をした雲が浮かぶ'], ['gateLate', 'ゲートインで遅れた馬', 'その馬だけゲートに入るのをためらう'], ['eye', '最終コーナーで目が光る', '最終コーナーでその馬の目が光る']];
   const DEF_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
-  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false, stamp: { on: false, cost: 10, vote: 1, win: 3, near: 1 } }; // noRepeatWin・noRepeatRaces・favorBigStore: 2026-10-31（v2/core.js の DEFAULT_TUNING と同じ）
+  const DEF_TUNING = { horseLook: 'cute', payoutRate: 0.85, volatility: 1, payoutCap: 0, payoutCapDay: 0, bigCap: 100000, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, cues: DEF_CUES, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false, stamp: { on: false, cost: 10, vote: 1, win: 3, near: 1 } }; // noRepeatWin・noRepeatRaces・favorBigStore: 2026-10-31（v2/core.js の DEFAULT_TUNING と同じ）
   const TUNE_PRESETS = [['steady', '堅め', { volatility: 0.7, shiftUp: 0.05, shiftDown: 0.05 }, '人気の組み合わせが来やすい・倍率のずらしは小さめ'], ['normal', 'ふつう', { volatility: 1.0, shiftUp: 0.1, shiftDown: 0.1 }, '今の作り'], ['wild', '荒れやすい', { volatility: 1.5, shiftUp: 0.15, shiftDown: 0.15 }, '人気薄も来る・倍率のずらしは大きめ']];
   const BIG_SHIFT = 50; // ずらし幅がこれ（%）より大きいと「見た倍率と大きく変わります」
 
@@ -126,6 +126,7 @@
   const tplOpen = new Set(); // 時刻表: 開いているテンプレート（id）
   const tplAll = new Set(); // 時刻表: 行を全部見せているテンプレート（id）。ふだんは最初の 10 行だけ
   const ROWS_SHOWN = 10;
+  let bigSig = ''; // 時刻表の「ビッグレース」の枠を最後に作ったときの中身の印（2026-11-11）
   let uid = 0; const nk = () => 'k' + (++uid);
 
   function normCfg(c) {
@@ -135,6 +136,7 @@
     return {
       stores: ((c && c.stores) || []).map((s) => ({ id: s.id, name: s.name || s.id, pin: s.pin == null ? '' : String(s.pin), settings: Object.assign({}, s.settings || {}), tvKey: s.tvKey || null })),
       rules: ((c && c.timetable && c.timetable.rules) || []).map((r) => Object.assign({}, r)),
+      bigNames: Object.assign({}, (c && c.timetable && c.timetable.bigNames) || {}), // ビッグレースの名前 { 'YYYY-MM-DD': 名前 }（2026-11-11）
       tuning: T,
       tvKey: (c && c.tvKey) || null, // テレビの合言葉（模擬クラウドだけ。テレビの URL の tvkey=）
     };
@@ -661,10 +663,10 @@
      ====================================================================== */
   function ruleRows(r) {
     const out = [];
-    const def = Number(r.payout) || 0, s = cleanStores(r.storeIds);
-    if (Array.isArray(r.races)) r.races.forEach((x) => out.push({ t: x.time || x.at, p: x.payout == null ? def : x.payout, s }));
-    else if (Array.isArray(r.times) && r.times.length) r.times.forEach((x) => (typeof x === 'string' ? out.push({ t: x, p: def, s }) : out.push({ t: x.time || x.at, p: x.payout == null ? def : x.payout, s })));
-    else if (r.from && r.to && r.everyMin) { const f = toMin(r.from), t = toMin(r.to), e = Math.max(1, +r.everyMin); if (!isNaN(f) && !isNaN(t)) for (let m = f; m <= t; m += e) out.push({ t: fromMin(m), p: def, s }); }
+    const def = Number(r.payout) || 0, s = cleanStores(r.storeIds), b = r.big === true; // b: ビッグレースの印（2026-11-11）
+    if (Array.isArray(r.races)) r.races.forEach((x) => out.push({ t: x.time || x.at, p: x.payout == null ? def : x.payout, s, b }));
+    else if (Array.isArray(r.times) && r.times.length) r.times.forEach((x) => (typeof x === 'string' ? out.push({ t: x, p: def, s, b }) : out.push({ t: x.time || x.at, p: x.payout == null ? def : x.payout, s, b })));
+    else if (r.from && r.to && r.everyMin) { const f = toMin(r.from), t = toMin(r.to), e = Math.max(1, +r.everyMin); if (!isNaN(f) && !isNaN(t)) for (let m = f; m <= t; m += e) out.push({ t: fromMin(m), p: def, s, b }); }
     return out;
   }
   const sKey = (r) => (r.s ? r.s.join(',') : ''); // 行の店の組を文字に（Rule に分けるときの鍵。'' ＝ 全店）
@@ -680,14 +682,15 @@
         t = { k: nk(), id: key, name: r.name || '', enabled: r.enabled !== false, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'daily', weekdays: (r.weekdays || []).slice(), date: r.date || '', storeId: r.storeId || null, scope: r.scope || 'all', rows: [] };
         map.set(key, t); tpls.push(t);
       }
-      ruleRows(r).forEach((x) => t.rows.push({ k: nk(), t: x.t, p: String(x.p), s: copyS(x.s) }));
+      ruleRows(r).forEach((x) => t.rows.push({ k: nk(), t: x.t, p: String(x.p), s: copyS(x.s), b: !!x.b }));
     });
     tpls.forEach((t) => sortRows(t));
     return tpls;
   }
   function loadTT() {
     const tpls = tplsFromRules(cfg.rules);
-    tt = { tpls };
+    tt = { tpls, bigNames: Object.assign({}, cfg.bigNames || {}) }; // bigNames: ビッグレースの名前（2026-11-11。保存ボタンで時刻表といっしょに保存）
+    bigSig = '';
     ttOrig = new Set(); tpls.forEach((t) => t.rows.forEach((r) => ttOrig.add(t.id + '|' + r.t)));
     ttDirty = false;
   }
@@ -706,10 +709,10 @@
     const rules = [];
     tpls.forEach((t) => {
       const groups = new Map();
-      t.rows.forEach((r) => { const key = Number(r.p) + '|' + sKey(r); if (!groups.has(key)) groups.set(key, { p: Number(r.p), s: copyS(r.s), times: [] }); groups.get(key).times.push(r.t); });
+      t.rows.forEach((r) => { const key = Number(r.p) + '|' + sKey(r) + '|' + (r.b ? 'B' : ''); if (!groups.has(key)) groups.set(key, { p: Number(r.p), s: copyS(r.s), b: !!r.b, times: [] }); groups.get(key).times.push(r.t); }); // ビッグレースの行（r.b）は別の Rule（big: true）に（2026-11-11）
       const base = { tpl: t.id, name: t.name || '', enabled: t.enabled, kind: t.kind, weekdays: t.kind === 'weekday' ? t.weekdays.slice().sort() : [], date: t.kind === 'date' ? t.date : '', scope: t.storeId ? 'store' : t.scope === 'store' ? 'store' : 'all', storeId: t.storeId || null };
       let i = 0;
-      groups.forEach((g) => { const times = g.times.slice().sort(); rules.push(Object.assign({ id: i ? t.id + '~' + i : t.id, times, payout: g.p, storeIds: g.s && g.s.length ? g.s : null, races: times.map((x) => ({ time: x, payout: g.p })) }, base)); i++; });
+      groups.forEach((g) => { const times = g.times.slice().sort(); rules.push(Object.assign({ id: i ? t.id + '~' + i : t.id, times, payout: g.p, storeIds: g.s && g.s.length ? g.s : null, races: times.map((x) => ({ time: x, payout: g.p })) }, g.b ? { big: true } : {}, base)); i++; });
     });
     return rules;
   }
@@ -797,6 +800,37 @@
       '<button type="button" class="stchip all' + (all ? ' on' : '') + '" data-act="row-all" aria-pressed="' + all + '" title="全部の店で投票できる">全店</button>' +
       cfg.stores.map((s) => { const on = all || r.s.indexOf(s.id) >= 0; return '<label class="stchip' + (on ? ' on' : '') + '"><input type="checkbox" data-rs="' + esc(s.id) + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(s.name) + 'で投票できる">' + esc(s.name) + '</label>'; }).join('') + '</div>';
   }
+  /* ビッグレースの印（2026-11-11 オーナー「金・土の 22:30 はビッグレース」）: 行ごとの小さな札「★ビッグ」（押すと ON/OFF。r.b） */
+  const bigChip = (r) => '<button type="button" class="stchip bigchip' + (r.b ? ' on' : '') + '" data-act="row-big" aria-pressed="' + !!r.b + '" title="ビッグレースにする">★ビッグ</button>';
+  /* ビッグレースの枠（時刻表の上）: いま編集中の時刻表で、この先 4 週間のビッグレースを日付ごとに。名前の欄は日付ごと（tt.bigNames）。保存は時刻表の「保存」で
+     名前の欄に入力中に作り直さないよう、日付・時刻・目標・店の組が変わったときだけ作り直す（bigSig） */
+  const BIG_WEEKS = 4, BIG_NAME_MAX = 20;
+  const fmtDayJa = (d) => (+d.slice(5, 7)) + '月' + (+d.slice(8, 10)) + '日（' + WD[wdOf(d)] + '）';
+  function bigList() {
+    const today = bizToday(), nowM = bizMin(now()), out = [];
+    for (let i = 0; i < BIG_WEEKS * 7; i++) {
+      const d = addDays(today, i), list = daySchedule(tt.tpls, d, null).filter((x) => x.row && x.row.b && !(i === 0 && x.m <= nowM));
+      if (list.length) out.push({ d, list });
+    }
+    return out;
+  }
+  const bigSigOf = (L) => JSON.stringify([tt.tpls.some((t) => t.rows.some((r) => r.b)), L.map((g) => [g.d, g.list.map((x) => [x.t, x.p, x.s])])]);
+  function viewBig() {
+    const L = bigList(), any = tt.tpls.some((t) => t.rows.some((r) => r.b));
+    bigSig = bigSigOf(L);
+    const body = !any ? '<div class="empty">まだビッグレースがありません。下の時刻表で、レースの行の「★ビッグ」を押すとビッグレースになります。</div>'
+      : !L.length ? '<div class="empty">この先 ' + BIG_WEEKS + ' 週間にビッグレースはありません。</div>'
+      : '<div class="tbl"><table class="big-rows"><tr class="hd"><th>日付</th><th>走り出す</th><th>名前</th><th class="n">目標</th><th>投票できる店</th></tr>' +
+        L.map((g) => '<tr><td class="bd"><b>' + esc(fmtDayJa(g.d)) + '</b></td><td>' + g.list.map((x) => '<b>' + esc(x.t) + '</b>').join('<br>') + '</td>' +
+          '<td class="bn"><input type="text" data-bn="' + esc(g.d) + '" value="' + esc((tt.bigNames || {})[g.d] || '') + '" maxlength="' + BIG_NAME_MAX + '" placeholder="ビッグレース" aria-label="' + esc(fmtDayJa(g.d)) + 'のビッグレースの名前"></td>' +
+          '<td class="n">' + g.list.map((x) => ptN(x.p)).join('<br>') + '</td><td>' + g.list.map((x) => storesChip(x.s)).join('<br>') + '</td></tr>').join('') + '</table></div>';
+    return '<div class="panel bigpanel" id="bigbox"><h3>ビッグレース</h3><p class="hint">名前を入れると、テレビとスマホに「次のビッグレース」として出ます（金額は出ません）。空のときは「ビッグレース」と出ます。</p>' + body + '</div>';
+  }
+  function paintBig() {
+    const box = $('bigbox'); if (!box || !tt) return;
+    if (bigSigOf(bigList()) === bigSig) return; // 変わっていなければ作り直さない（名前の欄の入力中にフォーカスが外れないように）
+    box.outerHTML = viewBig();
+  }
   function paintRowChips(tr, r) {
     const all = !Array.isArray(r.s), ab = tr.querySelector('[data-act="row-all"]');
     if (ab) { ab.classList.toggle('on', all); ab.setAttribute('aria-pressed', String(all)); }
@@ -832,7 +866,7 @@
         (t.rows.length > ROWS_SHOWN ? '<div class="acts l rowsbar"><label class="find"><span>時刻で探す</span>' + timeInput('data-find aria-label="この時刻のレースへ移る"', '') + '</label><small class="hint" style="margin:0">' + t.rows.length + ' レースのうち、入れた時刻の行へ移ります</small></div>' : '') +
         '<div class="tbl"><table class="tt-rows"><tr class="hd"><th class="no">#</th><th class="th-t">走り出す時刻</th><th class="th-p">当選額の目標（pt）</th><th class="th-s">投票できる店</th><th></th><th></th></tr>' +
         (t.rows.length ? t.rows.map((r, j) => '<tr data-rk="' + r.k + '"' + (j >= ROWS_SHOWN && !tplAll.has(t.id) ? ' class="more"' : '') + '><td class="no">' + (j + 1) + '</td><td class="tdt">' + timeInput('data-rf="t" aria-label="走り出す時刻"', r.t) + '</td>' +
-          '<td class="tdp"><input type="number" class="pay" data-rf="p" value="' + esc(r.p) + '" min="1" max="' + PAY_MAX + '" step="1" inputmode="numeric" aria-label="当選額の目標"></td><td class="st">' + rowChips(r) + '</td><td class="msg"></td>' +
+          '<td class="tdp"><input type="number" class="pay" data-rf="p" value="' + esc(r.p) + '" min="1" max="' + PAY_MAX + '" step="1" inputmode="numeric" aria-label="当選額の目標"></td><td class="st">' + bigChip(r) + rowChips(r) + '</td><td class="msg"></td>' +
           '<td class="ops"><button type="button" class="icon" data-act="row-dup" aria-label="この行をコピー" title="この行をコピー（次の時刻に）">⧉</button><button type="button" class="icon del" data-act="row-del" aria-label="この行を消す" title="この行を消す">×</button></td></tr>').join('')
           : '<tr><td colspan="6" class="empty">まだレースがありません。上の「まとめて作る」で入れてください</td></tr>') +
         '</table></div>' +
@@ -844,7 +878,7 @@
       '<label class="f"><span>日付</span><input type="date" id="pvdate" value="' + esc(pvDate || todayStr()) + '"></label><span class="pvhol" id="pvhol"></span>' + /* 祝日なら「祝日・文化の日」の札（paintPreview で入れる。2026-10-27） */
       '<div class="seg pvseg"><button type="button" class="' + (pvSrc === 'local' ? 'on' : '') + '" aria-pressed="' + (pvSrc === 'local') + '" data-act="pv-local">変更後</button><button type="button" class="' + (pvSrc === 'server' ? 'on' : '') + '" aria-pressed="' + (pvSrc === 'server') + '" data-act="pv-server">保存済み</button></div>' +
       '<div id="pvbox"></div></div></div>';
-    return '<div class="panel"><h3>時刻表を変える</h3>' +
+    return viewBig() + '<div class="panel"><h3>時刻表を変える</h3>' +
       '<p class="hint">時刻は<b>レースが走り出す時刻</b>（投票はその ' + voteMin + '前から）。<b>全店同じ</b>時刻表です（レースごとに「投票できる店」をしぼれます）。レースとレースの間は <b>' + secTxt(g.sec) + ' 以上</b>あけてください。</p>' +
       '<p class="hint nightnote" style="margin-bottom:0">深夜は <b>24:00〜28:59</b> と書きます（25:00 ＝ 深夜 1 時。集計・受け取りはその日のぶんに入ります）。</p>' +
       '<details class="fold"><summary>くわしく</summary><div class="in">' +
@@ -893,6 +927,7 @@
     $('ttmsg').innerHTML = n ? '<div class="err">エラーが ' + n + ' 件あります（赤い欄）。直すと保存できます。' + (v.list[0] ? '<br><small>' + esc(v.list[0]) + (v.list.length > 1 ? ' ほか' : '') + '</small>' : '') + '</div>'
       : ttDirty ? '<div class="warnmsg">保存していない変更があります</div>' : '<div class="okmsg">保存済みです</div>';
     $('ttsave').disabled = n > 0 || !ttDirty;
+    paintBig(); // ビッグレースの枠（2026-11-11）
     paintPreview();
   }
   // この日の予定（右の枠）: 走り出す時刻・投票の始まり・目標
@@ -959,8 +994,8 @@
     const rules = templatesToRules(tt.tpls);
     // 開いてから、ほかの画面（別のタブ・別の人）で時刻表が保存されていたら、上書きしてよいか聞く
     const loaded = JSON.stringify(cfg.rules), fresh = normCfg(await api('config'));
-    if (JSON.stringify(fresh.rules) !== loaded && !confirm('この画面を開いたあとに、ほかの画面で時刻表が保存されています。\nこの画面の内容で上書きしますか？（キャンセルすると保存しません。「元に戻す」で最新を読み込めます）')) { cfg = fresh; return; }
-    await api('saveTimetable', rules);
+    if ((JSON.stringify(fresh.rules) !== loaded || JSON.stringify(fresh.bigNames) !== JSON.stringify(cfg.bigNames)) && !confirm('この画面を開いたあとに、ほかの画面で時刻表が保存されています。\nこの画面の内容で上書きしますか？（キャンセルすると保存しません。「元に戻す」で最新を読み込めます）')) { cfg = fresh; return; }
+    await api('saveTimetable', rules, Object.assign({}, tt.bigNames || {})); // ビッグレースの名前も（2026-11-11）
     await reloadCfg();
     loadTT(); pvServer = null; ttRerender();
     if (pvSrc === 'server') loadServerPreview();
@@ -1183,6 +1218,7 @@
       '<p class="hint" id="spreadEx">' + spreadExample(spreadOfT(T)) + '</p>' +
       stepRow('払い出しの上限（1 レース）', '0 = なし。1 レースの当選額の合計', 'payoutCap', T.payoutCap || 0, 'pt', 0, 99999900, 100) +
       stepRow('払い出しの上限（1 日）', '0 = なし。全店の 1 日の当選額の合計', 'payoutCapDay', T.payoutCapDay || 0, 'pt', 0, 999999900, 100) +
+      stepRow('ビッグレースの上限（1 レース）', '0 = なし。ビッグレースはふだんの上限（1 レース・1 日）の代わりにこれを使います', 'bigCap', T.bigCap == null ? 100000 : T.bigCap, 'pt', 0, 99999900, 100) + /* 2026-11-11 オーナー「ビッグレースだけ別の上限」 */
       '<p class="hint capnote">上限は「必ず誰かは当てる」より<b>強い</b>決まりです。上限を超える組み合わせしかないときは<b>当たりなし</b>になります。</p>' +
       stepRow('1台の会計番号の上限', '1台のスマホが1レースでこの数以上の会計番号を使うと、その票は「必ず誰かは当てる」に数えません（自然に当たれば払います）。0 = 使わない', 'maxBillsPerDevice', T.maxBillsPerDevice == null ? 4 : T.maxBillsPerDevice, '個', 0, 99, 1) +
       '<p class="hint" id="billsEx">' + billsExample(T.maxBillsPerDevice == null ? 4 : T.maxBillsPerDevice) + '</p>' +
@@ -1263,7 +1299,7 @@
     finally { btns.forEach((x) => { if (document.contains(x)) x.disabled = false; }); }
   }
   const CUE_KEYS = [].concat.apply([], CUES.map(([k]) => ['cueShow_' + k, 'cueHit_' + k]));
-  const TUN_KEYS = ['stampCost', 'stampVote', 'stampWin', 'stampNear', 'voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutSpread', 'payoutCap', 'payoutCapDay', 'maxBillsPerDevice', 'noRepeatRaces', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
+  const TUN_KEYS = ['stampCost', 'stampVote', 'stampWin', 'stampNear', 'voteSec', 'shiftUp', 'shiftDown', 'bandBelow', 'bandAbove', 'payoutSpread', 'payoutCap', 'payoutCapDay', 'bigCap', 'maxBillsPerDevice', 'noRepeatRaces', 'payoutRate', 'volatility', 'resultSec', 'gateSec', 'postSec'].concat(CUE_KEYS);
   function validateTuning() {
     if (!$('tumsg')) return 1;
     const badKeys = TUN_KEYS.filter((k) => !numOk(k) || (k === 'maxBillsPerDevice' && $('n-' + k) && Number($('n-' + k).value) === 1)), bad = badKeys.length;
@@ -1298,7 +1334,7 @@
       voteSec: Math.round(numOf('voteSec')),
       shiftUp: Math.round(numOf('shiftUp')) / 100, shiftDown: Math.round(numOf('shiftDown')) / 100,
       bandBelow: Math.round(numOf('bandBelow')) / 100, bandAbove: Math.round(numOf('bandAbove')) / 100, payoutSpread: Math.round(numOf('payoutSpread')) / 100,
-      payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')), maxBillsPerDevice: Math.round(numOf('maxBillsPerDevice')),
+      payoutCap: Math.round(numOf('payoutCap')), payoutCapDay: Math.round(numOf('payoutCapDay')), bigCap: Math.round(numOf('bigCap')), maxBillsPerDevice: Math.round(numOf('maxBillsPerDevice')),
       noRepeatWin: ckOf('noRepeatWin'), noRepeatRaces: Math.round(numOf('noRepeatRaces')), favorBigStore: ckOf('favorBigStore'), /* 2026-10-31 */
       payoutRate: Math.round(numOf('payoutRate')) / 100, volatility: Math.round(numOf('volatility') * 10) / 10,
       resultSec: Math.round(numOf('resultSec')), gateSec: Math.round(numOf('gateSec')), postSec: Math.round(numOf('postSec')),
@@ -1700,6 +1736,7 @@
       if (t && el.dataset.rf) { const r = rowOf(t, el); if (r) r[el.dataset.rf] = el.value; return ttTouched(); }
       if (t && el.dataset.tf === 'name') { t.name = el.value; return ttTouched(); }
       if (t && el.dataset.tf === 'date') { t.date = el.value; return ttTouched(); }
+      if (el.dataset.bn) { tt.bigNames = tt.bigNames || {}; tt.bigNames[el.dataset.bn] = el.value; return ttTouched(); } // ビッグレースの名前（2026-11-11）
     }
   });
   main.addEventListener('change', (e) => {
@@ -1811,7 +1848,8 @@
         case 'tpl-del': { const t = tplOf(b); if (t.rows.length && !confirm('予定「' + tplName(t) + '」（' + t.rows.length + ' レース）を消します（保存するまでは元に戻せます）。')) return; tt.tpls.splice(tt.tpls.indexOf(t), 1); ttDirty = true; return ttRerender(); }
         case 'tpl-rows': { const t = tplOf(b); if (tplAll.has(t.id)) tplAll.delete(t.id); else tplAll.add(t.id); return ttRerender(); }
         case 'row-add': { const t = tplOf(b); tplAll.add(t.id); const last = t.rows[t.rows.length - 1], gap = Math.ceil(minGapSec().sec / 60); const m = last && !isNaN(toMin(last.t)) ? Math.min(TT_MAX, toMin(last.t) + Math.max(gap, 5)) : 19 * 60; t.rows.push({ k: nk(), t: fromMin(m), p: last ? last.p : '3000', s: null }); ttDirty = true; ttRerender(); const ins = main.querySelectorAll('[data-tk="' + t.k + '"] [data-rf="t"]'); if (ins.length) ins[ins.length - 1].focus(); return; } // 新しい行は全店
-        case 'row-dup': { const t = tplOf(b), r = rowOf(t, b), gap = Math.ceil(minGapSec().sec / 60), m = toMin(r.t); const c = { k: nk(), t: isNaN(m) ? '' : fromMin(Math.min(TT_MAX, m + Math.max(gap, 5))), p: r.p, s: copyS(r.s) }; t.rows.splice(t.rows.indexOf(r) + 1, 0, c); ttDirty = true; return ttRerender(); }
+        case 'row-dup': { const t = tplOf(b), r = rowOf(t, b), gap = Math.ceil(minGapSec().sec / 60), m = toMin(r.t); const c = { k: nk(), t: isNaN(m) ? '' : fromMin(Math.min(TT_MAX, m + Math.max(gap, 5))), p: r.p, s: copyS(r.s), b: !!r.b }; t.rows.splice(t.rows.indexOf(r) + 1, 0, c); ttDirty = true; return ttRerender(); }
+        case 'row-big': { const t = tplOf(b), r = rowOf(t, b); if (!r) return; r.b = !r.b; b.classList.toggle('on', r.b); b.setAttribute('aria-pressed', String(r.b)); return ttTouched(); } // ビッグレースの印（2026-11-11）
         case 'row-all': { const t = tplOf(b), r = rowOf(t, b); if (!r) return; r.s = null; paintRowChips(b.closest('[data-rk]'), r); return ttTouched(); } // 「全店」: 店のチェックを全部 ON に
         case 'row-del': { const t = tplOf(b), r = rowOf(t, b); t.rows.splice(t.rows.indexOf(r), 1); ttDirty = true; return ttRerender(); }
         case 'row-sort': { const t = tplOf(b); sortRows(t); return ttRerender(); }
