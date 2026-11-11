@@ -5,7 +5,7 @@
    声: 実況と同じ VOICEVOX:雀松朱司 の部品（tools/make-voice.js の ann_*。--add で art/voice/g.m4a に入る）を、実況と同じ「場内スピーカー」の音
        （js/commentary.js の buildPA）で鳴らす。テレビは「レース中以外は音を出さない」（js/audio.js の scene）ので、案内の声だけは scene を通さずに出す。
    いつ言うか（この店が投票できるレース＝DERBY.canVote だけ。openAt＝投票の始まり、closeAt＝締切）:
-     pre1  … openAt の 1 分前「まもなく投票開始！あと1分です！」
+     （pre1＝openAt の 1 分前「まもなく投票開始！」は 2026-11-11 オーナーの指示でやめた）
      open  … openAt「投票を開始しました！テレビのQRコードから、1着と2着を予想してください！」
      cl20 / cl10 … closeAt の 20・10 分前「締め切りまで、あと20分です」「締め切りまで、あと10分です」
      cl5 / cl3   … closeAt の 5・3 分前「まもなく締め切りです。あと5分です」「まもなく締め切りです！あと3分です！」
@@ -43,7 +43,7 @@
     const openAt = Number(r.openAt), closeAt = Number.isFinite(Number(r.closeAt)) ? Number(r.closeAt) : Number(r.at);
     let L = [];
     const test = isTest(r);
-    if (!test) L.push({ key: 'pre1', at: openAt - MIN, until: Math.min(openAt, openAt - MIN + LATE), pri: PRI.pre1 });
+    // 2026-11-11 オーナー「投票開始まで残り何分のアナウンスはいらない。締め切りまでで基本的には」: pre1（投票の始まりの 1 分前）は言わない
     L.push({ key: 'open', at: openAt, until: Number.isFinite(closeAt) ? Math.min(closeAt, openAt + LATE_OPEN) : openAt + LATE_OPEN, pri: PRI.open });
     if (Number.isFinite(closeAt)) (test ? [1] : CL).forEach((m) => { const k = 'cl' + m, at = closeAt - m * MIN; if (at >= openAt + GAP) L.push({ key: k, at, until: Math.min(closeAt, at + LATE), pri: PRI[k] }); });
     // 近すぎる 2 つは大事な方だけ（同じ大事さなら早い方）
