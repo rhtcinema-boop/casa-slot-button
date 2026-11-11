@@ -1,9 +1,9 @@
 {
- "v": "b206",
+ "v": "b207",
  "files": [
   {
    "path": "index.html",
-   "sha256": "f0bd88404d6238da766b8fcead05a44f182da917746edc32c8bcc14c320080b1"
+   "sha256": "75172c736c3461c047fafc23b5f7ce0f7af5d821402553c0faff53e972c722f2"
   },
   {
    "path": "manifest.webmanifest",
@@ -255,7 +255,7 @@
   },
   {
    "path": "derby/js/audio.js",
-   "sha256": "51dc9dc0e336c96cbb56a781981c08c6c9ee73e208483201a668d9a5c63dedbd"
+   "sha256": "59bafe557760b5f1cf48840f442e3ccae7903402c83fef37162df2100df266e5"
   },
   {
    "path": "derby/js/bonus.js",
@@ -295,7 +295,7 @@
   },
   {
    "path": "derby/js/r3d/horse3d.js",
-   "sha256": "0379daf0d466c06c4ad710e971757ae15d6899265849c7879fcb5a97f5c4ef02"
+   "sha256": "07b4e715f21ba087249e4178d1b47a261d89c626691d6631d83db20fb94b5b4d"
   },
   {
    "path": "derby/js/r3d/look3d.js",
@@ -339,11 +339,11 @@
   },
   {
    "path": "derby/v2/client-firestore.js",
-   "sha256": "4d306e6da9238bded4c3e4b487351140230a32c0b33b30ffef8a79b76baab205"
+   "sha256": "63f1e91d9c4ab6116bddd1d19468ac5ffd3c3c15d27190cea7fb9f3225d43f3a"
   },
   {
    "path": "derby/v2/client.js",
-   "sha256": "d5bdfd3a5c7faee5b53c328a0846ee62bf1c3970dc17f066748fc1ebf7f17c22"
+   "sha256": "41d8252e15a0165936a8cb65d658e3dd47f75888d6545f6b978a54a5b6783ed2"
   },
   {
    "path": "derby/v2/config.js",
@@ -351,7 +351,7 @@
   },
   {
    "path": "derby/v2/core.js",
-   "sha256": "cbd5e1399f98d108460b361e172d43d84d7294ca5002c94f96023568cd8418c5"
+   "sha256": "8ca0bfab072c2478060d606b3feecebce49a9a53741717f5494383571fac2b5b"
   },
   {
    "path": "derby/v2/form.js",
@@ -371,11 +371,11 @@
   },
   {
    "path": "derby/v2/tv.css",
-   "sha256": "c589c13df799db94949ad16bf017050742445c9b95178b7e59d68c36631361e8"
+   "sha256": "ee131fb7c1b2db00763f0b9835f44b23fda71e05017808f1d6ee26ab756dc5b7"
   },
   {
    "path": "derby/v2/tv.js",
-   "sha256": "e427a2590f387c8a6ef38370453efed5eaf30418e1364f92783dae61ebbec0bd"
+   "sha256": "8c7c9bd5a3178a6f733de8f3bdf8d208cef96f5fe1fb327b28f0e8953636be1c"
   },
   {
    "path": "derby/v2/tvhealth.js",
