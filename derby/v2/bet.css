@@ -492,3 +492,18 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 /* 馬券ふうの券（v2/ticket.css）が届くまで隠す */
 .mine.tk { opacity: 0; transition: opacity .18s; }
 html.tkok .mine.tk { opacity: 1; }
+
+/* 次のビッグレース（2026-11-11 試作）: 黒と金のカード。名前に光が走る */
+.bigc { margin: 12px 0; padding: 14px 14px 16px; border-radius: 16px; text-align: center; color: #fff; background: radial-gradient(ellipse at 50% 30%, #5a3a00, #1c1003 60%, #07060a); box-shadow: 0 0 0 2px #ffd24a, 0 0 18px rgba(255, 200, 60, .35); }
+.bigc .bk { display: inline-block; padding: 4px 14px; border-radius: 999px; background: linear-gradient(90deg, #e0262b, #ff5a2a); font-size: 13px; font-weight: 900; letter-spacing: .12em; }
+.bigc .nm { display: block; margin: 8px 0 6px; font-size: 32px; font-weight: 900; line-height: 1.1; letter-spacing: .03em;
+  background: linear-gradient(100deg, #ffd24a 0%, #fff7c2 18%, #ffd24a 30%, #d99a00 60%, #ffd24a 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: bigcShine 3.2s ease-in-out infinite; }
+@keyframes bigcShine { 0%, 35% { background-position: 100% 0; } 75%, 100% { background-position: 0 0; } }
+.bigc .bw { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; }
+.bigc .bw b { font-size: 26px; font-weight: 900; }
+.bigc .bw em { font-style: normal; padding: 3px 10px; border-radius: 999px; background: #e0262b; font-size: 14px; font-weight: 900; }
+
+/* ビッグレースの札（2026-11-11 試作）: 投票・確認・投票済み・結果の画面のいちばん上に金の帯 */
+.bigtag { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 12px; padding: 8px 12px; border-radius: 999px; background: linear-gradient(180deg, #2a1c02, #0e0902); box-shadow: 0 0 0 2px #ffd24a, 0 0 14px rgba(255, 200, 60, .45); }
+.bigtag b { font-size: 20px; font-weight: 900; letter-spacing: .04em; background: linear-gradient(100deg, #ffd24a 0%, #fff7c2 18%, #ffd24a 30%, #d99a00 60%, #ffd24a 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: bigcShine 3.2s ease-in-out infinite; }
+.bigtag i { font-style: normal; color: #ffd24a; font-size: 15px; }
