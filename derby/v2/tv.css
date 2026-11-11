@@ -971,9 +971,9 @@
 #stage.v2.m-wait .screen { opacity: 0; transition: opacity .5s, transform .7s var(--ease-out); }
 #stage.v2.m-wait[data-wp="pad"] .screen { opacity: 1; transform: scale(1.1); } /* 次のレースのパドック（x40〜1140・y100〜628） */
 .v2wait { position: absolute; z-index: 4; left: 40px; top: 96px; width: 1100px; height: 532px; opacity: 0; pointer-events: none; transition: opacity .45s; }
-#stage.v2.m-wait[data-wp="how"] .v2wait, #stage.v2.m-wait[data-wp="win"] .v2wait, #stage.v2.m-wait[data-wp="stamp"] .v2wait, #stage.v2.m-wait[data-wp="hint"] .v2wait, #stage.v2.m-wait[data-wp="card"] .v2wait { opacity: 1; }
+#stage.v2.m-wait[data-wp="how"] .v2wait, #stage.v2.m-wait[data-wp="win"] .v2wait, #stage.v2.m-wait[data-wp="stamp"] .v2wait, #stage.v2.m-wait[data-wp="hint"] .v2wait, #stage.v2.m-wait[data-wp="card"] .v2wait, #stage.v2.m-wait[data-wp="big"] .v2wait { opacity: 1; }
 .v2wait .wpg { position: absolute; inset: 0; display: flex; flex-direction: column; border-radius: 22px; opacity: 0; transform: translateY(14px); transition: opacity .45s, transform .45s var(--ease-out); box-shadow: 0 0 0 5px var(--wood), 0 0 0 8px var(--wood-dark), 0 14px 30px rgba(0, 0, 0, .3); }
-#stage.v2[data-wp="how"] .v2wait .wpg.how, #stage.v2[data-wp="win"] .v2wait .wpg.win, #stage.v2[data-wp="stamp"] .v2wait .wpg.stamp, #stage.v2[data-wp="hint"] .v2wait .wpg.hint, #stage.v2[data-wp="card"] .v2wait .wpg.ecard { opacity: 1; transform: none; }
+#stage.v2[data-wp="how"] .v2wait .wpg.how, #stage.v2[data-wp="win"] .v2wait .wpg.win, #stage.v2[data-wp="stamp"] .v2wait .wpg.stamp, #stage.v2[data-wp="hint"] .v2wait .wpg.hint, #stage.v2[data-wp="card"] .v2wait .wpg.ecard, #stage.v2[data-wp="big"] .v2wait .wpg.big { opacity: 1; transform: none; }
 /* 演出のヒント（2026-11-05）: 夜空の紺に金。場面だけ 4 つの札で */
 .v2wait .hint { padding: 26px 40px 22px; background: radial-gradient(ellipse at 50% 0%, #2b2366, #0b0f26 78%); color: #fff; align-items: center; justify-content: center; gap: 18px; text-align: center; }
 .v2wait .hint .hk { font: 900 32px/1 var(--font-tv); color: #ffd84d; letter-spacing: .16em; }
@@ -1544,3 +1544,108 @@
 .v2res .lw-ft { margin-top: 6px; font-size: 31px; font-weight: 900; color: #dfe7f3; white-space: nowrap; }
 /* 2026-11-07 レース中の右の列: 確定の倍率のときの「確定」の札 */
 .v2odds h5 small em.fix { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; background: #f2b705; color: #1d2433; font: 900 12px/1.5 var(--font-tv); font-style: normal; letter-spacing: .04em; vertical-align: 1px; }
+
+/* 次のビッグレース（2026-11-11 試作）: 名前・日時・残りだけ。後ろで金の光がゆっくり回り、名前に光が走り、星がまたたく（動くのは transform と opacity だけ＝軽い） */
+.v2wait .big { padding: 24px 40px 22px; gap: 22px; overflow: hidden; background: radial-gradient(ellipse at 50% 45%, #5a3a00, #1c1003 55%, #07060a); color: #fff; align-items: center; justify-content: center; text-align: center; box-shadow: 0 0 0 5px #ffd24a, 0 0 0 9px #8a5a00, 0 0 40px rgba(255, 200, 60, .55); }
+.v2wait .big > *:not(i) { position: relative; z-index: 1; }
+.v2wait .big .rays { position: absolute; left: 50%; top: 45%; width: 1600px; height: 1600px; margin: -800px 0 0 -800px; z-index: 0; opacity: .5;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 210, 74, .32) 0deg 7deg, transparent 7deg 18deg);
+  -webkit-mask: radial-gradient(circle, #000 0, #000 18%, transparent 55%); mask: radial-gradient(circle, #000 0, #000 18%, transparent 55%); }
+#stage.v2[data-wp="big"] .v2wait .big .rays { animation: bigRays 24s linear infinite; }
+@keyframes bigRays { to { transform: rotate(360deg); } }
+.v2wait .big .bk { display: inline-block; padding: 10px 34px; border-radius: 999px; background: linear-gradient(90deg, #e0262b, #ff5a2a); box-shadow: 0 6px 0 #8a1014; font: 900 40px/1 var(--font-tv); color: #fff; letter-spacing: .14em; }
+.v2wait .big h3 { display: block; height: auto; font-size: 124px; line-height: 1.05; letter-spacing: .04em; white-space: nowrap;
+  background: linear-gradient(100deg, #ffd24a 0%, #fff7c2 18%, #ffd24a 30%, #d99a00 60%, #ffd24a 100%); background-size: 260% 100%; background-position: 100% 0;
+  -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 2px #3a2400) drop-shadow(0 6px 0 #4a2f00) drop-shadow(0 0 24px rgba(255, 200, 60, .45)); }
+#stage.v2[data-wp="big"] .v2wait .big h3 { animation: bigShine 3.2s ease-in-out infinite; }
+@keyframes bigShine { 0%, 35% { background-position: 100% 0; } 75%, 100% { background-position: 0 0; } }
+.v2wait .big .bw { display: flex; align-items: center; gap: 22px; font: 900 50px/1 var(--font-tv); }
+.v2wait .big .bw b { font: 900 92px/1 var(--font-num); color: #fff; text-shadow: 0 4px 0 rgba(0, 0, 0, .5); }
+.v2wait .big .bw .bl { padding: 10px 26px; border-radius: 999px; background: #e0262b; font-size: 46px; box-shadow: 0 6px 0 #8a1014; }
+#stage.v2[data-wp="big"] .v2wait .big .bw .bl { animation: bigPulse 1.6s ease-in-out infinite; }
+@keyframes bigPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.v2wait .big .tw { position: absolute; z-index: 0; width: 46px; height: 46px; opacity: 0; background: radial-gradient(circle, #fff 0, #ffe9a0 18%, transparent 40%), linear-gradient(0deg, transparent 46%, #fff8d0 50%, transparent 54%), linear-gradient(90deg, transparent 46%, #fff8d0 50%, transparent 54%); }
+.v2wait .big .t1 { left: 9%; top: 18%; } .v2wait .big .t2 { left: 86%; top: 14%; width: 60px; height: 60px; } .v2wait .big .t3 { left: 4%; top: 86%; } .v2wait .big .t4 { left: 94%; top: 86%; width: 36px; height: 36px; } .v2wait .big .t5 { left: 48%; top: 6%; width: 34px; height: 34px; }
+#stage.v2[data-wp="big"] .v2wait .big .tw { animation: bigTw 2.4s ease-in-out infinite; }
+.v2wait .big .t2 { animation-delay: .6s !important; } .v2wait .big .t3 { animation-delay: 1.1s !important; } .v2wait .big .t4 { animation-delay: 1.7s !important; } .v2wait .big .t5 { animation-delay: .3s !important; }
+@keyframes bigTw { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(45deg); } }
+/* 紙吹雪（2026-11-11「もっと派手に」）: 上から落ちながら回る。transform だけ */
+.v2wait .big .cf { position: absolute; z-index: 0; top: -40px; border-radius: 3px; opacity: .9; }
+#stage.v2[data-wp="big"] .v2wait .big .cf { animation: bigConf 4s linear infinite; }
+@keyframes bigConf { 0% { transform: translate3d(0, 0, 0) rotate(0deg) rotateY(0deg); } 50% { transform: translate3d(30px, 300px, 0) rotate(200deg) rotateY(180deg); } 100% { transform: translate3d(-20px, 620px, 0) rotate(420deg) rotateY(360deg); } }
+.v2wait .big .c1 { left: 8.1%; width: 16px; height: 26px; background: #ff4d4d; animation-duration: 4.63s !important; animation-delay: -0.29s !important; }
+.v2wait .big .c2 { left: 14.7%; width: 18px; height: 30px; background: #ffffff; animation-duration: 3.33s !important; animation-delay: -2.03s !important; }
+.v2wait .big .c3 { left: 18.5%; width: 20px; height: 26px; background: #4dc3ff; animation-duration: 3.35s !important; animation-delay: -0.36s !important; }
+.v2wait .big .c4 { left: 25.9%; width: 14px; height: 22px; background: #ffa64d; animation-duration: 4.59s !important; animation-delay: -2.33s !important; }
+.v2wait .big .c5 { left: 30.2%; width: 20px; height: 22px; background: #7dff8a; animation-duration: 5.35s !important; animation-delay: -0.19s !important; }
+.v2wait .big .c6 { left: 39.2%; width: 18px; height: 26px; background: #ffd24a; animation-duration: 3.52s !important; animation-delay: -0.47s !important; }
+.v2wait .big .c7 { left: 42.8%; width: 16px; height: 22px; background: #ff4d4d; animation-duration: 4.48s !important; animation-delay: -2.56s !important; }
+.v2wait .big .c8 { left: 48.9%; width: 14px; height: 30px; background: #ffffff; animation-duration: 3.33s !important; animation-delay: -0.82s !important; }
+.v2wait .big .c9 { left: 55.9%; width: 20px; height: 26px; background: #4dc3ff; animation-duration: 4.22s !important; animation-delay: -3.69s !important; }
+.v2wait .big .c10 { left: 60.4%; width: 16px; height: 22px; background: #ffa64d; animation-duration: 4.74s !important; animation-delay: -0.98s !important; }
+.v2wait .big .c11 { left: 67.1%; width: 20px; height: 26px; background: #7dff8a; animation-duration: 4.8s !important; animation-delay: -1.15s !important; }
+.v2wait .big .c12 { left: 74.5%; width: 14px; height: 30px; background: #ffd24a; animation-duration: 4.12s !important; animation-delay: -3.03s !important; }
+.v2wait .big .c13 { left: 77.0%; width: 20px; height: 26px; background: #ff4d4d; animation-duration: 3.29s !important; animation-delay: -2.67s !important; }
+.v2wait .big .c14 { left: 85.3%; width: 18px; height: 26px; background: #ffffff; animation-duration: 4.73s !important; animation-delay: -2.38s !important; }
+.v2wait .big .c15 { left: 90.3%; width: 20px; height: 22px; background: #4dc3ff; animation-duration: 5.05s !important; animation-delay: -3.78s !important; }
+.v2wait .big .c16 { left: 95.7%; width: 14px; height: 22px; background: #ffa64d; animation-duration: 4.81s !important; animation-delay: -1.24s !important; }
+/* 名前が時々ぽんと弾む */
+#stage.v2[data-wp="big"] .v2wait .big h3 { animation: bigShine 3.2s ease-in-out infinite, bigPop 3.2s ease-out infinite; }
+@keyframes bigPop { 0%, 80%, 100% { transform: scale(1); } 86% { transform: scale(1.07); } 92% { transform: scale(.98); } }
+/* 入ってきたときに札・名前・日時が順に飛び出す */
+#stage.v2[data-wp="big"] .v2wait .big .bk { animation: bigIn .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+#stage.v2[data-wp="big"] .v2wait .big .bw { animation: bigIn .5s .35s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes bigIn { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+
+/* ---------- ビッグレース（2026-11-11 試作）: 投票中・レース中の上の金の札、走る前の大きな名前、ゴールの金の紙吹雪 ---------- */
+.v2bigBan { position: absolute; z-index: 7; left: 50%; top: 14px; transform: translateX(-50%); display: none; align-items: center; gap: 14px; padding: 8px 34px; border-radius: 999px; white-space: nowrap;
+  background: linear-gradient(180deg, #2a1c02, #0e0902); box-shadow: 0 0 0 4px #ffd24a, 0 0 22px rgba(255, 200, 60, .6); font: 900 46px/1.1 var(--font-tv); }
+.v2bigBan b { background: linear-gradient(100deg, #ffd24a 0%, #fff7c2 18%, #ffd24a 30%, #d99a00 60%, #ffd24a 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: bigShine 3.2s ease-in-out infinite; }
+.v2bigBan i { font-style: normal; color: #ffd24a; font-size: 34px; }
+#stage.v2.bigrace .v2bigBan { display: flex; }
+#stage.v2.bigrace.m-open .v2bigBan { left: 440px; top: 130px; padding: 6px 26px; font-size: 36px; } /* 投票中は上の札（時刻・参加人数）と重ならないよう、パドックの映像の上の真ん中に小さく */
+#stage.v2.bigrace.m-open .v2bigBan i { font-size: 26px; }
+#stage.v2.bigrace.m-open .screen, #stage.v2.bigrace.m-live .screen { box-shadow: 0 0 0 6px #ffd24a, 0 0 30px rgba(255, 200, 60, .55); }
+.v2bigT { position: absolute; z-index: 9; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(40, 26, 0, .85), rgba(0, 0, 0, .55) 60%, transparent 85%); }
+.v2bigT small { padding: 10px 40px; border-radius: 999px; background: linear-gradient(90deg, #e0262b, #ff5a2a); box-shadow: 0 6px 0 #8a1014; font: 900 48px/1 var(--font-tv); color: #fff; letter-spacing: .2em; }
+.v2bigT b { font: 900 170px/1.1 var(--font-tv); letter-spacing: .04em; white-space: nowrap; background: linear-gradient(180deg, #fff7c2, #ffd24a 45%, #d99a00); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 2px #3a2400) drop-shadow(0 8px 0 #4a2f00) drop-shadow(0 0 40px rgba(255, 200, 60, .7)); }
+.v2bigT.show { animation: bigT 4.2s ease-out forwards; }
+.v2bigT.show b { animation: bigTb 4.2s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+@keyframes bigT { 0% { opacity: 0; } 8%, 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes bigTb { 0% { transform: scale(.3); } 14% { transform: scale(1.06); } 22%, 82% { transform: scale(1); } 100% { transform: scale(1.15); } }
+.v2bigConf { position: absolute; z-index: 9; inset: 0; overflow: hidden; pointer-events: none; display: none; }
+.v2bigConf.show { display: block; animation: bigConfOff 6.5s linear forwards; }
+.v2bigConf i { position: absolute; top: -60px; border-radius: 3px; }
+.v2bigConf.show i { animation: bigConfFall 3s linear 2; }
+@keyframes bigConfFall { 0% { transform: translate3d(0, 0, 0) rotate(0deg) rotateY(0deg); } 50% { transform: translate3d(40px, 560px, 0) rotate(240deg) rotateY(180deg); } 100% { transform: translate3d(-30px, 1160px, 0) rotate(480deg) rotateY(360deg); } }
+@keyframes bigConfOff { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.v2bigConf .g1 { left: 44.9%; width: 24px; height: 34px; background: #fff1a8; animation-duration: 2.83s !important; animation-delay: 1.03s !important; }
+.v2bigConf .g2 { left: 19.4%; width: 24px; height: 34px; background: #e0a400; animation-duration: 3.08s !important; animation-delay: 0.95s !important; }
+.v2bigConf .g3 { left: 10.1%; width: 20px; height: 28px; background: #ffe27a; animation-duration: 2.33s !important; animation-delay: 0.97s !important; }
+.v2bigConf .g4 { left: 68.3%; width: 16px; height: 40px; background: #ffffff; animation-duration: 3.58s !important; animation-delay: 1.16s !important; }
+.v2bigConf .g5 { left: 64.4%; width: 24px; height: 40px; background: #f5b800; animation-duration: 2.42s !important; animation-delay: 0.02s !important; }
+.v2bigConf .g6 { left: 52.3%; width: 16px; height: 28px; background: #ffd24a; animation-duration: 2.47s !important; animation-delay: 0.29s !important; }
+.v2bigConf .g7 { left: 3.9%; width: 20px; height: 34px; background: #fff1a8; animation-duration: 2.82s !important; animation-delay: 1.01s !important; }
+.v2bigConf .g8 { left: 51.4%; width: 24px; height: 34px; background: #e0a400; animation-duration: 2.9s !important; animation-delay: 0.79s !important; }
+.v2bigConf .g9 { left: 45.4%; width: 20px; height: 34px; background: #ffe27a; animation-duration: 3.6s !important; animation-delay: 1.19s !important; }
+.v2bigConf .g10 { left: 82.5%; width: 24px; height: 34px; background: #ffffff; animation-duration: 2.64s !important; animation-delay: 0.28s !important; }
+.v2bigConf .g11 { left: 29.0%; width: 16px; height: 40px; background: #f5b800; animation-duration: 3.27s !important; animation-delay: 0.48s !important; }
+.v2bigConf .g12 { left: 83.1%; width: 20px; height: 28px; background: #ffd24a; animation-duration: 3.54s !important; animation-delay: 1.02s !important; }
+.v2bigConf .g13 { left: 1.1%; width: 16px; height: 28px; background: #fff1a8; animation-duration: 2.86s !important; animation-delay: 1.18s !important; }
+.v2bigConf .g14 { left: 39.6%; width: 16px; height: 40px; background: #e0a400; animation-duration: 3.08s !important; animation-delay: 0.93s !important; }
+.v2bigConf .g15 { left: 27.2%; width: 16px; height: 34px; background: #ffe27a; animation-duration: 2.67s !important; animation-delay: 1.16s !important; }
+.v2bigConf .g16 { left: 74.5%; width: 16px; height: 28px; background: #ffffff; animation-duration: 2.54s !important; animation-delay: 0.12s !important; }
+.v2bigConf .g17 { left: 6.8%; width: 20px; height: 28px; background: #f5b800; animation-duration: 3.15s !important; animation-delay: 0.23s !important; }
+.v2bigConf .g18 { left: 50.4%; width: 24px; height: 28px; background: #ffd24a; animation-duration: 2.79s !important; animation-delay: 0.46s !important; }
+.v2bigConf .g19 { left: 39.3%; width: 16px; height: 28px; background: #fff1a8; animation-duration: 2.58s !important; animation-delay: 1.17s !important; }
+.v2bigConf .g20 { left: 78.9%; width: 20px; height: 28px; background: #e0a400; animation-duration: 2.49s !important; animation-delay: 0.47s !important; }
+.v2bigConf .g21 { left: 83.9%; width: 24px; height: 40px; background: #ffe27a; animation-duration: 2.34s !important; animation-delay: 1.19s !important; }
+.v2bigConf .g22 { left: 21.7%; width: 20px; height: 28px; background: #ffffff; animation-duration: 3.28s !important; animation-delay: 0.39s !important; }
+.v2bigConf .g23 { left: 29.7%; width: 16px; height: 28px; background: #f5b800; animation-duration: 2.33s !important; animation-delay: 0.7s !important; }
+.v2bigConf .g24 { left: 24.6%; width: 24px; height: 34px; background: #ffd24a; animation-duration: 2.72s !important; animation-delay: 0.54s !important; }
+.v2bigConf .g25 { left: 94.0%; width: 20px; height: 40px; background: #fff1a8; animation-duration: 2.39s !important; animation-delay: 0.46s !important; }
+.v2bigConf .g26 { left: 61.8%; width: 20px; height: 28px; background: #e0a400; animation-duration: 3.34s !important; animation-delay: 0.3s !important; }
+.v2bigConf .g27 { left: 19.4%; width: 24px; height: 40px; background: #ffe27a; animation-duration: 3.52s !important; animation-delay: 0.24s !important; }
+.v2bigConf .g28 { left: 93.2%; width: 20px; height: 40px; background: #ffffff; animation-duration: 2.31s !important; animation-delay: 0.06s !important; }
