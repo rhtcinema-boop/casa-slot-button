@@ -381,7 +381,7 @@
       if (WATCH) { if (!countsCache || local() - countsAt > 20000) { countsAt = local(); try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = races.map((r) => (!(r.participants && r.participants.total) && countsCache[r.id] ? Object.assign({}, r, { participants: countsCache[r.id] }) : r)); } // 見るだけ: derbyLive には参加人数が無い → 20 秒に 1 回まで 1 件読む（締切のあとのレースにも付ける）
       else if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = withCounts(races, countsCache); } // 2026-10-29: 8 秒まで・読めなければ前の値
       const sched = await getSchedule(); // 本日の出走時間（2026-10-27）: 公開の時刻表の決まり → state.today
-      return Core.stateFor({ t: now(), store: s, role: VIEW, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [] });
+      return Core.stateFor({ t: now(), store: s, role: VIEW, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [], bigNames: sched.bigNames || {} }); /* bigNames: 次のビッグレースの名前（2026-11-11。公開の時刻表にある） */
     }
     // スマホ: 見張っていなければ「いまの状態」1 件を読む（レースの一覧を問い合わせない）
     async function phoneLive(storeId) { if (role !== 'phone' && !WATCH) return null; try { return data(await doc(COL.live, storeId).get()); } catch (e) { return null; } }
@@ -751,8 +751,8 @@
     }
     /* 店ごとの「いまの状態」: その店に見えるレース（30 分前より後・まだ終わっていないもの）を、スマホに見せてよい項目だけで。
        結果（result）と当たった人（winners）は発表後（done）だけ。目標額・決定の中身は入れない。中身が変わったときだけ書く */
-    const LIVE_KEYS = ['id', 'storeId', 'storeIds', 'at', 'openAt', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'exacta', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test', 'photo', 'photo2']; /* storeIds: 投票できる店（null ＝ 全店。2026-10-26。スマホが canVote を見るのに要る） */
-    function liteRace(r) { const o = {}; LIVE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; }); if (o.status === 'closing') o.status = 'closed'; if (r.status === 'done') { o.result = r.result || null; o.winners = r.winners || []; o.photo = !!r.photo; o.photo2 = !!r.photo2; } return o; }
+    const LIVE_KEYS = ['id', 'storeId', 'storeIds', 'at', 'openAt', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'exacta', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test', 'photo', 'photo2', 'big', 'bigName']; /* big・bigName: ビッグレース（2026-11-11） */ /* storeIds: 投票できる店（null ＝ 全店。2026-10-26。スマホが canVote を見るのに要る） */
+    function liteRace(r) { const o = {}; LIVE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; }); if (o.status === 'closing') o.status = 'closed'; if (!o.big) { delete o.big; delete o.bigName; } if (r.status === 'done') { o.result = r.result || null; o.winners = r.winners || []; o.photo = !!r.photo; o.photo2 = !!r.photo2; } return o; }
     const liveKeys = {};
     async function publishLive(races) {
       const stores = await getStores(), pub = await getPublic(), t = now(), from = t - 30 * 60000;
@@ -775,7 +775,7 @@
     async function writeRace(entry, sc, opt) {
       opt = Object.assign({}, opt);
       if (opt.recent === undefined) opt.recent = await recentHorsesFor(entry.at);
-      const built = Core.buildRace(Engine, Outcome, entry, sc.tuning, sc.salt, now(), opt);
+      const built = Core.buildRace(Engine, Outcome, entry, sc.tuning, sc.salt, now(), Object.assign({ bigNames: sc.timetable && sc.timetable.bigNames }, opt)); /* bigNames: ビッグレースの名前（2026-11-11） */
       const r = built.race;
       const b = db.batch();
       b.set(doc(COL.races, r.id), Object.assign({}, r, { openAtTs: Ts(r.openAt), closeAtTs: Ts(r.closeAt), runAtTs: Ts(r.runAt), revealAtTs: Ts(r.revealAt) }));
@@ -816,7 +816,7 @@
       const [vq, recent] = await Promise.all([db.collection(COL.votes).where('raceId', '==', raceId).get(), NR.on && !r.test ? recentWinnersFor(r, NR.races).catch((e) => ({ error: (e && (e.code || e.message)) || 'error' })) : null]);
       const votes = vq.docs.map((d) => d.data());
       const day = r.day || Core.bizDate(r.at, sc.tuning.dayStartHour), st = data(await doc(COL.stats, day).get());
-      const d = Core.decideRace(Engine, Outcome, r, secret, votes, sc.tuning, sc.salt, now(), (st && st.committed) || 0, recent);
+      const d = Core.decideRace(Engine, Outcome, r, secret, votes, sc.tuning, sc.salt, now(), (st && st.committed) || 0, recent); /* ビッグレース（2026-11-11）: 上限は bigCap（Core.effectiveCap）。committed は ふだんのレースの分だけ */
       if (d.decision.noRepeat) logD([now(), 'norepeat ' + raceId + ' ' + (d.decision.noRepeat.error ? 'error ' + d.decision.noRepeat.error : 'devices=' + d.decision.noRepeat.devices + ' recent=' + d.decision.noRepeat.recent)]); // 直近の当たり端末（記録は derbyRaceSecrets の decision）
       if (d.decision.manyBills) logD([now(), 'many_bills ' + raceId + ' ' + d.decision.manyBills.map((x) => x.dev + ':' + x.bills).join(',')]); // 1 台で番号が多いスマホ（2026-10-27。決め方に数えない。記録は derbyRaceSecrets の decision と当たりの flag）
       const exp = Core.expireAtFor(Math.max(r.at, d.revealAt), sc.tuning.dayStartHour);
@@ -844,7 +844,7 @@
         tx.set(doc(COL.results, raceId), Object.assign({ raceId, runAt: d.runAt, runAtTs: Ts(d.runAt), revealAt: d.revealAt }, d.result));
         tx.set(doc(COL.secrets, raceId), { decision }, { merge: true });
         tx.update(ref, { status: 'decided', runAt: d.runAt, runAtTs: Ts(d.runAt), revealAt: d.revealAt, endAt: d.endAt, revealAtTs: Ts(d.revealAt), photo: d.photo, photo2: d.photo2, participants: d.participants, decidedAt: now() });
-        tx.set(doc(COL.stats, day), { date: day, committed: FieldValue.increment(d.decision.paidReal || 0) }, { merge: true });
+        tx.set(doc(COL.stats, day), { date: day, [r.big ? 'committedBig' : 'committed']: FieldValue.increment(d.decision.paidReal || 0) }, { merge: true }); /* ビッグレースの払い出しは committedBig に（1 日の上限に数えない。2026-11-11） */
         tx.set(doc(COL.counts, 'live'), { [raceId]: FieldValue.delete() }, { merge: true });
         return true;
       });
@@ -937,7 +937,7 @@
         const pays = []; for (const id of payIds) { const p = data(await tx.get(doc(COL.payouts, id))); if (p) pays.push(p); }
         const stampDocs = []; for (const v of stampV2) stampDocs.push([v, data(await tx.get(doc(COL.stamps, v.owner)))]); // 読むのは書く前に（Firestore の取引の決まり）
         const pl = Core.voidPlan(pays), wd = rr.status === 'done';
-        const inc = { date: day, committed: FieldValue.increment(-pl.voided), byStore: {} };
+        const inc = { date: day, [rr.big ? 'committedBig' : 'committed']: FieldValue.increment(-pl.voided), byStore: {} }; /* ビッグレースは committedBig から戻す（2026-11-11） */
         if (wd && !rr.test) { inc.paid = FieldValue.increment(-pl.voided); const by = {}; pl.voids.forEach((p) => { by[p.storeId] = (by[p.storeId] || 0) + p.amount; }); Object.keys(by).forEach((s) => { inc.byStore[s] = { paid: FieldValue.increment(-by[s]) }; }); }
         tx.set(doc(COL.stats, day), inc, { merge: true });
         tx.update(ref, { refunded: true, refundedAt: t, voided: pl.voided, winners: [] });
@@ -1456,7 +1456,7 @@
             await doc(COL.config, 'secret').set({ timetable: tt, tuning: tu, moneyUnit: M }, { merge: true }); secretCache = null;
           }
           // v4: 公開の時刻表（derbySchedule/public）がまだ無ければ作る（v4 に切り替えた最初のログインで。以後は時刻表・調整の保存で書き直す）
-          try { if (!(await doc(COL.schedule, 'public').get()).exists) { const s0 = (await doc(COL.config, 'secret').get()).data() || {}; await doc(COL.schedule, 'public').set(Core.publicSchedule((s0.timetable && s0.timetable.rules) || [], s0.tuning || {}, now())); } } catch (e) { /* 書けなくてもログインは続ける */ }
+          try { if (!(await doc(COL.schedule, 'public').get()).exists) { const s0 = (await doc(COL.config, 'secret').get()).data() || {}; await doc(COL.schedule, 'public').set(Core.publicSchedule((s0.timetable && s0.timetable.rules) || [], s0.tuning || {}, now(), s0.timetable && s0.timetable.bigNames)); } } catch (e) { /* 書けなくてもログインは続ける */ }
         })();
         return signed;
       };
@@ -1485,9 +1485,12 @@
           await publishLive(await getRaces(true)).catch(() => {});
           return { ok: true, stores: list };
         }),
-        saveTimetable: wrap(async (rulesIn) => {
-          const stores = await getStores(true), sc0 = await secretConfig(), rules = Core.normalizeRules(rulesIn, stores.map((s) => s.id), storeNameOf(stores), Core.tuningOf(sc0.tuning).dayStartHour); /* 時刻は 05:00〜28:59（25 時表記。2026-10-26） */
-          const tb = db.batch(); tb.set(doc(COL.config, 'secret'), { timetable: { rules } }, { merge: true }); tb.set(doc(COL.schedule, 'public'), Core.publicSchedule(rules, sc0.tuning, now())); await tb.commit(); /* derbySchedule/public: 時刻だけの公開の時刻表（casa SLOT のテレビが読む） */
+        saveTimetable: wrap(async (rulesIn, bigNamesIn) => {
+          const stores = await getStores(true), sc0 = await secretConfig(true), rules = Core.normalizeRules(rulesIn, stores.map((s) => s.id), storeNameOf(stores), Core.tuningOf(sc0.tuning).dayStartHour); /* 時刻は 05:00〜28:59（25 時表記。2026-10-26） */
+          /* ビッグレースの名前（2026-11-11 オーナー「日付ごとに名前」）: 送ってきたときだけ入れ替える（送らない呼び方は今の名前のまま）。きのうより前の日は捨てる。
+             merge の set は入れ子の項目を足すだけ（消した日が残る）ので、名前は update の 'timetable.bigNames' で丸ごと書き換える（同じ取引の set のあと＝文書はある） */
+          const bigNames = Core.saveBigNames(bigNamesIn !== undefined ? bigNamesIn : sc0.timetable.bigNames, now(), sc0.tuning);
+          const tb = db.batch(); tb.set(doc(COL.config, 'secret'), { timetable: { rules } }, { merge: true }); tb.update(doc(COL.config, 'secret'), { 'timetable.bigNames': bigNames }); tb.set(doc(COL.schedule, 'public'), Core.publicSchedule(rules, sc0.tuning, now(), bigNames)); await tb.commit(); /* derbySchedule/public: 時刻だけの公開の時刻表（casa SLOT のテレビが読む）。ビッグレースの印と名前も（2026-11-11） */
           const sched = Core.scheduleAround(now(), rules), keep = new Map(sched.map((e) => [e.id, e]));
           for (const r of await getRaces()) {
             if (r.status !== 'upcoming' || r.id.startsWith('x-')) continue;
@@ -1495,6 +1498,7 @@
             if (e) {
               await doc(COL.secrets, r.id).set({ payoutTarget: e.payout, scope: e.scope }, { merge: true });
               if (JSON.stringify(Core.storeIdsOf(r.storeIds)) !== JSON.stringify(e.storeIds || null)) { await doc(COL.races, r.id).set({ storeIds: e.storeIds || null }, { merge: true }); await publishWith(Object.assign({}, r, { storeIds: e.storeIds || null })); } /* 投票できる店の変更も、作ってあるレースに写す（2026-10-26） */
+              { const bp = Core.bigPatch(r, e, bigNames); if (bp) { await doc(COL.races, r.id).set(bp, { merge: true }); await publishWith(Object.assign({}, r, { storeIds: e.storeIds || null }, bp)); } } /* ビッグレースの印・名前の変更も、作ってあるレースに写す（2026-11-11） */
               continue;
             }
             if (now() >= (r.openAt || r.closeAt) - 5000) continue; // 受付中のレースは消さない（票を確かめてから消すまでの間に投票が入ると、票だけ残ってレースが消えた。模擬サーバーは 1 本で動くので起きない）
@@ -1502,7 +1506,7 @@
             const b = db.batch(); b.delete(doc(COL.races, r.id)); b.delete(doc(COL.secrets, r.id)); await b.commit();
           }
           secretCache = null; await publishLive(await getRaces(true)).catch(() => {});
-          return { ok: true, timetable: { rules } };
+          return { ok: true, timetable: { rules, bigNames } };
         }),
         /* テレビ用アカウントを作る（管理画面の「テレビ用アカウントを作る」）。パスワードは管理画面がブラウザの中で作って渡す（ここでは保存も記録もしない）。
            2 つ目の app（tvcreator）で作るので、マスターのログインはそのまま。作ったら 2 つ目の app はログアウトして消す */
@@ -1570,7 +1574,7 @@
         preview: wrap(async (date, s) => { const sc = await secretConfig(), ds = date || Core.dateStr(now()); return { date: ds, holiday: Core.holidayName(ds), weekday: Core.weekday(ds), /* holiday: 祝日の名前 | null（模擬クラウドの GET /api/admin/timetable/preview と同じ。2026-10-27） */ races: Core.expandDate(ds, sc.timetable.rules || []).filter((e) => !s || !e.storeId || e.storeId === s) }; }),
         saveTuning: wrap(async (t) => {
           const sc = await secretConfig(), merged = Core.mergeTuning(sc.tuning, t || {}, now());
-          const b = db.batch(); b.set(doc(COL.config, 'secret'), { tuning: merged }, { merge: true }); b.set(doc(COL.config, 'public'), Core.publicTuning(merged)); b.set(doc(COL.schedule, 'public'), Core.publicSchedule(sc.timetable.rules || [], merged, now())); for (const x of Core.revoteRaces(await getRaces(true), merged, now())) b.set(doc(COL.races, x.id), { openAt: x.openAt, openAtTs: Ts(x.openAt), voteSec: x.voteSec }, { merge: true }); /* まだ投票が始まっていないレースも新しい投票の秒数に */ await b.commit(); pubCache = null; secretCache = null;
+          const b = db.batch(); b.set(doc(COL.config, 'secret'), { tuning: merged }, { merge: true }); b.set(doc(COL.config, 'public'), Core.publicTuning(merged)); b.set(doc(COL.schedule, 'public'), Core.publicSchedule(sc.timetable.rules || [], merged, now(), sc.timetable.bigNames)); /* bigNames（2026-11-11）: 調整の保存で名前が消えないように */ for (const x of Core.revoteRaces(await getRaces(true), merged, now())) b.set(doc(COL.races, x.id), { openAt: x.openAt, openAtTs: Ts(x.openAt), voteSec: x.voteSec }, { merge: true }); /* まだ投票が始まっていないレースも新しい投票の秒数に */ await b.commit(); pubCache = null; secretCache = null;
           await publishLive(await getRaces(true)).catch(() => {});
           return { ok: true, tuning: merged };
         }),
