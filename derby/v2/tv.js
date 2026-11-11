@@ -126,6 +126,11 @@
       '<p class="hw">見てる人だけ、当たる。</p><small class="hn">出ない回もあります</small></div>' +
     /* 次のレースの出馬表（2026-11-05 オーナー「投票前でも次のレースの出走表ぐらいは流してもいい」）: 投票中の出馬表と同じ中身（脚質・調子・近 3 走）を大きく。renderWaitCard */
     '<div class="wpg ecard" id="v2wpCard"><div class="hd"><h3>次のレースの出馬表<small id="v2wpCardT"></small></h3><span class="cl"><i>脚質</i><i>調子</i><i>近3走</i></span></div><div class="rows" id="v2wpCardRows"></div></div>' +
+    /* 次の大きいレース（2026-11-11 オーナー「金土だけ大きいレース」「管理画面で名前を決めて、モニターに次回の大きいレースがいつかを出す」「当選額の目標は書かない」「余計なことは書かないで、お客さんがワクワクするような感じで」）: 試作。データは S.big（無ければ TV.demoBig＝確認用） */
+    '<div class="wpg big" id="v2wpBig"><i class="rays"></i><i class="tw t1"></i><i class="tw t2"></i><i class="tw t3"></i><i class="tw t4"></i><i class="tw t5"></i>' +
+      '<i class="cf c1"></i><i class="cf c2"></i><i class="cf c3"></i><i class="cf c4"></i><i class="cf c5"></i><i class="cf c6"></i><i class="cf c7"></i><i class="cf c8"></i><i class="cf c9"></i><i class="cf c10"></i><i class="cf c11"></i><i class="cf c12"></i><i class="cf c13"></i><i class="cf c14"></i><i class="cf c15"></i><i class="cf c16"></i>' + /* 紙吹雪（2026-11-11「もっと派手に」） */
+      '<small class="bk">次のビッグレース</small><h3 id="v2bigName"></h3>' +
+      '<div class="bw"><span class="bd" id="v2bigDay"></span><b id="v2bigAt"></b><span class="bl" id="v2bigLeft"></span></div></div>' +
     '<div class="wpg win" id="v2wpWin"><div class="hd"><h3>前のレースの結果<small id="v2wpWinT"></small></h3><span class="cnt" id="v2wpWinCnt"></span><span class="pg"></span></div>' +
       '<div class="cmb" id="v2wpCombo"></div><div class="v2wl" id="v2wpList"><div class="inner"></div></div></div>' +
     '</div>'));
@@ -143,6 +148,10 @@
   // リプレイ（m-hl）の右の列: 前のレースの結果（1着・2着・2 連単の倍率）と全店の当たった人の数
   stageEl.appendChild(el('<div class="v2hlw" id="v2hlw"><h5>前のレース<small id="v2hlwSub"></small></h5><div class="hlres" id="v2hlwRes"></div><div class="hlcnt" id="v2hlwCnt"></div></div>'));
   stageEl.appendChild(el('<div class="v2closed" id="v2closed">締切ました</div>'));
+  /* ビッグレース（2026-11-11 試作）: 投票中・レース中の上の金の札（名前）／走る前の大きな名前／ゴールの金の紙吹雪 */
+  stageEl.appendChild(el('<div class="v2bigBan" id="v2bigBan"><i>★</i><b id="v2bigBanN"></b><i>★</i></div>'));
+  stageEl.appendChild(el('<div class="v2bigT" id="v2bigT"><small>ビッグレース</small><b id="v2bigTN"></b></div>'));
+  stageEl.appendChild(el('<div class="v2bigConf" id="v2bigConf"><i class="g1"></i><i class="g2"></i><i class="g3"></i><i class="g4"></i><i class="g5"></i><i class="g6"></i><i class="g7"></i><i class="g8"></i><i class="g9"></i><i class="g10"></i><i class="g11"></i><i class="g12"></i><i class="g13"></i><i class="g14"></i><i class="g15"></i><i class="g16"></i><i class="g17"></i><i class="g18"></i><i class="g19"></i><i class="g20"></i><i class="g21"></i><i class="g22"></i><i class="g23"></i><i class="g24"></i><i class="g25"></i><i class="g26"></i><i class="g27"></i><i class="g28"></i></div>'));
   stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2><span class="v2testtag" id="v2resTest" hidden>テストレース</span></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div><div class="today" id="v2resToday" hidden></div></div></div>' + /* v2resToday: 下の帯の 2 行目「本日のレース 13:00 ✓ …」（2026-10-27） */
     '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b id="v2resActB">当たった方は</b><span id="v2resAct1">スマホの画面を</span><span id="v2resAct2">スタッフへ見せてください</span></div></div><div class="rnote" id="v2resNote">本日中に リングチップでお渡し</div><div class="rsub" id="v2resSub"></div></div>' +
     /* この店の当たった人を先に大きく（2026-11-07 オーナー）: 結果の画面の上に 8 秒だけ重ねる。v2/tv.js の localWin */
@@ -342,6 +351,7 @@
     // 同じレースでも、まだ走り出す前（パドック）で馬の見た目の決まりが変わった・本物寄りの部品が読み終わったときは作り直す（待ち時間のパドックで先に作ったレースを、設定が届いたあと全店そろえるため）
     const want = lookOf(R), lookStale = raceView.setHorseLook && raceView.phase === 'idle' && (want !== (raceView.horseLookReq || 'cute') || (want === 'real' && raceView.horseLook !== 'real' && window.R3D && R3D.HorseReal));
     if (!force && view && view.id === R.id && !lookStale) { applyCues(R); renderHorses(); return; }
+    if (isBig(R) && Array.isArray(R.horses)) R.horses.forEach((h) => { h.special = true; }); // ビッグレースの特別な馬（金のふちと星のゼッケン。js/r3d/horse3d.js）
     view = R; raceView.paddockSec = 1e9; raceView.gateShot = false;
     if (raceView.setHorseLook) raceView.setHorseLook(lookOf(R)); // 馬の見た目はレースを入れるときだけ決める（走っている途中では変えない）
     applyCues(R); // 映像を作る前に渡す（結果がまだなら null か ?cues= の上書き。結果が届いたら keepRace・playRace でもう一度）
@@ -470,6 +480,7 @@
     if (Sfx.scene) Sfx.scene(m === 'live'); // 音はレースの場面だけ（上の説明）
     if (m === 'live' && AUTO_SOUND && !audioOn) unlockAudio(); // 店のテレビ: 音が止められていたら、レースに入るときにもう一度鳴らし直す
     ['m-wait', 'm-hl', 'm-open', 'm-live', 'm-result'].forEach((c) => stageEl.classList.toggle(c, c === 'm-' + m));
+    { const b = (m === 'open' || m === 'live') && isBig(view); stageEl.classList.toggle('bigrace', b); if (b) $('v2bigBanN').textContent = bigName(view); } // ビッグレース（2026-11-11 試作）
     if (m !== 'wait') { delete stageEl.dataset.wp; TV.wp.page = ''; }
     if (m !== 'open') { stageEl.classList.remove('v2-watch'); $('v2qr').classList.remove('watch'); $('v2qrWatch').hidden = true; watchKey = ''; } // 他店だけのレースの印は投票の画面だけ（2026-10-26）
   }
@@ -626,10 +637,11 @@
      前のレースが無い（今日の 1 レース目の前）・取り消しのレースは win・replay を飛ばす。3D が無いときは replay を飛ばす。
      投票の始まりの 45 秒前からは pad のまま（投票の画面と同じ映像につなぐ）。1 枠の秒数は ?wpsec=秒（テスト用）で変えられる */
   const WP_SEC = Number((QS.match(/[?&]wpsec=(\d+)/) || [])[1] || 0);
-  const WP_LEN = { how: 12, stamp: 14, hint: 11, win: 15, card: 15, pad: 14 };
+  const WP_LEN = { big: 12, how: 12, stamp: 14, hint: 11, win: 15, card: 15, pad: 14 };
   function prevRace() { const P = S && S.last; return P && P.result && !P.refunded ? P : null; }
   function wpPages(N, P) {
     const L = ['how'];
+    if (bigNext()) L.push('big'); // 次の大きいレース（2026-11-11 試作）
     if (ST().stamp) L.push('stamp'); // スタンプラリーがオンのときだけ（2026-11-04）
     L.push('hint'); // 演出のヒント（2026-11-05）
     if (P) L.push('win');
@@ -642,12 +654,28 @@
     if (page === 'win') { const ctl = pagerCtl.get($('v2wpList')); return Math.min(36, Math.max(WP_LEN.win, ctl && ctl.pages > 1 ? ctl.pages * 6 + 2 : 0)); }
     return WP_LEN[page] || 12;
   }
+  const BIGDEMO = /[?&]bigdemo=1/.test(QS);
+  function isBig(R) { return !!(R && (R.big || BIGDEMO)); }
+  function bigName(R) { return (R && R.bigName) || (BIGDEMO && TV.demoBig && TV.demoBig.name) || (BIGDEMO ? '金曜グランプリ' : 'ビッグレース'); }
+  function flash(id) { const e = $(id); e.classList.remove('show'); void e.offsetWidth; e.classList.add('show'); }
+  function bigNext() { const B = (S && S.big) || TV.demoBig; return B && B.at > now() ? B : null; }
+  function renderBig() {
+    const B = bigNext(); if (!B) return;
+    const d = new Date(B.at), t = new Date(now()), WDJ = '日月火水木金土';
+    const day0 = (x) => { const y = new Date(x); y.setHours(y.getHours() - 6); y.setHours(0, 0, 0, 0); return y.getTime(); }; // 営業日（朝 6 時で日付を切る）
+    const dd = Math.round((day0(d) - day0(t)) / 86400000);
+    $('v2bigName').textContent = B.name || '大きいレース';
+    $('v2bigDay').textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WDJ[d.getDay()] + '）';
+    $('v2bigAt').textContent = hhmm(B.at);
+    $('v2bigLeft').textContent = dd <= 0 ? '今夜！' : dd === 1 ? 'あした' : 'あと ' + dd + ' 日';
+  }
   function setWp(page, P) {
     const W = TV.wp; W.page = page; W.since = performance.now(); W.n++;
     stageEl.dataset.wp = page;
     if (page === 'win' && P) renderWaitWin(P);
     if (page === 'stamp') renderStamp();
     if (page === 'card') renderWaitCard();
+    if (page === 'big') renderBig();
   }
   function renderWaitCard() { // 次のレースの出馬表（映像に入れた次のレース view の馬。投票中の出馬表 renderHorses と同じ中身）
     const box = $('v2wpCardRows'); if (!view || !view.horses) { box.innerHTML = ''; return; }
@@ -773,7 +801,8 @@
       const gateStart = R.runAt - giEnd() * 1000, gSec = Math.min(giEnd(), sceneSec('gate') || giEnd()), showFrom = R.runAt - gSec * 1000;
       if (raceView.phase === 'idle' && raceView.paddockSec > 1e8 && (gate && gSec >= giEnd() - 0.5 || !scene('paddock'))) raceView.paddockSec = Math.max(0, raceView.t); // パドックから発走地点へ
       if (t < R.closeAt + 2500) { const c = $('v2closed'); c.classList.remove('show'); void c.offsetWidth; c.classList.add('show'); Sfx.play('bell'); }
-      if (t < R.runAt - 3000) Sfx.play('fanfare');
+      if (t < R.runAt - 3000) Sfx.play(isBig(R) ? 'bigFanfare' : 'fanfare');
+      if (isBig(R) && t < R.runAt - 6000) { $('v2bigTN').textContent = bigName(R); setTimeout(() => { if (TV.playing === id) flash('v2bigT'); }, t < R.closeAt + 2500 ? 1700 : 0); } // 走る前に名前を大きく（2026-11-11 試作。「締切ました」が消えてから）
       // 結果（seed）を待つ（ふつうは締切の直後に決まる）
       // 結果が来ないまま返還された・決定が止まった（結果なしで発表）レースで、ここを回り続けて次のレースに進めなかった → 発表＋30 秒で諦める（コードレビュー 2026-10-14）
       const giveUp = () => { const c = cache[id] || R0; return !!c && ((c.status === 'done' || c.refunded) && !c.result || now() > (c.revealAt || c.runAt + 120000) + 30000); };
@@ -837,7 +866,7 @@
           if (st.t - hoof > 0.18 && !st.finish[st.leader]) { hoof = st.t; Sfx.play('hoof'); }
           if (!saidGoal && st.finish.some((x) => x > 0)) {
             saidGoal = true; let w = -1; st.finish.forEach((f, i) => { if (f > 0 && (w < 0 || f < st.finish[w])) w = i; });
-            announce('ゴール！　1着は ' + (w + 1) + '番 ' + R.horses[w].name + '！'); Sfx.play('goal');
+            announce('ゴール！　1着は ' + (w + 1) + '番 ' + R.horses[w].name + '！'); Sfx.play('goal'); if (isBig(R)) flash('v2bigConf'); // ゴールで金の紙吹雪（2026-11-11 試作）
             markWinnerOdds(w);
           }
         },
