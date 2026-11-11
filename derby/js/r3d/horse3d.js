@@ -564,11 +564,16 @@ R3D.Horse = (function () {
   // ---------------- ゼッケン・腹帯・頭絡・騎手（体型ごとに共有、色の違いは 1 頭ごとのアトラスで） ----------------
   // アトラス（512×512、v は上が 1）: 勝負服の胴 u[0,.5] v[.5,1]、袖 左 u[.5,.75] 右 u[.75,1] v[.5,1]、帽子（枠の色）u[0,.25] v[.25,.5]、白 u[.25,.5] v[0,.25]、ゼッケン u[.5,1] v[0,.5]
   const UV_TORSO = [0.004, 0.502, 0.496, 0.996], UV_SLV = [[0.504, 0.502, 0.746, 0.996], [0.754, 0.502, 0.996, 0.996]], UV_CAP = [0.125, 0.375, 0.125, 0.375], UV_CLOTH = [0.504, 0.004, 0.996, 0.496], UV_WHITE = [0.375, 0.125];
-  const TC = { leather: hexRGB("#6b3a1e"), girth: hexRGB('#3b2a20'), ring: hexRGB('#d8c070'), saddle: hexRGB('#2a2220'),
+  let TC = { leather: hexRGB("#6b3a1e"), girth: hexRGB('#3b2a20'), ring: hexRGB('#d8c070'), saddle: hexRGB('#2a2220'),
     skin: hexRGB('#f3c9a2'), cheek: hexRGB('#f3a596'), white: hexRGB('#f6f5f2'), boot: hexRGB('#1d1b1e'), cuff: hexRGB('#8a5a32'), glove: hexRGB('#f2f1ee'), eye: hexRGB('#1a1418'), whip: hexRGB('#222'), iron: hexRGB('#b9bdc2') };
+  /* ビッグレースの豪華な馬具（2026-11-11 試作。h.special）: 頭絡・手綱・腹帯・鞍・あぶみを金に。騎手の色はそのまま */
+  const TC_BASE = TC, TC_GOLD = Object.assign({}, TC, { leather: hexRGB('#d9a514'), girth: hexRGB('#b8860b'), ring: hexRGB('#fff1a8'), saddle: hexRGB('#7a1022'), iron: hexRGB('#ffd24a') });
   const tackCache = {};
-  function tackGeometry(S, q, jockey) {
-    const key = S.type + q + (jockey ? 'J' : ''); if (tackCache[key]) return tackCache[key];
+  function tackGeometry(S, q, jockey, special) {
+    const key = S.type + q + (jockey ? 'J' : '') + (special ? 'G' : ''); if (tackCache[key]) return tackCache[key];
+    TC = special ? TC_GOLD : TC_BASE; try { return (tackCache[key] = tackGeometry0(S, q, jockey)); } finally { TC = TC_BASE; }
+  }
+  function tackGeometry0(S, q, jockey) {
     const hi = q === 'high', G = new Geo(S.BI), D = S.D;
     G.det = q === 'xfar' ? XF_DET : q === 'far' ? 0.55 : 1; G.xf = q === 'xfar';
     const flatUV = UV_WHITE;
@@ -619,8 +624,15 @@ R3D.Horse = (function () {
         strap(G, pts, { w: 0.007, h: 0.007, nrm, col: TC.ring, wt: () => H, segs: 4, loop: true });
       });
     }
+    // ビッグレースの豪華な馬（2026-11-11 試作「もっと豪華に」）: 額の上に金の台と赤い羽根飾り（後ろへなびく）
+    if (TC === TC_GOLD) {
+      const c = headSurf(S, 0.22, 0, 0.01), n = c.n, HD3 = [S.head.HD[0], S.head.HD[1], 0], P = (a, b) => vadd(c.p, vadd(vsc(n, a), vsc(HD3, -b)));
+      const K = (p, r) => ({ p, t: r, b: r, w: r * 1.1, n: 2, wt: { head: 1 } });
+      tube(G, [K(P(-0.01, 0), 0.03), K(P(0.03, 0.005), 0.036), K(P(0.05, 0.01), 0.026)], { segs: hi ? 10 : 6, step: 1, col: hexRGB('#ffd24a') });
+      tube(G, [K(P(0.04, 0.01), 0.03), K(P(0.12, 0.03), 0.05), K(P(0.22, 0.09), 0.042), K(P(0.29, 0.17), 0.024), K(P(0.31, 0.24), 0.004)], { segs: hi ? 10 : 6, step: hi ? 0.03 : 0.08, col: hexRGB('#d0102c') });
+    }
     if (jockey) jockeyGeometry(S, G, hi, shell);
-    const g = G.build(); tackCache[key] = g; return g;
+    const g = G.build(); return g;
   }
   // 騎手（ちびキャラ: 大きなヘルメット頭、勝負服、白いズボン、黒い長靴）
   function jockeyGeometry(S, G, hi, shell) {
@@ -813,6 +825,28 @@ R3D.Horse = (function () {
         else { if (lum > 150) { c.lineWidth = 9; c.strokeStyle = "#3a2a10"; c.lineJoin = "round"; c.strokeText(num, 0, 4); } c.fillStyle = "#fff"; c.fillText(num, 0, 4); }
         c.restore();
       });
+      /* ビッグレースの豪華な馬（2026-11-11 試作。h.special か ?bigdemo=1）: ゼッケンを金の布に。馬番は枠の色の丸に白（どの馬かは今までどおり色で見分けられる）。
+         ふちは濃い金の二重線、角に金の星、背の真ん中に赤い宝石のような飾り */
+      if (h.special || /[?&]bigdemo=1/.test(location.search)) {
+        c.clearRect(x0, y0, W, H);
+        const g = c.createLinearGradient(x0, y0, x0 + W, y0 + H); g.addColorStop(0, '#fff1a8'); g.addColorStop(0.35, '#ffd24a'); g.addColorStop(0.65, '#d99a00'); g.addColorStop(1, '#ffe27a');
+        rr(x0 + 4, y0 + 4, W - 8, H - 8, 44); c.fillStyle = g; c.fill();
+        c.save(); rr(x0 + 4, y0 + 4, W - 8, H - 8, 44); c.clip(); c.globalAlpha = 0.18; c.strokeStyle = '#8a5a00'; c.lineWidth = 3;
+        for (let k = -H; k < W + H; k += 22) { c.beginPath(); c.moveTo(x0 + k, y0); c.lineTo(x0 + k + H, y0 + H); c.stroke(); c.beginPath(); c.moveTo(x0 + k + H, y0); c.lineTo(x0 + k, y0 + H); c.stroke(); } // 菱形の織り模様
+        c.restore();
+        rr(x0 + 10, y0 + 10, W - 20, H - 20, 38); c.strokeStyle = '#7a4e00'; c.lineWidth = 6; c.stroke();
+        rr(x0 + 20, y0 + 20, W - 40, H - 40, 30); c.strokeStyle = '#fff7c2'; c.lineWidth = 3; c.stroke();
+        [[0.12, 0.12], [0.88, 0.12], [0.12, 0.88], [0.88, 0.88]].forEach(([u, v]) => { starPath(c, x0 + W * u, y0 + H * v, 13); c.fillStyle = '#fff7c2'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#7a4e00'; c.stroke(); });
+        c.save(); c.translate(x0 + W * 0.5, y0 + H * 0.5); c.rotate(PI / 4); c.fillStyle = '#c4122f'; c.fillRect(-16, -16, 32, 32); c.lineWidth = 5; c.strokeStyle = '#fff1a8'; c.strokeRect(-16, -16, 32, 32); c.restore(); // 背の真ん中の飾り
+        [[-1, x0 + W * 0.21], [1, x0 + W * 0.79]].forEach(([sd, x]) => {
+          c.save(); c.translate(x, y0 + H * 0.52); c.rotate(sd > 0 ? -PI / 2 : PI / 2);
+          c.beginPath(); c.arc(0, 0, 50, 0, TAU); c.fillStyle = '#7a4e00'; c.fill();
+          c.beginPath(); c.arc(0, 0, 45, 0, TAU); c.fillStyle = bg; c.fill(); c.lineWidth = 4; c.strokeStyle = '#fff7c2'; c.stroke();
+          c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = '900 ' + (num.length > 1 ? 52 : 70) + 'px "Noto Sans JP", "Hiragino Sans", sans-serif';
+          if (lum > 230) { c.fillStyle = '#222'; c.fillText(num, 0, 3); } else { if (lum > 150) { c.lineWidth = 7; c.strokeStyle = '#3a2a10'; c.lineJoin = 'round'; c.strokeText(num, 0, 3); } c.fillStyle = '#fff'; c.fillText(num, 0, 3); }
+          c.restore();
+        });
+      }
     }
     // 白（単色の部品が使う）
     c.fillStyle = '#ffffff'; c.fillRect(128, 384, 128, 128);
@@ -1196,10 +1230,11 @@ R3D.Horse = (function () {
     const lineMesh = new THREE.SkinnedMesh(bodyMesh.geometry, outlineMaterial());
     let geoKey = bodyMesh.geometry.userData.cacheKey; geoRef(geoKey, 1);
     let jockeyOn = opts.jockey !== false, disposed = false;
+    const SPECIAL = !!(h.special || /[?&]bigdemo=1/.test(location.search)); // ビッグレースの豪華な馬（2026-11-11 試作）
     const clothTex = atlasTexture(h);
     const tMat = R3D.xmin ? new THREE.MeshLambertMaterial({ map: clothTex, vertexColors: true }) /* 軽い 3D（2026-10-29。最もなめらかだけ）: 絵は全面不透明なので alphaTest なし（捨てる画素の判定がない方が弱い GPU に軽い） */ : R3D.xlite ? new THREE.MeshLambertMaterial({ map: clothTex, vertexColors: true, alphaTest: 0.5 }) : new THREE.MeshStandardMaterial({ map: clothTex, vertexColors: true, roughness: 0.68, metalness: 0.0, alphaTest: 0.5 }); // さらになめらか: 勝負服も軽い材質
     if (!R3D.xlite) addRim(tMat, 0.12);   // 勝負服: 布らしい柔らかい陰影（縁が少し明るい。講評 v2-1 の 2）
-    const tMesh = new THREE.SkinnedMesh(tackGeometry(S, quality, jockeyOn), tMat);
+    const tMesh = new THREE.SkinnedMesh(tackGeometry(S, quality, jockeyOn, SPECIAL), tMat);
     [bodyMesh, tMesh].forEach((m) => { m.castShadow = true; m.receiveShadow = true; });
     lineMesh.castShadow = false; lineMesh.receiveShadow = false; lineMesh.visible = quality === "high" && opts.outline === true;
     lineMesh.onBeforeRender = (renderer) => { renderer.getDrawingBufferSize(outlineU.olView.value); };
@@ -1670,7 +1705,7 @@ R3D.Horse = (function () {
       setQuality(qq) {
         if (qq !== 'low' && qq !== 'high' && qq !== 'far' && qq !== 'xfar') return; if (qq === quality) return; quality = qq;
         bodyMesh.geometry = lineMesh.geometry = horseGeometry(S, coat, markIdx, quality, mare, F); aura.geometry = bodyMesh.geometry;
-        ghosts.forEach((g) => { g.geometry = bodyMesh.geometry; }); tMesh.geometry = tackGeometry(S, quality, jockeyOn);
+        ghosts.forEach((g) => { g.geometry = bodyMesh.geometry; }); tMesh.geometry = tackGeometry(S, quality, jockeyOn, SPECIAL);
         // 切り替えた形も数える（QA3: Fire TV の far・遠くの馬の形が捨てられずに増えていた）
         { const nk = bodyMesh.geometry.userData.cacheKey; if (nk !== geoKey && !disposed) { geoRef(nk, 1); geoRef(geoKey, -1); geoKey = nk; } }
         lineMesh.visible = quality === "high" && opts.outline === true;
@@ -1678,7 +1713,7 @@ R3D.Horse = (function () {
       },
       setOutline(on) { lineMesh.visible = !!on; },
       // 騎手を乗せる・降ろす（パドックでは降ろすなど）
-      setJockey(on) { on = !!on; if (on === jockeyOn) return; jockeyOn = on; tMesh.geometry = tackGeometry(S, quality, jockeyOn); syncX(); },
+      setJockey(on) { on = !!on; if (on === jockeyOn) return; jockeyOn = on; tMesh.geometry = tackGeometry(S, quality, jockeyOn, SPECIAL); syncX(); },
       get jockey() { return jockeyOn; },
       // 騎手の姿勢: 'celebrate'（勝ったときのガッツポーズ: 右手のムチを突き上げて拍に合わせて振り、胴を起こして揺れる。ずっと繰り返せる）| null（ふつう）。state.jockeyPose でも渡せる。切り替えは約 0.5 秒でなめらかに
       setJockeyPose(p) { jPose = p === 'celebrate' ? 'celebrate' : null; },
