@@ -1203,3 +1203,14 @@ input.tm { font-variant-numeric: tabular-nums; text-align: center; }
 .stpmove .stat small.use2 { margin-top: 4px; font-size: 12px; }
 .stpmove .stat small.use2 b { font-size: 18px; color: var(--text); margin: 0 2px; font-weight: 800; }
 @media (max-width: 640px) { .cmp .was { font-size: 12px; } table.stpdays td:not(.head):not(.k3):not(.rc) { font-size: 12px; line-height: 1.4; } }
+
+/* ビッグレース（2026-11-11 オーナー「金・土の 22:30 はビッグレース。名前は日付ごとに」）
+   時刻表の行の「★ビッグ」の札（.bigchip。ON は金の地）と、時刻表の上の「ビッグレース」の枠（.bigpanel。日付・時刻・名前の欄・目標・店） */
+.stchip.bigchip { margin-right: 6px; border-style: dashed; }
+.stchip.bigchip.on { background: var(--gold); color: #1a1204; border: 2px solid var(--gold); border-style: solid; }
+.bigpanel { border-color: var(--gold2); }
+.big-rows td { vertical-align: middle; }
+.big-rows td.bd { white-space: nowrap; }
+.big-rows td.bn input { min-width: 180px; height: 40px; }
+.big-rows td.n, .big-rows th.n { text-align: right; white-space: nowrap; }
+@media (max-width: 640px) { .big-rows td.bn input { min-width: 130px; } }
