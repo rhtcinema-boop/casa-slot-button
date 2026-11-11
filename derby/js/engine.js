@@ -118,6 +118,9 @@
   const MODEL2 = { model: 2, theta: 0.04, sigmaMul: 0.16, formSigma: 0.012, // v2/core.js の tuneOf が race.tune に入れる（荒れやすさで sigmaMul と formSigma を掛ける）
     /* 先頭の逃げすぎ止め（2026-11-08）と、それに合わせた脚質の補正（逃げ馬が抑えられて勝ちにくくなるぶんを戻す）。1000 レースの計測:
        ゴールの 1 着→2 着の差の中央 4.2m→2.2m・上位 1 割 12.5m→4.3m、3 馬身以上の圧勝 33%→2%、1 馬身以内の決着 29%→56%、脚質の勝率 14〜19%→15〜20%（偏りは前と同じくらい） */
+    /* top2（2026-11-12 オーナー「最初の2頭が逃げすぎると面白くない」）: 1000 レースの計測（scratchpad/top2-measure.js）で 2 番手→3 番手が道中 3 馬身以上開いたレース 22%→0%、
+       道中で最も開いた差の中央 5.1m→2.7m、ゴールの 2 着→3 着の中央 2.9m→1.7m。勝った脚質の割合はほぼ同じ（差し 30→31・逃げ 22→20・追込 25→27・先行 23→22%） */
+    top2: { k: 0.03, free: 1.5, max: 0.08, from: 0.15 },
     lead: { k: 0.02, free: 1.5, max: 0.06, from: 0.3 }, typeBias: { nige: 0.019, senko: 0.008, sashi: -0.006, oikomi: -0.011 } };
   /* 脱落（2026-11-04 オーナー「落馬とかゲートインできないみたいな演出いれたい」→「本当に脱落、票は外れ」「たまに」）
      race.incident（テレビでは race.result.incident）= { type: 'scratch' | 'fall', horse: 0 始まり, at: 落馬する進み具合 0.2〜0.9 }
@@ -163,6 +166,9 @@
        先頭の馬は、2 番手との差が free(m) を超えたぶんに比例して速さを抑える（1m につき k、上限 max）。進み具合 from 以降だけ効く。
        lead が無いレース（前に作ったレース）は前とまったく同じ走り。値は Engine.LEAD（v2/core.js の tuneOf が race.tune に入れる） */
     const LD = M2 && race.tune.lead && Number(race.tune.lead.k) > 0 ? { k: Number(race.tune.lead.k), free: Number(race.tune.lead.free) || 0, max: Number(race.tune.lead.max) || 0.05, from: Number(race.tune.lead.from) || 0 } : null;
+    /* 上の 2 頭の逃げすぎ止め（2026-11-12 オーナー「最初の2頭が逃げすぎると面白くないからそのパターンはないようにして」）: race.tune.top2 = { k, free, max, from } があるときだけ。
+       1・2 番手の馬は、2 番手と 3 番手の差が free(m) を超えたぶんに比例して速さを抑える（1m につき k、上限 max）。top2 が無いレースは前と同じ走り */
+    const T2 = M2 && race.tune.top2 && Number(race.tune.top2.k) > 0 ? { k: Number(race.tune.top2.k), free: Number(race.tune.top2.free) || 0, max: Number(race.tune.top2.max) || 0.05, from: Number(race.tune.top2.from) || 0 } : null;
     const form = M2 ? race.horses.map((h) => tv('formSigma', 0.012) * gauss(r) + ((tb && tb[h.type]) || 0)) : null;
     const length = race.dist >= 1600 ? 95 : race.dist >= 1200 ? 67 : race.dist >= 1000 ? 58 : 29; // ゴールまでの基準時間（秒。本物のタイムに合わせる）
     const INC = incidentOf(race), out = new Array(n).fill(false), outAt = new Array(n).fill(0);
@@ -170,7 +176,7 @@
     run.step = function (dt) {
       dt = Math.max(0.0005, dt || 0);
       run.t += dt;
-      let lead = 0, second = 0; for (let i = 0; i < n; i++) { if (finish[i] || out[i]) continue; if (pos[i] > lead) { second = lead; lead = pos[i]; } else if (pos[i] > second) second = pos[i]; }
+      let lead = 0, second = 0, third = 0; for (let i = 0; i < n; i++) { if (finish[i] || out[i]) continue; if (pos[i] > lead) { third = second; second = lead; lead = pos[i]; } else if (pos[i] > second) { third = second; second = pos[i]; } else if (pos[i] > third) third = pos[i]; }
       for (let i = 0; i < n; i++) {
         if (finish[i]) continue;
         if (INC && i === INC.horse && INC.type === 'scratch') { out[i] = true; outAt[i] = 0; finish[i] = OUT_T + i; speed[i] = 0; run.done++; continue; } // 競走除外: 走らない
@@ -186,6 +192,7 @@
         if (fell && out[i]) v *= fallMul(run.t - run.fallT);
         else {
           if (LD && u >= LD.from && pos[i] === lead && second > 0) v *= 1 - Math.min(LD.max, LD.k * Math.max(0, (lead - second) * race.dist - LD.free)); // 先頭の逃げすぎ止め
+          if (T2 && u >= T2.from && third > 0 && pos[i] >= second) v *= 1 - Math.min(T2.max, T2.k * Math.max(0, (second - third) * race.dist - T2.free)); // 上の 2 頭の逃げすぎ止め
           if (TUNE.pack && u < TUNE.packEnd) { const gapM = (lead - pos[i]) * race.dist, fade = Math.min(1, (TUNE.packEnd - u) / 0.1); v *= 1 + Math.min(TUNE.packMax, TUNE.pack * gapM) * fade; }
           if (fell && u >= INC.at - 0.3) { let ahead = 0; for (let j = 0; j < n; j++) if (j !== i && !out[j] && pos[j] > pos[i]) ahead++; if (ahead >= 3 || (lead - pos[i]) * race.dist > FALL_NEAR_M) v *= 1.08; } // 落馬する馬は落ちる前に前へ上がる（いつものカメラに映る 3 番手まで。どうせ脱落する馬なので結果は変わらない）
         }
