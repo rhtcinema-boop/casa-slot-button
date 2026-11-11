@@ -219,6 +219,16 @@ window.Sfx = (function () {
     select() { tone(660, now(), 0.06, 'triangle', 0.15); tone(990, now() + 0.06, 0.08, 'triangle', 0.15); },
     deny() { tone(180, now(), 0.18, 'sawtooth', 0.15); },
     fanfare() { const t = now(); [523, 659, 784, 1046].forEach((f, i) => tone(f, t + i * 0.13, 0.25, 'triangle', 0.25)); },
+    /* ビッグレースのファンファーレ（2026-11-11 試作。オリジナルの節・約 4 秒）: 三連の呼びかけ → 上がる → 和音で伸ばす。三角波＋1 オクターブ下の正弦波で厚みを出す */
+    bigFanfare() {
+      const t = now(), N = (f, a, d, v) => { tone(f, t + a, d, 'triangle', v || 0.24); tone(f / 2, t + a, d, 'sine', (v || 0.24) * 0.5); };
+      [[392, 0], [392, 0.16], [392, 0.32]].forEach(([f, a]) => N(f, a, 0.13));
+      N(523, 0.48, 0.45);
+      [[659, 1.0], [587, 1.16], [659, 1.32]].forEach(([f, a]) => N(f, a, 0.13));
+      N(784, 1.48, 0.55);
+      N(659, 2.12, 0.2); N(784, 2.34, 0.2);
+      [1046, 784, 659, 523].forEach((f, i) => N(f, 2.6, 1.5, i ? 0.13 : 0.24));
+    },
     gate() { gateClang(); giRelease(); },
     hoof() { noise(now(), 0.05, 0.08); },
     bell() { const t = now(); tone(1568, t, 0.5, 'sine', 0.2); tone(2093, t + 0.02, 0.5, 'sine', 0.12); },
