@@ -32,7 +32,8 @@
   const CUE_KEYS = ['fruit', 'crowd', 'sign', 'cloud', 'gateLate', 'eye'];
   const DEFAULT_CUES = { fruit: { show: 30, hit: 100 }, crowd: { show: 40, hit: 70 }, sign: { show: 30, hit: 100 }, cloud: { show: 30, hit: 100 }, gateLate: { show: 25, hit: 70 }, eye: { show: 20, hit: 100 } };
   /* 調整の初期値（ver: 4 ＝ v4 の形。ver のない以前の保存データは、投票の秒数の意味が違う＝2 段の 2 段目だったので初期値 180 秒に読み替える） */
-  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, incident: { rate: 0, fall: 50 }, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false, stamp: { on: false, cost: 10, vote: 1, win: 3, near: 1 } }; /* noRepeatWin・noRepeatRaces（直近の当たり端末を当てない）・favorBigStore（参加人数が多い店から当たりを出す）。2026-10-31: どちらも初期は使わない（オーナーが管理画面で入れる）・裏の設定＝public に入れない。下の「直近の当たり端末」「参加の多い店」 */ /* payoutSpread（配当のぶれ。2026-10-29）: レースごとに目標を ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）でばらつかせる（0 ＝ 目標ちょうどのまわり・0〜0.8。裏の設定）。v2/outcome.js の spreadFactor */ /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
+  const DEFAULT_TUNING = { ver: 4, payoutRate: 0.85, volatility: 1.0, payoutCap: 0, payoutCapDay: 0, bigCap: 100000, shiftUp: 0.1, shiftDown: 0.1, bandBelow: 0.2, bandAbove: 0.2, payoutSpread: 0.3, voteSec: 180, resultSec: 300, gateSec: 8, postSec: 28, photoExtraSec: 6, closeLeadSec: 0, scenes: { paddock: true, gate: true, replay: true, winner: true }, oddsSims: 1500, horizonMin: 15, dayStartHour: 5, horseLook: 'cute', horseLookPrev: 'cute', horseLookAt: 0, cues: DEFAULT_CUES, incident: { rate: 0, fall: 50 }, maxBillsPerDevice: 4, noRepeatWin: false, noRepeatRaces: 10, favorBigStore: false, stamp: { on: false, cost: 10, vote: 1, win: 3, near: 1 } }; /* noRepeatWin・noRepeatRaces（直近の当たり端末を当てない）・favorBigStore（参加人数が多い店から当たりを出す）。2026-10-31: どちらも初期は使わない（オーナーが管理画面で入れる）・裏の設定＝public に入れない。下の「直近の当たり端末」「参加の多い店」 */ /* payoutSpread（配当のぶれ。2026-10-29）: レースごとに目標を ×（1 − ぶれ）〜 ×（1 + ぶれ ÷ 4）でばらつかせる（0 ＝ 目標ちょうどのまわり・0〜0.8。裏の設定）。v2/outcome.js の spreadFactor */ /* maxBillsPerDevice（2026-10-27）: 1 台のスマホが 1 レースでこの数以上の会計番号を使うと、その票は決め方に数えない（0 ＝ 使わない。裏の設定＝public に入れない） */
+  /* bigCap（2026-11-11 オーナー「ビッグレースだけ別の上限」）: ビッグレース 1 レースの払い出しの上限（pt。0 ＝ なし）。裏の設定だけ（PUBLIC_TUNING_KEYS に入れない） */
   const PUBLIC_TUNING_KEYS = ['ver', 'stamp', 'shiftUp', 'shiftDown', 'voteSec', 'resultSec', 'gateSec', 'postSec', 'photoExtraSec', 'closeLeadSec', 'scenes', 'dayStartHour', 'horizonMin', 'horseLook', 'horseLookPrev', 'horseLookAt']; /* cues（演出の割合）・当たりの幅・上限・払い戻し率は裏＝入れない */
   const LEGACY_TUNING_KEYS = ['exchangeSec', 'betSec', 'bountyPerTicket', 'shiftWidth']; // 以前の形の項目（読むときに捨てる）
   const SHIFT_UP_MAX = 10000, SHIFT_DOWN_MAX = 1; // 締切のあとの倍率のずらし幅（2026-10-20「上限なしで管理画面から全部決められる」）: 上げ幅は事実上上限なし・下げ幅は 100% まで（倍率は 1.0 倍より下げない）
@@ -247,6 +248,7 @@
           const at = dayStart(ds) + min * 60000, h = Math.floor(min / 60), mm = min % 60;
           const id = compact(ds) + '-' + String(h).padStart(2, '0') + String(mm).padStart(2, '0') + (g ? '-' + g : '');
           out[id] = { id, at, time: String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'), payout, scope: r.scope === 'store' ? 'store' : 'all', storeId: g || null, storeIds: storeIdsOf(r.storeIds), ruleId: r.id || String(r._idx), tpl: r.tpl || null };
+          if (r.big === true) out[id].big = true; // ビッグレース（2026-11-11 オーナー「金・土の 22:30 はビッグレース」）: 印のある行の決まりだけ。無いレースには項目を付けない
         });
       });
     });
@@ -285,6 +287,7 @@
       if (kind === 'date') rule.date = r.date;
       if (r.tpl != null) rule.tpl = String(r.tpl).slice(0, 64);
       if (r.name != null) rule.name = String(r.name).slice(0, 40);
+      if (r.big === true) rule.big = true; // ビッグレースの印（2026-11-11。管理画面の行の「★ビッグ」）
       if (Array.isArray(r.races)) {
         rule.races = r.races.map((x) => ({ time: String(x.time), payout: roundAmount(x.payout != null ? x.payout : r.payout) }));
         if (rule.races.some((x) => hhmm(x.time) == null)) throw err(400, 'bad_rule', '時刻は HH:MM で（' + (i + 1) + ' 行目）');
@@ -317,6 +320,7 @@
       const o = { id: String(r.id || ''), enabled: r.enabled !== false, kind: RULE_KINDS.includes(r.kind) ? r.kind : 'daily', storeId: r.storeId || null, storeIds: storeIdsOf(r.storeIds) }; /* kind 'holiday'（祝日）もそのまま（casa SLOT のテレビは next-open.js で祝日を同じ計算で判定） */ /* storeIds: 投票できる店（null ＝ 全店。2026-10-26）。casa SLOT のテレビは見ない（見るだけの店もレースの時刻に DERBY へ移る） */
       if (o.kind === 'weekday') o.weekdays = (r.weekdays || []).map(Number);
       if (o.kind === 'date') o.date = String(r.date || '');
+      if (r.big === true) o.big = true; // ビッグレースの印（2026-11-11）: テレビ・スマホの「次のビッグレース」に使う（目標額は出さない）
       if (Array.isArray(r.races)) o.races = r.races.map((x) => ({ time: String((x && x.time) || '') }));
       else if (Array.isArray(r.times)) o.times = r.times.map(String);
       else { o.from = String(r.from || ''); o.to = String(r.to || ''); o.everyMin = Number(r.everyMin) || 0; }
@@ -336,7 +340,49 @@
     });
     return out;
   }
-  function publicSchedule(rules, tuning, t) { const T = tuningOf(tuning); return { rules: publicRules(rules), voteSec: T.voteSec, closeLeadSec: T.closeLeadSec, dayStartHour: T.dayStartHour, updatedAt: Number(t) || 0 }; }
+  /* bigNames（2026-11-11 オーナー「日付ごとにビッグレースの名前を付ける」）: { 'YYYY-MM-DD'（営業日）: 名前 } も公開する（名前はテレビ・スマホに出すもの。目標額は出さない） */
+  function publicSchedule(rules, tuning, t, bigNames) { const T = tuningOf(tuning); return { rules: publicRules(rules), bigNames: cleanBigNames(bigNames), voteSec: T.voteSec, closeLeadSec: T.closeLeadSec, dayStartHour: T.dayStartHour, updatedAt: Number(t) || 0 }; }
+  /* ---------- ビッグレース（2026-11-11 オーナー「金・土の 22:30 の全店レースをビッグレースに。名前は管理画面で日付ごとに。金額はお客さんに出さない」） ----------
+     時刻表の行の印 rule.big ＝ true → expandDate の entry.big → buildRace で race.big・race.bigName・horses[i].special。
+     名前は時刻表の bigNames { 'YYYY-MM-DD'（その時刻表の日＝営業日。25:00 は前の日）: 名前 }。空 ＝ 「ビッグレース」と出す（画面の側で）。
+     cleanBigNames: 形をそろえる（日付の形の鍵だけ・前後の空白を取る・20 文字まで・空は捨てる・200 件まで）。minDate（'YYYY-MM-DD'）を渡すとそれより前の日は捨てる（保存のとき＝きのうより前） */
+  const BIG_NAME_MAX = 20, BIG_LOOK_DAYS = 8;
+  function cleanBigNames(v, minDate) {
+    const out = {};
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
+    Object.keys(v).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && ymd(d) && (!minDate || d >= minDate)).sort().slice(-200).forEach((d) => {
+      const name = Array.from(String(v[d] == null ? '' : v[d]).replace(/\s+/g, ' ').trim()).slice(0, BIG_NAME_MAX).join('').trim();
+      if (name) out[d] = name;
+    });
+    return out;
+  }
+  // 保存のとき: きのう（営業日）より前の日の名前は捨てる
+  const saveBigNames = (v, nowMs, tuning) => cleanBigNames(v, shiftDs(bizDate(Number(nowMs) || 0, tuningOf(tuning).dayStartHour), -1));
+  // レース（か時刻表の entry）の id の頭の日付（'20261113-2230' → '2026-11-13'。時刻表の日＝営業日）
+  const raceDs = (id) => { const m = /^(\d{4})(\d{2})(\d{2})-/.exec(String(id || '')); return m ? m[1] + '-' + m[2] + '-' + m[3] : ''; };
+  const bigNameOf = (bigNames, id) => { const d = raceDs(id); return (d && bigNames && typeof bigNames[d] === 'string') ? cleanBigNames({ [d]: bigNames[d] })[d] || '' : ''; };
+  /* 時刻表を保存したとき、もう作ってあるレース（15 分先まで）にビッグレースの印・名前を写す（2026-11-11）。変わらなければ null。
+     ビッグでなくなったら { big: false, bigName: '' }（Firestore は merge で書くので false で消す。publicRace・derbyLive は big が true のときだけ出す）。馬の special も付け外し */
+  function bigPatch(race, entry, bigNames) {
+    if (!race) return null;
+    const big = !!(entry && entry.big), name = big ? bigNameOf(bigNames, race.id) : '';
+    if (!!race.big === big && (race.bigName || '') === name) return null;
+    const horses = Array.isArray(race.horses) ? race.horses.map((h) => { const o = Object.assign({}, h); if (big) o.special = true; else delete o.special; return o; }) : race.horses;
+    return { big, bigName: name, horses };
+  }
+  /* 次のビッグレース（テレビ・スマホの「次のビッグレース」。平日も出す）: 発走（at）が いま より後のビッグレースのうち一番早いもの。8 日先まで探す（next-open.js の LOOK_DAYS と同じ）。
+     日付 > 祝日 > 曜日 > 毎日 の決まりは expandDate のまま。前の日の 25:00 もいまの深夜として見る（d = -1 から）。
+     store を渡すとその店に見えるもの（以前の形の storeId）だけ。votableOnly（スマホ）はその店が投票できるもの（storeIds）だけ。
+     返り値 { at, name（'' ＝ 名前なし）, id, day（'YYYY-MM-DD'）, time（25 時表記）} | null */
+  function nextBigRace(rules, bigNames, nowMs, tuning, store, votableOnly) {
+    const t = Number(nowMs); if (!Number.isFinite(t) || !Array.isArray(rules) || !rules.some((r) => r && r.big === true)) return null;
+    const H = tuningOf(tuning).dayStartHour;
+    for (let d = -1; d <= BIG_LOOK_DAYS; d++) {
+      const hit = expandDate(dateStr(t + d * DAY), rules).find((e) => e.big && e.at > t && (!e.storeId || e.storeId === store) && (!votableOnly || !store || !e.storeIds || e.storeIds.includes(store)));
+      if (hit) return { at: hit.at, name: bigNameOf(bigNames, hit.id), id: hit.id, day: raceDs(hit.id), time: fmtBizTime(hit.at, H) };
+    }
+    return null;
+  }
   function minGapSec(tuning) { const T = tuningOf(tuning), gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec; return T.voteSec + gate + 60 + T.postSec + 2 * T.photoExtraSec; }
 
   /* 保存されている調整値 → 初期値で埋めた調整値。以前の形の項目（交換の割合・参加受付の秒数など）は捨てる。
@@ -358,7 +404,7 @@
     const t = tuningOf(cur);
     b = b || {};
     const num = (k, lo, hi) => { if (b[k] == null || b[k] === '') return; const v = Number(b[k]); if (!Number.isFinite(v) || v < lo || v > hi) throw err(400, 'bad_tuning', k + ' は ' + lo + '〜' + hi + ' です'); t[k] = v; };
-    num('payoutRate', 0.3, 1.2); num('volatility', 0.2, 3); num('payoutCap', 0, 1e11); num('payoutCapDay', 0, 1e12);
+    num('payoutRate', 0.3, 1.2); num('volatility', 0.2, 3); num('payoutCap', 0, 1e11); num('payoutCapDay', 0, 1e12); num('bigCap', 0, 1e11); /* ビッグレースの上限（2026-11-11） */
     if (b.shiftWidth != null && b.shiftUp == null && b.shiftDown == null) { const w = Number(b.shiftWidth); if (!Number.isFinite(w) || w < 0 || w > SHIFT_DOWN_MAX) throw err(400, 'bad_tuning', 'shiftWidth は 0〜' + SHIFT_DOWN_MAX + ' です'); t.shiftUp = w; t.shiftDown = w; }
     num('shiftUp', 0, SHIFT_UP_MAX); num('shiftDown', 0, SHIFT_DOWN_MAX);
     num('bandBelow', 0, 0.5); num('bandAbove', 0, 0.5); num('payoutSpread', 0, 0.8); // 配当のぶれ（2026-10-29）
@@ -490,6 +536,7 @@
       dist: base.dist, weather: base.weather, surface: base.surface, horses: base.horses, tune: base.tune,
       odds: odds.tansho, exacta: odds.exacta, tenkai: odds.tenkai, participants: { total: 0, byStore: {}, combos: {} }, refunded: false, day: bizDate(entry.at, T.dayStartHour),
     };
+    if (entry.big) { race.big = true; race.bigName = entry.bigName != null ? String(entry.bigName) : bigNameOf(opt.bigNames, entry.id); race.horses = race.horses.map((h) => Object.assign({}, h, { special: true })); } // ビッグレース（2026-11-11）: 名前は entry.bigName か opt.bigNames（時刻表の日付ごとの名前）。馬は全部 special
     if (entry.test) race.test = true; // テストレース（スタッフの「この店だけテストレース」）: 当たりは払わない・集計に入れない
     race.revealAt = race.runAt + 60000 + race.postSec * 1000;
     race.endAt = race.revealAt + race.resultSec * 1000;
@@ -533,6 +580,7 @@
       participants: Object.assign({ total: 0, byStore: {}, combos: {} }, r.participants || {}), result: null, winners: null, refunded: !!r.refunded, refundedAt: r.refundedAt || null,
     };
     if (r.test) out.test = true;
+    if (r.big) { out.big = true; out.bigName = typeof r.bigName === 'string' ? r.bigName : ''; } // ビッグレース（2026-11-11）。ビッグでないレースには付けない
     const result = r.result || o.result || null, priv = o.role === 'tv' || o.role === 'admin';
     if (result && (revealed || priv)) { out.result = withoutCues(result); out.photo = !!r.photo; out.photo2 = !!r.photo2; }
     // 2 連単の人気の上位 6（テレビの右の列・投票中の「人気の組み合わせ上位 6」。V4_RACE_NOTES.md 5 章の形 { first, second, odds }。倍率は見せてよい結果があれば確定倍率）
@@ -627,6 +675,7 @@
     };
     out.current = out.open || out.next;
     if (p.rules) out.today = todayRaces(p.rules, store, t, p.tuning); // 本日の出走時間（2026-10-27）。公開の時刻表を渡した呼び方だけ
+    if (p.rules) { const bg = nextBigRace(p.rules, p.bigNames, t, p.tuning, store, p.role === 'phone'); if (bg) out.big = bg; } // 次のビッグレース（2026-11-11 オーナー「平日もテレビとスマホに次のビッグレース」）。p.bigNames: 時刻表の日付ごとの名前
     return out;
   }
 
@@ -704,7 +753,10 @@
   }
 
   /* ---------- 結果の決定 ---------- */
-  function effectiveCap(tuning, usedToday) {
+  /* big（2026-11-11 オーナー「ビッグレースだけ別の上限」）: ビッグレースは 1 レース ＝ bigCap（0 ＝ なし）で、1 日の上限（payoutCapDay）は見ない。
+     ビッグレースの払い出しは usedToday（ふだんのレースの 1 日の使った額）に数えない（呼ぶ側: 模擬クラウドの usedToday・Firestore 版の derbyStats の committedBig） */
+  function effectiveCap(tuning, usedToday, big) {
+    if (big) { const bc = tuning.bigCap != null && tuning.bigCap !== '' ? Number(tuning.bigCap) : DEFAULT_TUNING.bigCap; return Math.max(0, Math.floor(Number.isFinite(bc) ? bc : 0)); }
     const perRace = Math.max(0, Math.floor(tuning.payoutCap || 0)), perDay = Math.max(0, Math.floor(tuning.payoutCapDay || 0));
     if (!perDay) return perRace;
     const left = Math.max(1, perDay - (usedToday || 0)); // 1 日の上限を使い切ったら 1（＝どの当たりも超える → 当たりなし）
@@ -859,7 +911,7 @@
     const NR = noRepeatOf(T), useNR = NR.on && !race.test && !!recent && !recent.error, recentDev = useNR && recent.devices ? recent.devices : null;
     const isBlocked = (v) => { if (!recentDev || isT(v)) return false; const o = ownerOf(v); return o != null && Object.prototype.hasOwnProperty.call(recentDev, o); };
     const honest = basis.filter((v) => !isHeavy(v) && !isBlocked(v)), extra = basis.filter((v) => isHeavy(v) && !isBlocked(v)), block = basis.filter(isBlocked); // 外す票が無ければ今までと同じ honest・extra
-    const t0 = Date.now(), cap = real.length ? effectiveCap(T, usedToday) : 0, er = engineRace(race); // テストの票だけのときは払わないので上限は見ない
+    const t0 = Date.now(), cap = real.length ? effectiveCap(T, usedToday, !!race.big) : 0, er = engineRace(race); // テストの票だけのときは払わないので上限は見ない
     const incident = incidentFor(Outcome, salt, race.id, T, (race.horses || []).length || 6, race.horses); // 脱落（2026-11-04）: 走りにも入れる（その馬は最後）
     if (incident) er.incident = incident;
     const vin = (v) => ({ first: v.first, second: v.second, group: v.storeId });
@@ -1027,7 +1079,7 @@
   return { stampReport, STAMP_LAUNCH, TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
     isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
-    ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
+    ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, cleanBigNames, saveBigNames, bigNameOf, bigPatch, nextBigRace, BIG_NAME_MAX, BIG_LOOK_DAYS, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool, FRESH_RACES, recentHorseNames, freshPick,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
