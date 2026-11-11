@@ -298,8 +298,8 @@
   },
   {
    "path": "v2/announce.js",
-   "size": 18932,
-   "sha256": "f95d764b43275f61c8a4e9bc5e53f7445f5838cc944c9ccedc947ae4dd4ac28e"
+   "size": 19041,
+   "sha256": "5a3521e8bc8b1e5380ceddce5abaf7950f68568f032be2a98baac1652766f19a"
   },
   {
    "path": "v2/client-firestore.js",
