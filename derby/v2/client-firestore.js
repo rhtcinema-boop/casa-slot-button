@@ -1076,7 +1076,7 @@
       const seq = ++decider.tickSeq; decider.inTick = true; decider.inTickAt = local();
       try {
         const r = await withTimeout(deciderTick0(seq), TICK_TIMEOUT_MS, 'tick');
-        if (seq === decider.tickSeq) { decider.okAt = local(); decider.errors = 0; }
+        if (seq === decider.tickSeq) { decider.okAt = local(); decider.errors = 0; if (!decider.wdCleared || local() - decider.wdCleared > 600000) { decider.wdCleared = local(); if (wdReloads().n) wdReloads(null); } }
         return r;
       } catch (e) {
         if (seq !== decider.tickSeq) return { leader: false, error: 'stale' };
@@ -1111,6 +1111,16 @@
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
       try { await withTimeout(fetch('https://firestore.googleapis.com/', { mode: 'no-cors', cache: 'no-store', credentials: 'omit' }), 5000, 'probe'); return true; } catch (e) { return false; }
     }
+    const WD_KEY = 'casa.derby.wdReloads';
+    function wdReloads(v) { // 読み込み直しの回数と時刻（端末に覚える。6 時間たったら忘れる）。v を渡すと書く・null で消す
+      try {
+        if (typeof localStorage === 'undefined') return { n: 0, at: 0 };
+        if (v === null) { localStorage.removeItem(WD_KEY); return { n: 0, at: 0 }; }
+        if (v) { localStorage.setItem(WD_KEY, JSON.stringify(v)); return v; }
+        const o = JSON.parse(localStorage.getItem(WD_KEY) || 'null');
+        return o && Date.now() - o.at < 6 * 3600000 ? { n: Number(o.n) || 0, at: Number(o.at) || 0 } : { n: 0, at: 0 };
+      } catch (e) { return { n: 0, at: 0 }; }
+    }
     async function watchdog() {
       if (!decider.running) return 'off';
       const L = local(), since = L - (decider.okAt || decider.startedAt || L);
@@ -1122,6 +1132,13 @@
         if (decider.reloadAsked && L - decider.reloadAsked < 60000) return 'reloading';
         if (!(await netReachable())) { logD([now(), 'watchdog offline']); if (!decider.wdResetAt || local() - decider.wdResetAt >= WD_RESET_MS) await resetNet(); return 'offline'; }
         if (!decider.running || decider.okAt > L - WD_RELOAD_MS) return 'ok'; // 確かめている間に直った
+        /* 2026-11-14 オーナー「上野のテレビめっちゃ落ちる」: 読み込み直しても直らないとき（クラウドの上限・弱い Wi-Fi）に 3 分おきに読み込み直しをくり返していた（枠切れの 14:10〜17:00 は全店のテレビが 3 分おき）。
+           ①クラウドの上限（resource-exhausted）が理由のときは読み込み直さない（直らないうえ、読み込み直しのたびに全部読み直して枠を減らす）
+           ②読み込み直しは、効かなければ間をあける: 1 回目 3 分 → 2 回目は 15 分後 → 3 回目からは 60 分に 1 回（うまく進んだら数え直し。回数は端末に覚える） */
+        if (/resource-exhausted|quota/i.test(String(decider.lastErr || '')) && decider.lastErrAt && now() - decider.lastErrAt < 10 * 60000) return 'quota';
+        const wr = wdReloads();
+        if (wr.n >= 1 && Date.now() - wr.at < (wr.n >= 2 ? 60 : 15) * 60000) return 'backoff';
+        wdReloads({ n: wr.n + 1, at: Date.now() });
         decider.reloadAsked = L; logD([now(), 'watchdog reload']);
         try { reload(); } catch (e) { /* noop */ }
         return 'reload';
