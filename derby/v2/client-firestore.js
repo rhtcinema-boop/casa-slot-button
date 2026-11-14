@@ -327,7 +327,7 @@
     /* 2026-10-29 電波の悪い店: 読むのは 8 秒まで・同時に何回呼ばれても 1 回だけ読む。読めなかったら 30 秒あとにもう一度（以前は 5 分そのまま）。
        テレビは前の値があればそれで先に答える（読み終わりを待たない＝毎秒の画面の更新が止まらない）。スマホ・スタッフは今までどおり読み終わりを待つ */
     let schedCache = null, schedAt = 0, schedDirty = false, schedP = null;
-    const SCHED_TTL = 5 * 60000, READ_MS = opts.readTimeoutMs || 8000;
+    const SCHED_TTL = 30 * 60000, /* 2026-11-14 無料枠: 公開の時刻表 5 分 → 30 分（レースの一覧が変わったときは今までどおり読み直す） */ READ_MS = opts.readTimeoutMs || 8000;
     async function getSchedule(force) {
       if (!force && schedCache && !schedDirty && local() - schedAt < SCHED_TTL) return schedCache;
       if (!schedP) {
@@ -1244,7 +1244,7 @@
     /* ---------- 進行役のテレビ（2026-10-19: パスワードを打たずに管理画面の 1 タップで） ----------
        パスワードのないテレビ（匿名ログイン）は derbyTvs/<uid> に名乗る（店舗・端末の種類・連絡の時刻・画面に出す 4 けたの数字）。書くのは起動時と 5 分ごとだけ。
        自分の 2 件だけを見張る: derbyTvs/<uid> の ask（管理画面が「進行役にする」を押した＝数字を出す）と、derbyDeciders/<uid>（選ばれた＝決める係になる・消えたら止める） */
-    const PAIR_BEAT_MS = 5 * 60000, PAIR_ASK_MS = 3 * 60000;
+    const PAIR_BEAT_MS = 10 * 60000, /* 2026-11-14 無料枠: テレビの名乗り 5 分 → 10 分（管理画面の「連絡がありません」は 12 分から） */ PAIR_ASK_MS = 3 * 60000;
     const pair = { on: false, code: null, askAt: 0, decider: false, role: null, cbs: [], unsubs: [], timer: null, askT: null, err: '' }; // role: 'primary' | 'backup'（2026-10-28 予備）
     const canDecide = () => mode === 'tv' || pair.decider;
     function pairState() { const asking = !pair.decider && pair.askAt > 0 && now() - pair.askAt < PAIR_ASK_MS; return { on: pair.on, code: pair.code, asking, decider: pair.decider, role: pair.decider ? pair.role || 'primary' : null, account: mode === 'tv' }; }
