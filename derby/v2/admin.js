@@ -214,7 +214,7 @@
     main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats' || tab === 'horses' || tab === 'stamps');
     if (tab === 'tv') { main.innerHTML = editStore ? viewStoreEdit() : viewTvPanel() + viewStores(); if (editStore) validateStore(); else if (!pairData && pairOk()) loadPair(); }
     else if (tab === 'timetable') { if (!tt) loadTT(); main.innerHTML = viewTT(); paintTT(); }
-    else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday()) loadRaces(true); }, 10000); }
+    else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); racesTimer = setInterval(() => { if (tab === 'races' && raceDate === bizToday() && adminAwake()) loadRaces(true); }, 60000); }
     else if (tab === 'tuning') { main.innerHTML = viewTuning(); validateTuning(); }
     else if (tab === 'horses') { main.innerHTML = viewHorses(); paintHorses(); if (!hsVoice) loadVoiceNames(); } // 声の一覧は開くたびに読み直さない（読めなかったときだけもう一度）
     else if (tab === 'stamps') { if (!sm.to) sm.to = bizToday(); main.innerHTML = viewStamps(); if (!sm.data && !sm.err) loadStamps(); } // スタンプ（2026-11-05）
@@ -1025,6 +1025,12 @@
   /* ======================================================================
      今日のレース（v4: 参加＝票の数・当選額と目標・勝ち（1着→2着 倍率）・テストレースの印）
      ====================================================================== */
+  /* 2026-11-14 無料枠（読み取り 1 日 5 万回）を超えた: 「今日」の自動の読み直しは 1 分ごと・画面を見ている間だけ・15 分さわらなければ止める（1 回で全レースの結果と支払いを読むので重い）。
+     戻ってきた・さわったら、1 分以上たっていればすぐ読み直す */
+  let touchAt = Date.now();
+  const adminAwake = () => !document.hidden && Date.now() - touchAt < 15 * 60000;
+  ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((ev) => document.addEventListener(ev, () => { const was = adminAwake(); touchAt = Date.now(); if (!was && tab === 'races' && raceDate === bizToday()) loadRaces(true); }, { passive: true }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { touchAt = Date.now(); if (tab === 'races' && raceDate === bizToday()) loadRaces(true); } });
   async function loadRaces(quiet) {
     const sig = () => JSON.stringify([racesData, racesErr, (racesData || []).map((r) => statusOf(r) + (r.endAt && r.endAt < now() ? 'p' : ''))]), before = sig();
     // 読んでいる間に日付を変えたら、古い日付の答えで上書きしない
