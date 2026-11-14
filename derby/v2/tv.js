@@ -277,7 +277,7 @@
   if (C) {
     (async () => { try { await C.syncClock(); } catch (e) { } await refresh(); })();
     setInterval(() => { if (C.syncClock && !TV.playing) C.syncClock().catch(() => {}); }, 5 * 60 * 1000); // b203: レースを流している間は時刻合わせをしない（合わせ直しで馬が飛ぶ）
-    setInterval(refresh, 10000); // SSE が黙って止まっていても 10 秒ごとに取り直す
+    setInterval(refresh, 30000); // SSE が黙って止まっていても取り直す（2026-11-14 無料枠: 10 秒 → 30 秒）
     setInterval(() => { try { pruneCache(); } catch (e) { console.error(e); } }, 10 * 60 * 1000);
     try {
       subStop = C.subscribe({
