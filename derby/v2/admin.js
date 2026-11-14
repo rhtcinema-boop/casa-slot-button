@@ -390,12 +390,32 @@
     const liveB = li && li.until > t && li.role === 'backup' ? '<p class="hint plock warn">いまは予備のテレビが進めています（進行役のテレビが戻ると自動で替わります）</p>' : '';
     return '<div class="pair" id="pairBox">' + stallHtml() + head + nowLine + liveB + liLine + (rows ? healthStores(tvs) + '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') +
       (canBk && fireNew ? '<div class="acts l"><button type="button" class="btn sm ghost" data-act="bk-all">全店の Fire TV を予備にする（' + fireNew + ' 台）</button></div>' : '') +
-      '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。' + (canBk ? '予備のテレビは、進行役が止まると 1〜2 分で自動で代わりに進めます。' : '') + '</p></div>';
+      '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。' + (canBk ? '予備のテレビは、進行役が止まると 1〜2 分で自動で代わりに進めます。新しくつながった Fire TV は、管理画面を開くと自動で予備に入ります。' : '') + '</p></div>';
   }
   /* 進行役のテレビが止まっている知らせ（2026-10-28）: 今日のタブの見出しの下と、テレビのタブの進行役の枠の上。赤い帯 */
   function stallHtml() { const h = healthData; return h && h.stall && h.text ? '<div class="err stallmsg" id="stallMsg" role="alert">' + esc(h.text) + '</div>' : ''; }
+  /* 2026-11-14 オーナー「渋谷が 12:00 のレース投票できない」: 進行役（上野）が朝に止まり、予備が 5〜9 日前の古いテレビだけだったので誰も代われず、その日のレースが作られなかった。
+     管理画面を開いている間（今日のタブの見回りと一緒に 10 分に 1 回）、2 日以内につながった Fire TV で進行役でも予備でもないものを自動で予備に入れる。
+     テレビが自分で予備になる道は作らない（決まりで derbyDeciders はマスターだけが書く＝誰でも進行役になれないように）。手で「予備をやめる」を押したテレビはこの端末では戻さない */
+  const BK_SKIP = 'casa.derby.bkSkip';
+  function bkSkip(id, on) { try { const a = JSON.parse(localStorage.getItem(BK_SKIP) || '[]').filter((x) => x !== id); if (on) a.push(id); localStorage.setItem(BK_SKIP, JSON.stringify(a.slice(-50))); } catch (e) { /* noop */ } }
+  let autoBkAt = 0;
+  async function autoBackups() {
+    if (!pairOk() || typeof A.setBackup !== 'function' || Date.now() - autoBkAt < 10 * 60000) return;
+    autoBkAt = Date.now();
+    let P; try { P = await api('tvs'); } catch (e) { return; }
+    if (!P || !Array.isArray(P.backups)) return;
+    let skip = []; try { skip = JSON.parse(localStorage.getItem(BK_SKIP) || '[]'); } catch (e) { /* noop */ }
+    const t = P.now || now(), have = new Set(P.backups.map((x) => x.id).concat(P.decider ? [P.decider.id] : []));
+    const add = (P.tvs || []).filter((x) => x.kind === 'casatv' && t - x.at < 2 * 86400000 && !have.has(x.id) && skip.indexOf(x.id) < 0);
+    if (!add.length) return;
+    const lab = tvLabels(P.tvs || []), done = [];
+    for (const x of add) { try { await api('setBackup', x.id, true); done.push(lab[x.id] || storeName(x.store) + 'のテレビ'); } catch (e) { /* 次の見回りで */ } }
+    if (done.length) { toast(done.join('・') + 'を予備にしました（進行役が止まったら代わります）'); pairData = null; if (tab === 'tv' && !editStore) loadPair(); }
+  }
   async function loadHealth() {
     if (!pairOk() || typeof A.health !== 'function') return;
+    autoBackups();
     const before = JSON.stringify(healthData && healthData.text);
     try { healthData = await api('health'); healthAt = Date.now(); } catch (e) { return; }
     if (JSON.stringify(healthData && healthData.text) === before) return;
@@ -406,7 +426,7 @@
   async function bkSet(btn) {
     const id = btn.dataset.id, on = btn.dataset.on === '1', name = tvLabels((pairData && pairData.tvs) || [])[id] || 'テレビ';
     btn.disabled = true;
-    try { await api('setBackup', id, on); toast(name + (on ? 'を予備にしました' : 'の予備をやめました')); } catch (e) { toast('失敗しました: ' + errText(e)); }
+    try { await api('setBackup', id, on); bkSkip(id, !on); toast(name + (on ? 'を予備にしました' : 'の予備をやめました')); } catch (e) { toast('失敗しました: ' + errText(e)); }
     pairData = null; loadPair();
   }
   async function bkAll(btn) {
