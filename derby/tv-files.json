@@ -303,8 +303,8 @@
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 170556,
-   "sha256": "641acd1fd6b72550bde9babe555bdbb4f2fee35e9ff86d585644e858a4182cc7"
+   "size": 172441,
+   "sha256": "56b4a047fcf63035201ff8bfaccb6ba7b75dbbe12fc0a6084d54506c1d1b1bed"
   },
   {
    "path": "v2/client.js",
