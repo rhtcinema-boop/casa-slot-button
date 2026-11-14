@@ -276,7 +276,7 @@
   let subStop = null; // 見張りを止める関数（見るだけ: 窓を閉じるときに止める。投票ページの Firebase の見張りを残さない）
   if (C) {
     (async () => { try { await C.syncClock(); } catch (e) { } await refresh(); })();
-    setInterval(() => { if (C.syncClock && !TV.playing) C.syncClock().catch(() => {}); }, 5 * 60 * 1000); // b203: レースを流している間は時刻合わせをしない（合わせ直しで馬が飛ぶ）
+    setInterval(() => { if (C.syncClock && !TV.playing) C.syncClock().catch(() => {}); }, 30 * 60 * 1000); /* 2026-11-14 無料枠: 時刻合わせ 5 分 → 30 分（1 回で 3 回読み書きする） */ // b203: レースを流している間は時刻合わせをしない（合わせ直しで馬が飛ぶ）
     setInterval(refresh, 30000); // SSE が黙って止まっていても取り直す（2026-11-14 無料枠: 10 秒 → 30 秒）
     setInterval(() => { try { pruneCache(); } catch (e) { console.error(e); } }, 10 * 60 * 1000);
     try {
