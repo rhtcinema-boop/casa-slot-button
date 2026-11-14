@@ -480,8 +480,8 @@
     if (!saved || !C) return;
     drawTop();
     if (sheet === 'test') paintTest();
-    if (!document.hidden && Date.now() - winsAt > 300000) loadWins(); // 通知が届かない環境の保険（2026-11-14 無料枠: 20 秒 → 5 分。一覧は見張りで届く）
-    if (!document.hidden && Date.now() - healthAt > (qs.get('hsec') ? Number(qs.get('hsec')) * 1000 : 120000)) loadHealth(); /* 2026-11-14 無料枠: 30 秒 → 2 分 */ // 進行役のテレビ（2026-10-28。?hsec= はテスト用）
+    if (!document.hidden && Date.now() - winsAt > 1800000) loadWins(); /* 2026-11-14 無料枠: 30 分（一覧は見張りで届く。画面に戻ったときは読み直す） */ // 通知が届かない環境の保険（2026-11-14 無料枠: 20 秒 → 5 分。一覧は見張りで届く）
+    if (qs.get('hsec') && !document.hidden && Date.now() - healthAt > Number(qs.get('hsec')) * 1000) loadHealth(); /* 2026-11-14 オーナー「いらない仕組みは消そう」: 進行役の様子は開いたときに 1 回だけ（定期の確認はテスト用の ?hsec= のときだけ） */ // 進行役のテレビ（2026-10-28。?hsec= はテスト用）
   }, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && saved && C) { C.syncClock().catch(() => {}); loadWins(); } });
 
