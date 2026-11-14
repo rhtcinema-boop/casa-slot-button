@@ -26,7 +26,7 @@
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   const S = (st) => ({ get(k) { try { return st().getItem(k); } catch (e) { return null; } }, set(k, v) { try { st().setItem(k, v); } catch (e) { /* noop */ } } });
   const ss = S(() => sessionStorage), ls = S(() => localStorage);
-  const POLL_MS = 30000, SAFE_MS = 5 * 60000, FIRST_MS = 5000, BUSY_MS = 3000, LOOP_N = 6, LOOP_MS = 10 * 60000;
+  const POLL_MS = 30000, SAFE_MS = 30 * 60000, /* 2026-11-14 無料枠: 見張りがあるときの念のための読み直し 5 分 → 30 分 */ FIRST_MS = 5000, BUSY_MS = 3000, LOOP_N = 6, LOOP_MS = 10 * 60000;
   let stub = null, sdkStub = null;
   if (LOCAL) {
     const m = QS.match(/[?&]tvgameUrl=([^&#]+)/); if (m) { try { stub = decodeURIComponent(m[1]); ss.set('casa.tvgameUrl', stub); } catch (e) { stub = null; } } else stub = ss.get('casa.tvgameUrl');
