@@ -892,11 +892,14 @@
     drawTop();
   }, 1000);
   // 通知が届かない環境の保険
+  /* 2026-11-14 Firestore の無料枠（読み取り 1 日 5 万回）を超えて 14:10 からレースが作れなくなった: 保険の読み直しを 6 秒 → 30 秒に（票・状態は見張りで届く）。送れなかった投票の送り直しは 6 秒のまま */
+  let insN = 0;
   setInterval(() => {
     if (document.hidden || !C || screen === 'badStore') return;
-    if (my && ['voted', 'race', 'result'].indexOf(screen) >= 0 && !(my.vote && my.vote.result && [my.vote, my.vote2].every((x) => !x || !x.result || !x.result.win || (x.result.payout && x.result.payout.status !== 'unpaid')))) loadMine();
-    if (!online || ['wait', 'boot'].indexOf(screen) >= 0) refreshState();
-    if (Date.now() - scanAt > 60000) scanUnpaid();
+    const slow = (insN++ % 5) === 0; // 30 秒に 1 回
+    if (slow && my && ['voted', 'race', 'result'].indexOf(screen) >= 0 && !(my.vote && my.vote.result && [my.vote, my.vote2].every((x) => !x || !x.result || !x.result.win || (x.result.payout && x.result.payout.status !== 'unpaid')))) loadMine();
+    if (slow && (!online || ['wait', 'boot'].indexOf(screen) >= 0)) refreshState();
+    if (Date.now() - scanAt > 300000) scanUnpaid();
     flushResend(false); // 送れなかった投票は 15 秒ごとにも（Wi-Fi はつながっているのに外へ出られないとき）
   }, 6000);
 
