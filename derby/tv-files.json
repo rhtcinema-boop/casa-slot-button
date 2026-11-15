@@ -213,8 +213,8 @@
   },
   {
    "path": "js/engine.js",
-   "size": 38635,
-   "sha256": "f369d58ed31ee058c563f869c25b9ca0c40c906bb7ff6c15d394c588b10fe1bf"
+   "size": 39284,
+   "sha256": "db0a85db985b5176fb9f185cb7ceaffe373acedac1b75a06d93450de0b575b16"
   },
   {
    "path": "js/game.js",
@@ -343,13 +343,13 @@
   },
   {
    "path": "v2/tv.css",
-   "size": 162162,
-   "sha256": "ee131fb7c1b2db00763f0b9835f44b23fda71e05017808f1d6ee26ab756dc5b7"
+   "size": 162537,
+   "sha256": "018a51dc0c2d2acb2c6e348b26212d4d8b4b2b5cef3367f9031976c0dc4fc9ba"
   },
   {
    "path": "v2/tv.js",
-   "size": 149178,
-   "sha256": "bd2aff1a8fe21bee3061bfe850b367209a7e665e18811f1d4c117ab2bd8325a8"
+   "size": 149923,
+   "sha256": "3a159f5cb8d75b9690c8ef336489bc058aa8508e152bd7ae2669a6fe73dae277"
   },
   {
    "path": "v2/tvhealth.js",
