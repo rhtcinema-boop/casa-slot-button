@@ -34,9 +34,12 @@
     /* 初参加ボーナス（2026-10-24 オーナー決定: そのスマホで初めて投票するレースで、その日その番号で 1 回だけ 2 票） */
     bonusHead: '初参加ボーナス：もう1票', bonusSub: '同じ組み合わせでもOK・当たればそれぞれお支払い', bonusBtn: 'もう1票えらぶ', bonusTag: '初参加ボーナス',
     /* スタンプラリー（2026-11-02 オーナー「10 個で 2 票目」。仮・デモで確かめる）: 端末ごとにためる（v2/core.js の「スタンプラリー」） */
-    stampHead: 'スタンプラリー', stampLeft: 'あと {k} 個で、2票目が入れられます', stampReady: '{c} 個達成！|次の投票で 2票目が使えます',
-    stampRule: '投票 +{v}|当たり +{w}|1着か2着に1頭 +{n}', stampUseHead: 'スタンプ {c} 個で もう1票', stampUseSub: '同じ組み合わせでもOK・使ったスタンプは減ります',
-    stampUseBtn: 'スタンプで2票目をえらぶ', stampTag: 'スタンプ', stampGot: 'スタンプ +{n}', stampVote: '投票', stampWin: '当たり', stampNear: '1・2着に1頭', noStamp: 'スタンプの2票目は使えません',
+    stampHead: 'スタンプカード', stampLeft: 'あと {k} 個で、2票目が入れられます', stampReady: '{c} 個達成！|次の投票で 2票目が使えます',
+    /* 2026-11-15 オーナー「10 個たまったら演出で『2票目獲得』・次から使えます・次のスタンプカードが発行される・使ったら減る」: 10 個で「2票目の券」1 枚に替わり、カードは新しい 1 枚に（数え方は前と同じ＝残り ÷ cost が券・あまりがカード） */
+    stampTk: '2票目の券', stampTkN: '{t} 枚', stampTkSub: '次の投票で使えます', stampLeft2: 'あと {k} 個で、もう 1 枚',
+    stampFxK: 'スタンプ {c} 個 達成！', stampFxH: '2票目|獲得！', stampFxS: '次の投票から使えます', stampFxN: '新しいスタンプカードを発行しました', stampFxOk: 'OK', stampFxHave: '2票目の券 {t} 枚',
+    stampRule: '投票 +{v}|当たり +{w}|1着か2着に1頭 +{n}', stampUseHead: '2票目の券で もう1票', stampUseSub: '同じ組み合わせでもOK・券が 1 枚 減ります',
+    stampUseBtn: '券を使って2票目をえらぶ', stampTag: 'スタンプ', stampGot: 'スタンプ +{n}', stampVote: '投票', stampWin: '当たり', stampNear: '1・2着に1頭', noStamp: 'スタンプの2票目は使えません',
     vote1: '1票目', vote2: '2票目', pick2Head: '2票目をえらぶ', pick2Sub: '金の点が1票目・同じ組み合わせでもえらべます', vote2Btn: '2票目を投票する',
     redo1: '1票目を選び直す', redo2: '2票目を選び直す', noBonus: '初参加ボーナスの2票目は使えません',
     times: '{a} × {n}票', hitMark: '当たり', missMark: 'はずれ', slideAll: 'スライドして2票分受け取り',
@@ -101,7 +104,7 @@
   let stampSt = null, stampAt = 0, stampFor = '', stampShown = null; // stampShown: 画面に出した数（増えたマスに「押された」動きを付けるため） // スタンプラリー: { cost, vote, win, near, bal, earned, spent, h } | null（オフ・模擬クラウド）
   function loadStamps(delay) {
     if (!C || !C.stamps) return;
-    setTimeout(() => { C.stamps().then((x) => { const k = JSON.stringify(x); if (k !== JSON.stringify(stampSt)) { stampSt = x; lastSig = ''; route(); } stampAt = Date.now(); }).catch(() => {}); }, delay || 0);
+    setTimeout(() => { C.stamps().then((x) => { const k = JSON.stringify(x); if (k !== JSON.stringify(stampSt)) { stampSt = x; stampMile(x); lastSig = ''; route(); } stampAt = Date.now(); }).catch(() => {}); }, delay || 0);
   }
   let my = null;               // 見ている自分の票: { raceId, vid, key, vote, vote2（2 票目 | null）, bonus（いま 2 票目を入れられる）, race, kind: 'cur'|'live'|'last'|'pin' }
   let pinned = null;           // 「受け取っていない当たり」から開いた票 { raceId, vid, key }
@@ -318,13 +321,39 @@
       (combo ? '<div class="combo">' + esc(comboText(r, v.first, v.second, o)) + '</div>' : '') +
       (o ? '<div class="ifwin sm"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(payFor(o), 'n') + '</b></div>' : '') + (who ? whoLine(v.bill, v.nick) : '') + '</div>';
   }
+  /* 2026-11-15: 10 個たまるたびに「2票目 獲得！」の演出（1 回だけ）。たまった回数＝付いた合計 ÷ cost を端末に覚えておき、増えたときだけ出す（初めて見る端末・数が戻った端末は覚えるだけ） */
+  const STAMP_M = 'casa.derby.stampM';
+  let stampRoll = false; // このあとの描き直しで、新しいカードのマスを 1 個目から押す
+  function stampMile(S) {
+    if (!S || !(S.cost > 0)) return;
+    const m = Math.floor((Number(S.earned) || 0) / S.cost); let seen = null;
+    try { const v = localStorage.getItem(STAMP_M); seen = v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v); } catch (e) { seen = null; }
+    if (seen !== m) { try { localStorage.setItem(STAMP_M, String(m)); } catch (e) { /* 保存できない端末は毎回くらべるだけ */ } }
+    if (seen != null && m > seen) { stampRoll = true; stampFx(S); }
+  }
+  function stampFx(S) {
+    const app = $('app'); if (!app) return; const old = document.getElementById('stampFx'); if (old) old.remove();
+    const c = S.cost, t = Math.floor(S.bal / c), have = S.bal % c, cols = c % 5 === 0 || c > 6 ? 5 : c;
+    const cells = (n, cls) => '<div class="cells" style="grid-template-columns:repeat(' + cols + ',1fr)">' + Array.from({ length: c }, (_, i) => '<i class="sc' + (i < n ? ' on' + (cls || '') : '') + '" data-n="' + (i + 1) + '" style="--d:' + i + '"></i>').join('') + '</div>';
+    const h = TX.stampFxH.split('|');
+    const box = document.createElement('div'); box.id = 'stampFx'; box.className = 'stampfx'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', h.join(' '));
+    box.innerHTML = '<div class="sfx-rays" aria-hidden="true"></div><div class="sfx-in"><p class="sfx-k">' + esc(fill(TX.stampFxK, { c })) + '</p>' +
+      '<div class="sfx-deck"><div class="stampcard sfx-old">' + cells(c, ' hit') + '</div><div class="stampcard sfx-new"><p class="sh"><b>' + esc(TX.stampHead) + '</b><span class="sn"><b>' + have + '</b> / ' + c + '</span></p>' + cells(have) + '</div></div>' +
+      '<h2 class="sfx-h"><span>' + esc(h[0]) + '</span><em>' + esc(h[1] || '') + '</em></h2><p class="sfx-s">' + esc(TX.stampFxS) + '</p>' +
+      '<p class="sfx-n">' + esc(TX.stampFxN) + (t > 1 ? '<small>' + esc(fill(TX.stampFxHave, { t })) + '</small>' : '') + '</p><button type="button" class="btn sfx-ok">' + esc(TX.stampFxOk) + '</button></div>';
+    const close = () => { clearTimeout(stampFx.h); box.classList.add('out'); setTimeout(() => { box.remove(); }, 260); };
+    box.addEventListener('click', (e) => { if (e.target.closest('.sfx-ok') || e.target === box) close(); });
+    app.appendChild(box); clearTimeout(stampFx.h); stampFx.h = setTimeout(close, 12000); // 押されなくても 12 秒で閉じる（次の投票のじゃまをしない）
+  }
   function stampCard() {
     const S = stampSt; if (!S) return '';
-    const c = S.cost, have = Math.min(S.bal, c), from = stampShown == null ? have : Math.min(have, stampShown), hit = have > from; // from〜have が新しく押されたマス
+    const c = S.cost, t = Math.floor(S.bal / c), have = S.bal % c; // t: 2票目の券（10 個で 1 枚。使うと 1 枚減る）・have: いまのカードのスタンプ
+    const from = stampRoll ? 0 : stampShown == null ? have : Math.min(have, stampShown), hit = have > from; stampRoll = false; // from〜have が新しく押されたマス
     const cells = Array.from({ length: c }, (_, i) => '<i class="sc' + (i < have ? ' on' : '') + (hit && i >= from && i < have ? ' hit' : '') + '" data-n="' + (i + 1) + '" style="--d:' + Math.max(0, i - from) + '"></i>').join('');
     stampShown = have;
-    return '<div class="stampcard' + (hit ? ' hit' : '') + '" role="group" aria-label="' + esc(TX.stampHead) + '"><p class="sh"><b>' + esc(TX.stampHead) + '</b><span class="sn"><b>' + S.bal + '</b>' + (S.bal < c ? ' / ' + c : ' 個') + '</span></p><div class="cells">' + cells + '</div>' +
-      '<p class="sl">' + (S.bal >= c ? fill(TX.stampReady, { c }).split('|').map((x, i) => (i === 0 ? '<span class="hi">' : '<span>') + esc(x) + '</span>').join(' ') : esc(fill(TX.stampLeft, { k: c - S.bal }))) + '</p><p class="sr">' + fill(TX.stampRule, { v: S.vote, w: S.win, n: S.near }).split('|').map((x) => '<span>' + esc(x) + '</span>').join('') + '</p></div>';
+    const tkRow = t > 0 ? '<p class="stk" role="status"><span class="stk-t"><i aria-hidden="true">★</i>' + esc(TX.stampTk) + '<b>' + esc(fill(TX.stampTkN, { t })) + '</b></span><span class="stk-s">' + esc(TX.stampTkSub) + '</span></p>' : '';
+    return '<div class="stampcard' + (hit ? ' hit' : '') + (t > 0 ? ' has-tk' : '') + '" role="group" aria-label="' + esc(TX.stampHead) + '"><p class="sh"><b>' + esc(TX.stampHead) + '</b><span class="sn"><b>' + have + '</b> / ' + c + '</span></p>' + tkRow + '<div class="cells">' + cells + '</div>' +
+      '<p class="sl">' + esc(fill(t > 0 ? TX.stampLeft2 : TX.stampLeft, { k: c - have })) + '</p><p class="sr">' + fill(TX.stampRule, { v: S.vote, w: S.win, n: S.near }).split('|').map((x) => '<span>' + esc(x) + '</span>').join('') + '</p></div>';
   }
   const stampUseBox = (c) => '<div class="bonusbox stampuse"><b>' + esc(fill(TX.stampUseHead, { c })) + '</b><span>' + esc(TX.stampUseSub) + '</span><button class="btn" data-act="stamp">' + esc(TX.stampUseBtn) + '</button></div>';
   function stampGotLine(all, res) { // 結果: このレースで付くスタンプ（発表のときに進行役のテレビが付ける。テスト・取り消しは付かない）
@@ -334,7 +363,7 @@
     const R0 = { first: Number(res.first), second: Number(res.second) }, gain = (x) => { if (!x || x.test || x.first == null || x.second == null) return { n: 0, vote: 0, win: 0, near: 0 }; const a = Number(x.first), b = Number(x.second), win = a === R0.first && b === R0.second, near = !win && (a === R0.first || a === R0.second || b === R0.first || b === R0.second); const o = { vote: S.vote, win: win ? S.win : 0, near: near ? S.near : 0 }; o.n = o.vote + o.win + o.near; return o; };
     const g = all.map(gain), sum = (k) => g.reduce((a, x) => a + x[k], 0), n = sum('n'); if (!n) return '';
     const parts = [[TX.stampVote, sum('vote')], [TX.stampWin, sum('win')], [TX.stampNear, sum('near')]].filter((p) => p[1] > 0).map((p) => p[0] + ' +' + p[1]).join('・');
-    return '<div class="stampgot" role="status"><b>' + esc(TX.stampHead.replace('ラリー', '')) + '<em>+' + n + '</em></b><span>' + esc(parts) + '</span></div>';
+    return '<div class="stampgot" role="status"><b>' + esc(TX.stampTag) + '<em>+' + n + '</em></b><span>' + esc(parts) + '</span></div>';
   }
   const tk = (r, v, n) => (window.BetTicket ? BetTicket(r, v, n) : mineCard(r, v, n, true, n < 2)); // ⑤ 馬券ふうの券（v2/ticket.js）
   const bonusBox = () => '<div class="bonusbox"><b>' + esc(TX.bonusHead) + '</b><span>' + esc(TX.bonusSub) + '</span><button class="btn" data-act="bonus">' + esc(TX.bonusBtn) + '</button></div>';
