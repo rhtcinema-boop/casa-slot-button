@@ -507,3 +507,36 @@ html.tkok .mine.tk { opacity: 1; }
 .bigtag { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 12px; padding: 8px 12px; border-radius: 999px; background: linear-gradient(180deg, #2a1c02, #0e0902); box-shadow: 0 0 0 2px #ffd24a, 0 0 14px rgba(255, 200, 60, .45); }
 .bigtag b { font-size: 20px; font-weight: 900; letter-spacing: .04em; background: linear-gradient(100deg, #ffd24a 0%, #fff7c2 18%, #ffd24a 30%, #d99a00 60%, #ffd24a 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: bigcShine 3.2s ease-in-out infinite; }
 .bigtag i { font-style: normal; color: #ffd24a; font-size: 15px; }
+
+/* ---------- 2026-11-15 スタンプカード: 10 個で「2票目の券」1 枚に替わり、新しいカードが出る（オーナー「10 個たまったら演出・2票目獲得・次から使えます・次のカード発行・使ったら減る」） ---------- */
+.stampcard .stk { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 12px; border: 2px solid var(--gold); background: linear-gradient(180deg, #3a2f10, #241c08); }
+.stampcard .stk-t { display: flex; align-items: baseline; gap: 6px; font-size: 16px; font-weight: 900; color: var(--gold); white-space: nowrap; }
+.stampcard .stk-t i { font-style: normal; font-size: 15px; }
+.stampcard .stk-t b { font-size: 22px; color: #fff3c4; font-variant-numeric: tabular-nums; margin-left: 2px; }
+.stampcard .stk-s { font-size: 13px; font-weight: 700; color: #ffe9a8; text-align: right; word-break: auto-phrase; }
+.stampfx { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: calc(20px + var(--sat)) 18px calc(20px + var(--sab)); background: rgba(5, 9, 17, .97); overflow: hidden; animation: sfxIn .25s ease-out both; }
+.stampfx.out { opacity: 0; transition: opacity .25s; }
+.stampfx .sfx-rays { position: absolute; left: 50%; top: 42%; width: 200vmax; height: 200vmax; margin: -100vmax 0 0 -100vmax; background: repeating-conic-gradient(from 0deg, rgba(255, 215, 115, .12) 0deg 9deg, rgba(255, 215, 115, 0) 9deg 18deg); animation: sfxSpin 40s linear infinite, sfxFade .6s ease-out .9s both; pointer-events: none; }
+.stampfx .sfx-in { position: relative; width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.stampfx .sfx-k { margin: 0; font-size: 20px; font-weight: 900; color: var(--gold); letter-spacing: .06em; animation: sfxUp .4s ease-out both; }
+.stampfx .sfx-deck { position: relative; width: 100%; display: grid; }
+.stampfx .sfx-deck .stampcard { grid-area: 1 / 1; align-self: center; text-align: left; }
+.stampfx .sfx-old { animation: sfxGlow .5s ease-out 1s both, sfxAway .55s cubic-bezier(.5, 0, .8, .4) 3.1s both; }
+.stampfx .sfx-old .sc.on.hit { animation: stampHit .4s cubic-bezier(.2, 1.4, .4, 1) both; animation-delay: calc(var(--d, 0) * 70ms + .15s); }
+.stampfx .sfx-new { animation: sfxNew .55s cubic-bezier(.2, 1.2, .4, 1) 3.45s both; }
+.stampfx .sfx-h { margin: 6px 0 0; display: flex; align-items: baseline; justify-content: center; gap: 10px; font-family: var(--display); font-weight: 900; line-height: 1.05; color: #fff3c4; text-shadow: 0 3px 0 #7a5200, 0 0 26px rgba(255, 215, 115, .6); animation: sfxPop .6s cubic-bezier(.2, 1.5, .4, 1) 1.15s both; }
+.stampfx .sfx-h span { font-size: 46px; letter-spacing: .02em; }
+.stampfx .sfx-h em { font-style: normal; font-size: 58px; color: var(--gold); }
+.stampfx .sfx-s { margin: 0; font-size: 20px; font-weight: 900; color: #fff; animation: sfxUp .4s ease-out 1.9s both; }
+.stampfx .sfx-n { margin: 4px 0 0; display: flex; flex-direction: column; gap: 2px; font-size: 15px; font-weight: 700; color: var(--dim); animation: sfxUp .4s ease-out 3.6s both; }
+.stampfx .sfx-n small { font-size: 14px; color: var(--gold); font-weight: 900; }
+.stampfx .sfx-ok { margin-top: 8px; min-width: 200px; animation: sfxUp .4s ease-out 3.9s both; }
+@keyframes sfxIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sfxFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sfxSpin { to { transform: rotate(360deg); } }
+@keyframes sfxUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes sfxPop { 0% { opacity: 0; transform: scale(2.2) rotate(-6deg); } 60% { opacity: 1; transform: scale(.92) rotate(1deg); } 100% { opacity: 1; transform: none; } }
+@keyframes sfxGlow { 0% { box-shadow: 0 0 0 0 rgba(255, 215, 115, .8); } 100% { box-shadow: 0 0 0 22px rgba(255, 215, 115, 0); } }
+@keyframes sfxAway { to { opacity: 0; transform: translateX(-115%) rotate(-10deg); } }
+@keyframes sfxNew { from { opacity: 0; transform: translateX(115%) rotate(8deg); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .stampfx, .stampfx * { animation: none !important; } .stampfx .sfx-old { display: none; } }
