@@ -785,7 +785,7 @@
 
   /* 2026-10-23 見直し: 8 文字のニックネーム＋当選額 100,000pt で名前が「…」で切れていた → 入りきらない行だけ文字を小さく（最小 6 割。それでも入らなければ「…」）。
      見えていないページの行も同じ（ページをめくったときに変わらない） */
-  function fitNicks(box) { const L = Array.from(box.querySelectorAll('.row .nk')); L.forEach((e) => { e.style.fontSize = ''; }); L.filter((e) => e.clientWidth && e.scrollWidth > e.clientWidth + 1).forEach((e) => fitCss(e, 0.6)); } // 先に全部を元の大きさに戻してから測る（300 行でも測るのは 1 回＋入らない行だけ）
+  function fitNicks(box) { const L = Array.from(box.querySelectorAll('.row .nk')); L.forEach((e) => { e.style.fontSize = ''; }); L.forEach((e) => { e.classList.remove('w2'); }); L.filter((e) => e.clientWidth && e.scrollWidth > e.clientWidth + 1).forEach((e) => { fitCss(e, 0.6); if (e.scrollWidth > e.clientWidth + 1) e.classList.add('w2'); }); } /* 2026-11-15 オーナー「名前は長くても全部」: 6 割まで小さくしても入らない行は「…」にせず 2 行に折る（.w2） */ // 先に全部を元の大きさに戻してから測る（300 行でも測るのは 1 回＋入らない行だけ）
   // ---------- レース（締切 → ゲートイン → レース → ゴール → リプレイ → 勝ち馬 → 掲示板 → 結果） ----------
   async function until(cond, every) { while (!cond()) await sleep(every || 100); }
   async function playRace(R0) {
@@ -1092,6 +1092,7 @@
     const on = LW.at != null && tl.el >= LW.at && tl.el < LW.at + LW_SEC && mine.length > 0;
     if (on) {
       const key = mine.map((w) => w.bill + '|' + w.nick + '|' + w.amount + '|' + !!w.test).join(',');
+      if (box.hidden) { box.hidden = false; box.classList.remove('in'); void box.offsetWidth; box.classList.add('in'); } // 2026-11-15: 先に出してから中身を作る（隠れたままだと幅が 0 で、長い名前を小さくする計算が効かず名前が切れていた）
       if (key !== LW.key) { LW.key = key; renderLocalWin(R, mine); }
       if (!LW.said) { LW.said = true; try { if (window.DerbyAnnounce && DerbyAnnounce.say) DerbyAnnounce.say('e:hit_' + STORE); } catch (e) { /* なし */ } }
     }
@@ -1109,7 +1110,7 @@
     const cards = $('v2lwCards'); cards.className = 'lw-cards n' + show.length; cards.innerHTML = show.map(card).join('');
     $('v2lwMore').textContent = more > 0 ? 'ほか ' + more + ' 人' : '';
     const mx = { 1: 120, 2: 84, 3: 66, 4: 56, 5: 56, 6: 56 }[show.length] || 56;
-    cards.querySelectorAll('.nk').forEach((e) => fitText(e, mx, 24));
+    cards.querySelectorAll('.nk').forEach((e) => { e.classList.remove('w2'); fitText(e, mx, 24); if (e.scrollWidth > e.clientWidth + 1) e.classList.add('w2'); }); // いちばん小さくしても入らない名前は 2 行に（切らない。2026-11-15）
     cards.querySelectorAll('.am').forEach((e) => fitText(e, show.length === 1 ? Math.round(mx * 0.9) : mx, 24)); // 2 人以上は金額を名前と同じ大きさ（名前より弱く見えない。2026-11-07 採点の指摘）
   }
   function resStage(R, tl, N, t, until) {
