@@ -1649,3 +1649,6 @@
 .v2bigConf .g26 { left: 61.8%; width: 20px; height: 28px; background: #e0a400; animation-duration: 3.34s !important; animation-delay: 0.3s !important; }
 .v2bigConf .g27 { left: 19.4%; width: 24px; height: 40px; background: #ffe27a; animation-duration: 3.52s !important; animation-delay: 0.24s !important; }
 .v2bigConf .g28 { left: 93.2%; width: 20px; height: 40px; background: #ffffff; animation-duration: 2.31s !important; animation-delay: 0.06s !important; }
+
+/* 2026-11-15 オーナー「当たった人の名前は長くても全部」: 小さくしても入らない名前は「…」で切らずに 2 行に折る（v2/tv.js が .w2 を付ける） */
+.v2wl .row .nk.w2, .v2res .lw-cards .c .nk.w2 { white-space: normal; overflow-wrap: anywhere; word-break: break-all; text-overflow: clip; line-height: 1.05; overflow: visible; }
