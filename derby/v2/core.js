@@ -588,6 +588,8 @@
     if (priv) { const cues = r.cues || (r.result && r.result.cues) || (o.result && o.result.cues) || (o.secret && o.secret.decision && o.secret.decision.cues) || null; if (cues) out.cues = cues; }
     // テストのレース・テストの店の当たりは、その店（と管理）にだけ見せる
     if (revealed || o.role === 'admin') out.winners = (r.winners || o.winners || []).filter((w) => !w.test || o.role === 'admin' || !o.store || w.storeId === o.store);
+    // 受け取りがまだの人（2026-11-17。unpaidByStore）: 発表後・その店の分だけ（スマホには出さない）。取り消し・テストのレースは無し
+    if (revealed && o.store && o.role !== 'phone' && !r.refunded && !r.test && r.unpaid && typeof r.unpaid === 'object') out.unpaid = (Array.isArray(r.unpaid[o.store]) ? r.unpaid[o.store] : []).map((x) => ({ bill: String(x.bill), nick: x.nick == null ? '' : String(x.nick) }));
     if (o.role === 'admin' && o.secret) { out.payoutTarget = o.secret.payoutTarget; out.scope = o.secret.scope; out.decision = o.secret.decision || null; out.winProb = o.secret.winProb; out.comboProb = o.secret.comboProb; }
     return out;
   }
@@ -985,6 +987,23 @@
   function winnersFrom(payouts, storeName) {
     return winnersView(mergeWinners((payouts || []).filter((p) => p.status !== 'void').sort((a, b) => b.amount - a.amount || (a.createdAt || 0) - (b.createdAt || 0)).map((p) => Object.assign({ storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null }, p.test ? { test: true } : {}))).sort((a, b) => b.amount - a.amount), storeName);
   }
+  /* 受け取りがまだの当たり（2026-11-17 オーナー「当たりの受け取りが完了してない店舗は、当たりの画面から移動しないように。5 分おきにモニターが喋るように」）:
+     当たり（payouts）から店ごとの「まだの人」{ <店>: [{ bill, nick }] }（会計番号の順・同じ番号の 2 票は 1 人）。
+     入れないもの: テストの当たり・取り消し（void）・受け取り済み（paid）・期限切れ（expired と、期限 expireAt を過ぎた unpaid）。まだの人がいない店は入れない。
+     レースの記録の unpaid に入れる（模擬クラウドは server.js、Firestore 版は進行役のテレビが derbyRaces に書く）。テレビは publicRace の unpaid（その店の分だけ）を見る */
+  function unpaidByStore(payouts, t) {
+    const by = {}, seen = {};
+    (payouts || []).forEach((p) => {
+      if (!p || p.test || p.status !== 'unpaid' || (p.expireAt != null && t != null && t >= p.expireAt)) return;
+      const s = p.storeId, b = String(p.bill == null ? '' : p.bill); if (!s || !b) return;
+      if (seen[s + '~' + b]) return; seen[s + '~' + b] = 1;
+      (by[s] = by[s] || []).push({ bill: b, nick: p.nick == null ? '' : String(p.nick) });
+    });
+    Object.keys(by).forEach((s) => by[s].sort((a, b) => (a.bill < b.bill ? -1 : a.bill > b.bill ? 1 : 0)));
+    return by;
+  }
+  /* 受け取り待ちで結果の画面を延ばすのは、発表から最大この長さまで（進行役が止まって記録が古いままでも、夜通し出しっぱなしにしない） */
+  const UNPAID_HOLD_MAX_MS = 6 * 3600 * 1000;
   // 取り消し（成立しなかったレース。管理の「返還」の v4 版）: まだ渡していない当たりは void。渡した当たりはそのまま（参加無料なので返すものはない）
   function voidPlan(payouts) { const voids = [], kept = []; (payouts || []).forEach((p) => { if (p.status === 'unpaid') voids.push(p); else if (p.status === 'paid') kept.push(p); }); return { voids, kept, voided: voids.reduce((a, p) => a + p.amount, 0) }; }
   /* 集計の 1 行（営業日・店ごと）: races（テストを除くレース数）・votes（票の数＝参加人数）・players（会計番号の数）・target（当選額の目標）・paid（当選額）・
@@ -1083,7 +1102,7 @@
     HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool, FRESH_RACES, recentHorseNames, freshPick,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
     BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
-    effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
+    effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, unpaidByStore, UNPAID_HOLD_MAX_MS, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues, DEFAULT_INCIDENT, SCRATCH_EXTRA_SEC, incidentTuning, incidentFor,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, TV_STRIP_KEYS, TV_STRIP_A, TV_STRIP_B, tvStripOf, tvStripCode, PW_CHARS, genTvPassword };
 });
