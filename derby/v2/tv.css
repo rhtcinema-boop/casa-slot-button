@@ -1652,3 +1652,37 @@
 
 /* 2026-11-15 オーナー「当たった人の名前は長くても全部」: 小さくしても入らない名前は「…」で切らずに 2 行に折る（v2/tv.js が .w2 を付ける） */
 .v2wl .row .nk.w2, .v2res .lw-cards .c .nk.w2 { white-space: normal; overflow-wrap: anywhere; word-break: break-all; text-overflow: clip; line-height: 1.05; overflow: visible; }
+
+/* ---------- 受け取り待ち（2026-11-17 オーナー「当たりの受け取りが完了してない店舗は、当たりの画面から移動しないように」。v2/tv.js resHold） ----------
+   結果の画面の 5 分（endAt）を過ぎても、この店に受け取りがまだの人がいる間は結果の画面のまま（.v2res.hold）。右の列の下の枠（ふだんは次のレース・カウントダウン .rsub）を
+   「受け取りがまだの方」の枠に替えて、まだの人を「ニックネーム／会計番号 07」で最大 4 人（多ければ「ほか ○ 人」）。右の一覧のまだの人の行には「受け取り待ち」の札。
+   下の帯の右「この画面 あと m:ss」は「受け取り待ち ○人」（残り時間は出さない）。大きさは設計座標（1600）: 見出し 34px・名前 32〜40px・番号 26px（1920 で 41・38〜48・31px） */
+.v2res .rhold { display: none; }
+.v2res.hold .rsub { display: none; }
+.v2res.hold .ract, .v2res.hold .rnote { display: none !important; }
+.v2res.hold .r .v2wl { margin-bottom: 294px; }
+.v2res.hold .rhold { display: flex; flex-direction: column; gap: 10px; grid-column: 2; grid-row: 2; align-self: end; height: 236px; margin-bottom: 48px; padding: 14px 20px; border-radius: 14px; background: rgba(242, 183, 5, .18); box-shadow: inset 0 0 0 4px #f2b705, 0 0 26px rgba(242, 183, 5, .3); overflow: hidden; animation: v2holdIn .4s ease-out both; }
+@keyframes v2holdIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.v2res .rhold .ht { display: flex; align-items: center; gap: 16px; flex: none; }
+.v2res .rhold .ht > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.v2res .rhold .ht b { font: 900 34px/1.05 var(--font-tv); color: #ffe14d; letter-spacing: .02em; white-space: nowrap; }
+.v2res .rhold .ht span { font: 900 22px/1.1 var(--font-tv); color: #fff; white-space: nowrap; }
+.v2res .rhold .phone { flex: none; position: relative; width: 38px; height: 62px; border: 4px solid #fff; border-radius: 9px; box-sizing: border-box; }
+.v2res .rhold .phone::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 10px; height: 3px; margin-left: -5px; border-radius: 2px; background: #fff; }
+.v2res .rhold .phone s { position: absolute; left: 6px; top: 12px; width: 18px; height: 18px; background: conic-gradient(#fff 25%, transparent 0 50%, #fff 0 75%, transparent 0) 0 0 / 6px 6px; }
+.v2res .rhold .hl { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(0, 1fr); gap: 8px; }
+.v2res .rhold .hl.n1 { grid-template-columns: 1fr; }
+.v2res .rhold .hp { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; min-height: 0; padding: 0 14px; border-radius: 10px; background: rgba(0, 0, 0, .38); box-shadow: inset 0 0 0 2px rgba(255, 225, 77, .5); }
+.v2res .rhold .hp .nk { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 900 32px/1.3 var(--font-tv); color: #fff; }
+.v2res .rhold .hl.n1 .hp .nk, .v2res .rhold .hl.n2 .hp .nk { font-size: 40px; }
+.v2res .rhold .hp .bl { flex: none; font: 900 20px/1.1 var(--font-tv); color: #ffe14d; white-space: nowrap; }
+.v2res .rhold .hp .bl b { font: 900 26px/1 var(--font-num); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.v2res .rhold .hm { grid-column: 1 / 3; align-self: center; font: 900 22px/1 var(--font-tv); color: #ffe14d; text-align: right; }
+/* 右の一覧: まだの人の行（この店・その会計番号） */
+.v2res .r .v2wl .row.unp { box-shadow: inset 6px 0 0 #f2b705; background: rgba(242, 183, 5, .14); }
+.v2res .r .v2wl .row.unp .nk::after { content: "受け取り待ち"; opacity: 1; margin-left: 10px; padding: 2px 8px; border-radius: 6px; background: #f2b705; color: #3a2600; font-size: 16px; vertical-align: middle; }
+/* 下の帯の右: 「受け取り待ち ○人」（バーは金色で満たしたまま点滅しない） */
+.v2res.hold .foot .rest { display: flex; color: #ffe14d; font: 900 22px/1 var(--font-tv); } /* ふだんは出していない（「この画面 あと」）。延長中だけ「受け取り待ち ○人」 */
+.v2res.hold .foot .rest b { color: #ffe14d; font-size: 30px; }
+.v2res.hold .foot .rest .bar i { background: #f2b705; transition: none; }
+.v2res .rhold .hp .nk.w2 { white-space: normal; overflow-wrap: anywhere; word-break: break-all; text-overflow: clip; line-height: 1.05; }
