@@ -540,3 +540,5 @@ html.tkok .mine.tk { opacity: 1; }
 @keyframes sfxAway { to { opacity: 0; transform: translateX(-115%) rotate(-10deg); } }
 @keyframes sfxNew { from { opacity: 0; transform: translateX(115%) rotate(8deg); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .stampfx, .stampfx * { animation: none !important; } .stampfx .sfx-old { display: none; } }
+/* 受け取るまで当たりの画面のまま（2026-11-17） */
+.keeptill { margin: 14px 0 4px; text-align: center; font-size: 14px; color: #9fb3c8; }
