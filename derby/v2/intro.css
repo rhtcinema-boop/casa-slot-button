@@ -29,3 +29,22 @@
 #introOv .pic .ink { fill: var(--ink); } #introOv .pic .gold { fill: var(--gold); } #introOv .pic .gold2 { fill: var(--gold2); } #introOv .pic .cream { fill: var(--cream); } #introOv .pic .dim { fill: var(--dim); } #introOv .pic .bg { fill: var(--bg); } #introOv .pic .card2 { fill: var(--card2); } #introOv .pic .line { fill: var(--line); } #introOv .pic .ok { fill: var(--ok); }
 #introOv .pic .paper { fill: #fdfcf5; } #introOv .pic .navy { fill: #14203a; } #introOv .pic .sky { fill: #8fd6ec; }
 @media (max-height: 700px) { #introOv .pic, #introOv .pic svg { width: 76px; height: 66px; } #introOv .st { grid-template-columns: 76px minmax(0, 1fr); padding: 10px 12px 10px 8px; } #introOv h1 { font-size: 21px; } #introOv .logo img { width: 160px; } }
+/* 2026-11-18 オーナー「1 画面で全部」: SE（見える高さ 548px）でも「はじめる」まで動かさずに見えるように。絵・余白を詰め、低い画面ではロゴを小さく／省く（文は v2/intro.js で要約） */
+#introOv { padding: calc(var(--sat) + 12px) 16px calc(var(--sab) + 14px); }
+#introOv .in { gap: 12px; }
+#introOv .logo img { width: 150px; }
+#introOv h1 { font-size: 22px; }
+#introOv h1 small { margin-top: 2px; font-size: 13px; }
+#introOv .steps { gap: 8px; }
+#introOv .st { grid-template-columns: 70px minmax(0, 1fr); gap: 10px; padding: 10px 12px 10px 6px; }
+#introOv .pic, #introOv .pic svg { width: 70px; height: 60px; }
+#introOv .st h2 { font-size: 16px; }
+#introOv .st p { margin-top: 4px; font-size: 14px; line-height: 20px; }
+#introOv .two { gap: 12px; padding: 8px 14px; }
+#introOv .two .n { width: 42px; height: 42px; font-size: 24px; }
+#introOv .two h2 { font-size: 17px; }
+#introOv .two p { margin-top: 1px; line-height: 1.4; }
+#introOv .btn { min-height: 52px; }
+#introOv .skip { margin: -6px 0 0; }
+@media (max-height: 700px) { #introOv .pic, #introOv .pic svg { width: 64px; height: 54px; } #introOv .st { grid-template-columns: 64px minmax(0, 1fr); padding: 8px 10px 8px 6px; } #introOv h1 { font-size: 20px; } #introOv .logo img { width: 120px; } #introOv .in { gap: 10px; } }
+@media (max-height: 600px) { #introOv .logo { display: none; } #introOv .st::before { top: -6px; width: 22px; height: 22px; font-size: 13px; } }
