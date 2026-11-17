@@ -542,3 +542,218 @@ html.tkok .mine.tk { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .stampfx, .stampfx * { animation: none !important; } .stampfx .sfx-old { display: none; } }
 /* 受け取るまで当たりの画面のまま（2026-11-17） */
 .keeptill { margin: 14px 0 4px; text-align: center; font-size: 14px; color: #9fb3c8; }
+
+/* ======================================================================================================
+   2026-11-18 オーナー「お客さん側の画面、スクロールしなきゃ見れない情報が多すぎる。基本は 1 画面で全部。画面の下は Safari の URL や戻るボタンがあるから、ちょい上ぐらい」
+   - 画面の高さ＝見える高さ（bet.html が innerHeight を --appH に。無い端末は 100svh）。ページ全体は動かさない
+   - 上の帯は 1 行（ロゴ・店・締切）。下は Safari のバーより 14px 上で終わる（＋ホームバーの分 safe-area）
+   - 入らない小さい画面では、決めた欄（.fx ＝ 本日のレース・スタンプ・2 枚目の券・人気順の 30 通りなど）の中だけ動く。押すボタン・会計番号・倍率・スライド・券はいつも見える位置
+   - 色・券の絵・言葉の決まりは前のまま（余白・並べ方・飾りだけ詰める）
+   ====================================================================================================== */
+html, body { height: 100%; min-height: 0; }
+#app { display: flex; flex-direction: column; height: 100vh; height: 100svh; height: var(--appH, 100svh); min-height: 0; overflow: hidden; padding-bottom: 0; }
+.top { position: relative; flex: none; display: flex; align-items: center; gap: 10px; padding: calc(var(--sat) + 6px) 16px 6px; text-align: left; }
+.crest { flex: none; padding: 0; }
+.crest img { width: 86px; height: 28px; }
+.store { flex: 1 1 auto; min-width: 0; }
+.race { flex: none; margin-top: 0; flex-wrap: nowrap; gap: 4px; }
+.race span { padding: 3px 10px; }
+.net { position: relative; flex: none; padding: 6px 16px; }
+main { flex: 1 1 auto; min-height: 0; width: 100%; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 10px 16px calc(var(--sab) + 14px); }
+main > .scr { flex: 1 0 auto; min-height: 0; }
+.scr { gap: 10px; }
+.scr.mid { min-height: 0; justify-content: safe center; }
+.scr h1 { font-size: 22px; margin: 0; }
+/* 入らないときに中だけ動く欄（高さの残りを使う） */
+.fx { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; margin: 0 -4px; padding: 2px 4px; }
+.fx:empty { display: none; }
+main > .scr:has(.fx) { flex: 1 1 0; }
+/* 横に 2 つ並べるボタン（選び直す＋レースを見る／レースを見る＋次のレースへ） */
+.btnrow { flex: none; display: flex; gap: 8px; }
+.btnrow > .btn { flex: 1 1 0; min-width: 0; min-height: 50px; padding: 8px 6px; font-size: 16px; word-break: auto-phrase; }
+.btnrow:empty { display: none; }
+.scr .watchbtn small { display: none; } /* 「テレビと同じ画面」は省く（ボタンの名前で分かる） */
+.dock, .pickdock { position: relative; bottom: auto; flex: none; margin: auto -16px 0; box-shadow: none; padding-bottom: 0; }
+.dock { padding-top: 8px; gap: 6px; }
+.btn { min-height: 52px; padding: 10px; }
+.btn.ghost { min-height: 46px; }
+.note { padding: 8px 12px; }
+.note b { font-size: 16px; }
+.toast { bottom: calc(var(--sab) + 72px); }
+
+/* ① 待ち: 次のレースの枠を横長に（時刻の右に投票の始まりと残り） */
+.waitbox { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "k v" "t v"; align-items: center; column-gap: 14px; padding: 12px 14px; text-align: left; border-radius: 16px; }
+.waitbox .wk { grid-area: k; font-size: 14px; }
+.waitbox .wt { grid-area: t; margin: 0; font-size: 50px; line-height: 1; }
+.waitbox .wr { grid-area: v; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.waitbox .wv { margin: 0; font-size: 15px; text-align: center; }
+.waitbox .clock .v { font-size: 34px; }
+.waitbox .clock .k { font-size: 12px; }
+.waitbox.prep { grid-template-areas: "k k" "t t" "v v" "s s"; text-align: center; }
+.waitbox.prep .wt { justify-self: center; }
+.waitbox .wv.prep { grid-area: v; margin: 6px 0 0; font-size: 16px; }
+.waitbox .prepstaff { grid-area: s; margin: 4px 0 0; text-align: center; }
+.waitbox:not(.prep):not(:has(.wt)) { display: block; text-align: center; } /* 本日終わり */
+.waitbox:not(:has(.wt)) .wk { font-size: 17px; }
+.bigc { margin: 0; padding: 8px 12px 10px; }
+.bigc .bk { padding: 2px 12px; font-size: 12px; }
+.bigc .nm { margin: 4px 0 4px; font-size: 24px; }
+.bigc .bw { font-size: 14px; } .bigc .bw b { font-size: 20px; } .bigc .bw em { font-size: 13px; padding: 2px 10px; }
+/* スタンプカード: マスを 1 列 10 個に・ルールの文は 1 行 */
+.stampcard { gap: 6px; padding: 10px 12px; }
+.stampcard .sh > b { font-size: 14px; }
+.stampcard .sn b { font-size: 22px; }
+.stampcard .cells { grid-template-columns: repeat(10, 1fr); gap: 4px; padding: 0; margin: 0; }
+.stampcard .sc { font-size: 11px; border-width: 1.5px; }
+.stampcard .sc.on { font-size: 13px; }
+.stampcard .sl { margin: 0; font-size: 14px; }
+.stampcard .sr { font-size: 12px; gap: 2px 12px; }
+.stampcard .stk { padding: 6px 10px; }
+.stampcard .stk-t { font-size: 14px; } .stampcard .stk-t b { font-size: 18px; }
+.stampcard .stk-s { font-size: 12px; }
+/* 本日のレース: 見出しを左に・札を低く */
+.today { flex-direction: row; align-items: center; gap: 8px; padding: 8px 10px; }
+.scr.voted .today { padding: 8px 10px; margin-top: 0; }
+.today .tl { align-self: center; flex: none; writing-mode: horizontal-tb; width: 4.2em; line-height: 1.25; text-align: center; white-space: normal; }
+.today .chips { flex: 1 1 auto; justify-content: flex-start; gap: 6px; }
+.today .rc { height: 34px; flex: 0 0 calc(25% - 4.5px); }
+.today .rc.nx { padding: 0 4px; }
+.today .none { flex: 1; text-align: center; }
+
+/* ② 会計番号: 見出しと 2 けたの枠を 1 行・数字のボタンは 48px・ニックネームは 1 行 */
+.entry { gap: 8px; }
+.entry .sec { gap: 6px; }
+.entry .billsec { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 12px; row-gap: 8px; }
+.entry .billsec h1 { text-align: left; font-size: 20px; }
+.entry .billsec .keypad { grid-column: 1 / -1; }
+.digits { margin: 0; justify-content: flex-end; gap: 8px; }
+.digits .dg { width: 58px; height: 64px; font-size: 44px; border-radius: 12px; }
+.keypad { gap: 6px; }
+.keypad button { min-height: 52px; font-size: 24px; }
+@media (max-height: 640px) { .keypad button { min-height: 48px; } } /* 低い画面だけ 48px（押す所は 44px 以上） */
+.entry .nicksec { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 2px; }
+.entry .nicksec h2 { font-size: 15px; text-align: left; }
+.entry .nicksec .sub { grid-column: 1 / -1; }
+input.big { padding: 8px 10px; font-size: 22px; }
+.entry .sec.nickrow { padding: 6px 12px; gap: 2px 10px; }
+.nickrow .nv { font-size: 18px; }
+.entry > .btn { margin-top: auto; }
+
+/* ③ 予想: 上に「戻る」とタブ・表は残りの高さ・行は 46px（押す所は 44px） */
+.vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pickscr { gap: 8px; }
+.pkhead { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.pkhead .pkback { width: auto; min-height: 44px; padding: 0 12px; font-size: 15px; border-radius: 12px; }
+.pkhead .pvtabs { padding: 3px; }
+.pvt { min-height: 38px; font-size: 14px; }
+.pkbody { gap: 6px; }
+.b2head { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.b2head h1 { font-size: 19px; }
+.b2head .v1line { margin: 0; }
+.sub.b2sub { margin: -4px 0 0; }
+.bth { min-height: 28px; }
+.btr { min-height: 46px; padding-top: 1px; padding-bottom: 1px; }
+.btr .bn { gap: 1px; }
+.btr .bn b { font-size: 15px; line-height: 1.2; }
+.btr .bn small { font-size: 11.5px; line-height: 1.25; }
+.pk { height: 44px; }
+.btr .waku.lg { width: 34px; height: 34px; font-size: 19px; }
+.bth, .btr { grid-template-columns: 34px minmax(0, 1fr) 60px 72px; }
+.poplist .pop { min-height: 50px; padding: 4px 12px; }
+.pickdock { padding: 8px 16px 0; gap: 6px; }
+.pickdock .pdh { margin: 2px 0; }
+.pickdock .pdok { display: none; } /* 「✓ 予想が決まりました」は省く（組み合わせと倍率が出ている） */
+
+/* ④ 確認 */
+.confirm { gap: 8px; }
+.pick.big .waku.xl { width: 48px; height: 48px; font-size: 28px; }
+.pick { row-gap: 4px; }
+.pick .lb { font-size: 15px; }
+.ifwin { padding: 8px 14px; }
+.ifwin b { font-size: 32px; }
+.scr.confirm .sub.shift { margin-top: -4px; }
+.scr.confirm .dock { margin-top: auto; }
+.bigtag { margin: 0; padding: 4px 12px; flex: none; }
+.bigtag b { font-size: 17px; }
+
+/* ⑤ 投票済み */
+.scr.voted { gap: 8px; }
+.done-h { font-size: 20px !important; gap: 8px; }
+.done-h i { width: 26px; height: 26px; font-size: 15px; }
+.scr.voted > .clock, .vhead .clock { display: flex; align-items: baseline; justify-content: center; gap: 10px; flex: none; }
+.scr.voted .clock .k { font-size: 14px; }
+.scr.voted .clock .v { font-size: 30px; line-height: 1.05; }
+.vhead { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.vhead .clock { justify-content: flex-end; }
+.mine.tk { gap: 4px; flex: none; }
+.mine.tk .mk { font-size: 13px; }
+.tk-note { font-size: 12px; }
+.bonusbox { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; padding: 8px 10px 8px 12px; text-align: left; }
+.bonusbox > b { font-size: 15px; white-space: nowrap; }
+.bonusbox > span { grid-column: 1; font-size: 12px; line-height: 1.35; }
+.bonusbox .btn { grid-column: 2; grid-row: 1 / 3; margin: 0; width: auto; min-height: 48px; padding: 6px 14px; font-size: 16px; }
+.redo2 { flex: none; }
+.redo2 .btn { min-height: 46px; padding: 6px; }
+.scr.voted > .btn, .scr.voted > .watchbtn { flex: none; }
+/* ⑥ レース中 */
+.scr.racing { gap: 10px; }
+.scr.racing > .watchbtn { flex: none; }
+
+/* ⑦ 結果（当たり）: 「当たり」と当選額を横に・会計番号は横長（数字は 60px 以上のまま） */
+.scr.result { gap: 8px; }
+.scr.win > .hit { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "t k" "t a" "c c" "x x"; align-items: center; column-gap: 12px; row-gap: 0; padding: 0; flex: none; }
+.scr.win > .hit .t { grid-area: t; font-size: 30px; letter-spacing: .2em; }
+.scr.win > .hit .k { grid-area: k; text-align: right; font-size: 13px; }
+.scr.win > .hit .a { grid-area: a; text-align: right; font-size: 52px; line-height: 1; }
+.scr.win > .hit .a .l6 { font-size: 46px; } .hit .a .l7 { font-size: 40px; }
+.scr.win > .hit .combo { grid-area: c; font-size: 16px; margin-top: 2px; }
+.scr.win > .hit .x2 { grid-area: x; }
+.billbig { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "s b" "n b"; align-items: center; column-gap: 12px; padding: 4px 16px; border-radius: 16px; }
+.billbig span { grid-area: s; align-self: end; }
+.billbig small { grid-area: n; align-self: start; text-align: left; }
+.billbig b { grid-area: b; justify-self: end; font-size: 68px; }
+.payop { flex: none; gap: 4px; }
+.slider { height: 56px; }
+.slider .knob { width: 48px; height: 48px; }
+.stamp { flex: none; padding: 8px 12px; flex-direction: row; justify-content: center; gap: 12px; }
+.stamp b { font-size: 26px; }
+.vlist { flex: none; padding: 6px 12px; gap: 2px; }
+.vlist .vr { min-height: 28px; }
+.vlist .an { font-size: 20px; }
+.stampgot { flex-direction: row; justify-content: center; flex-wrap: wrap; gap: 2px 12px; padding: 8px 12px; }
+.stampgot b { font-size: 16px; gap: 8px; } .stampgot b em { font-size: 30px; }
+.stampgot span { font-size: 14px; }
+.keeptill { margin: 0; flex: none; }
+.incline { margin: 0; }
+/* ⑦ 結果（はずれ）: 「はずれ」と結果の 1着・2着を 1 行に */
+.lhead { flex: none; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; }
+.lhead .miss { padding: 0; }
+.lhead .miss .t { font-size: 28px; letter-spacing: .15em; }
+.lhead .resline { padding: 6px 10px; }
+.resline .pick { column-gap: 6px; row-gap: 2px; }
+.resline .pick .lb { font-size: 12px; }
+.resline .pick .waku.lg { width: 30px; height: 30px; font-size: 17px; }
+.resline .pick .arw { font-size: 24px; }
+.resline .pick .nm { font-size: 13px; }
+.nextr { flex: none; display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 0 10px; font-size: 15px; }
+.nextr .nt { font-size: 22px; }
+.nextr small { display: inline; margin: 0; font-size: 14px; }
+.scr.result.mid { justify-content: safe center; }
+
+/* 起動・お店が見つからない など */
+.splash .logo-h1 img { width: min(320px, 82vw); }
+
+/* 低い画面（SE など、見える高さ 600px まで）: もう少しだけ詰める（文字の大きさはそのまま） */
+@media (max-height: 600px) {
+  .top { padding-top: calc(var(--sat) + 4px); padding-bottom: 4px; }
+  main { padding-top: 8px; }
+  .scr, .entry, .scr.voted, .scr.result, .pickscr { gap: 6px; }
+  .fx { gap: 8px; }
+  .waitbox .wt { font-size: 44px; }
+  .digits .dg { height: 58px; font-size: 40px; width: 52px; }
+  .sub { line-height: 1.4; }
+  .stampcard .sr { display: none; } /* 「投票 +1・当たり +3…」は省く（大きい画面と結果の画面で出る） */
+  .scr.voted .tk-note, .scr.racing .tk-note { display: none; } /* 券の下の「倍率と当たりの額は、締切まで動きます」は省く（確認の画面に「倍率は締切時に変動します」） */
+  .entry:has(.note) .nicksec .sub { display: none; }
+  .entry:has(.note) .keypad { gap: 4px; } .entry:has(.note) .digits .dg { height: 52px; font-size: 36px; } /* 知らせが出ているときは数字の枠を少し低く */ /* 知らせが出ているときは「8文字まで・当たるとテレビに出ます」を省く */
+}
