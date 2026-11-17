@@ -153,7 +153,7 @@
   stageEl.appendChild(el('<div class="v2bigT" id="v2bigT"><small>ビッグレース</small><b id="v2bigTN"></b></div>'));
   stageEl.appendChild(el('<div class="v2bigConf" id="v2bigConf"><i class="g1"></i><i class="g2"></i><i class="g3"></i><i class="g4"></i><i class="g5"></i><i class="g6"></i><i class="g7"></i><i class="g8"></i><i class="g9"></i><i class="g10"></i><i class="g11"></i><i class="g12"></i><i class="g13"></i><i class="g14"></i><i class="g15"></i><i class="g16"></i><i class="g17"></i><i class="g18"></i><i class="g19"></i><i class="g20"></i><i class="g21"></i><i class="g22"></i><i class="g23"></i><i class="g24"></i><i class="g25"></i><i class="g26"></i><i class="g27"></i><i class="g28"></i></div>'));
   stageEl.appendChild(el('<div class="v2res" id="v2res"><div class="col l"><div class="rhd"><div class="v2st" id="v2st2"><i></i><b id="v2st2T"></b></div><h2 id="v2resTtl">レース結果</h2><span class="v2testtag" id="v2resTest" hidden>テストレース</span></div><div class="ord" id="v2resOrd"></div><div class="pay" id="v2resPay"></div><div class="foot" id="v2resFoot"><div class="nx" id="v2resNx"></div><div class="cdn"><small id="v2resNxL"></small><b id="v2resNxN"></b></div><div class="rest"><span id="v2resRestL"></span><span class="bar"><i id="v2resBar"></i></span><b id="v2resRestN"></b></div><div class="today" id="v2resToday" hidden></div></div></div>' + /* v2resToday: 下の帯の 2 行目「本日のレース 13:00 ✓ …」（2026-10-27） */
-    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b id="v2resActB">当たった方は</b><span id="v2resAct1">スマホの画面を</span><span id="v2resAct2">スタッフへ見せてください</span></div></div><div class="rnote" id="v2resNote">本日中に リングチップでお渡し</div><div class="rsub" id="v2resSub"></div></div>' +
+    '<div class="col r"><div class="head"><h3>全店の当たった人<small>当選額</small></h3><span id="v2resCnt"></span><span class="pg"></span></div><div class="v2wl" id="v2resList"><div class="inner"></div></div><div class="ract" id="v2resAct"><i class="phone" aria-hidden="true"><s></s></i><div><b id="v2resActB">当たった方は</b><span id="v2resAct1">スマホの画面を</span><span id="v2resAct2">スタッフへ見せてください</span></div></div><div class="rnote" id="v2resNote">本日中に リングチップでお渡し</div><div class="rhold" id="v2resHold" hidden></div><div class="rsub" id="v2resSub"></div></div>' +
     /* この店の当たった人を先に大きく（2026-11-07 オーナー）: 結果の画面の上に 8 秒だけ重ねる。v2/tv.js の localWin */
     '<div class="lw" id="v2resLw" hidden><div class="lw-in"><div class="lw-hd"><small>casa DERBY</small><h3 id="v2lwTtl"></h3><span class="lw-sub" id="v2lwSub"></span></div><div class="lw-cards" id="v2lwCards"></div><div class="lw-more" id="v2lwMore"></div><div class="lw-ft">スマホの画面を スタッフへ見せてください</div></div></div></div>'));
   // 通信が 15 秒以上切れたとき: 上に大きな帯（レース映像の真ん中は覆わない。QR はそのまま＝お客さんのスマホはテレビと別に通信している）
@@ -473,6 +473,7 @@
   function sizeQR() { const sv = $('v2qrCode').querySelector('svg'), vb = sv && sv.viewBox && sv.viewBox.baseVal, w = vb ? vb.width : 0; if (!w) return; const q = $('v2qr'); Object.keys(QR_RANGE).forEach((k) => q.style.setProperty('--' + k, Math.min(k === 'qo' || k === 'qr' ? QR_RANGE[k][1] : 1e9, qrPx(w, QR_RANGE[k][0], QR_RANGE[k][1])) + 'px')); q.dataset.modules = w; }
 
   // ---------- 場面の切り替え ----------
+  let holdKey = ''; // 受け取り待ちの枠の中身の印（resHold。2026-11-17）
   const TV = { mode: '', playing: null, done: {}, dismissed: {}, skipped: {}, armed: false, resultRace: null, resultFrom: 0, hl: null, waitSince: 0, nextAt: 0, log: [], wp: { page: '', since: 0, n: 0, key: '' } };
   function setMode(m) {
     if (TV.mode === m) return;
@@ -482,6 +483,7 @@
     ['m-wait', 'm-hl', 'm-open', 'm-live', 'm-result'].forEach((c) => stageEl.classList.toggle(c, c === 'm-' + m));
     { const b = (m === 'open' || m === 'live') && isBig(view); stageEl.classList.toggle('bigrace', b); if (b) $('v2bigBanN').textContent = bigName(view); } // ビッグレース（2026-11-11 試作）
     if (m !== 'wait') { delete stageEl.dataset.wp; TV.wp.page = ''; }
+    if (m !== 'result' && stageEl.dataset.hold) { $('v2res').classList.remove('hold'); stageEl.dataset.hold = ''; holdKey = ''; } // 受け取り待ちの印は結果の画面を出ている間だけ（2026-11-17）
     if (m !== 'open') { stageEl.classList.remove('v2-watch'); $('v2qr').classList.remove('watch'); $('v2qrWatch').hidden = true; watchKey = ''; } // 他店だけのレースの印は投票の画面だけ（2026-10-26）
   }
   // 時刻からいまの場面を決める（4 回/秒）。レースの再生（playRace）・ハイライトは自分で続きを進める
@@ -493,18 +495,21 @@
     let live = (S.live && !TV.done[S.live.id]) ? S.live : races.find((r) => !TV.done[r.id] && r.closeAt <= t && r.revealAt && t < r.revealAt && r.status !== 'upcoming' && r.status !== 'open');
     // 投票の締切の瞬間: 次の状態（締切後＝live）が届くまでの 1〜2 秒、投票の画面から待ち時間の画面に一瞬もどっていた → 映していた投票のレースをそのまま流し始める（結果は playRace が待つ）
     { const O = S.open || S.watch; if (!live && TV.mode === 'open' && view && O && view.id === O.id && !TV.done[O.id] && t >= O.closeAt && t < O.closeAt + 20000) live = O; } // 他店だけのレース（watch）も同じ
-    if (TV.playing) return;
+    if (TV.playing) { TV.hold = null; return; }
     if (live && t >= live.closeAt) { const sk = skipLive(live, t); if (sk === 'hold') return; if (!sk) { stopHighlight(); playRace(live); return; } } // hold: 参加人数が決まるまで今の画面のまま
     // 投票の画面に映すレース: この店で投票できるレース（S.open）。無ければ他店だけのレース（S.watch。2026-10-26。QR の所に「このレースは ○○ のみ投票」）
     const O = S.open && t < S.open.closeAt ? S.open : watchRace(), open = O && t >= (O.openAt || 0) ? O : null;
     // 2) 結果画面（終わったばかりのレース。途中から見始めたテレビは結果発表〜endAt の間なら最後の結果）
     let R = TV.resultRace;
-    if (!R && S.last && S.last.result && S.last.revealAt <= t && t < S.last.endAt && !TV.dismissed[S.last.id] && !TV.skipped[S.last.id] && TV.resultShownFor !== S.last.id) { R = TV.resultRace = S.last; TV.resultFrom = performance.now(); }
+    //    受け取りがまだの人がこの店にいる間は endAt を過ぎても結果画面のまま（2026-11-17。unpaidOf）。読み込み直したテレビもその間は結果を出す
+    if (!R && S.last && S.last.result && S.last.revealAt <= t && (t < S.last.endAt || unpaidOf(cache[S.last.id] || S.last, t).length) && !TV.dismissed[S.last.id] && !TV.skipped[S.last.id] && TV.resultShownFor !== S.last.id) { R = TV.resultRace = S.last; TV.resultFrom = performance.now(); }
     if (R) {
-      const cur = cache[R.id] || R, urgent = !!open; // 次のレースの投票が始まったら投票の画面を優先（結果画面で時刻表を止めない。2026-10-14 リーダーの決め）
-      if (!TV.dismissed[R.id] && t < (cur.endAt || Infinity) && !urgent) { showResult(cur); return; }
+      const cur = cache[R.id] || R, urgent = !!open; // 次のレースの投票が始まったら投票の画面を優先（結果画面で時刻表を止めない。2026-10-14 リーダーの決め）。受け取り待ちの延長もここで終わる
+      const endAt = cur.endAt || Infinity, wait = t >= endAt ? unpaidOf(cur, t) : [];
+      TV.hold = !TV.dismissed[R.id] && !urgent && wait.length ? { id: cur.id, since: endAt, list: wait.slice() } : null; // 受け取り待ちで延ばしている（v2/announce.js が 5 分おきに声で知らせる）
+      if (!TV.dismissed[R.id] && (t < endAt || wait.length) && !urgent) { showResult(cur); return; }
       TV.resultShownFor = R.id; TV.resultRace = null; stageEl.dataset.lw = ''; // 一度閉じた結果は出し直さない（レースごと。映像を見逃したレース＝結果が遅れて届いた等も結果画面は出す。QA3）
-    }
+    } else TV.hold = null;
     // 3) 投票（openAt〜closeAt。v4 の S.open は投票の時間の中だけ。それより前は待ち時間＝S.next）
     if (open) { stopHighlight(); showOpen(open); return; }
     // 4) 待ち時間: 次のレースのパドック と 前のレースのハイライト を交互に
@@ -771,7 +776,7 @@
     clearInterval(pagers.get(box)); pagers.delete(box); pagerCtl.delete(box); box.classList.remove('scroll', 'dense', 'paged', 'big'); inner.style.transform = ''; if (pg) pg.textContent = '';
     if (!list.length) { inner.innerHTML = '<div class="none">当たった人は<br>いませんでした</div>'; return; }
     // v4（2026-10-21 オーナー）: 「上野 12番 たろう 1,300pt」（全店。会計番号は 2 けた）。テストの当たりは額の代わりに「テスト」（払わない）
-    const row = (w) => '<div class="row' + (w.test ? ' test' : '') + '"><span class="st' + (w.storeId === STORE ? ' me' : '') + '">' + esc(w.storeName || storeName(w.storeId)) + '</span>' + billH(w) + '<span class="nk">' + esc(w.nick) + '</span><b>' + ptH(w.amount) + (w.test ? '<small class="tst">テスト</small>' : '') + '</b></div>';
+    const row = (w) => '<div class="row' + (w.test ? ' test' : '') + '" data-st="' + esc(w.storeId || '') + '" data-bill="' + esc(String(w.bill == null ? '' : w.bill).padStart(2, '0')) + '"><span class="st' + (w.storeId === STORE ? ' me' : '') + '">' + esc(w.storeName || storeName(w.storeId)) + '</span>' + billH(w) + '<span class="nk">' + esc(w.nick) + '</span><b>' + ptH(w.amount) + (w.test ? '<small class="tst">テスト</small>' : '') + '</b></div>';
     inner.innerHTML = list.map(row).join('');
     const n = list.length, avail = box.clientHeight || 500;
     let rh = Math.min(o.max, Math.floor(avail / n));
@@ -1040,19 +1045,43 @@
     }
     // 下の帯: 次のレース（発走時刻・投票の始まり・発走までの時間）
     const t = resClock(), endAt = R.endAt || (TV.resBase.t + 300000), N = nextInfo();
-    const until = Math.min(endAt, N && N.openAt > t ? N.openAt : Infinity); // 次のレースの投票が始まったら結果の画面は閉じる（decide と同じ）
+    // 受け取り待ち（2026-11-17）: endAt を過ぎてもこの店に受け取りがまだの人がいる → 閉じるのは次のレースの投票が始まったとき（分からなければ閉じない）。残り時間の数字は出さない
+    const wait = now() >= endAt ? unpaidOf(R, now()) : [], hold = wait.length > 0;
+    const until = hold ? (N && N.openAt > t ? N.openAt : Infinity) : Math.min(endAt, N && N.openAt > t ? N.openAt : Infinity); // 次のレースの投票が始まったら結果の画面は閉じる（decide と同じ）
     const total = Math.max(1, until - (R.revealAt || until - 300000)), left = Math.max(0, until - t);
     $('v2resNx').innerHTML = N ? '<small>次のレース</small><b>' + hhmm(N.at) + '</b> 発走' + (openRace() && openRace().id === N.id ? '<em>投票中</em>' : N.openAt ? '<span class="op">投票は ' + hhmm(N.openAt) + ' から</span>' : '') + (canVote(N) ? '' : '<span class="op">（' + esc(storeNames(N.storeIds)) + ' のみ投票）</span>') : '<small>本日のレースは</small>終了しました'; // 他店だけのレース（2026-10-26）はその印
     $('v2resNxL').textContent = N ? '発走まで' : ''; setFit('v2resNxN', N ? fmtLeft(N.at - t) : '', '.foot');
-    $('v2resRestL').textContent = 'この画面 あと'; $('v2resRestN').textContent = fmtLeft(left); $('v2resBar').style.width = (100 * left / total).toFixed(1) + '%';
+    if (hold) { $('v2resRestL').textContent = '受け取り待ち'; $('v2resRestN').textContent = wait.length + '人'; $('v2resBar').style.width = '100%'; }
+    else { $('v2resRestL').textContent = 'この画面 あと'; $('v2resRestN').textContent = fmtLeft(left); $('v2resBar').style.width = (100 * left / total).toFixed(1) + '%'; }
+    resHold(R, wait); // 受け取りがまだの人の帯と、一覧の印（2026-11-17）
     renderToday('v2resToday'); // 下の帯の 2 行目: 本日のレースの時刻（2026-10-27）
     resStage(R, resPhase(R, t, until, endAt), N, t, until);
+  }
+  /* 受け取り待ち（2026-11-17）: 結果画面の右の列の「当たった方は スマホの画面を…」の所を「受け取りがまだの方」の帯にして、この店のまだの人を「たろう 会計番号 07」で並べる
+     （4 人より多ければ「ほか ○人」）。右の一覧のこの店のまだの人の行には「受け取り待ち」の印。延長に入る前（endAt まで）はいつもの案内のまま */
+  function resHold(R, wait) {
+    const box = $('v2res'), on = wait.length > 0, key = on ? R.id + '|' + wait.map((x) => x.bill + '/' + x.nick).join(',') : '';
+    box.classList.toggle('hold', on); stageEl.dataset.hold = on ? '1' : '';
+    if (key === holdKey) return; holdKey = key;
+    const hb = $('v2resHold');
+    if (on) {
+      const MAXN = 4, show = wait.slice(0, MAXN), more = wait.length - show.length;
+      hb.innerHTML = '<div class="ht"><i class="phone" aria-hidden="true"><s></s></i><div><b>受け取りがまだの方</b><span>スマホの画面をスタッフへ見せてください</span></div></div>' +
+        '<div class="hl n' + show.length + '">' + show.map((x) => '<div class="hp"><b class="nk">' + esc(x.nick || '') + '</b><span class="bl">会計番号 <b>' + esc(billTx(x.bill)) + '</b></span></div>').join('') + (more > 0 ? '<div class="hm">ほか ' + more + ' 人</div>' : '') + '</div>';
+      hb.hidden = false; // 先に出してから測る（隠れたままだと幅 0 で小さくできない。2026-11-15 と同じ）
+      hb.querySelectorAll('.hp .nk').forEach((e) => { fitText(e, show.length <= 2 ? 40 : 32, 18); if (e.scrollWidth > e.clientWidth + 1) e.classList.add('w2'); }); // それでも入らない名前は 2 行に（切らない）
+    } else hb.innerHTML = '';
+    hb.hidden = !on;
+    // 右の一覧: この店のまだの人の行に印（名前ではなく 店＋会計番号 で見分ける）
+    const mine = {}; wait.forEach((x) => { mine[billTx(x.bill)] = 1; });
+    $('v2resList').querySelectorAll('.row').forEach((r) => { const b = r.dataset.bill, st = r.dataset.st; r.classList.toggle('unp', on && st === STORE && !!mine[b]); });
   }
   function fillResWinners(R) {
     const L = $('v2resList');
     if (R.refunded) { L.classList.remove('scroll', 'paged', 'dense'); pagerCtl.delete(L); clearInterval(pagers.get(L)); L.querySelector('.inner').style.transform = ''; L.querySelector('.inner').innerHTML = '<div class="none">このレースは<br>取り消しになりました</div>'; } // 管理画面の「取り消し」（v4。以前の返還）: 当たりは無効
     else if (R.winners) fillWinners(L, R.winners, { max: 84, normal: 54, dense: 44 }); else L.querySelector('.inner').innerHTML = '<div class="none">集計中…</div>';
     RT.hi = -2; // 行を作り直した → 1 人ずつの印を付け直す
+    holdKey = ''; // 受け取り待ちの印も付け直す（2026-11-17）
   }
   /* 結果画面の 5 分の流れ（REVIEW_TODO「92→95」の 4。長さ 5 分は店の方針で固定）。配置は変えない（左に着順・右に当たった人・下に払戻・右下に QR）。
      時間で見せ場だけ移す（場面が変わるのは 10〜30 秒に 1 回。当たった人の印だけ 5〜7 秒ごと）:
@@ -1083,6 +1112,16 @@
      出た瞬間に実況の声「渋谷店で的中！」（e:hit_<店の id>。v2/announce.js の say＝チャイムなし。消音・ほかの声の途中は鳴らさない）を 1 回だけ */
   const LW_SEC = 8, LW_MAX = 6;
   const LW = { id: null, at: null, key: '', said: false };
+  /* この店の受け取りがまだの人 [{ bill, nick }]（2026-11-17 オーナー「当たりの受け取りが完了してない店舗は、当たりの画面から移動しないように」）。
+     レースの unpaid（Core.publicRace がこの店の分だけにしたもの。模擬クラウドは server.js、Firestore 版は進行役が書く）。
+     見るだけ・店の無いテレビ・テスト・取り消しのレースは無し。発表から UNPAID_MAX を過ぎたら無し（進行役が止まって古いままでも出しっぱなしにしない） */
+  const UNPAID_MAX = 6 * 3600 * 1000;
+  function unpaidOf(R, t) {
+    if (!R || WATCH || !STORE || R.test || R.refunded || !Array.isArray(R.unpaid) || !R.unpaid.length) return [];
+    if (t != null && R.revealAt && t >= R.revealAt + UNPAID_MAX) return [];
+    return R.unpaid.filter((x) => x && x.bill != null);
+  }
+  const billTx = (b) => String(b).padStart(2, '0');
   function localWinners(R) { return !R.refunded && R.winners ? R.winners.filter((w) => w.storeId === STORE) : []; }
   function localWin(R, tl) {
     const box = $('v2resLw'); if (!box || LW.preview) return;
@@ -1345,6 +1384,7 @@
     v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV, watch: WATCH, // watch: 見るだけ（v2/watch.js が使う）
     upd: UPD, updCheck: (force) => autoUpdate(force), updSafe,
     health: HM, // テレビの調子（2026-10-29。tests/v2-tvhealth.test.js・tools/smooth-bench.js） // 自動アップデート（tests/v2-tv-update.test.js）
+    get hold() { return TV.hold || null; }, unpaidOf, // 受け取り待ち（2026-11-17。v2/announce.js・tests/v4-tv-unpaid.plan.js）
     get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now, hhmm, canVote, nextInfo, renderToday, // hhmm・canVote: 25 時表記と投票できる店（2026-10-26。tests/v4-tv.plan.js）。renderToday: 本日のレースの帯（2026-10-27）
     get cues() { return TV.cues || null; }, cueOverride: CUE_Q, // 確定演出: いま映像に渡しているもの（tests/v2-tv.plan.js）と ?cues= の上書き
     // 結果画面の 5 分の流れの確認用: resultAt(秒) で「結果画面が出てから 秒」の場面にする（表示の時計だけ進める。閉じる時刻は本物のまま）。resultAt(null) で戻す
