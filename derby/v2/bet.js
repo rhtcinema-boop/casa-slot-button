@@ -29,7 +29,7 @@
     closed: '締め切りました', notOpen: '投票はまだ始まっていません', noOpen: 'いま投票できるレースがありません',
     netErr: '通信できませんでした。もう一度押してください', retry: 'もう一度お試しください',
     released: '番号が空けられました。もう一度投票できます',
-    unpaid: '受け取っていない当たりがあります', unpaidBtn: '{b}番 {a} を受け取る',
+    unpaid: '受け取っていない当たりがあります', unpaidBtn: '{b}番 {a} を受け取る', keepTill: '受け取るまで、この画面が出ます',
     claimNet: '通信できませんでした。もう一度スライドしてください',
     /* 初参加ボーナス（2026-10-24 オーナー決定: そのスマホで初めて投票するレースで、その日その番号で 1 回だけ 2 票） */
     bonusHead: '初参加ボーナス：もう1票', bonusSub: '同じ組み合わせでもOK・当たればそれぞれお支払い', bonusBtn: 'もう1票えらぶ', bonusTag: '初参加ボーナス',
@@ -474,7 +474,7 @@
       '<div class="k">' + esc(TX.amount) + '</div><div class="a">' + bigAmt(total, 'n') + '</div>' + (wins.length >= 2 ? '<div class="x2">' + esc(fill(TX.times, { a: ptT(wr.amount), n: wins.length })) + '</div>' : '') + '</div>' + perVote +
       '<div class="billbig"><span>' + esc(TX.billHead) + '</span><b>' + esc(v.bill) + '</b><small data-fit="13">' + esc(v.nick) + '</small></div>' + pay + sg +
       (window.BetTicket ? wins.map((x) => BetTicket(r, x, v2 ? x.n : 0, x.result)).join('') : '') + /* 的中の判子つきの券（ticket.js） */
-      watchBtn(r) + todayRow() + nextBtn(true) + '</div>';
+      watchBtn(r) + todayRow() + (unpaid.length && !test ? '<p class="keeptill">' + esc(TX.keepTill) + '</p>' : nextBtn(true)) + '</div>';
   };
 
   /* ================= 描画 ================= */
@@ -556,9 +556,14 @@
     }
   }
 
+  /* 受け取っていない当たり（テストは除く）。2026-11-17 オーナー「当たり受け取りまで、その端末が QR を開いたときは常に当たり受け取りの画面に。絶対に閉じないように」 */
+  const unpaidOf = (m) => !!(m && [m.vote, m.vote2].some((x) => x && x.result && x.result.win && !x.result.test && !x.result.refunded && x.result.payout && x.result.payout.status === 'unpaid'));
   /* ================= 行き先を決める ================= */
-  function focusOf() { // いま見せる自分の票（レース中 → 投票中 → 発表のあと → 受け取っていない当たり）
+  function focusOf() { // いま見せる自分の票（受け取っていない当たり → レース中 → 投票中 → 発表のあと）
     if (!st || !MV) return null;
+    // 受け取っていない当たりがある間は、ほかの画面（次のレースの投票・待ち）へ行かない。今の当たりの画面をそのまま、無ければ見つけた当たりを開く
+    if (my && unpaidOf(my)) return { kind: my.kind === 'pin' ? 'pin' : 'keep', raceId: my.raceId, vid: my.vid, key: my.key, race: my.race };
+    if (unpaidList.length) { const u = unpaidList[0]; pinned = { raceId: u.raceId, vid: u.vid, key: u.key, race: null }; dismissed.delete(u.raceId); return Object.assign({ kind: 'pin' }, pinned); }
     const cand = [['live', st.live], ['cur', st.current], ['last', st.last]];
     for (const [kind, r] of cand) {
       if (!r) continue;
@@ -658,7 +663,8 @@
       } catch (e) { if (e && (e.status === 404 || e.code === 'no_vote')) { MV.clear(raceId); scanDone.add(raceId); } }
     }
     const before = unpaidList.map((x) => x.vid).join(); unpaidList = out.sort((a, b) => (b.at || 0) - (a.at || 0));
-    if (before !== unpaidList.map((x) => x.vid).join() && ['wait', 'entry'].indexOf(screen) >= 0) { if (screen === 'entry') { const nk = $('nick'); if (nk) draft.nick = nk.value; } draw(); }
+    if (before !== unpaidList.map((x) => x.vid).join() && unpaidList.length && !unpaidOf(my)) { lastSig = ''; route(); } // 受け取っていない当たりを見つけた → その画面へ（2026-11-17）
+    else if (before !== unpaidList.map((x) => x.vid).join() && ['wait', 'entry'].indexOf(screen) >= 0) { if (screen === 'entry') { const nk = $('nick'); if (nk) draft.nick = nk.value; } draw(); }
   }
 
   /* ================= 操作 ================= */
@@ -714,7 +720,7 @@
     }
     if (a === 'reload') { try { location.reload(); } catch (e) { /* noop */ } return; }
     if (a === 'watch') return openWatch(); // レースを見る（2026-10-29）
-    if (a === 'dismiss') { if (my) dismissed.add(my.raceId); if (pinned && my && pinned.vid === my.vid) pinned = null; my = null; resubscribe(); lastSig = ''; route(); return scanUnpaid(); }
+    if (a === 'dismiss') { if (unpaidOf(my)) return; if (my) dismissed.add(my.raceId); if (pinned && my && pinned.vid === my.vid) pinned = null; my = null; resubscribe(); lastSig = ''; route(); return scanUnpaid(); }
     if (a === 'openUnpaid') {
       const u = unpaidList.find((x) => x.vid === (el && el.dataset.vid)); if (!u) return;
       pinned = { raceId: u.raceId, vid: u.vid, key: u.key, race: null }; dismissed.delete(u.raceId); my = null; lastSig = ''; return route();
