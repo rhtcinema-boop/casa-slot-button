@@ -130,8 +130,9 @@
   // ---------- 声を鳴らす（実況の声の部品・場内スピーカーの音。scene を通さない） ----------
   /* 1 回の案内（チャイム → 声 → チャイム）を ctx の時刻 t0 から予約する。dest: 出口（本番は ctx.destination。書き出し・確かめは OfflineAudioContext）。
      返す: { dur: t0 から後のチャイムの終わりまで（秒）, parts: [チャイム, { kind: 'voice', id, at, len }, チャイム], out, nodes } か null（声の部品が無い） */
-  function schedule(ctx, dest, id, t0, o) { // o.chime === false: チャイムなし（結果の大写しの「渋谷店で的中！」。2026-11-07）
-    const C = root.Commentary && Commentary._, c = C && C.clipById && C.clipById(id); if (!c) return null;
+  function schedule(ctx, dest, id, t0, o) { // o.chime === false: チャイムなし（結果の大写しの「渋谷店で的中！」。2026-11-07）。id は部品の並び [id, id, …] でもよい（受け取り待ちの声。無い部品は飛ばす）
+    const C = root.Commentary && Commentary._, ids = Array.isArray(id) ? id : [id], cs = C && C.clipById ? ids.map((x) => C.clipById(x)).filter(Boolean) : [];
+    if (!cs.length || (Array.isArray(id) && !C.clipById(ids[ids.length - 1]))) return null; // 並びのときは最後の部品（共通の後半）が無ければ言わない
     const noChime = !!(o && o.chime === false);
     const out = ctx.createGain(); out.gain.value = 1;
     const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -4; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
@@ -140,11 +141,16 @@
     const bus = chimeBus(ctx, out, C.seeded ? C.seeded(7171) : Math.random);
     const parts = []; let t = t0;
     if (!noChime) { parts.push(chime(ctx, bus, 'up', t)); t += CHIME.len + CHIME.gap; }
-    const src = ctx.createBufferSource(); src.buffer = c.buf; src.connect(pa); src.start(t, c.off, c.dur);
-    parts.push({ kind: 'voice', id, at: t, len: c.dur }); t += c.dur;
+    const nodes = [pa, bus, out, lim];
+    cs.forEach((c, i) => {
+      if (i) t += CLIP_GAP; // 部品と部品の間（「会計番号、7番の方。」「会計番号、12番の方。」「当たりの受け取りが…」）
+      const src = ctx.createBufferSource(); src.buffer = c.buf; src.connect(pa); src.start(t, c.off, c.dur); nodes.unshift(src);
+      parts.push({ kind: 'voice', id: c.id, at: t, len: c.dur }); t += c.dur;
+    });
     if (!noChime) { t += CHIME.gap; parts.push(chime(ctx, bus, 'down', t)); t += CHIME.len; }
-    return { dur: t - t0, parts, out, nodes: [src, pa, bus, out, lim] };
+    return { dur: t - t0, parts, out, nodes };
   }
+  const CLIP_GAP = 0.18; // 1 回の案内で部品を続けるときの間（秒）
   let busyUntil = 0; // テレビの時計（DERBY.now）の ms。自分の案内（後のチャイムまで）が終わる時刻（＋1.5 秒）
   let cur = null;    // いま鳴っている案内（schedule の返り値）
   const player = {
@@ -183,6 +189,33 @@
   const log = [];
   const note = (o) => { log.push(o); if (log.length > 100) log.shift(); };
 
+  /* ---------- 受け取り待ちの声（2026-11-17 オーナー「受け取りが完了してない店舗は当たりの画面から移動しないように。5 分おきにモニターが喋るように。
+     〇〇さんの当たり受け取りが完了してません、してください、みたいな感じで」） ----------
+     テレビ（v2/tv.js）が結果の画面を受け取り待ちで延ばしている間（DERBY.hold ＝ { id, since: 延ばし始め（endAt）, list: [{ bill, nick }] }）、
+     延長に入ったとき（since）と、そのあと 5 分おきに「（チャイム）会計番号、7番の方。（12番の方。…）当たりの受け取りが、まだ完了していません。スマホの画面をスタッフに見せてください。（チャイム）」。
+     同じ店に何人もいれば番号を続けて読む（最初の 3 人まで）。ニックネームは読まない（Fire TV に日本語の読み上げが無いことがあり、声も変わる）＝会計番号の部品
+     c:unp_head（「会計番号、」）・c:unp_bill.<1〜99>（「7番の方。」。07 は 7番）と共通の後半 c:unp_tail（tools/make-voice.js --add。ann_* と同じ声）。
+     決まりは投票の案内と同じ: 消音・レース中・実況・ほかの案内の途中は言わない。言えない回は UNPAID_LATE（60 秒）まで待ち、過ぎたらその回は言わない。
+     1 回ずつ覚える（'<レース id>|unpaid<回>'）＝読み込み直しても同じ回は言い直さない。延長が終われば（受け取り済み・次のレースの投票が始まった）言わない */
+  const UNPAID_EVERY = 5 * MIN, UNPAID_LATE = 60000, UNPAID_MAXN = 3, UNPAID_HEAD = 'c:unp_head', UNPAID_TAIL = 'c:unp_tail';
+  const unpaidBillClip = (b) => { const n = Number(b); return Number.isInteger(n) && n >= 1 && n <= 99 ? 'c:unp_bill.' + n : null; };
+  // 「会計番号、」「7番の方。」「12番の方。」…「当たりの受け取りが、まだ完了していません。スマホの画面をスタッフに見せてください。」（番号が読めなければ後半だけ）
+  function unpaidClips(list) { const b = (list || []).slice(0, UNPAID_MAXN).map((x) => unpaidBillClip(x && x.bill)).filter(Boolean); return (b.length ? [UNPAID_HEAD].concat(b) : []).concat([UNPAID_TAIL]); }
+  function unpaidDue(h, t, done) { // いま言う回 { key, k, at, clips } | null
+    if (!h || !h.id || !Array.isArray(h.list) || !h.list.length || !Number.isFinite(Number(h.since)) || !(t >= Number(h.since))) return null;
+    const k = Math.floor((t - Number(h.since)) / UNPAID_EVERY), at = Number(h.since) + k * UNPAID_EVERY, key = h.id + '|unpaid' + k;
+    if (done(key) || t >= at + UNPAID_LATE) return null;
+    return { key, k, at, clips: unpaidClips(h.list) };
+  }
+  function tickUnpaid(D, t) {
+    const u = unpaidDue(D.hold, t, (k) => mem.has(k)); if (!u) return false;
+    if (env.muted() || env.busy() || t < busyUntil || !A.player.ready()) return false; // 待つ（UNPAID_LATE を過ぎたらその回は言わない）
+    const dur = A.player.play(u.clips); if (!dur) return false;
+    mem.add(u.key, t); busyUntil = t + dur * 1000 + 1500;
+    note({ t, race: D.hold.id, key: 'unpaid' + u.k, clip: u.clips.join(' '), bills: D.hold.list.map((x) => x.bill).join(','), late: Math.round((t - u.at) / 1000) });
+    return true;
+  }
+
   function tick() {
     const D = root.DERBY;
     if (!D || !D.v2 || D.watch || !D.state || !D.now) return;
@@ -206,6 +239,7 @@
       note({ t, race: r.id, key: d.item.key, clip: d.item.clip, late: Math.round((t - d.item.at) / 1000) });
       return; // 1 秒に 1 つだけ
     }
+    tickUnpaid(D, t); // 受け取り待ちの声（2026-11-17）
   }
 
   /* 案内の決まりの外で 1 つの声を鳴らす（結果の画面の大写し「渋谷店で的中！」＝ e:hit_<店の id>。v2/tv.js の localWin。2026-11-07）:
@@ -217,7 +251,7 @@
     busyUntil = t + dur * 1000 + 800; note({ t, key: 'say', clip: id });
     return dur;
   }
-  const A = { plan, due, candidates, isTest, CLIP, CL, GAP, LATE, LATE_OPEN, KEY, CHIME, chime, schedule, say, mem, player, env, log, tick, busyUntil: () => busyUntil, reset() { busyUntil = 0; cur = null; log.length = 0; } };
+  const A = { plan, due, candidates, isTest, CLIP, CL, GAP, LATE, LATE_OPEN, KEY, CHIME, chime, schedule, say, mem, player, env, log, tick, unpaidDue, unpaidClips, unpaidBillClip, UNPAID_EVERY, UNPAID_LATE, UNPAID_MAXN, UNPAID_HEAD, UNPAID_TAIL, busyUntil: () => busyUntil, reset() { busyUntil = 0; cur = null; log.length = 0; } };
   if (typeof module !== 'undefined' && module.exports) { module.exports = A; return; }
   root.DerbyAnnounce = A;
   const on = /[?&]store=[^&]/.test(Q) && !/[?&]watch=1\b/.test(Q) && !(root.DERBY_FIREBASE && root.DERBY_FIREBASE.demo) && !root.__derbyDemoPage;
