@@ -870,7 +870,8 @@
         const revealAt = Math.min(r.revealAt, t);
         const patch = { status: 'done', revealAt, revealedAt: t, endAt: revealAt + (r.resultSec || 300) * 1000, revealAtTs: Ts(revealAt),
           result: res ? { winner: res.winner, second: res.second, combo: res.combo, comboOdds: res.comboOdds, order: res.order, finalExacta: res.finalExacta, finalOdds: res.finalOdds, seed: res.seed, finishTimes: res.finishTimes, winTime: res.winTime, natural: res.natural, incident: res.incident || null } : null,
-          winners: r.refunded ? [] : Core.winnersView(dc.winnerList || [], names) };
+          winners: r.refunded ? [] : Core.winnersView(dc.winnerList || [], names),
+          unpaid: r.refunded || r.test ? {} : Core.unpaidByStore(payouts, null) }; // 受け取りがまだの人（2026-11-17。発表のときは当たり全部。あとは watchUnpaid が書き直す）
         tx.update(ref, patch);
         if (!r.test) { // テストのレースは集計に入れない
           const real = dc.real || { total: 0, byStore: {}, bills: {} }, inc = { date: day, races: FieldValue.increment(1), votes: FieldValue.increment(real.total || 0), target: FieldValue.increment(Core.raceTargetSum(sec.payoutTarget, sec.scope, real.byStore)), bills: real.bills || {}, byStore: {} };
@@ -951,7 +952,7 @@
     }
 
     /* ---------- 決める係のテレビ（方式 B） ---------- */
-    const decider = { running: false, leader: false, until: 0, nextTry: 0, me: randId('tv-', 8), lastBeat: 0, timer: null, wdTimer: null, ticketUnsubs: {}, participantsAt: {}, pending: {}, flushT: {}, lastExpire: 0, errors: 0, log: [],
+    const decider = { running: false, leader: false, until: 0, nextTry: 0, me: randId('tv-', 8), lastBeat: 0, timer: null, wdTimer: null, ticketUnsubs: {}, participantsAt: {}, pending: {}, flushT: {}, payUnsubs: {}, payPending: {}, payT: {}, lastExpire: 0, errors: 0, log: [],
       okAt: 0, startedAt: 0, tickSeq: 0, inTick: false, inTickAt: 0, lastErr: '', lastErrAt: 0, wdResetAt: 0, wdResets: 0, reloadAsked: 0 };
     const logD = (x) => { decider.log.push(x); if (decider.log.length > 200) decider.log.splice(0, decider.log.length - 200); }; // つけっぱなしのテレビで増え続けないように
     /* 止まらない決める係（2026-10-28 の事故: 進行役のテレビの画面は動いているのに、決める係が止まっていた＝鍵の延長も名乗りも来ない）:
@@ -1044,6 +1045,39 @@
         }, () => {});
       });
     }
+    /* 受け取りがまだの人の見張り（2026-11-17 オーナー「当たりの受け取りが完了してない店舗は当たりの画面から移動しないように」）:
+       テレビ用アカウントは当たり（derbyPayouts）を読めない（決まりは変えない）→ 進行役（決める係）が、発表したレースの当たりを見張って、
+       店ごとの「まだの人」（Core.unpaidByStore）をレース（derbyRaces/<id>.unpaid）に書く。テレビは publicRace の unpaid（その店の分）を見て結果の画面を延ばす。
+       見張るのは「まだの人がいる・本物（テスト・取り消しでない）・発表から UNPAID_HOLD_MAX_MS まで・まだの人がいる店のどれかで次のレースの投票が始まっていない」レースだけ。
+       読み取り: 見張りを始めたとき そのレースの当たりの数＋受け取り・期限切れ 1 件ごとに 1。書くのは中身が変わったときだけ（3 秒にまとめる） */
+    const unpaidKey = (u) => Object.keys(u || {}).filter((s) => (u[s] || []).length).sort().map((s) => s + ':' + u[s].map((x) => x.bill + '/' + x.nick).join(',')).join('|');
+    function unpaidWatchOn(r, races, t) {
+      if (!r || r.status !== 'done' || r.test || r.refunded || !r.unpaid || !unpaidKey(r.unpaid)) return false;
+      if (!(t < (r.revealAt || 0) + Core.UNPAID_HOLD_MAX_MS)) return false;
+      return Object.keys(r.unpaid).filter((s) => (r.unpaid[s] || []).length).some((s) => { // その店のテレビが次のレース（見えるもの全部。テレビの urgent と同じ）の投票で閉じるまで
+        const nx = races.filter((x) => x && x.id !== r.id && x.at > r.at && x.status !== 'void' && Core.visibleTo(x, s)).map((x) => Core.voteWindow(x).openAt).filter(Number.isFinite);
+        return !nx.length || t < Math.min.apply(null, nx) + 5000;
+      });
+    }
+    function stopUnpaidWatch(id) { if (decider.payUnsubs[id]) { try { decider.payUnsubs[id](); } catch (e) { /* noop */ } } delete decider.payUnsubs[id]; clearTimeout(decider.payT[id]); delete decider.payT[id]; delete decider.payPending[id]; }
+    function watchUnpaid(races) {
+      const t = now(), want = new Set(races.filter((r) => unpaidWatchOn(r, races, t)).map((r) => r.id));
+      Object.keys(decider.payUnsubs).forEach((id) => { if (!want.has(id)) stopUnpaidWatch(id); });
+      want.forEach((id) => {
+        if (decider.payUnsubs[id]) return;
+        decider.payUnsubs[id] = db.collection(COL.payouts).where('raceId', '==', id).onSnapshot((q) => {
+          decider.payPending[id] = Core.unpaidByStore(q.docs.map((d) => d.data()), now());
+          if (decider.payT[id] || !decider.leader) return;
+          decider.payT[id] = setTimeout(() => {
+            decider.payT[id] = null; const v = decider.payPending[id]; if (!v || !decider.leader) return;
+            const r = (live.races || races).find((x) => x.id === id);
+            if (r && unpaidKey(r.unpaid) === unpaidKey(v)) return; // 同じなら書かない
+            doc(COL.races, id).update({ unpaid: v }).then(() => { logD([now(), 'unpaid ' + id + ' ' + (unpaidKey(v) || '-')]); }, () => {});
+          }, opts.unpaidFlushMs != null ? opts.unpaidFlushMs : 3000);
+        }, () => { delete decider.payUnsubs[id]; });
+      });
+      return want.size;
+    }
     let deciderWatch = null;
     function ensureRaceWatch() {
       if (deciderWatch) return;
@@ -1054,7 +1088,7 @@
     async function deciderTick0(seq) {
       const live0 = () => { if (seq != null && seq !== decider.tickSeq) { const e = new Error('stale tick'); e.code = 'stale'; throw e; } };
       if (typeof setTimeout !== 'undefined' && opts.deciderAuto !== false) { ensureRaceWatch(); ensureTestWatch(); }
-      if (!(await heartbeat())) { Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; return { leader: false }; }
+      if (!(await heartbeat())) { Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); return { leader: false }; }
       live0();
       const sc = await secretConfig(), races = await getRaces(), t = now(), did = [];
       live0();
@@ -1065,6 +1099,7 @@
       live0(); const made = await materialize(sc, races); if (made) did.push('create ' + made);
       live0();
       watchParticipants(races);
+      watchUnpaid(live.races || races); // 受け取りがまだの人（2026-11-17）
       if (!did.length) await publishLive(live.races || races).catch(() => {}); // 何かした回は、その場でもう書いてある（はじめに読んだ古い一覧で上書きしない）
       /* 期限切れの見回りは 15 分に 1 回と、営業日の区切り（5 時）を越えたとき */ const dayNow = Core.bizDate(t, sc.tuning.dayStartHour); if (t - decider.lastExpire > 15 * 60000 || decider.lastExpireDay !== dayNow) { decider.lastExpire = t; decider.lastExpireDay = dayNow; const n = await expirePayouts(); if (n) did.push('expire ' + n); }
       return { leader: true, did };
@@ -1096,6 +1131,7 @@
       if (deciderWatch) { try { deciderWatch(); } catch (e) { /* noop */ } live.subs = Math.max(0, live.subs - 1); deciderWatch = null; }
       if (testWatch) { try { testWatch(); } catch (e) { /* noop */ } testWatch = null; }
       Object.values(decider.ticketUnsubs).forEach((u) => { try { u(); } catch (e) { /* noop */ } }); decider.ticketUnsubs = {};
+      Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch);
       storesCache = null; pubCache = null; secretCache = null;
       const raw = fb.db && fb.db._derbyRaw ? fb.db._derbyRaw : fb.db;
       try { if (raw && typeof raw.disableNetwork === 'function') { await withTimeout(raw.disableNetwork(), 10000, 'disableNetwork'); await withTimeout(raw.enableNetwork(), 10000, 'enableNetwork'); } } catch (e) { noteErr(e, 'reset'); }
@@ -1302,7 +1338,7 @@
       loop();
       clearInterval(decider.wdTimer); decider.wdTimer = setInterval(() => { watchdog().catch((e) => noteErr(e, 'watchdog')); }, 10000); // 見張り番は見回りとは別のタイマー
     }
-    function stopDecider() { decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; }
+    function stopDecider() { decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); }
 
     /* ---------- テレビの手元の写し（2026-10-29 電波の悪い店） ----------
        テレビは、見張りで届いたレース（このテレビに見えるもの・2 時間前から 12 件まで）・店舗・公開の設定・時刻表・参加人数と、もう読めた本物の結果（seed）を
@@ -1695,7 +1731,7 @@
       // 進行役のテレビ（2026-10-19）: state = { on, code, asking, decider, account }・on(cb) で変わるたびに
       pair: { get state() { return pairState(); }, on: onPair, hello: pairHello, get uid() { return uid(); } },
       // 決める係（テストと確認用）
-      decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, watchdog, resetNet, get paired() { return pair.decider; }, get role() { return pair.decider ? pair.role || 'primary' : myRole(); }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, get state() { return { okAt: decider.okAt, errors: decider.errors, lastErr: decider.lastErr, lastErrAt: decider.lastErrAt, wdResets: decider.wdResets, running: decider.running, tickSeq: decider.tickSeq }; }, decideRace, revealRace, expirePayouts, voidRace },
+      decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, watchdog, resetNet, get paired() { return pair.decider; }, get role() { return pair.decider ? pair.role || 'primary' : myRole(); }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, get state() { return { okAt: decider.okAt, errors: decider.errors, lastErr: decider.lastErr, lastErrAt: decider.lastErrAt, wdResets: decider.wdResets, running: decider.running, tickSeq: decider.tickSeq }; }, decideRace, revealRace, expirePayouts, voidRace, watchUnpaid, get unpaidWatches() { return Object.keys(decider.payUnsubs); } },
       ready, onUser,
       /* スマホ（2026-10-28）: 画面に初めてさわったとき（client.js）に、投票で使う端末のリストを先に読み、App Check を有効にする。見るだけの人は読まない（読み取りの数を増やさない） */
       warm: () => ready().then(() => { if (role === 'phone' && mode === 'anon') myDevice().catch(() => {}); if (fb.appCheck) fb.appCheck(); }).catch(() => {}),
