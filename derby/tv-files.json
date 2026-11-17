@@ -163,13 +163,13 @@
   },
   {
    "path": "art/voice/g.m4a",
-   "size": 993693,
-   "sha256": "51a8576bb014e97d7347c8ea6e19449bd323fc51c6488cd32f4325c445a0fcfa"
+   "size": 1782344,
+   "sha256": "4e7bff4f287c6acf316c71872e9cd15e13b510e05e78f910e50ac01d57f834e4"
   },
   {
    "path": "art/voice/index.json",
-   "size": 35526,
-   "sha256": "b81007d4a14eda4464dfb558f469b87f6089daa7327437b8fd667e8abf054e90"
+   "size": 41100,
+   "sha256": "b42cdbff39b93c91f704927e38a2c91bcca137dba70209e7c723e71d9386f859"
   },
   {
    "path": "art/voice/n.m4a",
@@ -298,13 +298,13 @@
   },
   {
    "path": "v2/announce.js",
-   "size": 19041,
-   "sha256": "5a3521e8bc8b1e5380ceddce5abaf7950f68568f032be2a98baac1652766f19a"
+   "size": 23299,
+   "sha256": "85a152c709be2c3e7214e799f0a40989d32e5f8a8a8c3337ad730c2e8513443d"
   },
   {
    "path": "v2/client-firestore.js",
-   "size": 172441,
-   "sha256": "56b4a047fcf63035201ff8bfaccb6ba7b75dbbe12fc0a6084d54506c1d1b1bed"
+   "size": 176394,
+   "sha256": "dbc1c63300213745416f253a4c6c85f345d26ddeeab873dcedd836b9aa559cba"
   },
   {
    "path": "v2/client.js",
@@ -318,8 +318,8 @@
   },
   {
    "path": "v2/core.js",
-   "size": 125516,
-   "sha256": "964eb67f8a4abe3c31a64152c72c6005b872751222307056cd91fd8d51eae2f4"
+   "size": 127678,
+   "sha256": "da86752b802d1053b0513267315aa2256729dd3cab6cd987b93ad4639ef3deb6"
   },
   {
    "path": "v2/form.js",
@@ -343,13 +343,13 @@
   },
   {
    "path": "v2/tv.css",
-   "size": 162537,
-   "sha256": "018a51dc0c2d2acb2c6e348b26212d4d8b4b2b5cef3367f9031976c0dc4fc9ba"
+   "size": 167094,
+   "sha256": "ea6a67e299ab92c54812332fc1238e20496fd9ae030c27568d52a8c4d849268e"
   },
   {
    "path": "v2/tv.js",
-   "size": 149923,
-   "sha256": "3a159f5cb8d75b9690c8ef336489bc058aa8508e152bd7ae2669a6fe73dae277"
+   "size": 155011,
+   "sha256": "70abd3f8642ec591319c74564c8c648dfeb5452020d6fc317d4d3b083f09426d"
   },
   {
    "path": "v2/tvhealth.js",
