@@ -1,0 +1,127 @@
+/* casa BOAT のスマホの投票（2026-11-19）: v2/bet.css（競馬のスマホの土台・1 画面の決まり）の上に重ねる。
+   色: 競馬（金）と見分けられるよう水色系。券（舟券）は本物の並び（ref/boat/research/26_舟券と投票画面.md）。地の色・地紋は公式の決まりが見つからなかったので、無地の白い紙にした。
+   艇の色は公式どおり 1 白・2 黒・3 赤・4 青・5 黄・6 緑（数字は 1 と 5 が黒字・ほかは白字）。 */
+body.boat {
+  --gold: #8fdcff; --gold2: #2f8fc4; --cream: #d8f3ff; --bg: #071425; --bg2: #0f2a46; --card: #0d2238; --card2: #13304d; --line: #27486b; --btn2: #102a44;
+}
+body.boat #app { background: radial-gradient(ellipse at 50% 18%, #12385c, var(--bg) 70%) fixed; }
+.boatcrest { font-family: var(--display); font-size: 22px; line-height: 32px; letter-spacing: .04em; color: #fff; }
+.boatcrest b { font-weight: 900; }
+.boatcrest span { font-weight: 900; color: var(--gold); font-style: italic; letter-spacing: .08em; }
+body.boat .btn { background: linear-gradient(180deg, #d9f4ff, #4fb0e2); color: #06233a; box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--gold2), 0 8px 24px rgba(120, 210, 255, .18); }
+body.boat .btn.ghost { background: var(--btn2); color: var(--btn2ink); box-shadow: none; border: 1px solid var(--line); }
+body.boat .btn small { display: block; font-size: 12px; font-weight: 700; opacity: .8; }
+.waku { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; font-style: normal; font-weight: 900; font-size: 18px; border: 1px solid rgba(0, 0, 0, .45); flex: none; font-variant-numeric: tabular-nums; }
+.waku.sm { width: 22px; height: 22px; font-size: 14px; border-radius: 4px; }
+.hy { color: var(--dim); font-weight: 700; margin: 0 2px; }
+.dim { color: var(--dim); }
+
+/* 予想 */
+.phead, .vhead { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.phead h1, .vhead h1 { margin: 0; font-size: 21px; text-align: left; }
+.cd { font-size: 14px; color: var(--dim); white-space: nowrap; } .cd b { color: #fff; font-size: 18px; font-variant-numeric: tabular-nums; }
+.ent { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; padding: 8px 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.er { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; }
+.er .waku { width: 24px; height: 24px; font-size: 15px; }
+.en { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.ec { flex: none; font-size: 11px; color: var(--dim); }
+.mark { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 14px; background: #f3f6f8; color: #10202f; }
+.mrow { display: flex; align-items: center; gap: 8px; }
+.ml { flex: none; width: 34px; font-weight: 900; font-size: 15px; color: #c0392b; text-align: center; } /* マークカードの欄の名前（1着・2着） */
+.mb { flex: 1 1 auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.bn { height: 48px; border-radius: 9px; border: 2px solid #9aa9b6; background: #fff; color: #10202f; font: 900 20px var(--display); position: relative; cursor: pointer; }
+.bn::before { content: ""; position: absolute; left: 50%; top: 6px; width: 16px; height: 6px; margin-left: -8px; border-radius: 3px; background: var(--c); border: 1px solid rgba(0, 0, 0, .35); }
+.bn { padding-top: 10px; }
+.bn.on { background: var(--c); color: var(--i); border-color: #0b1a28; box-shadow: 0 0 0 2px #fff inset, 0 0 0 3px #0b1a28; }
+.bn.on::before { display: none; }
+.bn.on { padding-top: 0; }
+.bn:disabled { opacity: .3; }
+.sel { flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); min-height: 50px; font-size: 14px; }
+.sel.dim { justify-content: center; color: var(--dim); }
+.sel .so { margin-left: 6px; color: var(--dim); } .sel .so b { color: #fff; font-size: 20px; }
+.sel .sp { margin-left: auto; color: var(--dim); } .sel .sp b { color: var(--gold); font-size: 18px; }
+.cart { flex: 0 1 auto; gap: 4px !important; padding: 6px 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.ci { display: flex; align-items: center; gap: 6px; font-size: 14px; min-height: 30px; }
+.ci .co { margin-left: 6px; color: var(--dim); } .ci .ca { margin-left: auto; font-weight: 700; color: var(--cream); }
+.ci .cx { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--btn2); color: var(--dim); font-size: 16px; }
+.bptl { flex: none; margin: 0; font-size: 13px; color: var(--dim); text-align: center; } .bptl b { color: var(--cream); }
+.nkin { width: 100%; height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: #fff; font-size: 22px; text-align: center; }
+
+/* 確認（公式のネット投票の「投票内容の確認」の表） */
+.ctab { flex: 0 1 auto; border-radius: 12px; border: 1px solid var(--line); background: var(--card); padding: 0 !important; margin: 0 !important; }
+.ctab table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ctab th { position: sticky; top: 0; background: #183a5c; color: var(--cream); font-weight: 700; font-size: 12px; padding: 7px 6px; text-align: left; }
+.ctab td { padding: 7px 6px; border-top: 1px solid var(--line); white-space: nowrap; }
+.ctab .n { text-align: right; } .ctab .kb { display: flex; align-items: center; gap: 3px; }
+.csum { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); font-size: 14px; }
+.csum > div { display: flex; align-items: baseline; gap: 6px; } .csum span { color: var(--dim); min-width: 92px; } .csum b { font-size: 20px; } .csum em { font-style: normal; color: var(--gold); margin-left: 6px; }
+
+/* 投票結果・舟券（本物の券の並び: 左＝場名・発売所の帯・レース・日付／中央＝縦書きの式別／右＝組番・選手名・金額／下＝合計・通し番号・バーコード） */
+.thx { flex: none; margin: -6px 0 0; text-align: left; font-size: 14px; color: var(--cream); }
+.fune { flex: 0 1 auto; min-height: 0; display: grid; grid-template-columns: 92px 30px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; background: #fbfbf7; color: #151515; border-radius: 6px; box-shadow: 0 6px 22px rgba(0, 0, 0, .35); overflow: hidden; font-family: var(--body); }
+.fune .fl { grid-row: 1; padding: 10px 6px 8px 10px; display: flex; flex-direction: column; gap: 6px; border-right: 1px dashed #bbb; }
+.fune .brand { font-size: 13px; font-weight: 700; letter-spacing: .02em; } .fune .brand b { font-weight: 900; font-style: italic; }
+.fune .shop { background: #151515; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 4px; text-align: center; border-radius: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fune .rno b { display: block; font-size: 22px; font-weight: 900; font-style: italic; line-height: 1; } .fune .rno small { font-size: 11px; }
+.fune .dt { font-size: 10px; color: #444; }
+.fune .fm { grid-row: 1; display: flex; align-items: center; justify-content: center; border-right: 1px solid #222; }
+.fune .fm span { writing-mode: vertical-rl; text-orientation: upright; font-size: 15px; font-weight: 900; letter-spacing: .2em; border: 1.5px solid #151515; padding: 6px 2px; }
+.fune .fr { grid-row: 1; padding: 6px 10px !important; margin: 0 !important; gap: 8px !important; min-height: 0; }
+.fune .tk { display: grid; grid-template-columns: auto 1fr; grid-template-areas: "k a" "n n"; align-items: center; gap: 2px 8px; padding-bottom: 6px; border-bottom: 1px dotted #ccc; }
+.fune .tk:last-child { border-bottom: 0; padding-bottom: 0; }
+.fune .kumi { grid-area: k; display: flex; align-items: center; gap: 3px; }
+.fune .ar { font-size: 12px; color: #151515; }
+.fune .kumi em { font-style: normal; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 3px; margin-left: 4px; }
+.fune .fr em.fr { background: #e7f4ff; color: #0b4f7a; border: 1px solid #8cc6ea; }
+.fune .ht { background: #c0392b; color: #fff; }
+.fune .tk.hit { background: #fff4d6; }
+.fune .nm { grid-area: n; font-size: 11px; line-height: 1.35; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fune .am { grid-area: a; justify-self: end; font-size: 16px; font-weight: 900; letter-spacing: .02em; font-variant-numeric: tabular-nums; } .fune .am small { font-size: 10px; margin-left: 2px; }
+.fune .fb { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-top: 1px solid #222; font-size: 12px; }
+.fune .sum { font-weight: 900; font-variant-numeric: tabular-nums; } .fune .sum small { font-size: 9px; margin-left: 1px; } .fune .sum em { font-style: normal; font-weight: 400; font-size: 10px; }
+.fune .sn { font-size: 10px; color: #555; font-variant-numeric: tabular-nums; }
+.fune .bc { margin-left: auto; display: flex; height: 18px; align-items: stretch; } .fune .bc i { display: block; background: #151515; }
+.fune.small .fr { max-height: 120px; }
+
+/* 結果 */
+.hitmsg { flex: none; margin: 0; text-align: center; font-size: 17px; font-weight: 900; color: #ffe08a; line-height: 1.5; }
+.gain { flex: none; text-align: center; font-size: 22px; color: #ffe08a; } .gain b { font-size: 46px; font-weight: 900; } .gain small { font-size: 16px; margin-left: 4px; }
+.resl { flex: none; display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; padding: 8px 10px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); font-size: 14px; }
+.resl .po { margin-left: 8px; } .resl .po b { font-size: 20px; color: var(--gold); } .resl .pn { color: var(--dim); }
+.scr.b-result.lose .lead { color: var(--dim); }
+
+/* 1 画面の詰め（bet.css の .os-t → .os-s → .os-xs と同じ順） */
+.os-s .ent { padding: 6px 8px; gap: 2px 8px; } .os-s .er { font-size: 13px; } .os-s .er .waku { width: 20px; height: 20px; font-size: 13px; }
+.os-s .bn { height: 42px; font-size: 18px; } .os-s .mark { padding: 8px; gap: 6px; }
+.os-s .sel { min-height: 44px; padding: 6px 10px; }
+.os-s .fune .fl { padding: 8px 4px 6px 8px; gap: 4px; } .os-s .fune { grid-template-columns: 84px 26px minmax(0, 1fr); }
+.os-xs .ent { display: none; } /* いちばん詰めるときは出走表（選手名）を省く（マークカードのボタンの名前で読み上げ） */
+.os-xs .bn { height: 40px; } .os-xs .phead h1 { font-size: 18px; }
+.os-xs .fune .nm { display: none; }
+.os-xs .gain b { font-size: 38px; }
+
+/* 画面ごと（クラス名は競馬の bet.css と重ならない b- から） */
+.scr.b-pick { gap: 10px; }
+.scr.b-confirm, .scr.b-voted, .scr.b-result { gap: 12px; }
+.scr.b-voted > .sub { flex: none; margin-top: -4px; }
+.os-t body.boat .race span:first-child:not(:only-child), body.boat .os-t .race span:first-child:not(:only-child) { display: none; } /* 詰めるときは上の帯の「締切の時刻」を省く（画面の中に締切までの時間がある） */
+/* 券がつぶれないように（結果の画面の小さい券も）: 左の欄が入る高さは残し、組番の一覧だけ中で動く */
+.fune { min-height: 150px; }
+.fune.small { min-height: 132px; }
+.fune.small .fl { gap: 3px; padding-top: 8px; } .fune.small .dt { display: none; } .fune.small .rno b { font-size: 18px; }
+.bnote { flex: none; margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); font-size: 13px; color: var(--dim); text-align: center; line-height: 1.6; }
+.bnote b { color: var(--cream); font-size: 17px; }
+.os-s .ctab td { padding: 5px 6px; } .os-s .csum { padding: 8px 10px; } .os-s .csum b { font-size: 18px; }
+.os-s .gain b { font-size: 40px; } .os-s .hitmsg { font-size: 16px; }
+.fune .brand { white-space: nowrap; font-size: 12px; }
+.fune .tk { grid-template-columns: auto minmax(0, 1fr); }
+.fune .am { white-space: nowrap; font-size: 15px; }
+.fune .kumi em { margin-left: 3px; padding: 1px 3px; }
+/* 枚数（BPT の券。上限なし＝持っている BPT まで）・返還（2026-11-19） */
+.qty { flex: none; display: flex; align-items: center; gap: 8px; justify-content: center; font-size: 14px; color: var(--dim); }
+.qty b { font-size: 22px; color: #fff; min-width: 2.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.qty .qb { width: 40px; height: 36px; border-radius: 9px; border: 1px solid var(--line); background: var(--btn2); color: #fff; font-size: 20px; font-weight: 900; }
+.qty .qb.w { width: 52px; font-size: 15px; }
+.fune .bk { background: #6b7590; color: #fff; }
+.incl { flex: none; margin: 0; display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; font-size: 13px; color: #ffb3a6; }
+.os-s .qty .qb { height: 32px; }

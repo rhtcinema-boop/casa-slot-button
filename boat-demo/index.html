@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#071425">
+<meta name="robots" content="noindex">
+<title>casa BOAT デモ</title>
+<link rel="icon" href="art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<style>
+  :root { --sab: env(safe-area-inset-bottom); --sat: env(safe-area-inset-top); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #071425; color: #fff; font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif; overflow: hidden; overscroll-behavior: none; }
+  #wrap { position: fixed; left: 0; right: 0; top: 0; height: var(--appH, 100svh); display: flex; flex-direction: column; }
+  #bar { flex: none; display: flex; align-items: center; gap: 8px; padding: calc(var(--sat) + 6px) 10px 6px; background: #04101e; border-bottom: 1px solid #27486b; font-size: 12px; }
+  #bar b { font-size: 13px; white-space: nowrap; } #bar b i { color: #8fdcff; }
+  #st { flex: 1 1 auto; min-width: 0; color: #ffe08a; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; font-variant-numeric: tabular-nums; }
+  #phone { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #071425; }
+  #tools { flex: none; display: flex; gap: 6px; padding: 6px 8px calc(max(var(--sab), var(--sbar, 0px)) + 6px); background: #04101e; border-top: 1px solid #27486b; }
+  #tools button { flex: 1 1 0; min-height: 46px; border-radius: 12px; border: 1px solid #27486b; background: #102a44; color: #e8f4ff; font: 700 14px inherit; font-family: inherit; }
+  #tools button.hot { background: linear-gradient(180deg, #d9f4ff, #4fb0e2); color: #06233a; border-color: #000; animation: hot 1.4s ease-in-out infinite; }
+  @keyframes hot { 50% { filter: brightness(1.15); } }
+  #tools label { flex: none; display: flex; align-items: center; gap: 3px; font-size: 11px; color: #9fb6d6; }
+  #tvWrap { position: fixed; inset: 0; z-index: 20; background: #000; display: flex; flex-direction: column; }
+  #tvWrap[hidden] { display: none; }
+  #tvWrap .th { flex: none; display: flex; align-items: center; gap: 8px; padding: calc(var(--sat) + 8px) 12px 8px; background: #04101e; font-size: 13px; color: #cfe3ff; }
+  #tvWrap .th button { margin-left: auto; min-height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid #27486b; background: #102a44; color: #fff; font: 700 14px inherit; font-family: inherit; }
+  #tv { flex: 1 1 auto; width: 100%; border: 0; background: #000; }
+  #tvWrap .tip { flex: none; padding: 6px 12px calc(max(var(--sab), var(--sbar, 0px)) + 8px); font-size: 12px; color: #9fb6d6; text-align: center; }
+  #toast { position: fixed; left: 50%; bottom: calc(max(var(--sab), var(--sbar, 0px)) + 70px); transform: translate(-50%, 20px); opacity: 0; transition: .25s; z-index: 30; background: #10253c; border: 1px solid #2f8fc4; padding: 10px 16px; border-radius: 12px; font-size: 14px; white-space: nowrap; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="bar"><b>casa <i>BOAT</i> デモ</b><span id="st">準備中…</span></div>
+  <iframe id="phone" title="お客さんのスマホ（渋谷店）" allow="clipboard-write"></iframe>
+  <div id="tools">
+    <button id="qrBtn" type="button">QR を読む</button>
+    <button id="tvBtn" type="button">テレビを見る</button>
+    <button id="resetBtn" type="button">最初から</button>
+    <label title="締切の前に、あなたの組番が当たりやすくなるよう目安を合わせます（デモだけ）"><input type="checkbox" id="easy" checked>当たり<br>やすく</label>
+  </div>
+</div>
+<div id="tvWrap" hidden><div class="th">お店のテレビ（横向きにすると大きく見られます）<button id="tvClose" type="button">スマホに戻る</button></div><iframe id="tv" title="お店のテレビ"></iframe><div class="tip">結果が出たら「スマホに戻る」で、増えた BPT を見られます</div></div>
+<div id="toast" role="status"></div>
+<script src="v2/fake-firestore.js"></script>
+<script src="v2/core.js"></script>
+<script src="v2/outcome.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/boat-model.js"></script>
+<script src="v2/boat-core.js"></script>
+<script src="v2/boat-firestore.js"></script>
+<script src="v2/client-firestore.js"></script>
+<script src="hub.js"></script>
+</body>
+</html>

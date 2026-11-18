@@ -1,0 +1,61 @@
+/* 店のテレビの casa BOAT（2026-11-19。v2/tv-boat.js）: 競馬のテレビ（1600×900 の #stage）の上に重ねる。色は競馬（金）と見分けられる水色系。艇の色は公式どおり */
+#boatOv { position: absolute; inset: 0; z-index: 60; background: radial-gradient(ellipse at 50% 20%, #12385c, #050d18 75%); color: #fff; font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif; overflow: hidden; }
+#boatOv[hidden] { display: none; }
+#boatOv .bo-head { position: absolute; left: 0; right: 0; top: 0; height: 66px; display: flex; align-items: center; gap: 24px; padding: 0 36px; background: rgba(4, 12, 24, .82); border-bottom: 2px solid #2f8fc4; z-index: 3; }
+#boatOv .bo-logo { font-size: 34px; font-weight: 900; letter-spacing: .03em; } #boatOv .bo-logo i { color: #8fdcff; font-style: italic; }
+#boTitle { font-size: 26px; font-weight: 700; color: #d8f3ff; }
+#boatOv .bo-clock { margin-left: auto; font-size: 26px; font-weight: 700; color: #ffe08a; font-variant-numeric: tabular-nums; }
+.bo-waku { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 7px; font-style: normal; font-weight: 900; font-size: 28px; border: 2px solid rgba(0, 0, 0, .5); flex: none; }
+.bo-waku.sm { width: 34px; height: 34px; font-size: 21px; border-radius: 5px; }
+.bo-waku.lg { width: 128px; height: 128px; font-size: 96px; border-radius: 14px; border-width: 3px; }
+/* 投票 */
+.bo-vote { position: absolute; left: 0; right: 0; top: 66px; bottom: 0; display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 32px; padding: 26px 36px 30px; }
+.bo-vote[hidden], .bo-film[hidden], .bo-res[hidden], .bo-void[hidden] { display: none; }
+.bo-left h1 { margin: 0; font-size: 64px; font-weight: 900; color: #8fdcff; letter-spacing: .06em; }
+.bo-sub { margin: 4px 0 18px; font-size: 24px; color: #cfe3ff; }
+.bo-tbl { width: 100%; border-collapse: collapse; font-size: 25px; font-weight: 700; }
+.bo-tbl th { font-size: 17px; color: #9fb6d6; text-align: left; padding: 6px 10px; border-bottom: 2px solid #27486b; }
+.bo-tbl td { padding: 9px 10px; border-bottom: 1px solid rgba(255, 255, 255, .12); white-space: nowrap; }
+.bo-tbl .nm { font-size: 30px; font-weight: 900; } .bo-tbl .ps { font-size: 20px; color: #cfe3ff; letter-spacing: .08em; }
+.bo-right { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.bo-qr { width: 330px; height: 330px; display: grid; place-items: center; background: #fff; border-radius: 16px; color: #333; font-size: 20px; box-shadow: 0 0 0 4px #2f8fc4, 0 10px 40px rgba(0, 0, 0, .5); }
+.bo-qr svg { width: 306px; height: 306px; display: block; }
+.bo-qrc { margin: 2px 0 0; font-size: 24px; font-weight: 900; color: #fff; }
+.bo-rule { margin: 0; padding: 10px 18px; list-style: none; font-size: 19px; color: #cfe3ff; background: rgba(15, 42, 70, .8); border: 1px solid #27486b; border-radius: 12px; line-height: 1.6; width: 100%; box-sizing: border-box; }
+.bo-rule b { color: #ffe08a; }
+.bo-cnt { display: flex; align-items: baseline; gap: 8px; font-size: 22px; color: #9fb6d6; } .bo-cnt b { font-size: 40px; color: #fff; font-variant-numeric: tabular-nums; } .bo-cnt small { margin-right: 14px; }
+.bo-left2 { display: flex; align-items: baseline; gap: 12px; font-size: 24px; color: #ffb3a6; } .bo-left2 b { font-size: 54px; color: #fff; font-variant-numeric: tabular-nums; }
+.bo-pop { display: none; }
+/* 映像（1000×480 を 1.6 倍＝1600×768。上の帯の下） */
+.bo-film { position: absolute; left: 0; right: 0; top: 66px; bottom: 0; background: #000; }
+.bo-fit { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; transform-origin: 0 0; transform: scale(1.6); }
+.bo-fit canvas { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; display: block; }
+.bo-card { position: absolute; inset: 0; background: rgba(5, 10, 20, .9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 40px; }
+.bo-card[hidden] { display: none; }
+.bo-card h2 { margin: 0 0 8px; font-size: 28px; font-weight: 900; } .bo-card h2 small { font-size: 15px; color: #ffd966; margin-left: 12px; }
+.bo-card .bo-tbl { font-size: 15px; } .bo-card .bo-tbl .nm { font-size: 17px; } .bo-card .bo-tbl td { padding: 4px 8px; } .bo-card .bo-tbl th { font-size: 11px; } .bo-card .bo-waku { width: 26px; height: 26px; font-size: 17px; } .bo-card .bo-tbl .ps { font-size: 13px; }
+.bo-closed { margin: 10px 0 0; font-size: 18px; color: #ffb3a6; font-weight: 700; }
+/* 結果（2 分） */
+.bo-res { position: absolute; left: 0; right: 0; top: 66px; bottom: 0; padding: 30px 48px; display: grid; grid-template-columns: minmax(0, 1fr) 560px; grid-template-rows: auto auto auto 1fr auto auto; gap: 18px 40px; }
+.bo-kakutei { grid-column: 1; display: flex; align-items: center; gap: 22px; }
+.bo-k { font-size: 44px; font-weight: 900; color: #fff; background: #c0392b; padding: 6px 18px; border-radius: 10px; }
+.bo-ar { font-size: 64px; color: #9fb6d6; }
+.bo-nm { font-size: 30px; font-weight: 900; line-height: 1.4; } .bo-nm small { font-size: 22px; color: #ffe08a; font-weight: 700; }
+.bo-pay { grid-column: 1; display: flex; align-items: baseline; gap: 18px; padding: 18px 26px; background: rgba(15, 42, 70, .85); border: 2px solid #2f8fc4; border-radius: 16px; font-size: 28px; color: #cfe3ff; }
+.bo-pay b { font-size: 58px; color: #fff; font-weight: 900; font-variant-numeric: tabular-nums; } .bo-pay b.y { color: #ffe08a; } .bo-pay small { font-size: 24px; } .bo-pay .od { margin-left: auto; font-size: 30px; }
+.bo-wins { grid-column: 2; grid-row: 1 / 7; background: rgba(4, 12, 24, .7); border: 1px solid #27486b; border-radius: 16px; padding: 16px 22px; overflow: hidden; }
+.bo-wins h3 { margin: 0 0 10px; font-size: 30px; color: #ffe08a; }
+.bo-wins ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.bo-wins li { display: flex; align-items: baseline; gap: 12px; font-size: 26px; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, .05); }
+.bo-wins li.me { background: rgba(255, 224, 138, .16); }
+.bo-wins .nk { font-weight: 900; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bo-wins .st { font-size: 18px; color: #9fb6d6; } .bo-wins b { font-size: 26px; color: #ffe08a; } .bo-wins b small { font-size: 16px; margin-left: 2px; }
+.bo-none { font-size: 26px; color: #9fb6d6; }
+.bo-next { grid-column: 1; align-self: end; margin: 0; font-size: 26px; color: #cfe3ff; }
+.bo-void { position: absolute; inset: 66px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.bo-void h2 { font-size: 56px; margin: 0 0 16px; } .bo-void p { font-size: 30px; color: #cfe3ff; }
+.bo-order { grid-column: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 18px; align-content: start; }
+.bo-order h3 { grid-column: 1 / -1; margin: 4px 0 0; font-size: 22px; color: #9fb6d6; }
+.bo-order .or { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 700; } .bo-order .rk { width: 52px; color: #9fb6d6; font-size: 20px; } .bo-order .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bo-note { grid-column: 1; margin: 0; font-size: 22px; color: #ffe08a; }
+.bo-inc { grid-column: 1; display: flex; align-items: center; gap: 14px; font-size: 24px; color: #ffb3a6; } .bo-inc b { font-size: 30px; color: #fff; background: #8a2a20; padding: 2px 12px; border-radius: 8px; }

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<script src="demo-config.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>casa BOAT デモのテレビ</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: "Noto Sans JP", "Hiragino Sans", sans-serif; }
+  #stage { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; transform-origin: 0 0; background: radial-gradient(ellipse at 50% 30%, #12385c, #050d18 75%); color: #fff; overflow: hidden; }
+  #idle { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  #idle b { font-size: 64px; font-weight: 900; } #idle i { color: #8fdcff; } #idle p { margin: 0; font-size: 34px; color: #cfe3ff; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="idle"><b>casa <i>BOAT</i></b><p id="idleMsg">つないでいます…</p><p style="font-size:24px;color:#9fb6d6">（デモのテレビ。お店では競馬の画面の上にボートが重なります）</p></div></div>
+<script src="v2/core.js"></script>
+<script src="v2/boat-core.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/boat-model.js"></script>
+<script src="v2/outcome.js"></script>
+<script src="v2/client.js"></script>
+<script src="v2/qr.js"></script>
+<script src="js/vendor/three.min.js"></script>
+<script>
+/* 競馬のテレビ（v2/tv.js）の代わりの小さな台: 1600×900 の #stage を画面に合わせ、DERBY.cloud（つなぎ）だけ渡して v2/tv-boat.js を動かす */
+(function () {
+  const st = document.getElementById('stage');
+  function fit() { const s = Math.min(innerWidth / 1600, innerHeight / 900); st.style.transform = 'translate(' + (innerWidth - 1600 * s) / 2 + 'px,' + (innerHeight - 900 * s) / 2 + 'px) scale(' + s + ')'; }
+  addEventListener('resize', fit); fit();
+  const store = (location.search.match(/[?&]store=([^&#]+)/) || [])[1] || 'shibuya';
+  const C = DerbyCloud.create({ store, role: 'tv' });
+  window.DERBY = { cloud: C, phase: 'wait', tv: {}, raceView: null, watch: false, store };
+  setInterval(() => { const L = window.BOATTV && BOATTV.stage; const nx = C.boatState ? null : null; void nx; document.getElementById('idleMsg').textContent = L && L !== 'none' && L !== 'over' && L !== 'wait' ? '' : 'いまはボートの時間ではありません（スマホの画面の上に次のレースの時刻が出ます）'; }, 1000);
+})();
+</script>
+<link rel="stylesheet" href="v2/tv-boat.css">
+<script src="v2/tv-boat.js"></script>
+</body></html>
