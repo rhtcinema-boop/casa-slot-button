@@ -210,6 +210,7 @@
       else if (r.closeAt <= n) h += '<span>' + esc(TX.closed) + '</span>';
     }
     if (el.innerHTML !== h) el.innerHTML = h;
+    const fk = online + '|' + (h ? 1 : 0); if (drawTop.fk !== fk) { drawTop.fk = fk; if (drawn) fitLevel(); } // 上の帯の高さが変わった（通信の知らせ・締切の札）ときは詰め方を決め直す（b220）
   }
 
   /* ================= 各画面 ================= */
@@ -300,8 +301,8 @@
     const v1Line = v1 ? '<p class="v1line">' + esc(TX.vote1) + ' ' + arrowNum(v1.first, v1.second) + '</p>' : '';
     /* 2026-11-18 オーナー「1 画面で全部」: 「戻る」はタブの横（上の 1 行）・表は残りの高さいっぱい（入らない小さい画面は表の中だけ動く）・下の帯はいちばん下 */
     const backB = d.redo || d.n === 2 ? '<button type="button" class="btn ghost pkback" data-act="cancelRedo" aria-label="' + esc(TX.back) + '">‹ ' + esc(TX.backS) + '</button>' : '<button type="button" class="btn ghost pkback" data-act="toEntry" aria-label="' + esc(TX.back) + '">‹ ' + esc(TX.backS) + '</button>';
-    return '<div class="scr pickscr">' + checkNote() + testTag(r) + bigTag(r) + (d.n === 2 ? '<div class="b2head"><div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1>' + v1Line + '</div><p class="sub b2sub">' + esc(TX.pick2SubT) + '</p>' : '<h1 class="vh">' + esc(TX.pickHead) + '</h1>') +
-      '<div class="pkhead">' + backB + tabs + '</div><div class="pkbody fx" data-scrollarea>' + horseView + popView + '</div>' + dock + '</div>';
+    return '<div class="scr pickscr">' + checkNote() + testTag(r) + bigTag(r) + (d.n === 2 ? '<div class="b2head"><div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1>' + v1Line + '</div><p class="sub b2sub">' + esc(TX.pick2SubT) + '</p>' : '<h1>' + esc(TX.pickHead) + '</h1>') + /* 見出しはふだん出す（詰める画面では読み上げだけ。bet.css の .os-s） */
+      '<div class="pkhead">' + backB + tabs + '</div><div class="pkbody fx" data-scrollarea' + (pv === 'pop' ? ' data-long' : '') + '>' + horseView + popView + '</div>' + dock + '</div>';
   };
 
   /* ④ 確認: 組み合わせ・倍率・当たれば ○pt */
@@ -380,7 +381,7 @@
     const btns = lost ? '<div class="note" role="status">' + esc(TX.ownerChanged) + '</div>' + watchBtn(r) : v2 ? '<div class="redo2"><button class="btn ghost" data-act="redo">' + esc(TX.redo1) + '</button><button class="btn ghost" data-act="redo2">' + esc(TX.redo2) + '</button></div>' + watchBtn(r)
       : '<div class="btnrow"><button class="btn ghost" data-act="redo">' + esc(TX.redo) + '</button>' + watchBtn(r) + '</div>';
     if (v2) return '<div class="scr voted two">' + testTag(r) + bigTag(r) + '<div class="vhead"><h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' + clock + '</div>' +
-      '<div class="fx" data-scrollarea>' + tk(r, v, 1) + tk(r, v2, 2) + todayRow() + stampCard() + '</div>' + btns + '</div>';
+      '<div class="fx" data-scrollarea data-long>' + tk(r, v, 1) + tk(r, v2, 2) + todayRow() + stampCard() + '</div>' + btns + '</div>';
     return '<div class="scr voted">' + testTag(r) + bigTag(r) + '<h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' +
       tk(r, v, 0) + (can ? bonusBox() : sCan ? stampUseBox(my.stamp.cost) : '') + clock +
       '<div class="fx" data-scrollarea>' + todayRow() + stampCard() + '</div>' + /* 本日のレース（10-27）: 時計の下・「選び直す」の上 */ btns + '</div>';
@@ -442,7 +443,7 @@
   /* ⑥ レース中: 自分の予想だけ（初参加ボーナスの 2 票目もあれば 2 枚） */
   R.race = () => {
     const v = my && my.vote, v2 = my && my.vote2, r = my && my.race; if (!v || !r) return R.boot();
-    return '<div class="scr racing' + (v2 ? ' two' : ' mid') + '">' + testTag(r) + bigTag(r) + (v2 ? '<div class="fx" data-scrollarea>' + tk(r, v, 1) + tk(r, v2, 2) + '</div>' : tk(r, v, 0)) + watchBtn(r) + '</div>'; // 2 枚は券の欄の中だけ動く（2026-11-18）
+    return '<div class="scr racing' + (v2 ? ' two' : ' mid') + '">' + testTag(r) + bigTag(r) + (v2 ? '<div class="fx" data-scrollarea data-long>' + tk(r, v, 1) + tk(r, v2, 2) + '</div>' : tk(r, v, 0)) + watchBtn(r) + '</div>'; // 2 枚は券の欄の中だけ動く（2026-11-18）
   };
 
   /* 脱落（2026-11-04）: 「3番 ○○ は落馬のため競走中止」／「3番 ○○ は競走除外（ゲートに入れませんでした）」。無ければ空 */
@@ -498,7 +499,7 @@
     mainEl.innerHTML = (R[screen] || R.boot)();
     mainEl.scrollTop = keepY; if (keepFx) { const f2 = mainEl.querySelector('.fx'); if (f2) f2.scrollTop = keepFx; }
     if (drawn !== screen) { const f = $('main').firstElementChild; if (f) f.classList.add('in'); drawn = screen; }
-    drawTop(); fitText($('main'));
+    drawTop(); fitText($('main')); fitLevel();
     if (screen === 'entry') {
       const i = $('nick');
       if (i) i.addEventListener('input', () => { if (Array.from(i.value).length > MAX_NICK) i.value = cutNick(i.value); draft.nick = i.value; const e = $('err'); if (e && e.textContent) e.textContent = ''; });
@@ -510,6 +511,28 @@
     notice = screen === 'entry' ? notice : '';
   }
   /* 枠に入らない文字（馬名・ニックネーム）: 「…」で切らずに、まず文字を小さく（data-fit の px まで）、それでも入らなければ 2 行にする（2026-10-23 見直し） */
+  /* 2026-11-18 b220 オーナー「上に寄せすぎ。過度にやらない程度で」: ふだんは前の大きさ・余白。入らない画面だけ段階的に詰める（#app に .os-s → .os-xs）。
+     「入らない」＝画面の中身がはみ出す、または中だけ動く欄（.fx）がはみ出す（もともと長い一覧＝人気順の 30 通り・2 枚の券 [data-long] は数えない） */
+  function fitLevel() {
+    const app = $('app'), m = $('main'); if (!app || !m || !m.firstElementChild) return;
+    const over = () => m.scrollHeight > m.clientHeight + 1 || Array.prototype.some.call(m.querySelectorAll('.fx:not([data-long])'), (f) => f.scrollHeight > f.clientHeight + 1);
+    const before = app.className;
+    app.classList.remove('os-t', 'os-s', 'os-xs');
+    for (const c of ['os-t', 'os-s', 'os-xs']) { if (!over()) break; app.classList.add(c); } // 軽い順: 上の帯を 1 行 → 詰める → さらに詰める
+    if (app.className !== before) fitText(m);
+    spread(m);
+  }
+  /* 縦の間隔（b220 オーナー「画面の縦いっぱいに自然な間隔で」）: 余った高さの 7 割を、かたまりの間の間隔に足す（前の間隔の 3 倍・40px まで）。残りは上下に（中身は真ん中寄り・ボタンは下） */
+  function spread(m) {
+    const sc = m && m.firstElementChild; if (!sc || !sc.classList.contains('scr')) return;
+    sc.style.removeProperty('gap');
+    const kids = Array.prototype.filter.call(sc.children, (k) => { const cs = getComputedStyle(k); return cs.display !== 'none' && cs.position !== 'absolute'; });
+    if (kids.length < 2) return;
+    const base = parseFloat(getComputedStyle(sc).rowGap) || 0;
+    const used = kids.reduce((a, k) => a + k.getBoundingClientRect().height, 0) + base * (kids.length - 1);
+    const free = sc.clientHeight - used; if (free <= 4) return;
+    sc.style.gap = Math.min(base + (free * 0.7) / (kids.length - 1), Math.max(base * 3, 40)).toFixed(1) + 'px';
+  }
   function fitText(root) {
     if (!root) return;
     root.querySelectorAll('[data-fit]').forEach((el) => {
@@ -521,13 +544,13 @@
     });
   }
   let fitT = 0;
-  window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(() => fitText($('main')), 120); });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitText($('main'))); // 文字（Noto Sans JP）が届いたら測り直す
+  window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(() => { fitText($('main')); fitLevel(); }, 120); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitText($('main')); fitLevel(); }); // 文字（Noto Sans JP）が届いたら測り直す
   /* 文字（Noto Sans JP。2026-10-28）: 画面を止めないように、最初の中身が届いたあとで読む（それまでは端末の日本語の文字）。前に読めた端末は bet.html がすぐ読む（キャッシュ） */
   function loadFont() {
     if ($('webfont')) return;
     const l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'webfont'; l.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap';
-    l.onload = () => { const done = () => { try { localStorage.setItem('casa.derby.font', '1'); } catch (e) { /* noop */ } fitText($('main')); }; if (document.fonts && document.fonts.ready) document.fonts.ready.then(done); else done(); };
+    l.onload = () => { const done = () => { try { localStorage.setItem('casa.derby.font', '1'); } catch (e) { /* noop */ } fitText($('main')); fitLevel(); }; if (document.fonts && document.fonts.ready) document.fonts.ready.then(done); else done(); };
     document.head.appendChild(l);
   }
   /* 会計番号の 2 つの枠: 1 けただけなら右の枠に入れて左は薄い 0（07 の 7 と同じに見える） */
@@ -949,7 +972,7 @@
     flushResend(false); // 送れなかった投票は 15 秒ごとにも（Wi-Fi はつながっているのに外へ出られないとき）
   }, 6000);
 
-  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get stamps() { return stampSt; }, loadStamps, /* スタンプラリー（確認・説明のページ用） */ get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, prepKey, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote, openWatch, closeWatch, draw, stampFx: (S) => stampFx(S || stampSt) /* 1 画面の確かめ（tests/onescreen-phone.plan.js）で描き直す・演出を出す */ };
+  window.BET = { get screen() { return screen; }, get st() { return st; }, get my() { return my; }, get stamps() { return stampSt; }, loadStamps, /* スタンプラリー（確認・説明のページ用） */ get draft() { return draft; }, set draft(d) { draft = d; } /* テスト用（投票できないレースへ送る） */, get unpaid() { return unpaidList; }, prepKey, C, TX, payFor, oddsTxt, route, scanUnpaid, act, hhmm, canVote, openWatch, closeWatch, draw, fitLevel, stampFx: (S) => stampFx(S || stampSt) /* 1 画面の確かめ（tests/onescreen-phone.plan.js）で描き直す・演出を出す */ };
 
   /* ================= 起動 ================= */
   /* 2026-10-28 速さの見直し: 時刻合わせ・状態・見張りを同時に始める（以前は時刻合わせ → 状態 → 見張りの順で待っていた）。
