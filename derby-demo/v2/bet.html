@@ -18,9 +18,29 @@
 <link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
 <link rel="icon" href="../icon-derby-180.png" sizes="180x180" type="image/png">
 <link rel="apple-touch-icon" href="../icon-derby-180.png">
-<link rel="stylesheet" href="bet.css?v=v4t">
-<script>/* 2026-11-18 オーナー「1 画面で全部・Safari の下のバーより少し上まで」: 見える高さ（アドレス欄と下のバーを除く）を --appH に。bet.css が画面の高さに使う（無い端末は 100svh） */
-(function () { var d = document.documentElement; function f() { var h = window.innerHeight; if (h > 0) d.style.setProperty('--appH', h + 'px'); } f(); window.addEventListener('resize', f); window.addEventListener('orientationchange', function () { setTimeout(f, 300); }); })();</script>
+<link rel="stylesheet" href="bet.css?v=v4u">
+<script>/* 2026-11-18 オーナー「1 画面で全部・Safari の下のバーより少し上まで」: 見える高さ（innerHeight）を --appH に。bet.css が画面の高さに使う（無い端末は 100svh）。
+   2026-11-18 b220 オーナー「実際のサファリはこんな感じ」（iOS 26 の写真）: iOS 26 の Safari は下のアドレス欄・戻るボタンが浮いたバーで、ページの上にかぶさる（innerHeight は減らない・safe-area はホームバーの 34px だけ）。
+   Safari（ホーム画面に追加ではない）の 26 以降だけ、バーの分（--sbar）を下にあける。バーの位置は写真（393×852）から: 上端が画面の下から約 82px（ホームバーの無い SE は約 60px と見込み）。
+   ページの下端が画面の下端より上にあれば（前の形の Safari・ほかのブラウザ）、その分だけ引く。確かめ用: window.__sbarForce = true */
+(function () {
+  var d = document.documentElement;
+  function f() {
+    var h = window.innerHeight; if (!(h > 0)) return;
+    d.style.setProperty('--appH', h + 'px');
+    var ua = navigator.userAgent || '', ios = /iP(hone|od|ad)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    var saf = ios && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|Line\/|FBAN|FBAV|Instagram/.test(ua);
+    var sa = navigator.standalone === true; try { sa = sa || window.matchMedia('(display-mode: standalone)').matches; } catch (e) { /* noop */ }
+    var v = /Version\/(\d+)/.exec(ua), bar = 0;
+    if (window.__sbarForce || (saf && !sa && v && Number(v[1]) >= 26)) {
+      var land = window.innerWidth > h, sw = screen.width || 0, sh = screen.height || 0, H = land ? Math.min(sw, sh) : Math.max(sw, sh);
+      var tall = H >= 800, cover = tall ? 82 : 60, status = tall ? 59 : 20;
+      bar = Math.max(0, cover - Math.max(0, H - h - status));
+    }
+    d.style.setProperty('--sbar', bar + 'px'); d.classList.toggle('sbar', bar > 0);
+  }
+  f(); window.__casaVH = f; window.addEventListener('resize', f); window.addEventListener('orientationchange', function () { setTimeout(f, 300); });
+})();</script>
 <!-- config.js（開発用のつなぎ先＝null）はデモでは読まない（demo-config.js のつなぎ先を消してしまう。tools/build-webdemo.js） --><!-- つなぎ先（公開版は本番の Firebase。client.js より先に・document.write なし） -->
 <script>/* 文字（Noto Sans JP）: 前に読めた端末だけすぐ読む（キャッシュにある）。初めての端末は画面が出たあと bet.js が読む（読めるまでは端末の文字）。保存領域が使えなくても止まらない */
 (function () { var f = false; try { f = localStorage.getItem('casa.derby.font') === '1'; } catch (e) { f = false; }
@@ -40,7 +60,7 @@
 <script>/* 2026-10-28 b155 速さの見直し 2: 画面のスクリプトは、起動の画面（ロゴ）が出てから読む（それまでの通信はページ・ロゴだけ＝最初の表示とロゴを待たせない）。
    ロゴが 1.5 秒で出なくても読み始める。前に開いた端末（店の状態を覚えている）はロゴを待たずにすぐ。Firebase のときは、つなぎの部品（client.js が同じ URL で使う）もここで同時に読み始める。実行は入れた順（async=false） */
 (function () {
-  var V = '?v=v4q26', S = 'https://www.gstatic.com/firebasejs/10.12.2/', h = document.head, done = false;
+  var V = '?v=v4q27', S = 'https://www.gstatic.com/firebasejs/10.12.2/', h = document.head, done = false;
   function sc(u) { var s = document.createElement('script'); s.src = u; s.async = false; h.appendChild(s); }
   function pre(u) { var l = document.createElement('link'); l.rel = 'preload'; l.as = 'script'; l.href = u; h.appendChild(l); }
   function go() {
