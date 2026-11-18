@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b101b">
+<meta name="robots" content="noindex">
+<title>casa DERBY スタンプラリーの説明</title>
+<!-- スタンプラリー（2026-11-02 仮）を、何も知らない人に説明するためのページ（オーナー「全く理解していない想定で」）。phone.html の仕組み（phone.js）で
+     スタンプラリーをオンにし、画面の下に「案内役」（7 つの段。お客さんのスマホの様子を見て自動で進む）と、上の帯に「スタンプ +1 / +5」のボタンを足したもの。
+     tools/build-webdemo.js が webdemo/stamp.html に置く。音は出さない -->
+<style>
+html, body { margin: 0; height: 100%; background: #0b101b; color: #fff; font-family: system-ui, -apple-system, 'Hiragino Sans', sans-serif; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overscroll-behavior: none; }
+body { display: flex; flex-direction: column; height: 100dvh; }
+.bar { flex: none; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 10px; padding-top: max(4px, env(safe-area-inset-top)); background: #141e31; border-bottom: 1px solid rgba(255, 255, 255, .12); font-size: 12px; }
+.bar b { color: #ffd84a; font-weight: 900; white-space: nowrap; }
+.bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar button { flex: none; height: 32px; padding: 0 12px; border: 1px solid #ffd84a; border-radius: 8px; background: transparent; color: #ffd84a; font: inherit; font-size: 13px; font-weight: 900; }
+.bar button[hidden] { display: none; }
+.bar button.hot { background: #ffd84a; color: #1a1300; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 216, 74, .6); } 50% { box-shadow: 0 0 0 8px rgba(255, 216, 74, 0); } }
+.frame { position: relative; flex: 1; min-height: 0; }
+.frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #0b101b; }
+/* 案内役（下の帯）: 段の番号・見出し・本文・ボタン。お客さんのスマホの様子で自動で進む（phone.js） */
+.guide { flex: none; position: relative; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); background: #fff8e1; color: #1a1300; border-top: 3px solid #ffd84a; box-shadow: 0 -8px 24px rgba(0, 0, 0, .35); }
+.guide .gh { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.guide .gn { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #1a1300; color: #ffd84a; font-size: 13px; font-weight: 900; }
+.guide .gt { font-size: 16px; font-weight: 900; }
+.guide .gp { margin: 0; font-size: 14px; line-height: 1.6; min-height: 3.2em; }
+.guide .gp b { color: #8a5a00; }
+.guide .gb { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; }
+.guide .gb .dots { display: flex; gap: 5px; } .guide .gb .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(26, 19, 0, .2); } .guide .gb .dots i.on { background: #1a1300; }
+.guide button { height: 38px; padding: 0 16px; border: 0; border-radius: 10px; background: #1a1300; color: #ffd84a; font: inherit; font-size: 14px; font-weight: 900; }
+.guide button.ghost { background: transparent; color: #1a1300; border: 1px solid rgba(26, 19, 0, .3); }
+.guide button[disabled] { opacity: .35; }
+.guide .wait { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #8a5a00; border-top-color: transparent; vertical-align: -1px; margin-right: 4px; animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast { position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); z-index: 9; padding: 10px 14px; border-radius: 10px; background: #ffd84a; color: #1a1300; font-size: 13px; font-weight: 900; box-shadow: 0 6px 20px rgba(0, 0, 0, .4); }
+.toast[hidden] { display: none; }
+.intro { display: none; }
+</style>
+</head>
+<body>
+<div class="bar"><b>スタンプの説明</b><span id="pStatus">準備中…</span><button type="button" id="pStamp1Btn" hidden>スタンプ +1</button><button type="button" id="pStampBtn" hidden>+5</button><!-- 2026-11-03 オーナー「投票からたまるまでの流れを理解させたい」: 近道のボタンは出さない（案内の 5 段目「残りをまとめて足す」だけ） --></div>
+<div class="frame">
+  <iframe id="fCu" title="投票ページ"></iframe>
+  <div class="intro" id="pIntro" hidden><p id="pIntroSt"></p><button type="button" id="pIntroBtn">投票ページを見る</button></div>
+</div>
+<div class="guide" id="pGuide" role="region" aria-live="polite">
+  <div class="gh"><span class="gn" id="gNum">1</span><span class="gt" id="gTitle">準備しています</span></div>
+  <p class="gp" id="gText">少し待ってください…</p>
+  <div class="gb"><button type="button" class="ghost" id="gPrev">戻る</button><span class="dots" id="gDots"></span><button type="button" id="gNext">次へ</button></div>
+</div>
+<div class="toast" id="pToast" hidden></div>
+<script src="js/engine.js?v=s2"></script>
+<script src="v2/outcome.js?v=s2"></script>
+<script src="v2/core.js?v=s2"></script>
+<script src="v2/fake-firestore.js?v=s2"></script>
+<script src="v2/client-firestore.js?v=s2"></script>
+<script src="demo-rules.js?v=s2"></script>
+<script>window.__STAMP_DEMO = true;</script>
+<script src="phone.js?v=s2"></script>
+</body>
+</html>

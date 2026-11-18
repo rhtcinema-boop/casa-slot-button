@@ -1,0 +1,111 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>casa DERBY デモ</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap"><!-- casa DERBY の文字（2026-10-21 オーナー: ゲーム全体を Noto Sans JP に統一）。2026-10-23 舞台もそろえた -->
+<link rel="stylesheet" href="hub.css?v=v4d2">
+<script>/* 管理画面の「テレビの URL」（../index.html?store=…）で開かれたら、テレビの画面へ */ if (/[?&]store=[^&]/.test(location.search)) location.replace('tv.html' + location.search);</script>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <img src="art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="148" height="48" alt="casa DERBY">
+      <div class="ttl"><h1>デモ</h1><p>お店のテレビ・お客さんのスマホ・スタッフのスマホが、このページの中でつながっています</p></div>
+    </div>
+    <div class="acts">
+      <button class="btn gold" id="adminBtn" type="button">管理画面</button>
+      <button class="btn ghost" id="resetBtn" type="button">最初からやり直す</button>
+    </div>
+  </header>
+
+  <section class="guide" id="guide" aria-label="進め方">
+    <ol class="steps" id="steps"></ol>
+    <div class="next" id="next" aria-live="polite"><b id="nextMain">準備しています…</b><span id="nextSub"></span></div>
+  </section>
+
+  <main class="stage" id="stage">
+    <section class="dev tv" id="tvDev" aria-label="お店のテレビ">
+      <div class="lbl"><b>お店のテレビ</b><span>渋谷店</span><em class="ph" id="tvPhase"></em></div>
+      <div class="tvbox"><iframe id="fTv" title="お店のテレビ" allow="autoplay"></iframe></div>
+    </section>
+
+    <section class="dev ph" id="cuDev" aria-label="お客さんのスマホ">
+      <div class="lbl"><b>お客さんのスマホ</b><span id="cuSub">渋谷店のお客さん</span></div>
+      <div class="phone" id="cuPhone">
+        <div class="scr"><iframe id="fCu" title="お客さんのスマホ"></iframe>
+          <div class="idle" id="cuIdle">
+            <p class="clock" id="idleClock">--:--</p>
+            <p>テレビの右下に出ている QR を、お客さんがスマホのカメラで読むと、投票の画面が開きます。</p>
+            <p class="small">アプリは要りません・参加無料</p>
+          </div>
+          <div class="cam" id="cuCam" hidden><div class="vf"><div class="qr" id="cuCamQr"></div><i class="scan"></i></div><p>読み取っています…</p></div>
+        </div>
+      </div>
+      <button class="btn scanbtn" id="scanTvBtn" type="button"><span class="ico" aria-hidden="true">⌗</span>お客さんのスマホでテレビの QR を読む</button>
+      <button class="btn scanbtn ghost" id="stampAddBtn" type="button">スタンプを 5 個足す（デモだけ）</button>
+    </section>
+
+    <section class="dev ph" id="stDev" aria-label="スタッフのスマホ">
+      <div class="lbl"><b>スタッフのスマホ</b><span>渋谷店のスタッフ</span></div>
+      <div class="phone" id="stPhone">
+        <div class="scr"><iframe id="fSt" title="スタッフのスマホ"></iframe></div>
+      </div>
+      <div class="sbtns" role="group" aria-label="スタッフのスマホでできること">
+        <button class="btn scanbtn" id="stWinsBtn" type="button">今日の当たり</button>
+        <button class="btn scanbtn" id="stRelBtn" type="button">番号を空ける</button>
+        <button class="btn scanbtn" id="stTestBtn" type="button">テストレース</button>
+      </div>
+    </section>
+  </main>
+
+  <section class="info">
+    <div class="card">
+      <h2>使うもの</h2>
+      <dl class="keys">
+        <dt>スタッフの PIN</dt><dd><code>1234</code><small>渋谷・上野・札幌 どの店も</small></dd>
+        <dt>管理画面のパスワード</dt><dd><code>demo1234</code><small>右上の「管理画面」から</small></dd>
+        <dt>レースの間隔</dt><dd><b class="num">4 分ごと</b><small>全店同時</small></dd>
+        <dt>投票の時間</dt><dd><b class="num">発走の 90 秒前から</b><small>締切は発走の時刻（本番の初めの設定は 3 分）</small></dd>
+        <dt>参加</dt><dd><b>無料</b><small>1 票 ＝ 会計番号 1 つ（2 けた）・2 連単だけ</small></dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>流れ</h2>
+      <ol class="flow">
+        <li>「お客さんのスマホでテレビの QR を読む」を押す（投票の時間の前なら、スマホに次のレースの時刻が出て、始まると自動で進みます）</li>
+        <li>お客さんのスマホで会計番号（2 けた・01〜99）とニックネーム（8 文字まで）を入れる</li>
+        <li>6×6 の表から 1 着と 2 着を順番どおりに選ぶ（縦が 1 着・横が 2 着・マスの数字は倍率。30 通り）</li>
+        <li>確認の画面で「当たれば ○pt」を見て「投票する」。締切までは「選び直す」で変えられます</li>
+        <li>締切になるとテレビでレース。結果はスマホにも出て、テレビには全店の当たった人が出ます</li>
+        <li>当たったら（当選額 ＝ 100pt × 2 連単の倍率・100pt 単位に切り上げ）、スタッフがお客さんのスマホの「スライドして受け取り」を右へすべらせます。スマホを閉じた人には、スタッフのスマホの「今日の当たり」からスライドで渡します（受け取りはその日のうち・朝 5 時まで）</li>
+      </ol>
+      <p class="sub">スタンプラリー（仮・2026-11-02）: 投票すると端末にスタンプがたまります（投票 +1・当たり +3・選んだ 2 頭のどちらかが 1 着か 2 着なら +1）。10 個で、そのレースの 2 票目を入れられます。デモでは「スタンプを 5 個足す」で、10 レース待たずに試せます。スタンプが付くのは結果の発表のときです。</p>
+      <p class="sub">スタッフのスマホ（PIN でログイン）: 今日の当たり一覧・番号を空ける（ほかの人に番号を先に使われたとき。その番号の票が消えて、もう一度投票できます）・テストレース（この店だけ・投票 1 分・当たっても払いません）</p>
+    </div>
+    <div class="card note">
+      <h2>このデモについて</h2>
+      <p>テレビ・スマホ・管理画面のデータは、このページの中だけにあります。ほかの端末やほかのタブとはつながりません。ページを読み込み直すと最初からになります。音は出ません（テレビの実況・効果音はなし）。</p>
+      <p>上野店・札幌店（と渋谷店のほかのお客さん）の投票は、デモ用に自動で入ります。選び直す人もいます。スマホのカメラの代わりに、上の「QR を読む」ボタンで読み取ります。</p>
+      <label class="chk"><input type="checkbox" id="followChk" checked><span>当たりを体験しやすくする<small>あなたが投票したレースは、締切の 30 秒前から、ほかのお客さんがあなたと同じ組み合わせに選び直します（デモだけの動き）</small></span></label>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="adminModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="adminTtl">
+    <div class="mhead"><b id="adminTtl">管理画面</b><span>パスワード <code>demo1234</code></span><button class="btn ghost sm" id="adminClose" type="button">閉じる</button></div>
+    <iframe id="fAd" title="管理画面"></iframe>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="js/engine.js?v=v4d1"></script>
+<script src="v2/outcome.js?v=v4e1"></script>
+<script src="v2/core.js?v=v4e1"></script>
+<script src="v2/fake-firestore.js?v=v4d1"></script>
+<script src="v2/client-firestore.js?v=v4e1"></script>
+<script src="demo-rules.js?v=v4e1"></script>
+<script src="hub.js?v=v4d2"></script>
+</body></html>
