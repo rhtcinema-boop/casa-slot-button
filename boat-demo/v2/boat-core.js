@@ -19,7 +19,7 @@
   const FILM_PRE = 100, FILM_POST = 8, RUN_EST = 72, RUN_MAX = 90; // 映像の長さ（boat/race-boat.js の PRE_T・POST_T、走り約 72 秒）
   const DERBY_GUARD_SEC = 120, DERBY_RUN_MAX = 70, DERBY_SCRATCH_SEC = 14; // 競馬の結果画面の最初の 2 分は守る（2026-11-18）。競馬の走り 1000m 約 57 秒（長めに 70 秒で見る）・競走除外の延長 14 秒
   const COUNT_SEC = 15; // テレビが参加人数を読み直す間隔（2026-11-18 オーナー「ボートでは 15 秒ごと」）
-  const DEF = { target: 1000, capRace: 10000, capDay: 50000, voteSec: 180, resultSec: 120, leadSec: 6, bandBelow: 0.2, bandAbove: 0.2, shiftUp: 0.1, shiftDown: 0.1, oddsSims: 1000, incidentOn: 1, refundFall: 0 }; // incidentOn: フライング・転覆を出す（1）。refundFall: 転覆の艇の券も返還（本物は返還なし＝0）
+  const DEF = { target: 1000, capRace: 10000, capDay: 50000, voteSec: 180, resultSec: 120, leadSec: 6, bandBelow: 0.2, bandAbove: 0.2, shiftUp: 0.1, shiftDown: 0.1, oddsSims: 1000, incidentOn: 1, refundFall: 1 }; // incidentOn: フライング・転覆を出す（1）。refundFall: 転覆の艇の券も返還（2026-11-19 オーナー決定で 1＝返還する。本物は返還なし）
   const ODDS_LO = 2, ODDS_MID = 10, ODDS_HI = 40;
   const ALL = []; for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) if (a !== b) ALL.push(a + '-' + b);
   const err = Core.err;
@@ -245,7 +245,7 @@
      フライング・転覆（2026-11-19 オーナー決定「投票のあるボートでも出す」）: 起きる率は本物（js/boat-model.js の INCIDENT・風と波で変わる rollIncident）。
        起きる艇は当たりの 1 着・2 着の艇にはしない（先に当たりの組番を決め、そのあとで残りの 4 艇から本物のコースの重みで選ぶ。競馬の脱落と同じ順）。
        フライングの艇を含む券は返還（ref/boat/research/27_返還のルール.md: 公式「その艇に関する舟券は全額返還」）。BPT の券は BPT を戻し、無料の券は「返還」（戻すものなし）。
-       スタートのあとの転覆は本物では返還なし（同じ資料）。設定 refundFall を 1 にしたときだけ転覆も返還にする。
+       スタートのあとの転覆は本物では返還なし（同じ資料）だが、2026-11-19 オーナー決定で初期は返還する（refundFall 1）。管理画面で 0 にすると本物どおり。
        返還の券は当たりにならない（その艇は 1・2 着にならない）ので、払う BPT（目安・上限・1 日上限）には入らない。戻した BPT は paid に入れず refunded に分けて数える */
   const BM = () => (typeof self !== 'undefined' && self.BoatModel) || (typeof globalThis !== 'undefined' && globalThis.BoatModel) || (typeof module === 'object' && module.exports && typeof require === 'function' ? require('../js/boat-model.js') : null);
   function pickIncident(Engine, Outcome, model, salt, id, c, first, second) {
