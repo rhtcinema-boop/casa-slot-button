@@ -39,7 +39,7 @@
   const ov = document.createElement('div'); ov.id = 'boatOv'; ov.hidden = true;
   ov.innerHTML = '<div class="bo-top"><span class="bo-pill st" id="boPill"></span><span class="bo-pill tm" id="boTime"></span><span class="bo-pill pr" id="boPromo">無料で 1 票</span><span class="bo-pill ct" id="boCnt" hidden></span><b class="bo-logo">casa <i>BOAT</i></b><span class="bo-pill sn" id="boStore"></span></div>' +
     '<section id="boVote" class="bo-vote" hidden>' +
-      '<div class="bo-panel bo-vid" id="boVid"><div class="bo-vfit" id="boVfit"></div><span class="bo-tag" id="boTag">スタート展示</span><div class="bo-st" id="boSt" hidden></div></div>' +
+      '<div class="bo-panel bo-vid" id="boVid"><div class="bo-vfit" id="boVfit"></div><div class="bo-st" id="boSt" hidden></div></div>' +
       '<div class="bo-panel bo-card2" id="boCardP"><h3>出走表</h3><div id="boCardT"></div></div>' +
       '<div class="bo-panel bo-cd" id="boCd"></div>' +
       '<div class="bo-panel bo-popp" id="boPopP"><h3>人気の組番 <small>2連単</small></h3><div id="boPop"></div></div>' +
@@ -82,7 +82,7 @@
     $('boStore').textContent = storeNm || STORE;
     const c = B.count && B.count.raceId === r.id ? B.count : null;
     $('boCnt').hidden = wait || !c; if (c) $('boCnt').innerHTML = '全店で <b>' + c.total + '</b> 人参加';
-    if (wait) $('boCd').innerHTML = '<div class="l"><span class="k">次のボートレース</span><b class="big">' + hm(r.at) + '</b><span class="u">締切</span></div><div class="r"><span class="k2">投票は ' + hm(r.openAt) + ' から</span><span class="k3">投票開始まで あと</span><b class="cd">' + left(r.openAt - t) + '</b></div>';
+    if (wait) $('boCd').innerHTML = '<div class="l"><span class="k">次のボートレース</span><div class="lt"><b class="big">' + hm(r.at) + '</b><span class="u">締切</span></div></div><div class="r"><span class="k2">投票は ' + hm(r.openAt) + ' から</span><span class="k3">投票開始まで あと</span><b class="cd">' + left(r.openAt - t) + '</b></div>';
     else $('boCd').innerHTML = '<span class="k">締切まで あと</span><b class="cd">' + left(r.closeAt - t) + '</b><span class="h">スマホで<br>1着・2着を選ぶ</span>';
     $('boCd').classList.toggle('last', !wait && r.closeAt - t <= 30000);
     if (!wait) { const pk = JSON.stringify(c && c.combos) + r.id; if (B.popKey !== pk) { B.popKey = pk; $('boPop').innerHTML = popular(r); } }
@@ -128,12 +128,12 @@
     T.t += dt;
     if (T.seg < TJ_SEG.length) {
       const [a, b] = TJ_SEG[T.seg];
-      if (R.tt >= b) { T.seg++; if (T.seg < TJ_SEG.length) R.seek(TJ_SEG[T.seg][0]); else { T.stT = 0; $('boSt').innerHTML = stBoard(T); $('boSt').hidden = false; $('boTag').hidden = true; } return; }
+      if (R.tt >= b) { T.seg++; if (T.seg < TJ_SEG.length) R.seek(TJ_SEG[T.seg][0]); else { T.stT = 0; $('boSt').innerHTML = stBoard(T); $('boSt').hidden = false; } return; }
       T.acc += dt; if (T.acc < 1 / 20) return; // 1 秒 20 コマ
       R.tick(T.acc); T.acc = 0; void a;
     } else {
       T.stT += dt;
-      if (T.stT > TJ_ST) { $('boSt').hidden = true; $('boTag').hidden = false; T.seg = 0; R.seek(TJ_SEG[0][0]); }
+      if (T.stT > TJ_ST) { $('boSt').hidden = true; T.seg = 0; R.seek(TJ_SEG[0][0]); }
     }
   }
   function makeR() {

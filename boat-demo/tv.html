@@ -6,7 +6,7 @@
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: "Noto Sans JP", "Hiragino Sans", sans-serif; }
   #stage { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; transform-origin: 0 0; background: radial-gradient(ellipse at 50% 30%, #12385c, #050d18 75%); color: #fff; overflow: hidden; }
-  #idle { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  #idle[hidden] { display: none; } #idle { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
   #idle b { font-size: 64px; font-weight: 900; } #idle i { color: #8fdcff; } #idle p { margin: 0; font-size: 34px; color: #cfe3ff; }
 </style>
 </head>
@@ -29,7 +29,7 @@
   const store = (location.search.match(/[?&]store=([^&#]+)/) || [])[1] || 'shibuya';
   const C = DerbyCloud.create({ store, role: 'tv' });
   window.DERBY = { cloud: C, phase: 'wait', tv: {}, raceView: null, watch: false, store };
-  setInterval(() => { const L = window.BOATTV && BOATTV.stage; const nx = C.boatState ? null : null; void nx; document.getElementById('idleMsg').textContent = L && L !== 'none' && L !== 'over' && L !== 'wait' ? '' : 'いまはボートの時間ではありません（スマホの画面の上に次のレースの時刻が出ます）'; }, 1000);
+  setInterval(() => { const L = window.BOATTV && BOATTV.stage; const nx = C.boatState ? null : null; void nx; document.getElementById('idle').hidden = !!(window.BOATTV && BOATTV.active); document.getElementById('idleMsg').textContent = L && L !== 'none' && L !== 'over' && L !== 'wait' ? '' : 'いまはボートの時間ではありません（スマホの画面の上に次のレースの時刻が出ます）'; }, 1000);
 })();
 </script>
 <link rel="stylesheet" href="v2/tv-boat.css">

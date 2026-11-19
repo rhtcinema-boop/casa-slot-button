@@ -135,3 +135,23 @@ body.boat .top .race span { font-size: 14px; padding: 5px 14px; } body.boat .top
 .istep h2 { margin: 0 0 4px; font-size: 17px; color: #fff; text-align: left; letter-spacing: 0; } .istep p { margin: 0; font-size: 13.5px; color: var(--dim); line-height: 1.6; }
 .os-s .bptcard p, .os-s .howcard .hw span { font-size: 11.5px; } .os-xs .howcard { display: none; } .os-xs .istep p { font-size: 12px; } .os-s .istep { padding: 10px 12px; }
 .b-pick .pickdock .pdsel { flex-wrap: nowrap; } .b-pick .pickdock .pdw { white-space: nowrap; font-size: 13px; color: var(--dim); } .b-pick .pickdock .pdw b { font-size: 18px; color: var(--gold); }
+/* 2026-11-20 崩れの見直し（tests/layout-check.js で 0 件に） */
+.waitbox .wk, .waitbox .wt, .waitbox .clock, .waitbox .wv:not([data-wrap]) { white-space: nowrap; }
+.waitbox .wr { min-width: 0; } .waitbox .wv:not([data-wrap]) { font-size: 15px; }
+.fune { grid-template-columns: 108px 30px minmax(0, 1fr); }
+.fune .fl { padding: 10px 6px 8px 9px; min-width: 0; } .fune .fl > * { white-space: nowrap; }
+.fune .brand { font-size: 11.5px; } .fune .rno b { font-size: 21px; } .fune .dt { font-size: 10px; }
+.os-s .fune { grid-template-columns: 104px 26px minmax(0, 1fr); }
+.fune .kumi, .fune .am, .fune .sum, .fune .sn { white-space: nowrap; }
+.btn, .bth span, .pk, .pdsel, .pdw, .pdo, .qty, .cc, .chip, .top .race span { white-space: nowrap; }
+/* 待ちの枠は縦に積む（見出し → 大きな時刻 → 「投票は ○ から」とカウントダウンの 1 行）。字が重ならない・はみ出さない（2026-11-20） */
+body.boat .waitbox { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: 18px 14px; }
+body.boat .waitbox .wk, body.boat .waitbox .wt { margin: 0; }
+body.boat .waitbox .wr { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 8px; flex-wrap: nowrap; }
+body.boat .waitbox .wv { margin: 0; }
+body.boat .waitbox .clock { display: flex; align-items: baseline; gap: 6px; padding: 0; }
+body.boat .waitbox .clock .v { font-size: 34px; }
+body.boat .os-s .waitbox .wt, body.boat .waitbox .wt { font-size: 60px; }
+/* 上の帯: ロゴ・店の名前・残りの時間が「…」で切れないように（SE でも） */
+body.boat .boatcrest { font-size: 19px; } body.boat .top { gap: 8px; padding-left: 14px; padding-right: 14px; }
+body.boat .top .store { overflow: visible; text-overflow: clip; font-size: 13px; } body.boat .top .race span { padding: 4px 10px; font-size: 13px; } body.boat .top .race span b { font-size: 16px; }

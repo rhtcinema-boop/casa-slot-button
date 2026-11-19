@@ -1,6 +1,10 @@
 /* 店のテレビの casa BOAT（2026-11-19。v2/tv-boat.js）: 競馬のテレビ（1600×900 の #stage）の上に重ねる。色は競馬（金）と見分けられる水色系。艇の色は公式どおり */
 #boatOv { position: absolute; inset: 0; z-index: 60; background: radial-gradient(ellipse at 50% -10%, #3d9bd6 0%, #1a5f99 38%, #0b2f55 75%, #071b33 100%); color: #fff; font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif; overflow: hidden; }
 #boatOv[hidden] { display: none; }
+/* 場面の板は 1 つだけ見せる（2026-11-20: この決まりが抜けて、取り消しの知らせが次のレースの画面に重なっていた） */
+#boatOv section[hidden] { display: none !important; }
+/* 字は折らない（折るのは <br> の所だけ）。決まった大きさ 1600×900 で組み、枠に合わせて全体を縮める（v2/tv.js・デモの tv.html） */
+#boatOv, #boatOv * { white-space: nowrap; }
 .bo-waku { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 7px; font-style: normal; font-weight: 900; font-size: 28px; border: 2px solid rgba(0, 0, 0, .5); flex: none; }
 .bo-waku.sm { width: 34px; height: 34px; font-size: 21px; border-radius: 5px; }
 .bo-waku.lg { width: 128px; height: 128px; font-size: 96px; border-radius: 14px; border-width: 3px; }
@@ -57,11 +61,11 @@
 .bo-vfit { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; transform-origin: 0 0; }
 .bo-vfit canvas { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; display: block; }
 .bo-tag { position: absolute; left: 16px; top: 14px; z-index: 2; background: rgba(5, 20, 40, .85); color: #fff; font-size: 24px; font-weight: 900; padding: 6px 16px; border-radius: 10px; border: 2px solid #8fdcff; }
-.bo-st { position: absolute; right: 14px; top: 14px; bottom: 14px; z-index: 2; width: 300px; background: rgba(5, 20, 40, .92); border: 2px solid #8fdcff; border-radius: 14px; padding: 12px 16px; color: #fff; display: flex; flex-direction: column; gap: 4px; }
+.bo-st { position: absolute; inset: 0; z-index: 2; background: rgba(5, 20, 40, .94); padding: 18px 40px; color: #fff; display: flex; flex-direction: column; justify-content: center; gap: 4px; } /* 2026-11-20: 映像の字幕と重ならないよう、映像の枠を全部覆う板にした */
 .bo-st[hidden] { display: none; }
-.bo-st h4 { margin: 0 0 4px; font-size: 26px; color: #ffe08a; } .bo-st .sth { display: grid; grid-template-columns: 70px 60px 1fr; font-size: 15px; color: #9fb6d6; }
-.bo-st .str { display: grid; grid-template-columns: 70px 60px 1fr; align-items: center; font-size: 30px; font-weight: 900; } .bo-st .str .c { color: #9fb6d6; font-size: 22px; } .bo-st .str b { font-variant-numeric: tabular-nums; }
-.bo-st p { margin: auto 0 0; font-size: 14px; color: #9fb6d6; }
+.bo-st h4 { margin: 0 0 6px; font-size: 30px; color: #ffe08a; text-align: center; } .bo-st .sth, .bo-st .str { width: 420px; align-self: center; } .bo-st .sth { display: grid; grid-template-columns: 90px 70px 1fr; font-size: 18px; color: #9fb6d6; }
+.bo-st .str { display: grid; grid-template-columns: 90px 70px 1fr; align-items: center; font-size: 30px; font-weight: 900; } .bo-st .str .c { color: #9fb6d6; font-size: 22px; } .bo-st .str b { font-variant-numeric: tabular-nums; }
+.bo-st p { margin: 8px 0 0; font-size: 16px; color: #9fb6d6; text-align: center; }
 /* 出走表（競馬の出馬表と同じ: クリーム地・行ごとに枠の色の線） */
 .bo-card2 { background: #fff8ea; padding: 14px 18px; }
 .bo-ct { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
@@ -102,10 +106,12 @@
 .is-wait .bo-vid { left: 30px; top: 84px; width: 1150px; height: 560px; }
 .is-wait .bo-vfit { transform: scale(1.138); } /* (1150−12)/1000 */
 .is-wait .bo-card2, .is-wait .bo-popp { display: none; }
-.is-wait .bo-cd { left: 30px; top: 660px; width: 1150px; height: 210px; flex-direction: row; align-items: center; justify-content: space-between; padding: 18px 40px; }
-.is-wait .bo-cd .l { display: flex; align-items: baseline; gap: 14px; } .is-wait .bo-cd .l .k { align-self: flex-start; } .is-wait .bo-cd .big { font-size: 130px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; } .is-wait .bo-cd .u { font-size: 34px; font-weight: 900; }
-.is-wait .bo-cd .r { display: flex; flex-direction: column; align-items: flex-end; } .is-wait .bo-cd .k2 { font-size: 34px; font-weight: 900; } .is-wait .bo-cd .k3 { font-size: 26px; color: #cfe3ff; }
-.is-wait .bo-cd .cd { font-size: 110px; color: #ff8a65; }
+.is-wait .bo-cd { left: 30px; top: 660px; width: 1150px; height: 210px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; align-items: center; padding: 14px 36px; }
+.is-wait .bo-cd .l { display: flex; flex-direction: column; min-width: 0; } .is-wait .bo-cd .l .k { font-size: 26px; }
+.is-wait .bo-cd .big { font-size: 118px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; } .is-wait .bo-cd .u { font-size: 30px; font-weight: 900; margin-left: 10px; }
+.is-wait .bo-cd .lt { display: flex; align-items: baseline; }
+.is-wait .bo-cd .r { display: flex; flex-direction: column; align-items: flex-end; border-left: 2px solid rgba(255, 255, 255, .2); padding-left: 24px; } .is-wait .bo-cd .k2 { font-size: 30px; font-weight: 900; } .is-wait .bo-cd .k3 { font-size: 22px; color: #cfe3ff; }
+.is-wait .bo-cd .cd { font-size: 96px; color: #ff8a65; }
 .is-wait .bo-qrp { left: 1196px; top: 84px; width: 374px; height: 786px; justify-content: space-between; }
 .is-wait .bo-qrp h3 { font-size: 34px; line-height: 1.3; padding: 18px 0; }
 .is-wait .bo-qrp .bo-qrc { font-size: 30px; }
@@ -117,3 +123,7 @@
 .bo-ct .nm { font-size: 28px; } .bo-ct .ps i { width: 34px; height: 36px; font-size: 23px; } .bo-ct .cn b { font-size: 22px; }
 .bo-tag { left: auto; right: 16px; top: auto; bottom: 64px; font-size: 20px; }
 .bo-tag[hidden] { display: none; }
+.is-vote .bo-cd { padding: 22px 22px; } .is-vote .bo-cd .cd { font-size: 108px; } .is-vote .bo-cd .k { font-size: 28px; } .is-vote .bo-cd .h { font-size: 26px; }
+.bo-st { padding: 10px 30px; gap: 1px; } .bo-st h4 { font-size: 26px; margin: 0 0 2px; } .bo-st .sth { font-size: 15px; } .bo-st .str { font-size: 25px; line-height: 1.3; } .bo-st .str .c { font-size: 19px; } .bo-st .bo-waku.sm { width: 30px; height: 30px; font-size: 19px; } .bo-st p { margin: 4px 0 0; font-size: 14px; }
+.is-wait .bo-st { padding: 24px 40px; gap: 6px; } .is-wait .bo-st .str { font-size: 32px; }
+.is-vote .bo-cd .cd { font-size: 100px; }

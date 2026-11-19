@@ -81,7 +81,7 @@
     }).join('');
     return '<div class="fune' + (o.cls ? ' ' + o.cls : '') + '" aria-label="舟券">' +
       '<div class="fl"><div class="brand">casa <b>BOAT</b></div><div class="shop">' + esc(storeName(v.storeId || STORE)) + '</div>' +
-      '<div class="rno"><b>' + (r ? hm(r.at) : '') + '</b><small>レース</small></div><div class="dt">' + d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日</div></div>' +
+      '<div class="rno"><b>' + (r ? hm(r.at) : '') + '</b><small>レース</small></div><div class="dt">' + d.getUTCFullYear() + '.' + (d.getUTCMonth() + 1) + '.' + d.getUTCDate() + '</div></div>' +
       '<div class="fm"><span>2連単</span></div>' +
       '<div class="fr fx" data-scrollarea>' + rows + '</div>' +
       '<div class="fb"><span class="sum">合計' + dash(total, 3) + '枚 ' + dash(total * 100, 6) + '<small>BPT</small>' + (bptN >= 0 ? '<em>（うち無料 1 枚）</em>' : '') + '</span><span class="sn">' + sn.slice(0, 4) + '-' + sn.slice(4) + '</span><span class="bc" aria-hidden="true">' + barcode(sn) + '</span></div>' +
@@ -109,7 +109,7 @@
   const bptLeft = () => { const bal = S.bpt ? S.bpt.bal || 0 : 0; return Math.max(0, Math.floor((bal - cartN() * 100) / 100)); }; // 上限なし（持っている BPT まで。2026-11-19）
   function cartLine() { // えらんだ券（下の帯の上に 1 行・押すと消せる）
     if (!S.cart.length) return '';
-    return '<div class="cartl">' + S.cart.map((x, i) => { const p = x.k.split('-').map(Number); return '<button type="button" class="cc" data-del="' + i + '" aria-label="取り消す">' + waku(p[0], 'sm') + '<i>→</i>' + waku(p[1], 'sm') + '<small>' + (x.free ? '無料' : '×' + (x.n || 1)) + '</small><em>×</em></button>'; }).join('') + '</div>';
+    return '<div class="cartl" data-scrollarea>' + S.cart.map((x, i) => { const p = x.k.split('-').map(Number); return '<button type="button" class="cc" data-del="' + i + '" aria-label="取り消す">' + waku(p[0], 'sm') + '<i>→</i>' + waku(p[1], 'sm') + '<small>' + (x.free ? '無料' : '×' + (x.n || 1)) + '</small><em>×</em></button>'; }).join('') + '</div>';
   }
 
   /* ---------- 画面 ---------- */
@@ -124,7 +124,7 @@
   function vWait() {
     const r = S.race, n = S.live && S.live.next, t = now();
     const nx = r && Boat.stageOf(r, t) === 'wait' ? { at: r.at, openAt: r.openAt } : n;
-    if (!nx) return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wv">いまはボートレースの時間ではありません</p></div>' + bptCard() + howCard());
+    if (!nx) return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wv" data-wrap>いまはボートレースの時間ではありません</p></div>' + bptCard() + howCard());
     return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wt">' + hm(nx.at) + '<small>締切</small></p>' +
       '<div class="wr"><p class="wv">投票は ' + hm(nx.openAt) + ' から</p><div class="clock"><div class="k">始まりまで あと</div><div class="v">' + left(nx.openAt - t) + '</div></div></div></div>' + bptCard() + howCard() +
       '<p class="sub">投票が始まったら、お店のテレビの QR を読んでください（QR はレースごとに変わります）</p>');
@@ -136,7 +136,7 @@
       '<div class="note qrnote"><b>テレビの QR を読んでください</b>ボートの投票はお店の中だけ。いまテレビに出ている QR を、スマホのカメラで読むと投票できます。</div>' + (S.err ? '<p class="err">' + esc(S.err) + '</p>' : '') + bptCard());
   }
   function vNoDerby() {
-    return scr('mid b-noderby', '<div class="waitbox"><p class="wk">ボートの投票</p><p class="wv">今日の競馬に参加したスマホで投票できます</p></div><div class="note">ボートに投票できるのは、<b>今日の casa DERBY（競馬）に会計番号で投票したスマホ</b>だけです。先に競馬に参加してから、もう一度テレビの QR を読んでください。</div><a class="btn ghost" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ</a>');
+    return scr('mid b-noderby', '<div class="waitbox"><p class="wk">ボートの投票</p><p class="wv" data-wrap>今日の競馬に参加したスマホで投票できます</p></div><div class="note">ボートに投票できるのは、<b>今日の casa DERBY（競馬）に会計番号で投票したスマホ</b>だけです。先に競馬に参加してから、もう一度テレビの QR を読んでください。</div><a class="btn ghost" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ</a>');
   }
   function vNick() {
     return scr('b-nick', '<h1>ニックネーム</h1><p class="sub">当たったらテレビに出ます（競馬と同じ名前）</p><input id="nk" class="nkin" maxlength="8" autocomplete="off" placeholder="8 文字まで" value="' + esc(savedNick()) + '"><div class="dock"><button class="btn" data-act="nick">決める</button></div>');
@@ -189,7 +189,7 @@
     const r = S.race, res = r.result, v = S.mine && S.mine.vote;
     if (!res) return scr('mid b-race', '<h1>結果を待っています</h1>' + (v ? fune(v) : ''));
     const won = v && v.won > 0, n = S.live && S.live.next;
-    const next = n ? '<p class="nextr">次のボートレース <b>' + hm(n.at) + '</b>（投票は ' + hm(n.openAt) + ' から）</p>' : '';
+    const next = n ? '<p class="nextr">次のボートレース <b>' + hm(n.at) + '</b><br>（投票は ' + hm(n.openAt) + ' から）</p>' : '';
     const bk = v && v.back, inc = res.incident, incLine = inc ? '<p class="incl">' + waku(inc.boat, 'sm') + ' ' + (inc.type === 'scratch' ? 'フライング' : '転覆') + '・' + (inc.refund ? 'この艇を含む券は返還' + (bk && (bk.n || bk.free) ? '（あなた: ' + (bk.n ? '＋' + amt(bk.bpt) + ' BPT 戻し' : '') + (bk.free ? (bk.n ? '・' : '') + '無料券は返還' : '') + '）' : '') : '返還なし') + '</p>' : '';
     if (won) return scr('b-result win', '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + amt(v.won) + '</b><small>BPT</small></div>' + resLine(res) + incLine + fune(v, { cls: 'small' }) +
       '<p class="bnote">BPT 残り <b>' + amt(S.bpt ? S.bpt.bal : 0) + '</b><br>競馬の「追加の券」に 1 枚 100 BPT で使えます（毎週月曜の朝 5 時にリセット）</p>' + next);
