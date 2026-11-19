@@ -10,7 +10,8 @@ BOAT.Race = (function () {
   'use strict';
   const T = window.THREE, C = BOAT.Course, M = window.BoatModel;
   const W = 1000, H = 480;
-  const PRE_T = 100, POST_T = 8; // レース前は本物どおり全部（待機行動 約 100 秒。オーナー 2026-11-17）
+  const PRE_T = 100, POST_T = 8;
+  const PIP_Y = 0.12; // 小窓の上の端（画面の高さの割合）。右上の TIME の札の下に置く（2026-11-19 画面の表示を競馬にそろえた。前は 5.2%） // レース前は本物どおり全部（待機行動 約 100 秒。オーナー 2026-11-17）
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v)), lerp = (a, b, k) => a + (b - a) * k;
   const sm = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
   const FONT = '"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif';
@@ -81,6 +82,10 @@ BOAT.Race = (function () {
       this.plan = null;
       try { this.plan = BOAT.Lines.plan(race, run, Object.assign({}, this.desc, { Course: C, preT: PRE_T, postT: POST_T + 2 })); this.parts.Lines = this.plan && this.plan.ok !== false ? 'real' : 'ng'; } catch (e) { console.warn('BOAT.Lines', e); this.parts.Lines = 'err'; }
       this.vis = race.horses.map(() => ({ x: 0, z: 0, yaw: 0, speed: 0, turn: 0, flip: 0, on: true }));
+      // 艇番の輪と札（競馬の足元の輪・馬番の札と同じ考え方。boat3d.js の BOAT.Tags。無くても走りは止めない）
+      if (this.tags) { try { this.tags.dispose(); } catch (e) { } this.tags = null; }
+      try { if (BOAT.Tags) { this.tags = BOAT.Tags.create(this.scene, race.horses); this.parts.Tags = 'real'; } } catch (e) { console.warn('BOAT.Tags', e); this.tags = null; }
+      this.tagK = 0; this.ordX = null; this.rk = null;
       this.rank = race.horses.map((_, i) => i);
       try { this.wake.reset(); } catch (e) { }
       try { if (this.venue.setTime) { const dn = new Date(); this.venue.setTime(this.info.hour != null ? this.info.hour : dn.getHours() + dn.getMinutes() / 60); } } catch (e) { console.warn('setTime', e); }
@@ -237,12 +242,108 @@ BOAT.Race = (function () {
       try { this.venue.update(dt, tt + PRE_T, this.camera); } catch (e) { }
       const size = r.getSize(new T.Vector2());
       this.marks.visible = !!this.marksOn;
+      this.updateTags(dt);
       r.setScissorTest(false); r.setViewport(0, 0, size.x, size.y); r.render(this.scene, this.camera);
       if (this.pip) { // 小窓: x60.2〜97.7%・y5.2〜42%
-        const x = 0.602 * size.x, w = 0.375 * size.x, h = 0.368 * size.y, y = size.y - 0.052 * size.y - h;
-        r.setScissorTest(true); r.setScissor(x, y, w, h); r.setViewport(x, y, w, h); this.marks.visible = false; r.render(this.scene, this.cam2); r.setScissorTest(false); r.setViewport(0, 0, size.x, size.y);
+        const x = 0.602 * size.x, w = 0.375 * size.x, h = 0.368 * size.y, y = size.y - PIP_Y * size.y - h;
+        r.setScissorTest(true); r.setScissor(x, y, w, h); r.setViewport(x, y, w, h); this.marks.visible = false;
+        const tv = this.tags && this.tags.visible; if (tv) this.tags.setVisible(false); // 小窓（先頭の正面の大写し）には輪と札を出さない
+        r.render(this.scene, this.cam2); if (tv) this.tags.setVisible(true); r.setScissorTest(false); r.setViewport(0, 0, size.x, size.y);
       }
       this.drawHud();
+    }
+    /* ---------- 艇番の輪と札（BOAT.Tags）: 出す艇と全体の濃さを決めて、毎コマ置き直す ----------
+       出さない: ピットに止まっている間（'pit'）・ゴールの 3 秒後から（勝者の大写し・結果）・フライングで外れた艇・転覆した艇・映っていない艇 */
+    updateTags(dt) {
+      const tg = this.tags; if (!tg || !this.state) return;
+      const tt = this.tt, sh = this.shot, want = sh === 'pit' || tt >= this.G + 3 ? 0 : 1;
+      this.tagK = dt <= 0 ? want : this.tagK + clamp(want - this.tagK, -dt / 0.6, dt / 0.6);
+      const list = this.vis.map((v, i) => { const p = this.state.S[i]; return { x: v.x, z: v.z, yaw: v.yaw, show: !!(v.on && p && !p.out && !(v.flip > 0.02)) }; });
+      try { tg.update(this.camera, list, this.tagK, dt); } catch (e) { if (!this.tagErr) { this.tagErr = 1; console.warn('BOAT.Tags.update', e); } }
+    }
+    /* ---------- レース中の画面表示（2026-11-19 オーナー「割と競馬に寄せていい。レース中の画面下の順位の表示とか」）。js/race3d.js の drawHud・clockBox と v2 のテレビの左上の順位の札に合わせた:
+       左上 … 1〜3 位（「1位」の字・艇番の丸・選手名）。入れ替わりは 0.3 秒続いたら（ちらつかない）
+       右上 … 「TIME 0:22.0」の紺の札（ゴールで止めて金色）。下に周回（1周目・2周目＝最終周は金色）。小窓（先頭の大写し）が出ている間は TIME だけ
+       下   … 順位の丸の列（色の艇番の丸が順位順。間は艇の差で広がる。1 位は金・2 位は銀の縁と「1位」「2位」の札。順位が変わると丸がすべって入れ替わる。画面で艇が走る向きに先頭）
+       左下 … casa BOAT のロゴとレースの名前・距離・天気。右下 … コースの小さな図（1 マーク・2 マーク・スタートの線・先頭の位置）と距離・先頭の速さ */
+    drawRaceHud(c) {
+      const tt = this.tt, race = this.race, run = this.run, G = this.G, s = this.state, Hh = race.horses, LAPS = (M && M.LAPS) || 2, DIST = (M && M.DIST) || 1401;
+      const NOTO = '"Noto Sans JP",' + FONT, nowMs = performance.now();
+      const rr = (x, y, w, h, r) => { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); };
+      const tvText = (txt, x, y, size, col, align, maxW) => { c.font = 'bold ' + Math.round(size) + 'px ' + NOTO; c.textAlign = align || 'left'; c.textBaseline = 'middle'; c.lineJoin = 'round'; c.lineWidth = Math.max(3, size * 0.26); c.strokeStyle = 'rgba(0,0,0,.75)'; c.strokeText(txt, x, y, maxW); c.fillStyle = col || '#fff'; c.fillText(txt, x, y, maxW); };
+      const chip = (x, y, r, h) => { c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y, r + 1.6, 0, 6.2832); c.fill(); c.fillStyle = h.color; c.beginPath(); c.arc(x, y, r, 0, 6.2832); c.fill(); c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 1; c.stroke();
+        c.fillStyle = h.ink; c.font = '900 ' + Math.round(r * 1.3) + 'px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(h.no, x, y + 0.5); };
+      const out = (i) => !!(run.out && run.out[i]);
+      // 消えるとき: ゴールの 4 秒後から 0.8 秒で（勝者の名札の前に片付ける）
+      const fa = clamp((G + 5 - tt) / 0.8, 0, 1), sa = clamp((tt - 2.1) / 0.5, 0, 1);
+      // 下の帯（うすい黒のグラデーション）
+      c.globalAlpha = fa; if (!this.hudBand) { this.hudBand = c.createLinearGradient(0, H - 92, 0, H); this.hudBand.addColorStop(0, 'rgba(0,0,0,0)'); this.hudBand.addColorStop(1, 'rgba(0,0,0,.42)'); } c.fillStyle = this.hudBand; c.fillRect(0, H - 92, W, 92);
+      // ---- 左下: ロゴとレースの名前 ----
+      { const lx = 14, ly = H - 52; c.fillStyle = '#e9c24a'; c.beginPath(); c.arc(lx + 16, ly, 16, 0, 6.2832); c.fill(); c.strokeStyle = '#a8842a'; c.lineWidth = 1.5; c.stroke();
+        c.fillStyle = '#5a4210'; c.font = '900 11px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('casa', lx + 16, ly + 0.5, 28);
+        c.save(); c.translate(lx + 38, ly + 1); c.transform(1, 0, -0.18, 1, 0, 0); tvText('BOAT', 0, 0, 24, '#ffffff', 'left'); c.restore();
+        const sky = { sunny: '晴', cloudy: '曇', rain: '雨' }[race.weather] || '';
+        tvText('casa競艇場  ' + (race.distLabel || 1200) + 'm  ' + sky, 18, H - 17, 14, '#eeeeee', 'left', 190); }
+      if (!s.ord.length) { c.globalAlpha = 1; return; }
+      // ---- 右上: TIME の札（js/race3d.js の clockBox と同じ形） ----
+      { let ld = 0; for (let i = 0; i < this.n; i++) if (!out(i)) ld = Math.max(ld, run.pos[i]);
+        const lap = Math.min(LAPS, 1 + Math.floor(Math.max(0, ld) * LAPS + 1e-6)), fin = tt >= G, t = Math.max(0, Math.min(tt, G));
+        const bw = 176, bx = W - 14 - bw; let y = 10;
+        const panel = (h) => { c.fillStyle = 'rgba(20,36,54,.86)'; rr(bx, y, bw, h, 4); c.fill(); c.fillStyle = '#f2b705'; c.fillRect(bx, y, 4, h); };
+        panel(40); c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = '900 11px ' + NOTO; c.fillStyle = '#9fb3d9'; c.fillText('TIME', bx + 12, y + 21);
+        const tf = (fin ? Math.round(t * 10) : Math.floor(t * 10)) / 10, mm = Math.floor(tf / 60), ss = tf - mm * 60;
+        c.textAlign = 'right'; c.font = '900 26px ' + NOTO; c.fillStyle = fin ? '#ffd54f' : '#ffffff'; c.fillText(mm + ':' + (ss < 10 ? '0' : '') + ss.toFixed(1), bx + bw - 10, y + 21.5, bw - 58);
+        y += 44;
+        if (!this.pip) { panel(28); const last = lap >= LAPS && !fin; c.textAlign = 'left'; c.font = 'bold 13px ' + NOTO; c.fillStyle = '#9fb3d9'; c.fillText(fin ? 'ゴール' : last ? '最終周' : '周回', bx + 14, y + 14.5);
+          c.textAlign = 'right'; c.font = '900 20px ' + NOTO; c.fillStyle = last || fin ? '#ffe14a' : '#ffffff'; c.fillText(lap + '周目', bx + bw - 12, y + 15); } }
+      // ---- 左上: 1〜3 位（v2 のテレビの順位の札と同じ紺の札・金の線） ----
+      { const top = s.ord.slice(0, 3), key = top.join(','), R = this.rk || (this.rk = { key: '', cand: '', since: 0 }), fins = s.ord.some((i) => run.finish[i]);
+        if (key !== R.cand) { R.cand = key; R.since = tt; }
+        if (!R.key || (key !== R.key && (tt - R.since >= 0.3 || fins)) || Math.abs(tt - (R.at || tt)) > 1) R.key = key; R.at = tt;
+        const show = R.key.split(',').map(Number).filter((i) => i >= 0 && i < this.n), px = 14, py = 12, pw = 206, rh = 32, ph = 10 + rh * show.length;
+        c.globalAlpha = fa * sa; c.fillStyle = 'rgba(20,36,54,.88)'; rr(px, py, pw, ph, 8); c.fill(); c.fillStyle = '#f2b705'; rr(px, py, 4, ph, 2); c.fill();
+        show.forEach((i, k) => { const y = py + 5 + rh * k + rh / 2, h = Hh[i];
+          c.textBaseline = 'middle'; c.textAlign = 'left'; c.font = '900 22px ' + NOTO; c.fillStyle = k === 0 ? '#f2b705' : '#e8eef8'; c.fillText(String(k + 1), px + 16, y + 1);
+          c.font = '800 13px ' + NOTO; c.fillStyle = '#9fb3d9'; c.fillText('位', px + 31, y + 3);
+          chip(px + 64, y, 12, h); c.font = 'bold 16px ' + NOTO; c.fillStyle = '#fff'; c.textAlign = 'left'; c.fillText(h.name, px + 84, y + 1, pw - 96); }); }
+      // ---- 下: 順位の丸の列（js/race3d.js の通過順の帯と同じ動き） ----
+      c.globalAlpha = fa * sa;
+      const order = s.ord.slice(), gone = []; for (let i = 0; i < this.n; i++) if (order.indexOf(i) < 0 && (s.S[i].on || out(i))) gone.push(i);
+      const nn = order.length - 1, EMK = [1.2, 1.1], RANK_COL = ['#f2b705', '#c9d3de'], xo = (k) => (k >= 1 ? 3 : 0) + (k >= 2 ? 7 : 0), cap = 420 - xo(nn);
+      const ex = [0]; for (let k = 1; k < order.length; k++) ex.push(ex[k - 1] + Math.min(40, Math.max(0, (run.pos[order[k - 1]] - run.pos[order[k]]) * DIST) * 4));
+      const stp = nn > 0 ? Math.min(25, cap / nn) : 0, esc = Math.min(1, Math.max(0, cap - stp * nn) / (ex[ex.length - 1] || 1)), x0 = 240;
+      // 画面で艇が走っている向きに先頭を置く（先頭の進む向きをカメラの右に投影。カットが変わったらすぐ、同じカットの中でははっきり傾いたときだけ）
+      const L0 = s.S[order[0]], cr = new T.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0), along = Math.cos(L0.yaw) * cr.x - Math.sin(L0.yaw) * cr.z, ck = (this.cam ? this.cam.id + this.cam.t0 : '') + '';
+      if (this.ordDir == null || ck !== this.ordMode) { this.ordDir = along >= 0 ? 1 : -1; this.ordMode = ck; } else if (Math.abs(along) > 0.3) this.ordDir = along > 0 ? 1 : -1;
+      const span = stp * nn + (ex[ex.length - 1] || 0) * esc + xo(nn), toR = this.ordDir > 0, chipX = (k) => (toR ? x0 + span - (k * stp + ex[k] * esc + xo(k)) : x0 + k * stp + ex[k] * esc + xo(k));
+      const r0 = 11.5, aw = r0 * EMK[0] + 9.5; c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath();
+      if (toR) { const ax = chipX(0) + aw; c.moveTo(ax, H - 31); c.lineTo(ax - 7, H - 37); c.lineTo(ax - 7, H - 25); } else { const ax = x0 - aw; c.moveTo(ax, H - 31); c.lineTo(ax + 7, H - 37); c.lineTo(ax + 7, H - 25); }
+      c.fill();
+      const dtO = this.ordT && this.live ? Math.min(0.1, Math.max(0, (nowMs - this.ordT) / 1000)) : 1; this.ordT = nowMs;
+      if (!this.ordX || this.ordSnap !== ck + ':' + toR) { this.ordX = []; this.ordS = []; this.ordSnap = ck + ':' + toR; }
+      const fol = 1 - Math.exp(-dtO * 11), slots = [];
+      order.forEach((bi, k) => { const tx = chipX(k), ts = EMK[k] || 1; if (this.ordX[bi] == null) { this.ordX[bi] = tx; this.ordS[bi] = ts; } const mv = tx - this.ordX[bi]; this.ordX[bi] += mv * fol; this.ordS[bi] += (ts - this.ordS[bi]) * fol; slots.push({ bi, k, x: this.ordX[bi], s: this.ordS[bi], lift: Math.min(7, Math.abs(mv) * 0.35) }); });
+      slots.sort((a, b) => (a.lift > 1 ? 1 : 0) - (b.lift > 1 ? 1 : 0) || b.k - a.k);
+      for (const sl of slots) {
+        const k = sl.k, r = r0 * sl.s, y = H - 31 - sl.lift;
+        if (k < 2) { c.fillStyle = RANK_COL[k]; c.beginPath(); c.arc(sl.x, y, r + 2.2, 0, 6.2832); c.fill(); }
+        chip(sl.x, y, r, Hh[sl.bi]);
+        if (k < 2) { const fs2 = 8, pw = fs2 * 2.3, ph2 = fs2 + 4, py = y - r - 2.2 - ph2 - 1.5; c.fillStyle = RANK_COL[k]; rr(sl.x - pw / 2, py, pw, ph2, ph2 / 2); c.fill(); c.fillStyle = '#142436'; c.font = '900 ' + fs2 + 'px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText((k + 1) + '位', sl.x, py + ph2 / 2 + 0.5); }
+      }
+      // 外れた艇（フライング・転覆）は列の後ろに薄く
+      gone.forEach((bi, j) => { const x = toR ? x0 - 30 - j * 24 : x0 + span + 30 + j * 24; c.globalAlpha = fa * sa * 0.4; chip(x, H - 31, 9, Hh[bi]); });
+      c.globalAlpha = fa;
+      // ---- 右下: コースの小さな図（マークの間 300m を横に。スタンド側が下）と距離・速さ ----
+      { const mx = W - 92, my = H - 42, sx = 0.4, rz = 9, zk = (z) => clamp(z / 40, -1, 1) * rz;
+        c.lineCap = 'round'; c.lineJoin = 'round';
+        const path = () => { c.beginPath(); c.moveTo(mx - 150 * sx, my + rz); c.lineTo(mx + 150 * sx, my + rz); c.arc(mx + 150 * sx, my, rz, Math.PI / 2, -Math.PI / 2, true); c.lineTo(mx - 150 * sx, my - rz); c.arc(mx - 150 * sx, my, rz, -Math.PI / 2, Math.PI / 2, true); c.closePath(); };
+        path(); c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 7; c.stroke(); c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 3.5; c.stroke();
+        c.fillStyle = '#ff5252'; c.fillRect(mx - 1.5, my + rz - 7, 3, 14); // スタート＝ゴールの線
+        [[150, '1M'], [-150, '2M']].forEach((m) => { const x = mx + m[0] * sx; c.fillStyle = '#ff8a1e'; c.strokeStyle = '#fff'; c.lineWidth = 1.2; c.beginPath(); c.arc(x, my, 3.2, 0, 6.2832); c.fill(); c.stroke(); tvText(m[1], x + (m[0] > 0 ? -14 : 14), my - rz - 9, 10, '#ffffff', 'center'); });
+        const lp = s.S[order[0]]; c.fillStyle = '#ffd54f'; c.strokeStyle = '#000'; c.lineWidth = 1; c.beginPath(); c.arc(mx + clamp(lp.x, -166, 166) * sx, my + zk(lp.z), 4.5, 0, 6.28); c.fill(); c.stroke();
+        tvText(LAPS + '周 ' + (race.distLabel || 1200).toLocaleString() + 'm', W - 186, H - 13, 14, '#fff', 'left');
+        tvText((Math.max(0, lp.speed || 0) * 3.6).toFixed(1) + 'km/h', W - 16, H - 13, 14, '#fff', 'right'); }
+      c.globalAlpha = 1;
     }
     /* ---------- テロップ（04 ⑦ 7-3 の実測の位置。% は画面の幅・高さに対して） ---------- */
     drawHud() {
@@ -255,14 +356,15 @@ BOAT.Race = (function () {
       const band = (x0, x1, y0, y1, c0, c1) => { const gr = c.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, c0); gr.addColorStop(1, c1); c.fillStyle = gr; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y0); c.lineTo(x1 - (y1 - y0) * 0.45, y1); c.lineTo(x0, y1); c.closePath(); c.fill(); };
       const sh = this.shot;
       // レース名の帯（x9.6〜46.6%・y5.1〜11.3%。青のグラデーション、右の端はななめ）と、金の丸い印
-      if (tt < G + POST_T) {
+      const RACE = tt >= 2.1 && tt < G + 5; // レース中は競馬と同じ並び（左上 1〜3 位・右上 TIME・下に順位の丸・右下のコース図・左下のロゴ）。drawRaceHud
+      if (tt < 2.1) {
         band(X(9.6), X(46.6), Y(5.1), Y(11.3), '#2b5fb0', '#0c2a5e');
         c.fillStyle = '#e9c24a'; c.beginPath(); c.arc(X(7.8), Y(10.2), Y(4.85), 0, 7); c.fill(); c.strokeStyle = '#a8842a'; c.lineWidth = 2; c.stroke();
         c.fillStyle = '#5a4210'; c.font = '900 ' + Math.round(Y(3.4)) + 'px ' + FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('casa', X(7.8), Y(10.3), Y(8.4));
         c.fillStyle = '#fff'; c.font = '800 ' + Math.round(Y(4.2)) + 'px ' + FONT; c.textAlign = 'left'; c.fillText((this.info.title || 'casa BOAT') + '　' + (this.info.sub || ''), X(13.6), Y(8.3), X(30));
       }
       // 6 人の名前（y89.5〜94.9%、x5.0〜91.9% を 6 等分。枠色の正方形＋白い字に黒い縁取り。地の帯は無い）
-      if (tt < G + 5) {
+      if (tt < 2.1) { // レースが始まったら下の順位の丸に替わる（競馬と同じ）
         const x0 = X(5), cw = X(86.9) / n, s = Y(5.1);
         Hh.forEach((h, i) => { const x = x0 + i * cw, out = run.out && run.out[i] && tt > 14; sq(x, Y(89.5), s, h); outline(h.name, x + s + 6, Y(92.3), Math.round(Y(3.6)), 'left', out ? 'rgba(255,255,255,.45)' : '#fff', cw - s - 14); });
       }
@@ -287,28 +389,21 @@ BOAT.Race = (function () {
       // スタートの判定（x74.5〜94.3%・中心 y9.1%。白い字・箱なし。tt +2.1〜+22.0）。フライングの表示は本物の映像で確かめられていない（04 ⑦ 7-7）ので、01 1-10 の流れ（判定中 → 発表）に合わせた仮
       if (tt >= 2.1 && tt < 22.0) {
         const f = run.incident && run.incident.type === 'scratch' ? run.incident.horse : -1, px = Math.round(Y(5.6)); // 判定中 → +16.5 秒に発表（実況と同じ）
-        if (f < 0) outline('スタート正常', X(94.3), Y(18), px, 'right', '#fff');
-        else if (tt < 16.5) outline('スタート判定中', X(94.3), Y(18), px, 'right', '#fff');
-        else outline('フライング ' + (f + 1) + '号艇　返還', X(94.3), Y(18), px, 'right', '#ffd24a');
+        if (f < 0) outline('スタート正常', X(98.6), Y(23), px, 'right', '#fff'); // 右上の TIME の札の下（2026-11-19。前は y18%）
+        else if (tt < 16.5) outline('スタート判定中', X(98.6), Y(23), px, 'right', '#fff');
+        else outline('フライング ' + (f + 1) + '号艇　返還', X(98.6), Y(23), px, 'right', '#ffd24a');
       }
-      // 周回と時計（本物に無いが残す。上の真ん中 x49〜68%・y5.1〜11.3%。tt +2.1 から）
-      if (tt >= 2.1 && tt < G + 5) {
-        let ld = 0; for (let i = 0; i < n; i++) if (!(run.out && run.out[i])) ld = Math.max(ld, run.pos[i]);
-        const lap = Math.min(LAPS, 1 + Math.floor(Math.max(0, ld) * LAPS + 1e-6)), fin = tt >= G, t = Math.min(tt, G);
-        band(X(49), X(68), Y(5.1), Y(11.3), '#2b5fb0', '#0c2a5e');
-        c.fillStyle = lap >= LAPS && !fin ? '#ffd966' : '#fff'; c.font = '800 ' + Math.round(Y(4.0)) + 'px ' + FONT; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(fin ? 'ゴール' : lap >= LAPS ? '最終周' : lap + ' / ' + LAPS + ' 周', X(50.2), Y(8.3));
-        c.fillStyle = '#fff'; c.textAlign = 'right'; c.fillText(Math.floor(t / 60) + "'" + ('0' + Math.floor(t % 60)).slice(-2) + '"' + Math.floor((t * 10) % 10), X(65.6), Y(8.3));
-      }
-      // 順位の表（本物に無いが残す。右の端の下半分 x93.0〜97.5%・y46〜86%。tt +2.1 から）
-      if (tt >= 2.1 && tt < G + 5 && this.state) { const s = Y(5.1), gap = Y(6.6); this.state.ord.forEach((i, kk) => sq(X(93.0), Y(46) + kk * gap, s, Hh[i])); }
+      // 周回と時計・順位（本物に無いが残す）: 2026-11-19 競馬の画面にそろえた（右上の TIME の札に周回、下に順位の丸、左上に 1〜3 位）
+      if (RACE && this.state) this.drawRaceHud(c);
       // オッズの札（x70.9〜95.3%・y4.9〜。えんじ色、右の端ななめ。最終周の 1 マークを出て数秒〜最後の 2 マークに入るまで）。ゲームは 2 連単なので、いまの 1・2 番手の組とその逆の 2 行
       if ((sh === 'back-B' || sh === 'side-123') && this.state && this.info.odds && this.state.ord.length >= 2 && tt >= 22) {
         const a = this.state.ord[0], b = this.state.ord[1], ex = this.info.odds.exacta || {}, rows = [[a, b], [b, a]], rh = Y(6.2), s = Y(4.4);
-        band(X(70.9), X(95.3), Y(13), Y(18.5), '#8a1f3a', '#5c1226'); c.fillStyle = '#fff'; c.font = '800 ' + Math.round(Y(3.6)) + 'px ' + FONT; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText('2連単 オッズ', X(72), Y(15.9));
-        rows.forEach((r2, k2) => { const y = Y(18.5) + k2 * rh; band(X(70.9), X(95.3) - (k2 + 1) * rh * 0.45, y, y + rh, 'rgba(110,26,48,.92)', 'rgba(84,18,36,.92)'); sq(X(72), y + (rh - s) / 2, s, Hh[r2[0]]); sq(X(72) + s + 4, y + (rh - s) / 2, s, Hh[r2[1]]); const o = ex[r2[0] + '-' + r2[1]]; c.fillStyle = '#fff'; c.font = '800 ' + Math.round(Y(4.2)) + 'px ' + FONT; c.textAlign = 'right'; c.textBaseline = 'middle'; c.fillText(o != null ? o.toFixed(1) : '-', X(89), y + rh / 2 + 1); });
+        const oy = 7; // TIME の札の下へ（2026-11-19。前は y13% から）
+        band(X(70.9), X(95.3), Y(13 + oy), Y(18.5 + oy), '#8a1f3a', '#5c1226'); c.fillStyle = '#fff'; c.font = '800 ' + Math.round(Y(3.6)) + 'px ' + FONT; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText('2連単 オッズ', X(72), Y(15.9 + oy));
+        rows.forEach((r2, k2) => { const y = Y(18.5 + oy) + k2 * rh; band(X(70.9), X(95.3) - (k2 + 1) * rh * 0.45, y, y + rh, 'rgba(110,26,48,.92)', 'rgba(84,18,36,.92)'); sq(X(72), y + (rh - s) / 2, s, Hh[r2[0]]); sq(X(72) + s + 4, y + (rh - s) / 2, s, Hh[r2[1]]); const o = ex[r2[0] + '-' + r2[1]]; c.fillStyle = '#fff'; c.font = '800 ' + Math.round(Y(4.2)) + 'px ' + FONT; c.textAlign = 'right'; c.textBaseline = 'middle'; c.fillText(o != null ? o.toFixed(1) : '-', X(89), y + rh / 2 + 1); });
       }
       // 小窓の白い細い枠
-      if (this.pip) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(X(60.2), Y(5.2), X(37.5), Y(36.8)); }
+      if (this.pip) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(X(60.2), Y(PIP_Y * 100), X(37.5), Y(36.8)); }
       // 勝者の名札（x28.4〜71.6%・y78〜93%。金の帯に黒い字。G+5.5〜G+8）
       if (tt >= G + 5.5 && tt < G + POST_T) {
         const w = Hh[this.finalOrder[0]];
@@ -417,7 +512,7 @@ BOAT.Race = (function () {
       list.sort((x, y) => x.t - y.t);
       this.capList = list; this.capCur = null;
     }
-    dispose() { try { this.wake.dispose(); this.venue.dispose(); } catch (e) { } this.renderer.dispose(); }
+    dispose() { try { if (this.tags) this.tags.dispose(); } catch (e) { } try { this.wake.dispose(); this.venue.dispose(); } catch (e) { } this.renderer.dispose(); }
   }
   // 声の部品の鍵 → 字幕の文（tools/make-boat-voice.js の P と同じ鍵）
   Race.PHRASES = { pitout: 'ピットアウト', moved: 'が動いた！　内のコースを取りに行く', turnto: '各艇、スタートラインへ艇を向けます', wakunari: '進入は枠なり 3 対 3', shinnyu: '進入は', santai: '3 対 3', clock: '大時計が回って、各艇 スタートへ',
