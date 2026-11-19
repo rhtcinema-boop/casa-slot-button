@@ -155,3 +155,17 @@ body.boat .os-s .waitbox .wt, body.boat .waitbox .wt { font-size: 60px; }
 /* 上の帯: ロゴ・店の名前・残りの時間が「…」で切れないように（SE でも） */
 body.boat .boatcrest { font-size: 19px; } body.boat .top { gap: 8px; padding-left: 14px; padding-right: 14px; }
 body.boat .top .store { overflow: visible; text-overflow: clip; font-size: 13px; } body.boat .top .race span { padding: 4px 10px; font-size: 13px; } body.boat .top .race span b { font-size: 16px; }
+/* 初めての人への説明（4 枚をめくる。競馬の v2/intro.css と同じ絵の作り・言い方。2026-11-20） */
+.b-intro { gap: 14px; }
+.b-intro .icard { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 18px 20px; border-radius: 20px; background: var(--card); border: 1px solid var(--line); text-align: center; }
+.b-intro .ino { position: absolute; left: -2px; top: -10px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(180deg, var(--cream), var(--gold2)); color: #06233a; font-weight: 900; font-size: 17px; }
+.b-intro .ipic svg { width: 150px; height: 128px; display: block; overflow: visible; }
+.b-intro .ipic .b1 { fill: #8fdcff; } .b-intro .ipic .b2 { fill: #2f8fc4; } .b-intro .ipic .cr { fill: #d8f3ff; } .b-intro .ipic .pp { fill: #fdfcf5; } .b-intro .ipic .ink { fill: #f5f3ef; } .b-intro .ipic .bg { fill: #0b2440; } .b-intro .ipic .ln { fill: #27486b; opacity: .6; }
+.b-intro .icard h2 { margin: 0; font-size: 20px; font-weight: 900; color: #fff; letter-spacing: 0; }
+.b-intro .icard p { margin: 0; font-size: 15px; line-height: 1.65; color: var(--dim); word-break: auto-phrase; text-wrap: pretty; }
+.b-intro .idots { flex: none; display: flex; justify-content: center; gap: 8px; } .b-intro .idots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); } .b-intro .idots i.on { background: var(--gold); }
+.os-s .b-intro .ipic svg { width: 120px; height: 102px; } .os-s .b-intro .icard { padding: 16px 14px; gap: 8px; } .os-xs .b-intro .ipic svg { width: 96px; height: 82px; }
+.howb { flex: none; align-self: center; width: auto !important; min-height: 40px !important; padding: 6px 20px !important; font-size: 14px !important; }
+.btn.tokeiba { flex: none; display: flex; align-items: center; justify-content: center; text-decoration: none; min-height: 50px; font-size: 16px; background: linear-gradient(180deg, #ffe9a8, #c9a03e); color: #1a1408; }
+.os-s .btn.tokeiba { min-height: 44px; } .os-s .scr.b-result .nextr { display: none; } /* 詰めるときは「次のボートレース」を省く（上の帯に出ている） */
+.os-xs .b-noqr .bptcard { display: none; } /* いちばん詰めるときは「あなたの BPT」を省いて「あそびかた」を残す */

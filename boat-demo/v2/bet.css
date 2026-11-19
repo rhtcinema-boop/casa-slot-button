@@ -796,3 +796,7 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 .xlist .vm small { font-size: 12px; font-weight: 700; color: var(--dim); margin-left: 4px; }
 .xlist .vr.w .vm { color: var(--gold); }
 .os-s .bptrow { padding: 6px 8px 6px 12px; } .os-s .bptrow .stp .btn { min-height: 36px; width: 40px; } .os-s .bptbtn { min-height: 42px; } .os-s .bptbtn small { display: none; }
+/* 2026-11-20 オーナー「BPT は競馬にも使えることを目立たせる」: ボートの BPT を持っている人の「BPT で券を追加」をボートの水色で光らせる（字・大きさは変えない＝1 画面の決まりは今のまま） */
+.bptrow { border: 1.5px solid #4fb0e2; background: linear-gradient(135deg, #12365a, #0d1f36); box-shadow: 0 0 0 1px rgba(79, 176, 226, .25) inset, 0 0 16px rgba(79, 176, 226, .35); }
+.bptrow .bl b { color: #8fdcff; }
+.bptbtn { border: 1.5px solid #4fb0e2; color: #8fdcff; box-shadow: 0 0 14px rgba(79, 176, 226, .3); }

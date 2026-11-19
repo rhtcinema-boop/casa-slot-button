@@ -126,14 +126,14 @@
     const nx = r && Boat.stageOf(r, t) === 'wait' ? { at: r.at, openAt: r.openAt } : n;
     if (!nx) return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wv" data-wrap>いまはボートレースの時間ではありません</p></div>' + bptCard() + howCard());
     return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wt">' + hm(nx.at) + '<small>締切</small></p>' +
-      '<div class="wr"><p class="wv">投票は ' + hm(nx.openAt) + ' から</p><div class="clock"><div class="k">始まりまで あと</div><div class="v">' + left(nx.openAt - t) + '</div></div></div></div>' + bptCard() + howCard() +
-      '<p class="sub">投票が始まったら、お店のテレビの QR を読んでください（QR はレースごとに変わります）</p>');
+      '<div class="wr"><p class="wv">投票は ' + hm(nx.openAt) + ' から</p><div class="clock"><div class="k">始まりまで あと</div><div class="v">' + left(nx.openAt - t) + '</div></div></div></div>' + bptCard() +
+      '<p class="sub">投票が始まったら、お店のテレビの QR を読んでください（QR はレースごとに変わります）</p><button class="btn ghost howb" data-act="howto">あそびかた</button>');
   }
   function vNoQr(closed) {
     const r = S.race, t = now();
     return scr('mid b-noqr', (closed ? '<div class="waitbox"><p class="wk">締め切りました</p><p class="wv">次のボートレースを待ってください</p></div>' :
       '<div class="waitbox hot"><p class="wk">投票受付中</p><p class="wt">' + (r ? hm(r.at) : '') + '<small>締切</small></p><div class="wr"><p class="wv">締切まで</p><div class="clock"><div class="v">' + (r ? left(r.closeAt - t) : '') + '</div></div></div></div>') +
-      '<div class="note qrnote"><b>テレビの QR を読んでください</b>ボートの投票はお店の中だけ。いまテレビに出ている QR を、スマホのカメラで読むと投票できます。</div>' + (S.err ? '<p class="err">' + esc(S.err) + '</p>' : '') + bptCard());
+      '<div class="note qrnote"><b>テレビの QR を読んでください</b>ボートの投票はお店の中だけ。いまテレビに出ている QR を、スマホのカメラで読むと投票できます。</div>' + (S.err ? '<p class="err">' + esc(S.err) + '</p>' : '') + bptCard() + '<button class="btn ghost howb" data-act="howto">あそびかた</button>');
   }
   function vNoDerby() {
     return scr('mid b-noderby', '<div class="waitbox"><p class="wk">ボートの投票</p><p class="wv" data-wrap>今日の競馬に参加したスマホで投票できます</p></div><div class="note">ボートに投票できるのは、<b>今日の casa DERBY（競馬）に会計番号で投票したスマホ</b>だけです。先に競馬に参加してから、もう一度テレビの QR を読んでください。</div><a class="btn ghost" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ</a>');
@@ -141,13 +141,25 @@
   function vNick() {
     return scr('b-nick', '<h1>ニックネーム</h1><p class="sub">当たったらテレビに出ます（競馬と同じ名前）</p><input id="nk" class="nkin" maxlength="8" autocomplete="off" placeholder="8 文字まで" value="' + esc(savedNick()) + '"><div class="dock"><button class="btn" data-act="nick">決める</button></div>');
   }
-  // 初めての人への案内（競馬の「あそびかた」と同じ作り。1 回だけ）
+  /* 初めての人への説明（2026-11-20 オーナー「競馬の初めての人への案内と同じ形で、絵つきで 3〜4 枚めくる」）: v2/intro.js（競馬）と同じ言い方・同じ絵の作り。4 枚をめくる。
+     1 回だけ出す（casa.boat.intro）。あとで見返す入口は待ちの画面などの「あそびかた」（S.introAgain）。文言は ref/boat/説明の文言_2026-11-20.md と同じ */
+  const INTRO = [
+    { h: '無料で 1 票', p: '今日の競馬に会計番号で参加したスマホなら、ボートも無料で 1 票。',
+      pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><ellipse cx="46" cy="66" rx="30" ry="6" class="ln"/><g transform="translate(46 36)"><circle r="28" class="b2"/><circle r="23" class="b1"/><circle r="17" class="cr"/><text y="5" text-anchor="middle" font-size="13" font-weight="900" fill="#06233a" font-family="inherit">FREE</text></g></svg>' },
+    { h: '1着と2着を、順番に当てる', p: '6 艇から、1着と2着になる艇を順番に選びます（2連単）。',
+      pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><rect x="2" y="12" width="88" height="54" rx="5" class="pp"/><rect x="2" y="12" width="8" height="54" rx="2" class="b1"/><text x="18" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">1着</text><text x="60" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">2着</text><rect x="18" y="32" width="24" height="24" rx="3" fill="#f4f4f4" stroke="#14203a"/><text x="30" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#111" font-family="inherit">1</text><path d="M46 44 h8 m-3 -4 l4 4 l-4 4" fill="none" stroke="#14203a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="60" y="32" width="24" height="24" rx="3" fill="#d6332b"/><text x="72" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#fff" font-family="inherit">3</text></svg>' },
+    { h: '当たりは BPT', p: '当たると 100 BPT × 倍率の BPT がこのスマホに入ります。受け取りの手続きはいりません。',
+      pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><rect x="8" y="6" width="34" height="66" rx="6" class="ink"/><rect x="11" y="11" width="28" height="56" rx="3" class="bg"/><text x="25" y="44" text-anchor="middle" font-size="9" font-weight="900" fill="#8fdcff" font-family="inherit">+BPT</text><path d="M48 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#8fdcff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><g transform="translate(74 40)"><circle r="15" class="b2"/><circle r="12" class="b1"/><text y="4" text-anchor="middle" font-size="9" font-weight="900" fill="#06233a" font-family="inherit">BPT</text></g></svg>' },
+    { h: 'BPT で競馬の券を足せる', p: '100 BPT で競馬の券を 1 枚足せます（1 レース 合わせて 5 枚まで）。BPT は毎週月曜の朝 5 時にリセット。',
+      pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><g transform="translate(18 40)"><circle r="15" class="b2"/><circle r="12" class="b1"/><text y="4" text-anchor="middle" font-size="9" font-weight="900" fill="#06233a" font-family="inherit">BPT</text></g><path d="M37 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#ffd773" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="54" y="20" width="34" height="40" rx="4" class="pp"/><rect x="54" y="20" width="34" height="9" rx="3" fill="#c9a03e"/><text x="71" y="45" text-anchor="middle" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">競馬</text><text x="71" y="55" text-anchor="middle" font-size="7" font-weight="900" fill="#14203a" font-family="inherit">追加の券</text></svg>' },
+  ];
   function vIntro() {
-    return scr('b-intro', '<div class="introh"><b>casa <i>BOAT</i></b><h1>casa BOAT のあそびかた</h1><p class="sub">30秒でわかります</p></div>' +
-      '<div class="istep"><b>1</b><div><h2>無料で 1 票、当たれば BPT</h2><p>今日の競馬に参加したスマホなら、ボートは無料で 1 票。当たると 100 BPT × 倍率。</p></div></div>' +
-      '<div class="istep"><b>2</b><div><h2>1着と2着を、順番に当てる</h2><p>6 艇から 1着・2着を順番にえらぶ 2連単。BPT 100 で券を何枚でも追加できます。</p></div></div>' +
-      '<div class="istep"><b>3</b><div><h2>BPT は競馬の追加の券に</h2><p>レースはお店のテレビで。当たった BPT は自動で入り、競馬の「追加の券」に使えます。</p></div></div>' +
-      '<button class="btn" data-act="intro">はじめる</button><p class="sub">この案内は、次からは出ません</p>');
+    const k = Math.max(0, Math.min(INTRO.length - 1, S.introPage || 0)), c = INTRO[k], last = k === INTRO.length - 1;
+    return scr('b-intro', '<div class="introh"><b>casa <i>BOAT</i></b><h1>casa BOAT のあそびかた</h1><p class="sub">' + (k + 1) + ' / ' + INTRO.length + '</p></div>' +
+      '<div class="icard"><div class="ipic">' + c.pic + '</div><h2>' + esc(c.h) + '</h2><p data-wrap>' + esc(c.p) + '</p></div>' +
+      '<div class="idots">' + INTRO.map((_, i) => '<i class="' + (i === k ? 'on' : '') + '"></i>').join('') + '</div>' +
+      '<div class="btnrow">' + (k > 0 ? '<button class="btn ghost" data-act="introPrev">もどる</button>' : '') + '<button class="btn" data-act="' + (last ? 'intro' : 'introNext') + '">' + (last ? (S.introAgain ? 'とじる' : 'はじめる') : '次へ') + '</button></div>' +
+      (S.introAgain ? '' : '<p class="sub">この案内は、次からは出ません（待ちの画面の「あそびかた」でいつでも見られます）</p>'));
   }
   function vPick() {
     const t = now(), r = S.race, k = S.f != null && S.s != null ? S.f + '-' + S.s : null, change = S.mode === 'change';
@@ -192,13 +204,14 @@
     const next = n ? '<p class="nextr">次のボートレース <b>' + hm(n.at) + '</b><br>（投票は ' + hm(n.openAt) + ' から）</p>' : '';
     const bk = v && v.back, inc = res.incident, incLine = inc ? '<p class="incl">' + waku(inc.boat, 'sm') + ' ' + (inc.type === 'scratch' ? 'フライング' : '転覆') + '・' + (inc.refund ? 'この艇を含む券は返還' + (bk && (bk.n || bk.free) ? '（あなた: ' + (bk.n ? '＋' + amt(bk.bpt) + ' BPT 戻し' : '') + (bk.free ? (bk.n ? '・' : '') + '無料券は返還' : '') + '）' : '') : '返還なし') + '</p>' : '';
     if (won) return scr('b-result win', '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + amt(v.won) + '</b><small>BPT</small></div>' + resLine(res) + incLine + fune(v, { cls: 'small' }) +
-      '<p class="bnote">BPT 残り <b>' + amt(S.bpt ? S.bpt.bal : 0) + '</b><br>競馬の「追加の券」に 1 枚 100 BPT で使えます（毎週月曜の朝 5 時にリセット）</p>' + next);
+      '<p class="bnote">BPT 残り <b>' + amt(S.bpt ? S.bpt.bal : 0) + '</b><br>この BPT で競馬の券を足せます（100 BPT で 1 枚）</p><a class="btn tokeiba" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ（BPT で券を足す）</a>' + next);
     return scr('b-result lose', '<h1>結果</h1>' + resLine(res) + incLine + (v ? fune(v, { cls: 'small' }) + '<p class="lead">' + (bk && bk.n ? '返還 ＋' + amt(bk.bpt) + ' BPT（BPT 残り ' + amt(S.bpt ? S.bpt.bal : 0) + '）' : bk && bk.free && !v.n ? '無料券は返還（はずれではありません）' : '今回ははずれ') + '</p>' : '') + next);
   }
   function vVoid() { return scr('mid b-void', '<h1>このレースは取り消しました</h1><div class="note">BPT の券に使った BPT は全部戻しました。</div>'); }
 
   /* ---------- いまの画面を決める ---------- */
   function decideScreen() {
+    if (S.introAgain) return 'intro'; // 「あそびかた」で見返している間
     const r = S.race, t = now();
     if (!r) return 'wait';
     const st = Boat.stageOf(r, t), v = S.mine && S.mine.vote;
@@ -286,7 +299,9 @@
     if (b.dataset.s != null) { const i = Number(b.dataset.s); S.s = S.s === i ? null : i; S.err = ''; return draw(); }
     if (b.dataset.del != null) { S.cart.splice(Number(b.dataset.del), 1); if (!S.cart.length && S.screen === 'confirm') S.screen = 'pick'; return draw(); }
     const a = b.dataset.act;
-    if (a === 'intro') { ls.set('casa.boat.intro', '1'); lastHtml = ''; S.screen = 'pick'; return draw(); }
+    if (a === 'introNext' || a === 'introPrev') { S.introPage = Math.max(0, (S.introPage || 0) + (a === 'introNext' ? 1 : -1)); return draw(); }
+    if (a === 'intro') { const again = S.introAgain; if (!again) ls.set('casa.boat.intro', '1'); lastHtml = ''; S.introPage = 0; S.introAgain = false; S.screen = again ? '' : 'pick'; return draw(); }
+    if (a === 'howto') { S.introAgain = true; S.introPage = 0; return draw(); }
     if (a === 'nick') { const n = String(($('nk') || {}).value || '').trim(); if (!n || Array.from(n).length > 8) { toast('ニックネームは 1〜8 文字です'); return; } ls.set(NKEY, n); lastHtml = ''; S.screen = 'pick'; return draw(); }
     if (a === 'add') {
       if (S.f == null || S.s == null) return;

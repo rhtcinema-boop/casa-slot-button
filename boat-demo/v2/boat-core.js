@@ -145,7 +145,7 @@
     return hs.map((h, i) => ({ no: i + 1, name: h.name, cls: h.cls, color: h.color, ink: h.ink, type: h.type, st: h.st, cond: h.cond ? h.cond.mark : '', past: h.past || [] }));
   }
   // 公開の「いまの状態」に入れる軽い形（艇の走りの再現 model は入れない。テレビはレースの書類を 1 回読む）
-  const LITE_KEYS = ['id', 'kind', 'at', 'openAt', 'closeAt', 'runAt', 'revealAt', 'endAt', 'voteSec', 'resultSec', 'status', 'day', 'test', 'exacta', 'refunded'];
+  const LITE_KEYS = ['id', 'kind', 'at', 'openAt', 'closeAt', 'runAt', 'revealAt', 'endAt', 'voteSec', 'resultSec', 'status', 'day', 'test', 'exacta', 'refunded', 'backBpt'];
   function lite(r) {
     if (!r) return null; const o = {};
     LITE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; });
@@ -163,7 +163,7 @@
   // いまの場面: wait（投票の前）| vote | closed（締切〜映像の前）| film | result | over
   function stageOf(r, t) {
     if (!r) return 'none';
-    if (r.status === 'void' || r.refunded) return t < (r.endAt || 0) ? 'void' : 'over';
+    if (r.status === 'void' || r.refunded === true) return t < (r.endAt || 0) ? 'void' : 'over';
     if (t < r.openAt) return 'wait';
     if (t < r.closeAt && r.status === 'upcoming') return 'vote';
     if (t < r.runAt || r.status === 'upcoming' || r.status === 'closed') return 'closed';

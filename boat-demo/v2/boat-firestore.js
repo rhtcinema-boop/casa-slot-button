@@ -171,7 +171,7 @@
         const st = data(await tx.get(doc(COLB.stats, r.day))) || {};
         owners.forEach((o, i) => tx.set(doc(COLB.bpt, o), Boat.creditDoc(cur[i], win[o] || 0, t, back[o] || 0), { merge: true })); // 当たりと返還（フライング）を 1 回で
         tx.set(doc(COLB.stats, r.day), { paid: (Number(st.paid) || 0) + (r.test ? 0 : Number(sec.paid) || 0), races: (Number(st.races) || 0) + 1 }, { merge: true });
-        patch = { status: 'done', result: sec.result || null, paid: r.test ? 0 : sec.paid || 0, refunded: r.test ? 0 : sec.refunded || 0, people: (sec.winners || []).length, winners: (sec.winners || []).slice(0, 300).map((w) => ({ nick: w.nick, storeId: w.storeId, storeName: w.storeName || w.storeId, amount: w.amount, n: w.n })) };
+        patch = { status: 'done', result: sec.result || null, paid: r.test ? 0 : sec.paid || 0, backBpt: r.test ? 0 : sec.refunded || 0, /* 返還で戻した BPT（取り消しの印 refunded とは別） */ people: (sec.winners || []).length, winners: (sec.winners || []).slice(0, 300).map((w) => ({ nick: w.nick, storeId: w.storeId, storeName: w.storeName || w.storeId, amount: w.amount, n: w.n })) };
         tx.update(doc(COLB.races, id), patch);
       });
       if (patch) note(id, patch);

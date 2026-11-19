@@ -39,7 +39,7 @@
   const ov = document.createElement('div'); ov.id = 'boatOv'; ov.hidden = true;
   ov.innerHTML = '<div class="bo-top"><span class="bo-pill st" id="boPill"></span><span class="bo-pill tm" id="boTime"></span><span class="bo-pill pr" id="boPromo">無料で 1 票</span><span class="bo-pill ct" id="boCnt" hidden></span><b class="bo-logo">casa <i>BOAT</i></b><span class="bo-pill sn" id="boStore"></span></div>' +
     '<section id="boVote" class="bo-vote" hidden>' +
-      '<div class="bo-panel bo-vid" id="boVid"><div class="bo-vfit" id="boVfit"></div><div class="bo-st" id="boSt" hidden></div></div>' +
+      '<div class="bo-panel bo-vid" id="boVid"><div class="bo-vfit" id="boVfit"></div><div class="bo-st" id="boSt" hidden></div><div class="bo-how" id="boHow" hidden></div></div>' +
       '<div class="bo-panel bo-card2" id="boCardP"><h3>出走表</h3><div id="boCardT"></div></div>' +
       '<div class="bo-panel bo-cd" id="boCd"></div>' +
       '<div class="bo-panel bo-popp" id="boPopP"><h3>人気の組番 <small>2連単</small></h3><div id="boPop"></div></div>' +
@@ -115,7 +115,7 @@
     let desc = {}; try { desc = BoatModel.describe(model, seed); } catch (e) { desc = {}; }
     B.R.setRace(model, run, { title: 'casa BOAT', sub: 'スタート展示', weather: model.weather2 }, desc);
     B.tj = { id: r.id, seg: 0, t: 0, acc: 0, desc, boats: boatsOf(r) };
-    B.R.seek(TJ_SEG[0][0]); B.film = null;
+    B.R.seek(TJ_SEG[0][0]); B.film = null; $('boHow').hidden = true; $('boSt').hidden = true;
     return true;
   }
   function stBoard(T) {
@@ -123,6 +123,14 @@
     const fmt = (s) => (s == null ? '' : s < 0 ? 'F.' + String(Math.round(-s * 100)).padStart(2, '0') : '.' + String(Math.round(s * 100)).padStart(2, '0'));
     return '<h4>スタート展示</h4><div class="sth"><span>コース</span><span>艇</span><span>ST</span></div>' + entry.map((b, c) => '<div class="str"><span class="c">' + (c + 1) + '</span>' + waku(T.boats[b] || { no: b + 1, color: '#888', ink: '#fff' }, 'sm') + '<b>' + fmt(st[b]) + '</b></div>').join('') + '<p>展示の ST は本番とちがうことがあります</p>';
   }
+  /* 遊び方の画面（2026-11-20 オーナー「投票待ちの間に、スタート展示と交互に遊び方の画面を数秒ずつ」）: 展示の ST の札のあとに 2 枚を 6 秒ずつ。文言は ref/boat/説明の文言_2026-11-20.md */
+  const HOW = [
+    '<h4>casa BOAT のあそびかた</h4><div class="hw"><b>1</b><div><em>テレビの QR をスマホで読む</em><small>今日の競馬に会計番号で参加したスマホなら、無料で 1 票</small></div></div>' +
+      '<div class="hw"><b>2</b><div><em>1着と2着を、順番に当てる</em><small>6 艇から 2連単。BPT 100 でボートの券も足せます</small></div></div>' +
+      '<div class="hw"><b>3</b><div><em>当たりは BPT</em><small>100 BPT × 倍率。スマホに自動で入ります</small></div></div>',
+    '<h4>BPT は競馬の券に使えます</h4><div class="big"><span class="c">100<small>BPT</small></span><span class="ar">▶</span><span class="t">競馬の券 1 枚</span></div>' +
+      '<p class="l">無料の券と合わせて 1 レース 5 枚まで</p><p class="l">BPT は毎週月曜の朝 5 時にリセット</p>',
+  ], HOW_SEC = 6;
   function tjFrame(dt) {
     const T = B.tj, R = B.R; if (!T || !R) return;
     T.t += dt;
@@ -133,7 +141,9 @@
       R.tick(T.acc); T.acc = 0; void a;
     } else {
       T.stT += dt;
-      if (T.stT > TJ_ST) { $('boSt').hidden = true; T.seg = 0; R.seek(TJ_SEG[0][0]); }
+      const hi = T.stT < TJ_ST ? -1 : Math.floor((T.stT - TJ_ST) / HOW_SEC);
+      if (hi >= 0 && hi < HOW.length) { if (T.howI !== hi) { T.howI = hi; $('boSt').hidden = true; $('boHow').innerHTML = HOW[hi]; $('boHow').className = 'bo-how h' + hi; $('boHow').hidden = false; } }
+      else if (hi >= HOW.length) { $('boSt').hidden = true; $('boHow').hidden = true; T.howI = -1; T.seg = 0; R.seek(TJ_SEG[0][0]); }
     }
   }
   function makeR() {
@@ -155,7 +165,7 @@
     const f = await fullRace(r); if (!f || !f.hidden) return false;
     await needFilm();
     if (!B.R) makeR();
-    B.tj = null; $('boSt').hidden = true; putCanvas('film');
+    B.tj = null; $('boSt').hidden = true; $('boHow').hidden = true; putCanvas('film');
     const model = Object.assign({}, f.model, { exacta: f.exacta }, f.hidden.incident ? { incident: f.hidden.incident } : {}), run = Engine.replayRun(model, f.hidden.seed, { order: f.hidden.order });
     let desc = {}; try { desc = BoatModel.describe(model, f.hidden.seed, { swaps: run.swaps }); } catch (e) { desc = {}; }
     B.R.setRace(model, run, { title: 'casa BOAT', sub: hm(r.at) + ' のレース', weather: model.weather2, odds: { exacta: f.exacta } }, desc);
@@ -190,7 +200,7 @@
     const ws = (r.winners || []).slice(0, 12), mine = (r.winners || []).filter((w) => w.storeId === STORE).length;
     $('boRes').innerHTML = '<div class="bo-kakutei"><span class="bo-k">確定</span>' + waku(a, 'lg') + '<b class="bo-ar">-</b>' + waku(b, 'lg') + '<div class="bo-nm">1着 ' + esc(a.name) + '<br>2着 ' + esc(b.name) + (kim ? '<br><small>決まり手 ' + esc(kim) + '</small>' : '') + '</div></div>' +
       '<div class="bo-pay"><span>2連単</span><b>' + (res.combo ? res.combo.split('-').map((x) => Number(x) + 1).join('-') : '') + '</b><span>払戻</span><b class="y">' + amt(res.pay) + '</b><small>BPT</small><span class="od">' + (res.odds ? (Math.round(res.odds * 10) / 10).toFixed(1) + '倍' : '') + '</span></div>' +
-      (res.incident ? '<div class="bo-inc">' + waku(bs[res.incident.boat] || { no: res.incident.boat + 1, color: '#888', ink: '#fff' }, 'sm') + '<b>' + (res.incident.type === 'scratch' ? 'フライング' : '転覆') + '</b><span>' + (res.incident.refund ? 'この艇を含む券は返還（BPT の券は BPT を戻します）' + (r.refunded ? '・返還 ' + amt(r.refunded) + ' BPT' : '') : '返還なし') + '</span></div>' : '') +
+      (res.incident ? '<div class="bo-inc">' + waku(bs[res.incident.boat] || { no: res.incident.boat + 1, color: '#888', ink: '#fff' }, 'sm') + '<b>' + (res.incident.type === 'scratch' ? 'フライング' : '転覆') + '</b><span>' + (res.incident.refund ? 'この艇を含む券は返還（BPT の券は BPT を戻します）' + (r.backBpt ? '・返還 ' + amt(r.backBpt) + ' BPT' : '') : '返還なし') + '</span></div>' : '') +
       '<div class="bo-wins"><h3>的中 ' + (r.people || 0) + ' 人' + (mine ? '（この店 ' + mine + ' 人）' : '') + '</h3>' + (ws.length ? '<ol>' + ws.map((w) => '<li class="' + (w.storeId === STORE ? 'me' : '') + '"><span class="nk">' + esc(w.nick) + '</span><span class="st">' + esc(w.storeName || w.storeId) + '</span><b>＋' + amt(w.amount) + '<small>BPT</small></b></li>').join('') + '</ol>' : '<p class="bo-none">今回は的中なし</p>') + '</div>' +
       '<div class="bo-order"><h3>着順</h3>' + (res.order || []).map((i, k) => { const x = bs[i] || {}; return '<div class="or"><span class="rk">' + (k + 1) + '着</span>' + waku(x, 'sm') + '<span class="nm">' + esc(x.name) + '</span></div>'; }).join('') + '</div>' +
       '<p class="bo-note">当たった BPT は競馬の「追加の券」に使えます（1 枚 100 BPT）</p><p class="bo-next" id="boNext"></p>';
