@@ -11,8 +11,6 @@ body.boat #app { background: radial-gradient(ellipse at 50% 18%, #12385c, var(--
 body.boat .btn { background: linear-gradient(180deg, #d9f4ff, #4fb0e2); color: #06233a; box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--gold2), 0 8px 24px rgba(120, 210, 255, .18); }
 body.boat .btn.ghost { background: var(--btn2); color: var(--btn2ink); box-shadow: none; border: 1px solid var(--line); }
 body.boat .btn small { display: block; font-size: 12px; font-weight: 700; opacity: .8; }
-.waku { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; font-style: normal; font-weight: 900; font-size: 18px; border: 1px solid rgba(0, 0, 0, .45); flex: none; font-variant-numeric: tabular-nums; }
-.waku.sm { width: 22px; height: 22px; font-size: 14px; border-radius: 4px; }
 .hy { color: var(--dim); font-weight: 700; margin: 0 2px; }
 .dim { color: var(--dim); }
 
@@ -20,22 +18,6 @@ body.boat .btn small { display: block; font-size: 12px; font-weight: 700; opacit
 .phead, .vhead { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .phead h1, .vhead h1 { margin: 0; font-size: 21px; text-align: left; }
 .cd { font-size: 14px; color: var(--dim); white-space: nowrap; } .cd b { color: #fff; font-size: 18px; font-variant-numeric: tabular-nums; }
-.ent { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; padding: 8px 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
-.er { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; }
-.er .waku { width: 24px; height: 24px; font-size: 15px; }
-.en { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
-.ec { flex: none; font-size: 11px; color: var(--dim); }
-.mark { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 14px; background: #f3f6f8; color: #10202f; }
-.mrow { display: flex; align-items: center; gap: 8px; }
-.ml { flex: none; width: 34px; font-weight: 900; font-size: 15px; color: #c0392b; text-align: center; } /* マークカードの欄の名前（1着・2着） */
-.mb { flex: 1 1 auto; display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
-.bn { height: 48px; border-radius: 9px; border: 2px solid #9aa9b6; background: #fff; color: #10202f; font: 900 20px var(--display); position: relative; cursor: pointer; }
-.bn::before { content: ""; position: absolute; left: 50%; top: 6px; width: 16px; height: 6px; margin-left: -8px; border-radius: 3px; background: var(--c); border: 1px solid rgba(0, 0, 0, .35); }
-.bn { padding-top: 10px; }
-.bn.on { background: var(--c); color: var(--i); border-color: #0b1a28; box-shadow: 0 0 0 2px #fff inset, 0 0 0 3px #0b1a28; }
-.bn.on::before { display: none; }
-.bn.on { padding-top: 0; }
-.bn:disabled { opacity: .3; }
 .sel { flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); min-height: 50px; font-size: 14px; }
 .sel.dim { justify-content: center; color: var(--dim); }
 .sel .so { margin-left: 6px; color: var(--dim); } .sel .so b { color: #fff; font-size: 20px; }
@@ -91,12 +73,8 @@ body.boat .btn small { display: block; font-size: 12px; font-weight: 700; opacit
 .scr.b-result.lose .lead { color: var(--dim); }
 
 /* 1 画面の詰め（bet.css の .os-t → .os-s → .os-xs と同じ順） */
-.os-s .ent { padding: 6px 8px; gap: 2px 8px; } .os-s .er { font-size: 13px; } .os-s .er .waku { width: 20px; height: 20px; font-size: 13px; }
-.os-s .bn { height: 42px; font-size: 18px; } .os-s .mark { padding: 8px; gap: 6px; }
 .os-s .sel { min-height: 44px; padding: 6px 10px; }
 .os-s .fune .fl { padding: 8px 4px 6px 8px; gap: 4px; } .os-s .fune { grid-template-columns: 84px 26px minmax(0, 1fr); }
-.os-xs .ent { display: none; } /* いちばん詰めるときは出走表（選手名）を省く（マークカードのボタンの名前で読み上げ） */
-.os-xs .bn { height: 40px; } .os-xs .phead h1 { font-size: 18px; }
 .os-xs .fune .nm { display: none; }
 .os-xs .gain b { font-size: 38px; }
 
@@ -125,3 +103,35 @@ body.boat .btn small { display: block; font-size: 12px; font-weight: 700; opacit
 .fune .bk { background: #6b7590; color: #fff; }
 .incl { flex: none; margin: 0; display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; font-size: 13px; color: #ffb3a6; }
 .os-s .qty .qb { height: 32px; }
+
+/* ---------- 2026-11-19 作り直し: 競馬のスマホ（bet.css の .waitbox・.bt の表・.pickdock）と同じ作り ---------- */
+body.boat .top { display: flex; align-items: center; gap: 10px; padding: calc(var(--sat) + 8px) 16px 8px; text-align: left; }
+body.boat .top .crest { flex: none; padding: 0; } body.boat .boatcrest { font-size: 22px; line-height: 30px; }
+body.boat .top .store { flex: 1 1 auto; min-width: 0; font-size: 14px; }
+body.boat .top .race { flex: none; margin: 0; flex-wrap: nowrap; }
+body.boat .top .race span { font-size: 14px; padding: 5px 14px; } body.boat .top .race span b { font-size: 17px; }
+.os-t body.boat .race span:first-child:not(:only-child), body.boat .os-t .race span:first-child:not(:only-child) { display: inline; }
+.waitbox .wt small { font-size: 20px; color: var(--dim); margin-left: 6px; font-weight: 700; }
+.waitbox.hot { border-color: #2f8fc4; box-shadow: 0 0 0 1px #2f8fc4 inset, 0 0 24px rgba(79, 176, 226, .25); }
+.waitbox .clock .k { font-size: 13px; color: var(--dim); } .waitbox .clock .v { font-family: var(--display); font-size: 44px; font-weight: 900; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.bptcard { flex: none; padding: 14px 18px; border-radius: 18px; background: linear-gradient(180deg, #123659, #0b2440); border: 1.5px solid #2f8fc4; }
+.bptcard .bh { display: flex; align-items: baseline; justify-content: space-between; } .bptcard .bh span { font-size: 15px; font-weight: 700; color: var(--gold); } .bptcard .bh b { font-family: var(--display); font-size: 34px; font-weight: 900; color: #fff; }
+.bptcard .bh b::after { content: " BPT"; font-size: 15px; color: var(--dim); }
+.bptcard p { margin: 4px 0 0; font-size: 12.5px; color: var(--dim); line-height: 1.55; }
+.howcard { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+.howcard .hw { display: flex; gap: 10px; align-items: flex-start; } .howcard .hw b { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #06233a; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; }
+.howcard .hw span { font-size: 12.5px; color: var(--dim); line-height: 1.5; } .howcard .hw em { display: block; font-style: normal; font-size: 15px; font-weight: 900; color: #fff; }
+.qrnote b { display: block; font-size: 18px; color: #fff; margin-bottom: 4px; }
+.pkh2 { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; } .pkh2 h1 { margin: 0; font-size: 21px; text-align: left; } .pkh2 .bpts { font-size: 13px; color: var(--dim); } .pkh2 .bpts b { color: var(--cream); font-size: 16px; }
+.cartl { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; -webkit-overflow-scrolling: touch; }
+.cartl .cc { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 34px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: #fff; font: inherit; }
+.cartl .cc i { font-style: normal; color: var(--gold); font-weight: 900; } .cartl .cc small { font-size: 12px; color: var(--cream); margin-left: 3px; } .cartl .cc em { font-style: normal; color: var(--dim); margin-left: 4px; }
+.pickdock .qty { margin: 8px 0 2px; }
+.pickdock .btn { margin-top: 8px; } .pickdock .btnrow .btn { margin-top: 8px; }
+/* 初めての案内（競馬の「あそびかた」と同じ並び） */
+.b-intro { gap: 12px; } .introh { text-align: center; } .introh b { font-family: var(--display); font-size: 30px; font-weight: 900; } .introh b i { color: var(--gold); }
+.introh h1 { margin: 6px 0 0; color: #fff; font-size: 23px; } .introh .sub { margin-top: 2px; }
+.istep { display: flex; gap: 12px; padding: 14px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); } .istep > b { flex: none; width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(180deg, var(--cream), var(--gold2)); color: #06233a; font-size: 20px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; }
+.istep h2 { margin: 0 0 4px; font-size: 17px; color: #fff; text-align: left; letter-spacing: 0; } .istep p { margin: 0; font-size: 13.5px; color: var(--dim); line-height: 1.6; }
+.os-s .bptcard p, .os-s .howcard .hw span { font-size: 11.5px; } .os-xs .howcard { display: none; } .os-xs .istep p { font-size: 12px; } .os-s .istep { padding: 10px 12px; }
+.b-pick .pickdock .pdsel { flex-wrap: nowrap; } .b-pick .pickdock .pdw { white-space: nowrap; font-size: 13px; color: var(--dim); } .b-pick .pickdock .pdw b { font-size: 18px; color: var(--gold); }

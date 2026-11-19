@@ -30,12 +30,22 @@
     return B.loading;
   }
 
-  /* ---------- 画面の部品 ---------- */
+  /* ---------- 画面の部品 ----------
+     2026-11-19 オーナー「投票待ち画面、テレビ・スマホ共に終わってる。競馬の感じをかなり参考に」「映像とかはスタート展示流しておけばいい」:
+     競馬のテレビ（v2/tv.js の待ち時間・投票受付中）と同じ作り＝上の札の列・左上に映像の枠・右に出走表・左下にカウントダウン・中に人気の組番・右下に QR。
+     映像の枠には本物の「スタート展示」（ピット離れ → 進入 → スタートライン。ref/boat/research/28_スタート展示.md）を流す。
+     スタート展示は本番とは別の種で走らせる短い走り（当たりの決め方には一切つながない＝本番の結果の手がかりにならない）。 */
   const stage = $('stage');
   const ov = document.createElement('div'); ov.id = 'boatOv'; ov.hidden = true;
-  ov.innerHTML = '<div class="bo-head"><b class="bo-logo">casa <i>BOAT</i></b><span id="boTitle"></span><span id="boClock" class="bo-clock"></span></div>' +
-    '<section id="boVote" class="bo-vote" hidden></section>' +
-    '<section id="boFilm" class="bo-film" hidden><div class="bo-fit"><canvas id="boGl" width="1000" height="480"></canvas><canvas id="boHud" width="1000" height="480"></canvas><div id="boCard" class="bo-card" hidden></div></div></section>' +
+  ov.innerHTML = '<div class="bo-top"><span class="bo-pill st" id="boPill"></span><span class="bo-pill tm" id="boTime"></span><span class="bo-pill pr" id="boPromo">無料で 1 票</span><span class="bo-pill ct" id="boCnt" hidden></span><b class="bo-logo">casa <i>BOAT</i></b><span class="bo-pill sn" id="boStore"></span></div>' +
+    '<section id="boVote" class="bo-vote" hidden>' +
+      '<div class="bo-panel bo-vid" id="boVid"><div class="bo-vfit" id="boVfit"></div><span class="bo-tag" id="boTag">スタート展示</span><div class="bo-st" id="boSt" hidden></div></div>' +
+      '<div class="bo-panel bo-card2" id="boCardP"><h3>出走表</h3><div id="boCardT"></div></div>' +
+      '<div class="bo-panel bo-cd" id="boCd"></div>' +
+      '<div class="bo-panel bo-popp" id="boPopP"><h3>人気の組番 <small>2連単</small></h3><div id="boPop"></div></div>' +
+      '<div class="bo-panel bo-qrp" id="boQrP"><h3>アプリ不要 スマホで参加</h3><div class="bo-qr" id="boQr"><span>QR を準備中…</span></div><p class="bo-qrc" id="boQrc">無料で 1 票・当たりは BPT</p></div>' +
+    '</section>' +
+    '<section id="boFilm" class="bo-film" hidden><div class="bo-fit" id="boFit"><canvas id="boGl" width="1000" height="480"></canvas><canvas id="boHud" width="1000" height="480"></canvas><div id="boCard" class="bo-card" hidden></div></div></section>' +
     '<section id="boRes" class="bo-res" hidden></section>' +
     '<section id="boVoid" class="bo-void" hidden><h2>このボートレースは取り消しました</h2><p>BPT の券に使った BPT は全部戻しました</p></section>';
   if (stage) stage.appendChild(ov);
@@ -43,44 +53,93 @@
   const boatsOf = (r) => (r && (r.boats || (Boat() && r.model && Boat().boatsOf(r)))) || [];
   const waku = (b, cls) => '<i class="bo-waku ' + (cls || '') + '" style="background:' + b.color + ';color:' + b.ink + '">' + b.no + '</i>';
   const TYPES = { nige: '逃げ', senko: 'まくり', sashi: '差し', oikomi: 'まくり差し' };
+  // 映像の絵（canvas）は 1 組だけ。スタート展示の枠と本番の映像の枠の間で入れ替える（3D を 2 つ動かさない＝Fire TV を重くしない）
+  function putCanvas(where) { const box = where === 'vid' ? $('boVfit') : $('boFit'); [$('boGl'), $('boHud')].forEach((c) => { if (c.parentNode !== box) box.insertBefore(c, box.firstChild && box.firstChild.id === 'boCard' ? box.firstChild : null); }); }
 
+  // 出走表（競馬の出馬表と同じ並び: 枠・名前・得意・調子・近走）
   function cardTable(r, full) {
     const hs = (full && full.model && full.model.horses) || [], bs = boatsOf(r);
-    return '<table class="bo-tbl"><tr><th>艇</th><th>選手</th><th>級</th><th>得意</th><th>平均ST</th><th>モーター</th><th>近5走</th></tr>' + bs.map((b, i) => { const h = hs[i] || {}; return '<tr><td>' + waku(b) + '</td><td class="nm">' + esc(b.name) + '</td><td>' + esc(b.cls || '') + '</td><td>' + esc(TYPES[b.type] || '') + '</td><td>' + (b.st != null ? Number(b.st).toFixed(2) : '') + '</td><td>' + esc(h.cond ? h.cond.mark + ' ' + h.cond.label : b.cond || '') + '</td><td class="ps">' + esc((b.past || []).join(' ')) + '</td></tr>'; }).join('') + '</table>';
+    return '<div class="bo-ct"><div class="hd"><span></span><span>選手</span><span>級</span><span>得意</span><span>調子</span><span>近3走</span></div>' + bs.map((b, i) => { const h = hs[i] || {}, cd = h.cond || null, past = (b.past || []).slice(0, 3);
+      return '<div class="rw"><i class="bar" style="background:' + b.color + '"></i>' + waku(b) + '<b class="nm">' + esc(b.name) + '</b><span class="cl">' + esc(b.cls || '') + '</span><span class="ty">' + esc(TYPES[b.type] || '') + '</span><span class="cn">' + (cd ? '<b>' + esc(cd.mark) + '</b><small>' + esc(cd.label) + '</small>' : esc(b.cond || '')) + '</span><span class="ps">' + past.map((p) => '<i class="p' + (p <= 3 ? p : 'x') + '">' + p + '</i>').join('') + '</span></div>'; }).join('') + '</div>';
   }
   function popular(r) {
     const ex = r.exacta || {}, cnt = (B.count && B.count.raceId === r.id && B.count.combos) || {};
     const ks = Object.keys(ex).sort((a, b) => (cnt[b] || 0) - (cnt[a] || 0) || ex[a] - ex[b]).slice(0, 6), bs = boatsOf(r);
-    return '<div class="bo-pop"><h3>人気の組番</h3>' + ks.map((k, i) => { const p = k.split('-').map(Number); return '<div class="pr"><span class="rk">' + (i + 1) + '</span>' + waku(bs[p[0]] || { no: p[0] + 1, color: '#888', ink: '#fff' }, 'sm') + '<b>-</b>' + waku(bs[p[1]] || { no: p[1] + 1, color: '#888', ink: '#fff' }, 'sm') + '<span class="od">' + (Math.round(ex[k] * 10) / 10).toFixed(1) + '<small>倍</small></span></div>'; }).join('') + '</div>';
+    return ks.map((k, i) => { const p = k.split('-').map(Number); return '<div class="pr"><span class="rk">' + (i + 1) + '</span>' + waku(bs[p[0]] || { no: p[0] + 1, color: '#888', ink: '#fff' }, 'sm') + '<b class="ar">▶</b>' + waku(bs[p[1]] || { no: p[1] + 1, color: '#888', ink: '#fff' }, 'sm') + '<span class="od">' + (Math.round(ex[k] * 10) / 10).toFixed(1) + '<small>倍</small></span></div>'; }).join('');
   }
-  async function renderVote(r) {
-    const t = now(), first = B.voteId !== r.id;
-    if (first) {
-      B.voteId = r.id;
-      $('boVote').innerHTML = '<div class="bo-left"><h1>投票受付中</h1><p class="bo-sub">2連単・お店の中だけ（このテレビの QR から）</p><div id="boCardT"></div></div>' +
-        '<div class="bo-right"><div class="bo-qr" id="boQr"><span>QR を準備中…</span></div><p class="bo-qrc">スマホのカメラで QR を読んで投票</p>' +
-        '<ul class="bo-rule"><li><b>無料で 1 票</b>（今日の競馬に参加したスマホ）</li><li>当たりは <b>BPT</b>。競馬の追加の券に使えます</li><li>BPT 100 で券を何枚でも追加</li></ul>' +
-        '<div class="bo-cnt"><span>参加</span><b id="boPpl">0</b><small>人</small><span>券</span><b id="boTk">0</b><small>枚</small></div><div class="bo-left2"><span>締切まで</span><b id="boLeft"></b></div><div id="boPop"></div></div>';
-      qrFor(r);
+  let storeNm = '';
+  async function renderVote(r, wait) {
+    const t = now(), key = r.id + (wait ? 'w' : 'v');
+    if (B.voteId !== key) {
+      B.voteId = key; B.popKey = '';
+      $('boVote').className = 'bo-vote ' + (wait ? 'is-wait' : 'is-vote');
+      $('boCardT').innerHTML = cardTable(r, B.full[r.id]);
+      if (!B.qrFor || B.qrFor !== r.id) { B.qrFor = r.id; qrFor(r); }
     }
-    if (!$('boCardT').firstChild && B.full[r.id]) $('boCardT').innerHTML = cardTable(r, B.full[r.id]);
-    else if (!$('boCardT').firstChild) $('boCardT').innerHTML = cardTable(r, null);
-    $('boLeft').textContent = left(r.closeAt - t);
+    if (B.full[r.id] && !$('boCardT').dataset.full) { $('boCardT').innerHTML = cardTable(r, B.full[r.id]); $('boCardT').dataset.full = '1'; }
+    $('boPill').textContent = wait ? '● 次のボートレース' : '● 投票受付中'; $('boPill').classList.toggle('on', !wait);
+    $('boTime').textContent = hm(r.at) + ' 締切';
+    $('boStore').textContent = storeNm || STORE;
     const c = B.count && B.count.raceId === r.id ? B.count : null;
-    $('boPpl').textContent = c ? c.total : 0; $('boTk').textContent = c ? c.tickets : 0;
-    const pk = JSON.stringify(c && c.combos) + r.id; if (B.popKey !== pk) { B.popKey = pk; $('boPop').innerHTML = popular(r); }
+    $('boCnt').hidden = wait || !c; if (c) $('boCnt').innerHTML = '全店で <b>' + c.total + '</b> 人参加';
+    if (wait) $('boCd').innerHTML = '<div class="l"><span class="k">次のボートレース</span><b class="big">' + hm(r.at) + '</b><span class="u">締切</span></div><div class="r"><span class="k2">投票は ' + hm(r.openAt) + ' から</span><span class="k3">投票開始まで あと</span><b class="cd">' + left(r.openAt - t) + '</b></div>';
+    else $('boCd').innerHTML = '<span class="k">締切まで あと</span><b class="cd">' + left(r.closeAt - t) + '</b><span class="h">スマホで<br>1着・2着を選ぶ</span>';
+    $('boCd').classList.toggle('last', !wait && r.closeAt - t <= 30000);
+    if (!wait) { const pk = JSON.stringify(c && c.combos) + r.id; if (B.popKey !== pk) { B.popKey = pk; $('boPop').innerHTML = popular(r); } }
+    $('boQrP').querySelector('h3').innerHTML = wait ? 'アプリ不要<br>スマホで参加' : 'アプリ不要 スマホで参加';
+    $('boQrc').textContent = wait ? '投票は ' + hm(r.openAt) + ' から' : '無料で 1 票・当たりは BPT';
   }
   async function qrFor(r) {
     try {
       const k = B.key[r.id] || (B.key[r.id] = await B.C.boatKey(r.id));
       const base = (window.DerbyQR && DerbyQR.joinURL ? DerbyQR.joinURL(STORE) : location.origin + '/v2/bet.html?store=' + STORE).split('?')[0].replace(/bet\.html$/, 'boat.html');
       const url = Boat().joinURL(base, STORE, r.id, k.code); BOATTV.qr = url;
-      const svg = await DerbyQR.svg(url, { size: 300, margin: 2, ecl: 'M' }); if (B.voteId === r.id && $('boQr')) $('boQr').innerHTML = svg;
+      const svg = await DerbyQR.svg(url, { size: 300, margin: 2, ecl: 'M' }); if (B.qrFor === r.id && $('boQr')) $('boQr').innerHTML = svg;
     } catch (e) {
       BOATTV.err = 'qr ' + (e && e.message); delete B.key[r.id];
       if (e && (e.code === 'tv_only' || e.status === 403)) { if ($('boQr')) $('boQr').innerHTML = '<span>このテレビは QR を出せません<br>（テレビ用アカウントでログインしてください）</span>'; return; } // 読めないテレビは読み直さない（読み取りを増やさない）
-      setTimeout(() => { if (B.voteId === r.id) qrFor(r); }, 10000);
+      setTimeout(() => { if (B.qrFor === r.id) qrFor(r); }, 10000);
     }
+  }
+
+  /* ---------- スタート展示（投票待ち・投票中の映像の枠） ----------
+     本物の流れ（研究 28）: ピット離れ → 進入（コース取り）→ スタートラインへ（ST を計る）。展示の ST は「.09」の形（フライングは F）。
+     ここでは 1 回 約 40 秒: ピット離れ（12 秒）→ 大時計の 22 秒前から助走してスタートライン（スタートの 3 秒あとで切る）→ 展示の ST の札（8 秒）→ くり返し。
+     種は「レース id ＋ 'tenji'」（本番の種とは別。決める係の計算とつながらない）。描くのは 1 秒 20 コマまで（Fire TV を重くしない）。音は出さない */
+  const TJ_SEG = [[-100, -88], [-22, 3]], TJ_ST = 8;
+  async function tjStart(r) {
+    const f = B.full[r.id]; if (!f || !f.model) return false;
+    await needFilm();
+    if (!B.R) makeR();
+    const model = Object.assign({}, f.model), seed = Engine.hashSeed('boat-tenji', r.id), run = Engine.replayRun(model, seed);
+    let desc = {}; try { desc = BoatModel.describe(model, seed); } catch (e) { desc = {}; }
+    B.R.setRace(model, run, { title: 'casa BOAT', sub: 'スタート展示', weather: model.weather2 }, desc);
+    B.tj = { id: r.id, seg: 0, t: 0, acc: 0, desc, boats: boatsOf(r) };
+    B.R.seek(TJ_SEG[0][0]); B.film = null;
+    return true;
+  }
+  function stBoard(T) {
+    const d = T.desc || {}, entry = d.entry || [0, 1, 2, 3, 4, 5], st = d.st || [];
+    const fmt = (s) => (s == null ? '' : s < 0 ? 'F.' + String(Math.round(-s * 100)).padStart(2, '0') : '.' + String(Math.round(s * 100)).padStart(2, '0'));
+    return '<h4>スタート展示</h4><div class="sth"><span>コース</span><span>艇</span><span>ST</span></div>' + entry.map((b, c) => '<div class="str"><span class="c">' + (c + 1) + '</span>' + waku(T.boats[b] || { no: b + 1, color: '#888', ink: '#fff' }, 'sm') + '<b>' + fmt(st[b]) + '</b></div>').join('') + '<p>展示の ST は本番とちがうことがあります</p>';
+  }
+  function tjFrame(dt) {
+    const T = B.tj, R = B.R; if (!T || !R) return;
+    T.t += dt;
+    if (T.seg < TJ_SEG.length) {
+      const [a, b] = TJ_SEG[T.seg];
+      if (R.tt >= b) { T.seg++; if (T.seg < TJ_SEG.length) R.seek(TJ_SEG[T.seg][0]); else { T.stT = 0; $('boSt').innerHTML = stBoard(T); $('boSt').hidden = false; $('boTag').hidden = true; } return; }
+      T.acc += dt; if (T.acc < 1 / 20) return; // 1 秒 20 コマ
+      R.tick(T.acc); T.acc = 0; void a;
+    } else {
+      T.stT += dt;
+      if (T.stT > TJ_ST) { $('boSt').hidden = true; $('boTag').hidden = false; T.seg = 0; R.seek(TJ_SEG[0][0]); }
+    }
+  }
+  function makeR() {
+    B.R = new BOAT.Race($('boGl'), $('boHud'), { quality: /[?&]boatq=low\b/.test(QS) ? 'low' : 'high' });
+    try { BOAT.Sound.init(); } catch (e) { /* 音が無くても映像は出す */ }
+    B.R.onSay = (keys, line) => { if (B.film) { try { BOAT.Sound.say(line); } catch (e) { /* noop */ } } }; // 実況は本番の映像だけ（スタート展示は音なし）
   }
 
   /* ---------- 映像 ---------- */
@@ -95,11 +154,8 @@
     if (r.status !== 'decided' && r.status !== 'done') return false; // 決めるまで（締切の 2 秒ほどあと）は出走表のまま
     const f = await fullRace(r); if (!f || !f.hidden) return false;
     await needFilm();
-    if (!B.R) {
-      B.R = new BOAT.Race($('boGl'), $('boHud'), { quality: /[?&]boatq=low\b/.test(QS) ? 'low' : 'high' });
-      try { BOAT.Sound.init(); } catch (e) { /* 音が無くても映像は出す */ }
-      B.R.onSay = (keys, line) => { try { BOAT.Sound.say(line); } catch (e) { /* noop */ } };
-    }
+    if (!B.R) makeR();
+    B.tj = null; $('boSt').hidden = true; putCanvas('film');
     const model = Object.assign({}, f.model, { exacta: f.exacta }, f.hidden.incident ? { incident: f.hidden.incident } : {}), run = Engine.replayRun(model, f.hidden.seed, { order: f.hidden.order });
     let desc = {}; try { desc = BoatModel.describe(model, f.hidden.seed, { swaps: run.swaps }); } catch (e) { desc = {}; }
     B.R.setRace(model, run, { title: 'casa BOAT', sub: hm(r.at) + ' のレース', weather: model.weather2, odds: { exacta: f.exacta } }, desc);
@@ -148,23 +204,34 @@
     const rv = window.DERBY && DERBY.raceView; if (rv) { rv.boatHold = on; if (!on) rv.offWas = true; }
     if (!on) { try { if (window.BOAT && BOAT.Sound) BOAT.Sound.stop(); } catch (e) { /* noop */ } B.lastFrame = 0; }
   }
+  // 競馬の結果画面の最初の 2 分は守る（ボートの投票待ちの画面も出さない。2026-11-18 オーナー決定）
+  function derbyGuard(t) { const L = window.DERBY && DERBY.state && DERBY.state.last; return !!(L && L.revealAt && t < L.revealAt + 120000); }
+  function topFor(label, on, time) { $('boPill').textContent = label; $('boPill').classList.toggle('on', !!on); $('boTime').textContent = time || ''; $('boCnt').hidden = true; $('boStore').textContent = storeNm || STORE; }
+  let tjLast = 0;
+  function tjEnsure(r) {
+    const pn = performance.now(), dt = tjLast ? Math.min(0.1, (pn - tjLast) / 1000) : 0; tjLast = pn;
+    putCanvas('vid');
+    if (!B.tj || B.tj.id !== r.id) { if (!B.tjStarting && B.full[r.id]) { B.tjStarting = true; tjStart(r).catch((e) => { BOATTV.err = 'tenji ' + (e && e.message); }).finally(() => { B.tjStarting = false; }); } return; }
+    tjFrame(dt);
+  }
   async function loop() {
     try {
       const r = B.live && B.live.race, t = now(), st = r && Boat() ? Boat().stageOf(r, t) : 'none';
       BOATTV.stage = st; BOATTV.race = r ? r.id : null;
-      if (!r || st === 'none' || st === 'wait' || st === 'over' || derbyBusy()) { setActive(false); return; }
+      const waitOk = st === 'wait' && r.openAt - t <= 60000 && !derbyGuard(t); // 投票の 1 分前から「次のボートレース」（スタート展示つき）
+      if (!r || st === 'none' || st === 'over' || (st === 'wait' && !waitOk) || derbyBusy()) { setActive(false); tjLast = 0; return; }
       setActive(true);
-      $('boTitle').textContent = hm(r.at) + ' のレース' + (r.test ? '（テスト）' : '');
-      if (st === 'vote') { show('boVote'); $('boClock').textContent = '締切 ' + hm(r.closeAt); fullRace(r); await renderVote(r); return; }
-      if (st === 'void') { show('boVoid'); $('boClock').textContent = ''; return; }
+      if (st === 'wait' || st === 'vote') { show('boVote'); fullRace(r); await renderVote(r, st === 'wait'); tjEnsure(r); return; }
+      tjLast = 0;
+      if (st === 'void') { show('boVoid'); topFor('● 取り消し', false, hm(r.at)); return; }
       if (st === 'closed' || st === 'film') {
-        show('boFilm'); $('boClock').textContent = '';
+        show('boFilm'); topFor('● レース中', true, hm(r.at) + ' のレース');
         if (!B.film || B.film.id !== r.id) { if (!B.starting) { B.starting = true; startFilm(r).catch((e) => { BOATTV.err = 'film ' + (e && e.message); }).finally(() => { B.starting = false; }); } renderCard(r); $('boCard').hidden = false; return; }
         renderCard(r); filmFrame(r, t); return;
       }
       if (st === 'result') {
         if (B.film && B.film.id === r.id && B.R && (!B.R.done || r.status !== 'done') && t < r.revealAt + 20000) { show('boFilm'); filmFrame(r, t); return; } // 映像の最後（ゴール後）まで。発表（決める係が結果を書く）が届くまでは勝った艇のアップのまま
-        show('boRes'); $('boClock').textContent = 'この画面 あと ' + left(r.endAt - t); renderResult(r);
+        show('boRes'); topFor('● 確定', true, 'この画面 あと ' + left(r.endAt - t)); renderResult(r);
         const n = B.live && B.live.next; $('boNext').textContent = n ? '次のボートレース ' + hm(n.at) + '（投票は ' + hm(n.openAt) + ' から）' : '';
         try { if (B.R) BOAT.Sound.frame(B.R, { state: 'result' }); } catch (e) { /* noop */ }
         return;
@@ -179,11 +246,12 @@
     for (let i = 0; i < 600 && !(window.DERBY && DERBY.cloud); i++) await new Promise((r) => setTimeout(r, 100));
     if (!(window.DERBY && DERBY.cloud) || DERBY.watch || !STORE) return;
     B.C = DERBY.cloud;
+    if (B.C.stores) B.C.stores().then((L) => { const s = (L || []).find((x) => x.id === STORE); if (s) storeNm = s.name + '店'; }).catch(() => {});
     await needCore();
     if (!B.C.boatWatch) return; // 古い部品
     B.C.boatWatch({ boat: (live) => { B.live = live; const r = live && live.race; if (r && B.full[r.id] && r.status !== B.full[r.id].status) { B.full[r.id] = Object.assign({}, B.full[r.id], r); if (r.status === 'decided') delete B.full[r.id].hidden; } }, count: (c) => { B.count = c; }, error: () => {} });
     if (B.C.boatState) { try { const x = await B.C.boatState(); if (!B.live) B.live = x.live; } catch (e) { /* 見張りで届く */ } }
     requestAnimationFrame(raf);
   })();
-  BOATTV.debug = () => ({ stage: BOATTV.stage, race: BOATTV.race, film: B.film && { id: B.film.id, tt: B.R && B.R.tt, done: B.R && B.R.done, shot: B.R && B.R.shot }, count: B.count, err: BOATTV.err, qr: BOATTV.qr, parts: B.R && B.R.parts });
+  BOATTV.debug = () => ({ tj: B.tj && { id: B.tj.id, seg: B.tj.seg, tt: B.R && B.R.tt }, stage: BOATTV.stage, race: BOATTV.race, film: B.film && { id: B.film.id, tt: B.R && B.R.tt, done: B.R && B.R.done, shot: B.R && B.R.shot }, count: B.count, err: BOATTV.err, qr: BOATTV.qr, parts: B.R && B.R.parts });
 })();
