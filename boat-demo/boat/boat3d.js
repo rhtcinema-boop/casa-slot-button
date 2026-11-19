@@ -979,7 +979,7 @@ BOAT.Tags = (function () {
   const LEN = BOAT.Boat ? BOAT.Boat.LEN : 2.895, HW = BOAT.Boat ? BOAT.Boat.WIDTH / 2 : 0.658;
   const A = LEN / 2 + 0.75, B = HW + 0.55;            // 楕円の半分の長さ・半分の幅（m）。艇の長さ 2.9m ＋ 前後 0.75m、幅 1.3m ＋ 左右 0.55m
   const LX = 2 * A + 1.0, LZ = 2 * B + 0.5;           // 輪の板の大きさ（三角とふちの余白込み）
-  const D0 = 1.3, TILT = 55 * Math.PI / 180, MINPX = 19, MAXPX = 34, SH = 480; // 札の直径（m）・起こす角度・画面での大きさの下限と上限（480 の高さの画面で）
+  const D0 = 0.8, TILT = 55 * Math.PI / 180, MINPX = 12, MAXPX = 20, SH = 480; // 札の直径（m）・起こす角度・画面での大きさの下限と上限（480 の高さの画面で）
   const NOTO = '"Noto Sans JP","Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif';
   const hex6 = (h) => { h = String(h || '#888'); return h.length === 4 ? '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3] : h; };
   const lumOf = (h) => { const n = parseInt(hex6(h).slice(1), 16); return ((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11; };
@@ -987,12 +987,12 @@ BOAT.Tags = (function () {
   function drawRing(g, i, h) {
     const x0 = (i % 2) * 512, y0 = Math.floor(i / 2) * 256, cx = x0 + 256, cy = y0 + 128, rx = A * 512 / LX, rz = B * 256 / LZ;
     g.save(); g.beginPath(); g.rect(x0, y0, 512, 256); g.clip(); g.clearRect(x0, y0, 512, 256);
-    const col = h.color || '#f4f4f4', lum = lumOf(col), lw = 11;
-    g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = lw + 6; g.stroke();   // 外の白いふち（暗い水面で黒の 2 号艇も見える）
+    const col = h.color || '#f4f4f4', lum = lumOf(col), lw = 6;   // 2026-11-19: 細く・薄く（艇がいちばん目立つように。前は 11）
+    g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = lw + 4; g.stroke();   // 外の白いふち（暗い水面で黒の 2 号艇も見える）
     g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = lum > 230 ? '#e9e9e9' : col; g.lineWidth = lw; g.stroke();
     if (lum > 230) { g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = 2; g.stroke(); }
     // 舳先の向き（右＝艇の前）に三角
-    g.beginPath(); g.moveTo(cx + rx + 34, cy); g.lineTo(cx + rx + 6, cy - 17); g.lineTo(cx + rx + 6, cy + 17); g.closePath();
+    g.beginPath(); g.moveTo(cx + rx + 24, cy); g.lineTo(cx + rx + 4, cy - 11); g.lineTo(cx + rx + 4, cy + 11); g.closePath();
     g.fillStyle = lum > 230 ? '#ffffff' : col; g.fill(); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3; g.stroke();
     g.restore();
   }
@@ -1073,48 +1073,62 @@ BOAT.Tags = (function () {
         const cs = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]];
         cs.forEach((p, k) => { const o = (i * 4 + k) * 3; rp[o] = P.x + P.fx * p[0] + sx * p[1]; rp[o + 1] = 0.05; rp[o + 2] = P.z + P.fz * p[0] + sz * p[1]; });
         Q.ra += ((P.on ? 1 : 0) - Q.ra) * (dt <= 0 ? 1 : Math.min(1, Math.max(rdt, dt) / 0.2));
-        for (let k = 0; k < 4; k++) rc[(i * 4 + k) * 4 + 3] = Q.ra * gk;
+        for (let k = 0; k < 4; k++) rc[(i * 4 + k) * 4 + 3] = Q.ra * gk * 0.7; // 輪は 7 割の濃さ
       }
       rGeo.attributes.position.needsUpdate = true; rGeo.attributes.color.needsUpdate = true;
-      // ---- 札: 場所・画面での大きさ・重なり ----
+      // ---- 札: 1 艇 1 枚。艇の形（船体・選手）と画面で重ならない所に置く ----
+      /* 2026-11-19 オーナー「ちょっと数字でかくて船見えてなくない？」: 札を小さく（1.3m → 0.8m・画面で 12〜20 画素）、輪の外（艇の長さより外）に 1 枚だけ。
+         置き場所の候補は 後ろ（引き波の側）→ カメラ側の横 → 前。今の場所が艇に重ならないうちは動かさない（ちらつかない）。重なったら薄くしてから次の候補へ移す。
+         どの候補も重なる（真正面・真後ろの大写しなど）ときは出さない */
       const fovK = (SH / 2) / Math.tan(camera.fov * Math.PI / 360);
       const proj = (x, y, z) => { _v.set(x, y, z).applyMatrix4(camera.matrixWorldInverse); const depth = -_v.z; if (depth <= 0.3) return null; _v.applyMatrix4(camera.projectionMatrix); return { x: _v.x * W / 2, y: _v.y * SH / 2, depth }; };
+      const segD = (px, py, a, b) => { const vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy || 1, t = clamp(((px - a.x) * vx + (py - a.y) * vy) / l2, 0, 1); return Math.hypot(px - a.x - vx * t, py - a.y - vy * t); };
       list.length = 0;
+      const CEN = F.map((P) => (P.on ? proj(P.x, 0.4, P.z) : null)); // 各艇の真ん中（画面）。札がよその艇の方に近いと、どの艇の札か分からない
       for (let i = 0; i < n; i++) {
-        const P = F[i], Q = R[i]; Q.e = [null, null];
-        if (!P.on) { Q.want[0] = Q.want[1] = 0; continue; }
-        for (let k = 0; k < 2; k++) {
-          const sg = k === 0 ? 1 : -1, lx = sg * (A * Q.qx + 0.12), px = P.x + P.fx * lx, pz = P.z + P.fz * lx;
-          let ex = _c.x - px, ez = _c.z - pz; const el = Math.hypot(ex, ez) || 1; ex /= el; ez /= el;   // 札からカメラへの水平の向き
-          const pc = proj(px, 0.5, pz); if (!pc) { Q.want[k] = 0; continue; }
-          const ppm = fovK / pc.depth, D = clamp(D0, MINPX / ppm, MAXPX / ppm);
-          const e = { i, k, px, pz, ex, ez, D, x: pc.x, y: pc.y + (D / 2 * Math.sin(TILT) - 0.5) * ppm, r: D * 0.45 * ppm, depth: pc.depth, own: false };
-          // 自分の艇（舳先・真ん中・選手）に画面で重なるか
-          for (const lp of [[1.0, 0.35], [0, 0.45], [-0.35, 0.95], [-1.15, 0.5]]) { const q = proj(P.x + P.fx * lp[0], lp[1], P.z + P.fz * lp[0]); if (q && Math.hypot(q.x - e.x, q.y - e.y) < e.r * 1.05) e.own = true; }
-          Q.e[k] = e;
+        const P = F[i], Q = R[i]; Q.e = [null, null]; Q.want[1] = 0;
+        if (!P.on) { Q.want[0] = 0; continue; }
+        // 艇の形を画面に: 舳先〜艇尾の線（船体）と選手。艇の幅ぶんの太さで見る
+        const pb = proj(P.x + P.fx * 1.45, 0.35, P.z + P.fz * 1.45), ps = proj(P.x - P.fx * 1.45, 0.35, P.z - P.fz * 1.45), pr = proj(P.x - P.fx * 0.35, 1.0, P.z - P.fz * 0.35), pc = proj(P.x, 0.4, P.z);
+        if (!pb || !ps || !pc) { Q.want[0] = 0; continue; }
+        const ppm0 = fovK / pc.depth, th = 0.4 * ppm0, pl = proj(P.x + P.fz * HW, 0.35, P.z - P.fx * HW), pq = proj(P.x - P.fz * HW, 0.35, P.z + P.fx * HW); // 船体の線の太さ（高さ 0.4m ぶん）と、左右の舷
+        let ex = _c.x - P.x, ez = _c.z - P.z; const el = Math.hypot(ex, ez) || 1; ex /= el; ez /= el;
+        const side = (-P.fz * ex + P.fx * ez) >= 0 ? 1 : -1;   // カメラのいる側（艇の右 ＝ +1）
+        const cand = (c) => {
+          const D = clamp(D0, MINPX / ppm0, MAXPX / ppm0), off = D / 2 + 0.35;
+          let lx, lz; if (c === 0) { lx = -(A * Q.qx + off); lz = 0; } else if (c === 1) { lx = -0.2; lz = side * (B * Q.qz + off); } else { lx = A * Q.qx + off; lz = 0; }
+          const px = P.x + P.fx * lx - P.fz * lz, pz = P.z + P.fz * lx + P.fx * lz, q = proj(px, D / 2 * Math.sin(TILT), pz); if (!q) return null;
+          const ppm = fovK / q.depth, Dd = clamp(D0, MINPX / ppm, MAXPX / ppm), r = Dd * 0.5 * ppm;
+          const dOwn = Math.hypot(q.x - pc.x, q.y - pc.y), near = CEN.some((o, j) => j !== i && o && Math.hypot(q.x - o.x, q.y - o.y) < dOwn);
+          const hit = near || segD(q.x, q.y, pb, ps) < r + th || (pl && pq && segD(q.x, q.y, pl, pq) < r + th) || (pr && Math.hypot(q.x - pr.x, q.y - pr.y) < r + 0.5 * ppm0);
+          return { i, k: 0, px, pz, ex: (_c.x - px) / (Math.hypot(_c.x - px, _c.z - pz) || 1), ez: (_c.z - pz) / (Math.hypot(_c.x - px, _c.z - pz) || 1), D: Dd, x: q.x, y: q.y, r: r * 0.9, depth: q.depth, hit };
+        };
+        if (Q.slot == null) Q.slot = 0;
+        let cur = cand(Q.slot);
+        if (!cur || cur.hit) {
+          let best = -1; for (const c of [0, 1, 2]) { if (c === Q.slot) continue; const e = cand(c); if (e && !e.hit) { best = c; break; } }
+          if (best >= 0 && (Q.ba[0] < 0.05 || dt <= 0)) { Q.slot = best; cur = cand(best); }   // 薄くなってから移す（シークではすぐ）
+          else if (best >= 0) { Q.want[0] = 0; Q.e[0] = cur; continue; }                      // まず今の場所で薄くする
         }
-        const a = Q.e[0], b = Q.e[1];
-        { const tx = _c.x - P.x, tz = _c.z - P.z, tl = Math.hypot(tx, tz) || 1; if (a && b && Math.abs((tx * P.fx + tz * P.fz) / tl) > 0.75) { a.own = b.own = true; } } // 真正面・真後ろから見ている: 奥の札は艇に隠れる
-        if (a && b && a.own && !b.own) a.hide = true; else if (a && b && b.own && !a.own) b.hide = true; else if (a && b && a.own && b.own) (a.depth > b.depth ? a : b).hide = true; // 両方とも重なる（真正面・真後ろ）: 奥の札（艇に隠れる方）を消す
-        [a, b].forEach((e) => { if (!e) return; if (e.hide) Q.want[e.k] = 0; else list.push(e); });
+        if (!cur || cur.hit) { Q.want[0] = 0; if (cur) Q.e[0] = cur; continue; }
+        Q.e[0] = cur; list.push(cur);
       }
-      // 画面で重なる札: まず 1 艇 1 枚（いちばん手前の札）を手前から、そのあと 2 枚目
-      const first = {}; list.forEach((e) => { if (!first[e.i] || e.depth < first[e.i].depth) first[e.i] = e; });
-      list.sort((p, q) => ((first[p.i] === p ? 0 : 1) - (first[q.i] === q ? 0 : 1)) || p.depth - q.depth);
+      // 画面で重なる札（よその艇の札どうし）: 手前を残して奥を薄く
+      list.sort((p, q) => p.depth - q.depth);
       for (let m = 0; m < list.length; m++) {
         const e = list[m]; let hit = false;
         for (let q = 0; q < m && !hit; q++) { const f = list[q]; if (f.keep && Math.hypot(e.x - f.x, e.y - f.y) < 0.95 * (e.r + f.r)) hit = true; }
-        e.keep = !hit; R[e.i].want[e.k] = hit ? 0 : 1;
+        e.keep = !hit; R[e.i].want[0] = hit ? 0 : 1;
       }
       // 札の頂点（カメラの方を向いて、上の縁がカメラの奥へ倒れた板。下の縁が水面）
       const bp = bGeo.attributes.position.array, bc = bGeo.attributes.color.array, ct = Math.cos(TILT), st = Math.sin(TILT);
       for (let i = 0; i < n; i++) for (let k = 0; k < 2; k++) {
         const Q = R[i], e = Q.e && Q.e[k], s = i * 2 + k;
-        Q.ba[k] += (Q.want[k] - Q.ba[k]) * (dt <= 0 && rdt >= 1 ? 1 : kf);
+        Q.ba[k] += (Q.want[k] - Q.ba[k]) * (dt <= 0 && rdt >= 1 ? 1 : Math.min(1, Math.max(rdt, dt) / 0.15));
         const al = Q.ba[k] * gk;
         for (let c = 0; c < 4; c++) bc[(s * 4 + c) * 4 + 3] = al > 0.02 ? al : 0;
         if (!e) continue;
-        const D = e.D, rx = e.ez, rz = -e.ex, ux = -e.ex * ct, uy = st, uz = -e.ez * ct, y0 = 0.05;  // 右（画面の右）と、起こした板の上の向き
+        const D = e.D, rx = e.ez, rz = -e.ex, ux = -e.ex * ct, uy = st, uz = -e.ez * ct, y0 = 0.05;
         const L = [e.px - rx * D / 2, y0, e.pz - rz * D / 2], Rr = [e.px + rx * D / 2, y0, e.pz + rz * D / 2];
         const pts = [L, Rr, [Rr[0] + ux * D, y0 + uy * D, Rr[2] + uz * D], [L[0] + ux * D, y0 + uy * D, L[2] + uz * D]];
         pts.forEach((p, c) => { const o = (s * 4 + c) * 3; bp[o] = p[0]; bp[o + 1] = p[1]; bp[o + 2] = p[2]; });
@@ -1124,7 +1138,7 @@ BOAT.Tags = (function () {
     }
     function setVisible(on) { vis = !!on; rings.visible = badges.visible = vis; }
     function dispose() { if (dead) return; dead = true; scene.remove(rings); scene.remove(badges); rGeo.dispose(); bGeo.dispose(); rMat.dispose(); bMat.dispose(); tex.dispose(); }
-    function debug() { return R.map((Q, i) => ({ no: H[i].no, qx: +Q.qx.toFixed(2), qz: +Q.qz.toFixed(2), ring: +Q.ra.toFixed(2), badge: Q.ba.map((v) => +v.toFixed(2)), px: Q.e ? Q.e.map((e) => (e ? Math.round(e.r * 2) : 0)) : [] })); }
+    function debug() { return R.map((Q, i) => ({ no: H[i].no, qx: +Q.qx.toFixed(2), qz: +Q.qz.toFixed(2), ring: +Q.ra.toFixed(2), badge: Q.ba.map((v) => +v.toFixed(2)), px: Q.e ? Q.e.map((e) => (e ? Math.round(e.r * 2) : 0)) : [], slot: Q.slot, hit: Q.e && Q.e[0] ? !!Q.e[0].hit : null, want: Q.want[0] })); }
     return { update, setVisible, dispose, debug, rings, badges, get visible() { return vis; } };
   }
   return { create, A, B };
