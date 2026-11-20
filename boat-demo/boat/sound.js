@@ -22,7 +22,7 @@ BOAT.Sound = (function () {
   let ctx = null, master = null, voiceBus = null, engBus = null, duckG = null, fxBus = null, crowdBus = null;
   let vbuf = null, vidx = null, voff = 0, names = [], warned = {};
   let eng = [], water = null, spray = null, slap = null, crowd = null, clap = null;
-  let R = null, raceRef = null, lastTT = null, flags = {}, voiceUntil = 0, vsrc = [], lastFrame = 0, cardPrev = 0;
+  let R = null, raceRef = null, lastTT = null, flags = {}, voiceUntil = 0, vsrc = [], lastFrame = 0, cardPrev = 0, gen = 0, stopped = false;
 
   function init() {
     if (MUTE || ctx) return;
@@ -98,6 +98,7 @@ BOAT.Sound = (function () {
   function frame(race, st) {
     if (!ctx) return;
     lastFrame = performance.now(); R = race; st = st || {};
+    if (stopped) { stopped = false; if (crowd) crowdTo(1, 0.3); } // stop で消した歓声を戻す
     const now = ctx.currentTime, tt = race.tt, V = race.vis || [], cam = race.camera, PIT_T = BOAT.Race.PIT_T;
     if (race.race !== raceRef) { raceRef = race.race; flags = {}; lastTT = null; stopVoice(); if (crowd) crowdTo(1, 0.3); eng.forEach((e) => { e.f = 118 * (1 + e.pit); e.on = false; }); }
     const card = st.state === 'card';
@@ -109,12 +110,12 @@ BOAT.Sound = (function () {
       cardPrev = st.cardT || 0;
     } else cardPrev = 0;
     // ファンファーレ（ピットアウトと同時。桐生・大村・丸亀の形）。途中から始めた（seek）ときは鳴らさない
-    if (!card && !flags.fan && lastTT != null && !jumped && lastTT <= PIT_T + 0.3 && tt >= PIT_T) { flags.fan = 1; BOAT.Fanfare.play(ctx, fxBus, now - (tt - PIT_T), FAN, LVL.fan); if (crowd) { crowdTo(2.2, 0.4); setTimeout(() => crowdTo(1, 2), 9000); } }
+    if (!card && !flags.fan && lastTT != null && !jumped && lastTT <= PIT_T + 0.3 && tt >= PIT_T) { flags.fan = 1; BOAT.Fanfare.play(ctx, fxBus, now - (tt - PIT_T), FAN, LVL.fan); if (crowd) { crowdTo(2.2, 0.4); later(() => crowdTo(1, 2), 9000); } }
     if (!card && lastTT != null && !jumped && crowd) { // ビッグレースの歓声
       const G = race.G || 999, cross = (x) => lastTT < x && tt >= x;
-      if (cross(0)) { crowdTo(2.4, 0.3); setTimeout(() => crowdTo(1.2, 3), 4000); }
+      if (cross(0)) { crowdTo(2.4, 0.3); later(() => crowdTo(1.2, 3), 4000); }
       if (cross(G - 2.5)) crowdTo(3, 0.5);
-      if (cross(G + 1.5)) { clap.gain.setTargetAtTime(0.09, now, 0.4); crowdTo(1.6, 2); setTimeout(() => clap && clap.gain.setTargetAtTime(0, ctx.currentTime, 1.5), 6500); }
+      if (cross(G + 1.5)) { clap.gain.setTargetAtTime(0.09, now, 0.4); crowdTo(1.6, 2); later(() => clap && clap.gain.setTargetAtTime(0, ctx.currentTime, 1.5), 6500); }
       if (cross(G + 5.3)) BOAT.Fanfare.play(ctx, fxBus, now + 0.05, 'W', LVL.fan * 0.8);
     }
     lastTT = tt;
@@ -179,6 +180,17 @@ BOAT.Sound = (function () {
   }
   // 古い呼び方（keys, race）も受ける
   function sayCompat(a, b) { if (a && a.s) return say(a); if (b && b.s) return say(b); }
-  function stop() { stopVoice(); if (engBus) engBus.gain.setTargetAtTime(0, ctx.currentTime, 0.2); }
-  return { init, say: sayCompat, frame, stop, update() { }, get on() { return !!ctx && ctx.state === 'running'; }, get ready() { return !!vbuf; }, get voff() { return voff; }, MUTE, BIG, FAN, LVL };
+  /* 音を全部止める（2026-11-20 直し）: 前は声とエンジンだけで、ファンファーレ・ブザー・チャイム・歓声・拍手は鳴り続けた（映像の途中の取り消し・競馬に戻る時に残る）。
+     ファンファーレなどは「これから鳴る音」まで先に予約してあるので、それらがつながっている出口（fxBus）ごと 0.1 秒で絞って外し、次の音のために新しい出口を作る。
+     歓声・拍手は音量を 0 に（あとで音量を戻す予約は gen で無効にする）。次に frame が呼ばれたら、歓声は元の大きさへ戻る。ふだんのレース（stop を呼ばない間）の鳴り方は変わらない */
+  function stop() {
+    stopVoice(); if (!ctx) return;
+    const t = ctx.currentTime; gen++; stopped = true;
+    if (engBus) engBus.gain.setTargetAtTime(0, t, 0.2);
+    if (fxBus) { const old = fxBus; try { old.gain.cancelScheduledValues(t); old.gain.setTargetAtTime(0, t, 0.03); } catch (e) { } setTimeout(() => { try { old.disconnect(); } catch (e) { } }, 300); fxBus = ctx.createGain(); fxBus.gain.value = 1; fxBus.connect(master); }
+    if (crowdBus) crowdBus.gain.setTargetAtTime(0, t, 0.1);
+    if (clap) clap.gain.setTargetAtTime(0, t, 0.1);
+  }
+  const later = (fn, ms) => { const g0 = gen; setTimeout(() => { if (g0 === gen) fn(); }, ms); }; // stop のあとは実行しない予約
+  return { init, say: sayCompat, frame, stop, get _fx() { return fxBus; }, get _crowd() { return crowdBus; }, get _clap() { return clap; }, update() { }, get on() { return !!ctx && ctx.state === 'running'; }, get ready() { return !!vbuf; }, get voff() { return voff; }, MUTE, BIG, FAN, LVL };
 })();

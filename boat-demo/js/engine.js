@@ -340,12 +340,14 @@
      いちばん近い時刻の選び方: スタート 5 秒後〜（吸収を終えてゴールの 0.3 秒前まで）の中で「近さ（m）＋ゴールまでの秒数 × 0.05」が最小。
      決めた着順にならなかったとき（まれ）は以前の入れ替え。返り値 { P: 馬ごとの位置, V: 馬ごとの速さ, finish, swaps: [{ a, b, t, gapM, blend }] } または null */
   const BLEND_MIN = 1.5; // 入れ替えのつなぎの最短の秒数
-  function forceOrder(rec, order, dist) {
+  /* swapFrom（秒。省くと 5 ＝ 今までと同じ）: これより前では入れ替えない。競艇だけが使う（boat/race-boat.js の Race.planJob: 1 周 1 マークより前に入れ替えると
+     艇の進路が作れないレースがあるので、マークを回り終えてから入れ替える走りに作り直す。2026-11-20）。競馬は渡さないので今までとまったく同じ */
+  function forceOrder(rec, order, dist, swapFrom) {
     const n = rec.n, K = rec.frames.length, dt = FIXED_DT, P = [], V = [], fin = rec.finish.slice(), swaps = [];
     for (let i = 0; i < n; i++) { P.push(new Float64Array(K)); V.push(new Float64Array(K)); for (let k = 0; k < K; k++) { P[i][k] = rec.frames[k][i]; V[i][k] = rec.speeds[k][i]; } }
     const cur = rec.order.slice();
     function tailSwap(a, b) { // a（後ろ）を b（前）より先にゴールさせる
-      const first = Math.min(fin[a], fin[b]), kEnd = Math.min(K - 1, Math.floor((first - 0.4) / dt)), kStart = Math.floor(5 / dt);
+      const first = Math.min(fin[a], fin[b]), kEnd = Math.min(K - 1, Math.floor((first - 0.4) / dt)), kStart = Math.floor((swapFrom > 5 ? swapFrom : 5) / dt);
       let best = -1, bestCost = Infinity, bestW = 0;
       for (let k = kStart; k <= kEnd; k++) {
         const gapM = Math.abs(P[b][k] - P[a][k]) * dist, W = Math.max(BLEND_MIN, gapM / 1.2);
@@ -381,7 +383,7 @@
     let natural = true, forced = null;
     if (opt.order && opt.order.length === n && opt.order.some((h, k) => h !== rec.order[k])) {
       natural = false;
-      forced = opt.legacy ? null : forceOrder(rec, opt.order, race.dist || 1000);
+      forced = opt.legacy ? null : forceOrder(rec, opt.order, race.dist || 1000, opt.swapFrom);
       if (!forced) opt.order.forEach((h, k) => { map[h] = rec.order[k]; }); // 以前の入れ替え（最初から全部）
     }
     const finishT = forced ? forced.finish.slice() : map.map((src) => rec.finish[src]), last = rec.frames.length - 1;

@@ -11,10 +11,25 @@ BOAT.Race = (function () {
   const T = window.THREE, C = BOAT.Course, M = window.BoatModel;
   const W = 1000, H = 480;
   const PRE_T = 100, POST_T = 8;
+  const F_ANNOUNCE = 16.5; // フライングの発表の時刻（字幕・実況の「お知らせいたします」と同じ）。ここまでは、フライングの艇も順位・札にふつうに出す
+  const STEP_MAX = 0.1;    // 艇・カメラ・航跡を 1 回に進める長さの上限（秒）。これより長く進める時は細かく分ける
+  const SOFT_SEEK = 2.0;   // 映像を流している途中の「少しだけ先へ」の飛ばし（この秒数まで）は、カメラも航跡も切らずにつなぐ
   const PIP_Y = 0.12; // 小窓の上の端（画面の高さの割合）。右上の TIME の札の下に置く（2026-11-19 画面の表示を競馬にそろえた。前は 5.2%） // レース前は本物どおり全部（待機行動 約 100 秒。オーナー 2026-11-17）
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v)), lerp = (a, b, k) => a + (b - a) * k;
   const sm = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
   const FONT = '"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif';
+  /* 画面の上での進み（スタート線からの道のり m）。順位の表示（左上の 1〜3 位・下の順位の丸・オッズの札）の並びに使う（2026-11-20 直し・不具合 E4）。
+     直線: 艇が見えている場所の x の前後そのまま（＝ 画面で前にいる艇が、表示でも前）。
+     マークを回っている間（マークの列の外側）: 走りの計算の進み sig のまま（回っている最中は、内の艇と外の艇の前後が目では決まらないので、計算の順で落ち着かせる）。
+     その間（マークの手前 20m）はなめらかに混ぜる。30 レースで測った: 前の「計算の順だけ」は、直線で画面と 1.5m より大きく食い違う時間が 1 レース 2.1 秒（最大 9m）→ これは 0 秒（最大 1.5m）。
+     x の進みは boat/course.js の pointAt の逆（何周目かは sig にいちばん近いもの） */
+  const DIST_M = (M && M.DIST) || C.DIST, VIS_X0 = C.MARK1.x - 20, VIS_X1 = C.MARK1.x;
+  function visM(x, z, sig) {
+    const ax = Math.abs(x); if (ax >= VIS_X1) return sig;
+    const s = z >= 0 ? x - C.MARK2.x : C.LS + C.TURN_LEN + (C.MARK1.x - x), v0 = s - C.FINISH_S, v = v0 + C.L * Math.round((sig - v0) / C.L);
+    return ax <= VIS_X0 ? v : sig + (1 - sm((ax - VIS_X0) / (VIS_X1 - VIS_X0))) * (v - sig);
+  }
+  const ORD_H = 1.0, ORD_H_GOAL = 0.25, ORD_GOAL_M = 80; // 表示の順を入れ替えるのは、後ろの艇が ORD_H m より前に出た時（並んだ艇がちらちら入れ替わらない）。ゴールの手前 80m からは 0.25m
   // カメラの位置（04 ⑦ 7-2。K1 ＝スタート線の上のスタンドの屋根、K2 ＝ 1 マーク寄りの高所、K3 ＝ 2 マーク寄りの高所、K4 ＝バックの横）
   const KZ = (x) => C.shoreZ(x) + 2.5; // 屋根の前の端は水ぎわの 4m 奥（会場の部品）。その 1.5m 前に置く＝屋根が映らない（オーナー 2026-11-17「建物の屋根が映らないようにして」）
   const K1 = [-5, 26, KZ(-5)], K2 = [110, 26, KZ(110)], K3 = [-110, 26, KZ(-110)], K4 = [0, 10, 62];
@@ -70,42 +85,140 @@ BOAT.Race = (function () {
       [150, 130, 100, 80, 45].forEach((d) => { line(-d, 0xdff4ff, 0.3, 0.6); label(d + 'm', -d - 5, z1 - 9, 20, 5, 'rgba(255,255,255,.8)'); });
       label('START', 15, zm, 34, 8.5, 'rgba(214,178,52,.7)', true);
     }
-    /* race: BoatModel.makeRace、run: Engine.replayRun、desc: BoatModel.describe(race, 種, { swaps: run.swaps })、info: { title, sub, hour, odds } */
+    /* race: BoatModel.makeRace、run: Engine.replayRun、desc: BoatModel.describe(race, 種, { swaps: run.swaps })、info: { title, sub, hour, odds }
+       ここで全部を一度に準備する（進路の計算のあいだ画面は止まる。Mac で 0.3〜3 秒）。テレビは下の setRaceAsync を使う。
+       着順を指定した再現で進路の計画が不合格だった時は、入れ替え方を変えた走りに取りかえる（Race.planJob）。使った走りと中身は this.run・this.desc に入る */
     setRace(race, run, info, desc) {
-      this.race = race; this.run = run; this.info = info || {}; this.desc = desc || {};
-      this.boats.forEach((b) => { this.scene.remove(b.object3d); try { b.dispose(); } catch (e) { } });
-      this.boats = race.horses.map((h) => { let b = null; try { if (BOAT.Boat) { b = BOAT.Boat.create(h, { quality: this.quality }); this.parts.Boat = 'real'; } } catch (e) { console.warn('BOAT.Boat', e); } if (!b || !b.object3d) { b = Stub.boat(h); this.parts.Boat = this.parts.Boat || 'stub'; } this.scene.add(b.object3d); return b; });
-      const n = this.n = race.horses.length;
+      this.prepJob = null; // 準備中の setRaceAsync があれば、その結果は捨てる（あとから頼まれた方を使う）
+      let P = null;
+      try { const g = Race.planJob(race, run, desc || {}); let r = g.next(); while (!r.done) r = g.next(); P = r.value; } catch (e) { console.warn('BOAT.Lines', e); }
+      this.dropBoats();
+      const boats = race.horses.map((h) => this.makeBoat(h));
+      this.applyRace(race, P ? P.run : run, info, P ? P.desc : desc, P ? P.plan : null, boats, null);
+    }
+    /* 画面を止めずに準備する（2026-11-20。不具合 E の疑い・D7）。進路の計算・艇の絵づくりを少しずつ進め、全部そろってから一度に入れ替える。
+       それまでは前のレース（スタート展示など）がそのまま動く（tick・seek を呼び続けてよい）。返り値は Promise（入れ替えたら true。あとから別の setRace / setRaceAsync が来て捨てられたら false）。
+       opt.budgetMs: 1 回に使う計算の時間（既定 4。遅いテレビは同じ仕事に 5 倍かかるので、1 区切りを小さくしてある）、opt.gapMs: 区切りの間に空ける時間（既定 0 ＝ 次の順番まで）、opt.onProgress(0〜1)、
+       opt.deadlineMs: これを過ぎたら、進路の「急な動きを減らす作り直し」を切り上げる（重なりの無い計画ができていれば、それで始める。省くと最後まで探す）。
+       終わったあと this.prepStat ＝ { ms: かかった時間, maxMs: いちばん長かった 1 回, alt: 使った入れ替え方 }、this.run・this.desc ＝ 実際に使った走りと中身（入れ替え方を変えた時は、もらった物と違う） */
+    setRaceAsync(race, run, info, desc, opt) {
+      opt = opt || {};
+      const job = this.prepJob = { t0: performance.now() }, alive = () => this.prepJob === job;
+      const budget = opt.budgetMs != null ? opt.budgetMs : 4, gap = opt.gapMs || 0, self = this;
+      // 少しずつ進める仕事の並び（1 つ 1 つは短い）: 進路の計算 → 艇の絵を 1 艇ずつ → 札 → 絵を先に 1 回描いておく（見えない大きさで。最初の 1 コマで止まらないように）
+      function* work() {
+        let P = null;
+        try { P = yield* Race.planJob(race, run, desc || {}, opt.deadlineMs > 0 ? () => performance.now() - job.t0 > opt.deadlineMs : null); } catch (e) { console.warn('BOAT.Lines', e); }
+        yield 0.7;
+        for (const h of race.horses) { made.boats.push(self.makeBoat(h)); yield 'wait:boat'; }
+        try { if (BOAT.Tags) made.tags = BOAT.Tags.create(self.scene, race.horses); } catch (e) { console.warn('BOAT.Tags', e); made.tags = null; }
+        if (made.tags) { try { made.tags.setVisible(false); } catch (e) { } } // 入れ替えるまでは出さない
+        yield 'wait:tags';
+        yield* self.warmGen(made.boats, made.tags);
+        yield 0.95;
+        return P;
+      }
+      const made = { boats: [], tags: null }; // 作った絵（途中で捨てられた時はここから片付ける）
+      const stat = this.prepStat = { maxMs: 0, maxAt: '', slices: 0, ms: 0, alt: 0 };
+      const drop = () => { made.boats.forEach((b) => { try { this.scene.remove(b.object3d); b.dispose(); } catch (e) { } }); try { if (made.tags) made.tags.dispose(); } catch (e) { } made.boats = []; made.tags = null; };
+      return new Promise((resolve, reject) => {
+        const g = work();
+        const step = () => {
+          if (!alive()) { try { g.return(); } catch (e) { } drop(); resolve(false); return; }
+          try {
+            const t0 = performance.now(); let lab = '';
+            const note = (what) => { const ms = performance.now() - t0; if (ms > stat.maxMs) { stat.maxMs = ms; stat.maxAt = what; } stat.slices++; }; // いちばん長かった 1 回（計る用。this.prepStat）
+            for (;;) {
+              const r = g.next();
+              if (r.done) {
+                const P = r.value; this.prepJob = null; this.prepMs = performance.now() - job.t0;
+                this.applyRace(race, P ? P.run : run, info, P ? P.desc : desc, P ? P.plan : null, made.boats, made.tags);
+                note('apply'); stat.ms = this.prepMs; stat.alt = P ? P.alt || 0 : -1;
+                if (opt.onProgress) opt.onProgress(1); resolve(true); return;
+              }
+              if (typeof r.value === 'number' && opt.onProgress) opt.onProgress(r.value);
+              lab = typeof r.value === 'string' ? r.value : lab;
+              if ((typeof r.value === 'string' && r.value.slice(0, 4) === 'wait') || performance.now() - t0 >= budget) break; // 'wait…' ＝ 重い 1 つのあとは必ず次の順番へ回す
+            }
+            note(lab); setTimeout(step, gap || (performance.now() - t0 > 10 ? 10 : 0)); // 遅い機械（1 回が 10ms を超える）では、次の 1 回の前に 10ms あけて、間に画面を 1 コマ描かせる
+          } catch (e) { if (alive()) this.prepJob = null; drop(); reject(e); }
+        };
+        setTimeout(step, 0);
+      });
+    }
+    get preparing() { return !!this.prepJob; }
+    /* 艇の絵を 1 艇作る（部品が壊れていても止まらないよう、だめなら代わりの箱）。まだ水面には置かない */
+    makeBoat(h) { let b = null; try { if (BOAT.Boat) { b = BOAT.Boat.create(h, { quality: this.quality }); this.parts.Boat = 'real'; } } catch (e) { console.warn('BOAT.Boat', e); } if (!b || !b.object3d) { b = Stub.boat(h); this.parts.Boat = this.parts.Boat || 'stub'; } return b; }
+    dropBoats() { this.boats.forEach((b) => { this.scene.remove(b.object3d); try { b.dispose(); } catch (e) { } }); this.boats = []; }
+    /* 新しい絵（艇・札）を、入れ替える前に 1 回ずつ描いておく: 絵の具（1024×1024 の絵）と形を、見えない大きさ・画面の隅の 2×2 の点の中だけで描いて、先に映像の機械へ送っておく。
+       入れ替えた最初の 1 コマで 6 艇ぶんをまとめて送ると、遅いテレビで 0.1 秒を超えて止まるため。1 つ送るごとに次の順番へ回す。うまくいかなくても走りは止めない（最初の 1 コマが重くなるだけ） */
+    *warmGen(boats, tags) {
+      const r = this.renderer, cam = this.camera, sc = this.scene;
+      const texOf = (root) => { const L = []; root.traverse((m) => { const ms = m.material ? (Array.isArray(m.material) ? m.material : [m.material]) : []; ms.forEach((mt) => ['map', 'specularMap', 'bumpMap', 'alphaMap'].forEach((k) => { if (mt[k] && mt[k].isTexture && L.indexOf(mt[k]) < 0) L.push(mt[k]); })); }); return L; };
+      const seen = [];
+      const roots = boats.map((b) => b.object3d).concat(tags ? [tags.rings, tags.badges].filter(Boolean) : []);
+      try { if (r.initTexture) for (const o of roots) for (const tx of texOf(o)) { if (seen.indexOf(tx) >= 0) continue; seen.push(tx); r.initTexture(tx); yield 'wait:tex'; } } catch (e) { console.warn('warm tex', e); }
+      const dir = new T.Vector3(), size = r.getSize(new T.Vector2());
+      for (const b of boats) {
+        const o = b.object3d;
+        try {
+          cam.getWorldDirection(dir); o.position.copy(cam.position).addScaledVector(dir, 30); o.scale.setScalar(1e-4); sc.add(o);
+          r.setScissorTest(true); r.setScissor(0, 0, 2, 2); r.setViewport(0, 0, size.x, size.y); r.render(sc, cam);
+        } catch (e) { console.warn('warm boat', e); }
+        try { r.setScissorTest(false); sc.remove(o); o.scale.setScalar(1); o.position.set(0, 0, 0); } catch (e) { }
+        yield 'wait:warm';
+      }
+    }
+    /* レースの中身（絵を除く）を入れる: 走り・進路・着順・外れる艇の時刻。絵の部品を使わないので、試験（tests/boat-film.test.js）は node からここだけ呼ぶ */
+    adopt(race, run, info, desc, plan) {
+      this.race = race; this.run = run; this.info = info || {}; this.desc = desc || {}; this.parts = this.parts || {};
+      this.n = race.horses.length;
       this.entry = Array.isArray(this.desc.entry) ? this.desc.entry : Array.isArray(race.entry) ? race.entry : race.horses.map((_, i) => i);
       this.G = run.winTime || 72; this.endT = this.G + POST_T; this.finalOrder = run.finalOrder ? run.finalOrder() : race.horses.map((_, i) => i);
-      // 進路を最後まで計算する（発走前に 1 回）
-      this.plan = null;
-      try { this.plan = BOAT.Lines.plan(race, run, Object.assign({}, this.desc, { Course: C, preT: PRE_T, postT: POST_T + 2 })); this.parts.Lines = this.plan && this.plan.ok !== false ? 'real' : 'ng'; } catch (e) { console.warn('BOAT.Lines', e); this.parts.Lines = 'err'; }
+      // 進路（発走前に最後まで計算した物）
+      this.plan = plan || null; this.parts.Lines = plan ? (plan.ok !== false ? 'real' : 'ng') : 'err';
+      // 外れる艇と、その時刻（ここからは順位・札に出さない）。フライング ＝ 発表の時刻、転覆 ＝ 転覆した時刻
+      this.outT = race.horses.map((_, i) => { if (!(run.out && run.out[i])) return null; const inc = run.incident; if (inc && inc.type === 'fall' && run.fallT != null) return run.fallT; return F_ANNOUNCE; });
+      this.ordK = null; this.ordShown = null; this.rk = null;
+    }
+    /* 準備した物を一度に入れ替える（短い）。boats: 新しい艇の絵（まだ水面に置いていない）、tags: 新しい札（null ならここで作る） */
+    applyRace(race, run, info, desc, plan, boats, tags) {
+      this.boats.forEach((b) => { if (boats.indexOf(b) < 0) { this.scene.remove(b.object3d); try { b.dispose(); } catch (e) { } } });
+      this.boats = boats; boats.forEach((b) => this.scene.add(b.object3d));
+      this.adopt(race, run, info, desc, plan);
       this.vis = race.horses.map(() => ({ x: 0, z: 0, yaw: 0, speed: 0, turn: 0, flip: 0, on: true }));
       // 艇番の輪と札（競馬の足元の輪・馬番の札と同じ考え方。boat3d.js の BOAT.Tags。無くても走りは止めない）
       if (this.tags) { try { this.tags.dispose(); } catch (e) { } this.tags = null; }
-      try { if (BOAT.Tags) { this.tags = BOAT.Tags.create(this.scene, race.horses); this.parts.Tags = 'real'; } } catch (e) { console.warn('BOAT.Tags', e); this.tags = null; }
-      this.tagK = 0; this.ordX = null; this.rk = null;
+      if (tags) { this.tags = tags; this.parts.Tags = 'real'; try { tags.setVisible(true); } catch (e) { } }
+      else { try { if (BOAT.Tags) { this.tags = BOAT.Tags.create(this.scene, race.horses); this.parts.Tags = 'real'; } } catch (e) { console.warn('BOAT.Tags', e); this.tags = null; } }
+      this.tagK = 0; this.ordX = null; this.rk = null; this.ordK = null; this.ordShown = null;
       this.rank = race.horses.map((_, i) => i);
       try { this.wake.reset(); } catch (e) { }
       try { if (this.venue.setTime) { const dn = new Date(); this.venue.setTime(this.info.hour != null ? this.info.hour : dn.getHours() + dn.getMinutes() / 60); } } catch (e) { console.warn('setTime', e); }
       try { if (this.venue.setWeather && this.info.weather) this.venue.setWeather(this.info.weather); } catch (e) { console.warn('setWeather', e); }
       try { this.timeline(); } catch (e) { console.warn('timeline', e); this.shots = [{ t: -PRE_T, id: 'approach', ev: {} }]; }
       try { this.script(); } catch (e) { console.warn('script', e); this.capList = []; }
-      this.seek(-PRE_T);
+      this.live = false; this.seek(-PRE_T);
     }
     get done() { return this.tt >= this.endT; }
+    /* 外れた艇（フライング・転覆）か。2026-11-20 直し（不具合 E1）: run.out は最初から最後の値（走りの再現が、終わったあとの値で持つ）なので、そのまま見ると
+       転覆する艇がスタート直後から順位・札から消えて結果が先に分かってしまっていた。出来事の時刻（フライングは発表の +16.5 秒、転覆は転覆した時刻 run.fallT）までは、ふつうの艇と同じに扱う */
+    isOut(i, t) { const o = this.outT; return !!(o && o[i] != null && t >= o[i]); }
     /* ---------- 時刻 t の様子（艇の場所は進路の計画から、順位は走りの計算から） ---------- */
     stateAt(t) {
       const run = this.run, n = this.n, P = this.plan ? this.plan.at(t) : null, S = [];
       if (run.seek) run.seek(Math.max(0, t));
-      for (let i = 0; i < n; i++) { const p = P && P[i]; S.push(p ? { x: p.x, z: p.z, yaw: p.yaw, speed: p.speed, turn: p.turn || 0, slip: p.slip || 0, turnDir: p.turnDir || 0, on: p.on !== false, phase: p.phase, out: !!(run.out && run.out[i] && t > 0), pos: run.pos[i] } : { x: C.PIT.x, z: C.PIT.z + i * 3, yaw: 0, speed: 0, turn: 0, on: true, out: false, pos: 0 }); }
+      for (let i = 0; i < n; i++) { const p = P && P[i]; S.push(p ? { x: p.x, z: p.z, yaw: p.yaw, speed: p.speed, turn: p.turn || 0, slip: p.slip || 0, turnDir: p.turnDir || 0, on: p.on !== false, phase: p.phase, out: this.isOut(i, t), pos: run.pos[i], vis: visM(p.x, p.z, run.pos[i] * DIST_M) } : { x: C.PIT.x, z: C.PIT.z + i * 3, yaw: 0, speed: 0, turn: 0, on: true, out: false, pos: 0, vis: 0 }); }
       const alive = S.map((_, i) => i).filter((i) => !S[i].out && S[i].on);
       const fin = (i) => run.finish[i] && !S[i].out;
       const ord = alive.slice().sort((a, b) => (fin(a) || fin(b) ? (fin(a) ? this.finalOrder.indexOf(a) : 99) - (fin(b) ? this.finalOrder.indexOf(b) : 99) || S[b].pos - S[a].pos : S[b].pos - S[a].pos));
+      /* 画面で見える前後の順（2026-11-20 直し・不具合 E4）: 順位の表示（左上の 1〜3 位・下の順位の丸・オッズの札）はこちらを元にする（shownOrder）。
+         ord（走りの計算の進み run.pos の順）は、直線の途中で画面の艇の前後と数 m 食い違うことがある（艇は自分の線の上を、ターンごとの区間の終わりで計算と合うように進むため。
+         例: 種 14 の 5 秒目、4 号艇は画面でいちばん後ろなのに計算では 3 番手）。カメラと実況は今までどおり ord（映像・音を変えない） */
+      const ordV = alive.slice().sort((a, b) => (fin(a) || fin(b) ? (fin(a) ? this.finalOrder.indexOf(a) : 99) - (fin(b) ? this.finalOrder.indexOf(b) : 99) || S[b].vis - S[a].vis : S[b].vis - S[a].vis));
       const mean = (idx) => { const o = { x: 0, z: 0 }; idx.forEach((i) => { o.x += S[i].x / idx.length; o.z += S[i].z / idx.length; }); return o; };
       const onAll = S.map((_, i) => i).filter((i) => S[i].on);
-      return { t, S, ord, lead: S[ord[0]] || S[0], second: S[ord[1]] || S[ord[0]] || S[0], third: S[ord[2]] || S[ord[1]] || S[0], last: S[ord[ord.length - 1]] || S[0], cen: mean(ord.slice(0, 4).length ? ord.slice(0, 4) : [0]), all: mean(onAll.length ? onAll : [0]) };
+      return { t, S, ord, ordV, lead: S[ord[0]] || S[0], second: S[ord[1]] || S[ord[0]] || S[0], third: S[ord[2]] || S[ord[1]] || S[0], last: S[ord[ord.length - 1]] || S[0], cen: mean(ord.slice(0, 4).length ? ord.slice(0, 4) : [0]), all: mean(onAll.length ? onAll : [0]) };
     }
     /* ---------- カットの時刻表を先に作る（04 ⑦ 7-5 の「始まる条件」を 0.1 秒きざみで調べる。途中から見ても同じカットになる） ---------- */
     timeline() {
@@ -210,6 +323,22 @@ BOAT.Race = (function () {
       this.pip = tt >= G - 4.3 && tt < G + 5 && sh.id === 'finish';
       if (this.pip) { const w = s.S[this.finalOrder[0]], c2 = this.cam2, hx = Math.cos(w.yaw), hz = -Math.sin(w.yaw); c2.position.set(w.x + hx * 120, 2.5, w.z + hz * 120); c2.lookAt(w.x, 0.8, w.z); }
     }
+    /* 順位の表示に使う並び: 画面で見える前後（state.ordV）を元に、いま出している並びの隣どうしを「後ろの艇が ORD_H m より前に出た時」だけ入れ替える。
+       ゴールした艇は着順のまま先頭へ。止めている時・時刻が飛んだ時・艇の顔ぶれが変わった時（フライングの発表・転覆）は、その時の並びに合わせ直す */
+    shownOrder(s) {
+      const V = s.ordV || s.ord, run = this.run, tt = this.tt, K = this.ordK;
+      const same = K && this.live && Math.abs(tt - K.t) < 0.5 && K.ord.length === V.length && K.ord.every((i) => V.indexOf(i) >= 0);
+      let o;
+      if (!same) o = V.slice();
+      else {
+        const fin = (i) => !!run.finish[i], done = V.filter(fin), rest = K.ord.filter((i) => !fin(i)); // V の中でゴールした艇は、もう着順の並び
+        const lead = rest.length ? s.S[rest[0]] : null, H = lead && DIST_M - lead.pos * DIST_M < ORD_GOAL_M ? ORD_H_GOAL : ORD_H;
+        for (let pass = 0; pass < rest.length; pass++) { let any = false; for (let k = 0; k + 1 < rest.length; k++) if (s.S[rest[k + 1]].vis > s.S[rest[k]].vis + H) { const x = rest[k]; rest[k] = rest[k + 1]; rest[k + 1] = x; any = true; } if (!any) break; }
+        o = done.concat(rest);
+      }
+      this.ordK = { t: tt, ord: o }; this.ordShown = o;
+      return o;
+    }
     /* ---------- 艇を置く ---------- */
     place(dt) {
       const s = this.state = this.stateAt(this.tt), run = this.run, n = this.n, inc = run.incident, list = [];
@@ -230,10 +359,28 @@ BOAT.Race = (function () {
       try { this.wake.update(Math.max(0, dt), list); } catch (e) { }
       this.prevT = this.tt;
     }
-    seek(tt) { this.live = false; this.capCur = null; this.cam = null; this.prevT = null; this.tt = tt; this.place(0); this.direct(0); this.draw(0); }
-    tick(dt) {
-      dt = clamp(dt, 0, 0.1) * this.speedK; this.live = dt > 0; this.tt += dt;
-      this.place(dt); this.direct(dt); this.draw(dt);
+    /* 時刻を飛ばす。2026-11-20 直し（不具合 D6・E の疑い）: 映像を流している途中（直前が tick）の「少しだけ先へ」（SOFT_SEEK 秒まで）は、カメラを寄せ直さず・航跡も消さずに、
+       その間を細かく進めてつなぐ（遅いテレビが時刻合わせで 0.6 秒ずつ飛ばすたびに、カメラが切り替わり航跡が消えていた）。大きく飛ぶ・戻る・止めている時は今までどおり、その時刻の絵に切り替える */
+    seek(tt) {
+      const d = tt - this.tt;
+      if (this.live && this.prevT != null && d > 0 && d <= SOFT_SEEK) { this.advance(d); return; }
+      this.live = false; this.capCur = null; this.cam = null; this.prevT = null; this.tt = tt; this.place(0); this.direct(0); this.draw(0);
+    }
+    tick(dt) { this.advance(clamp(dt, 0, 0.1) * this.speedK); }
+    /* dt 秒進めて 1 回描く。STEP_MAX（0.1 秒）より長い時は、艇・カメラ・航跡だけ細かく分けて進める（描くのは最後の 1 回。早回し speedK・遅いテレビの追いつき） */
+    advance(dt) {
+      this.live = dt > 0;
+      const n = Math.max(1, Math.ceil(dt / STEP_MAX - 1e-9)), h = dt / n;
+      for (let q = 0; q < n; q++) { this.tt += h; this.place(h); this.direct(h); }
+      this.draw(dt);
+    }
+    /* テレビ用: 映像の時刻を target（秒）に合わせる。毎コマ呼ぶ。少し遅れているだけなら、その分だけ進める（遅いテレビでも時計どおりに進み、飛ばない）。
+       少し進みすぎ（0.25 秒まで）は 1 コマ待つ。大きくずれた時（読み込み直し・時計の合わせ直し）だけ、その時刻へ切り替える */
+    syncTo(target) {
+      const d = target - this.tt;
+      if (this.prevT != null && d > 1e-4 && d <= SOFT_SEEK) this.advance(d);
+      else if (this.prevT != null && d <= 1e-4 && d >= -0.25) { /* 待つ（描き直さない） */ }
+      else { this.live = false; this.seek(target); }
     }
     draw(dt) {
       const tt = this.tt, r = this.renderer;
@@ -273,7 +420,8 @@ BOAT.Race = (function () {
       const tvText = (txt, x, y, size, col, align, maxW) => { c.font = 'bold ' + Math.round(size) + 'px ' + NOTO; c.textAlign = align || 'left'; c.textBaseline = 'middle'; c.lineJoin = 'round'; c.lineWidth = Math.max(3, size * 0.26); c.strokeStyle = 'rgba(0,0,0,.75)'; c.strokeText(txt, x, y, maxW); c.fillStyle = col || '#fff'; c.fillText(txt, x, y, maxW); };
       const chip = (x, y, r, h) => { c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y, r + 1.6, 0, 6.2832); c.fill(); c.fillStyle = h.color; c.beginPath(); c.arc(x, y, r, 0, 6.2832); c.fill(); c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 1; c.stroke();
         c.fillStyle = h.ink; c.font = '900 ' + Math.round(r * 1.3) + 'px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(h.no, x, y + 0.5); };
-      const out = (i) => !!(run.out && run.out[i]);
+      const out = (i) => !!(s.S[i] && s.S[i].out); // 外れた艇（その出来事の時刻から）
+      const ordV = this.shownOrder(s);             // 画面で見える前後の順（並んだ艇がちらちら入れ替わらないようにした物）
       // 消えるとき: ゴールの 4 秒後から 0.8 秒で（勝者の名札の前に片付ける）
       const fa = clamp((G + 5 - tt) / 0.8, 0, 1), sa = clamp((tt - 2.1) / 0.5, 0, 1);
       // 下の帯（うすい黒のグラデーション）
@@ -284,7 +432,7 @@ BOAT.Race = (function () {
         c.save(); c.translate(lx + 38, ly + 1); c.transform(1, 0, -0.18, 1, 0, 0); tvText('BOAT', 0, 0, 24, '#ffffff', 'left'); c.restore();
         const sky = { sunny: '晴', cloudy: '曇', rain: '雨' }[race.weather] || '';
         tvText('casa競艇場  ' + (race.distLabel || 1200) + 'm  ' + sky, 18, H - 17, 14, '#eeeeee', 'left', 190); }
-      if (!s.ord.length) { c.globalAlpha = 1; return; }
+      if (!ordV.length) { c.globalAlpha = 1; return; }
       // ---- 右上: TIME の札（js/race3d.js の clockBox と同じ形） ----
       { let ld = 0; for (let i = 0; i < this.n; i++) if (!out(i)) ld = Math.max(ld, run.pos[i]);
         const lap = Math.min(LAPS, 1 + Math.floor(Math.max(0, ld) * LAPS + 1e-6)), fin = tt >= G, t = Math.max(0, Math.min(tt, G));
@@ -297,7 +445,7 @@ BOAT.Race = (function () {
         if (!this.pip) { panel(28); const last = lap >= LAPS && !fin; c.textAlign = 'left'; c.font = 'bold 13px ' + NOTO; c.fillStyle = '#9fb3d9'; c.fillText(fin ? 'ゴール' : last ? '最終周' : '周回', bx + 14, y + 14.5);
           c.textAlign = 'right'; c.font = '900 20px ' + NOTO; c.fillStyle = last || fin ? '#ffe14a' : '#ffffff'; c.fillText(lap + '周目', bx + bw - 12, y + 15); } }
       // ---- 左上: 1〜3 位（v2 のテレビの順位の札と同じ紺の札・金の線） ----
-      { const top = s.ord.slice(0, 3), key = top.join(','), R = this.rk || (this.rk = { key: '', cand: '', since: 0 }), fins = s.ord.some((i) => run.finish[i]);
+      { const top = ordV.slice(0, 3), key = top.join(','), R = this.rk || (this.rk = { key: '', cand: '', since: 0 }), fins = ordV.some((i) => run.finish[i]);
         if (key !== R.cand) { R.cand = key; R.since = tt; }
         if (!R.key || (key !== R.key && (tt - R.since >= 0.3 || fins)) || Math.abs(tt - (R.at || tt)) > 1) R.key = key; R.at = tt;
         const show = R.key.split(',').map(Number).filter((i) => i >= 0 && i < this.n), px = 14, py = 12, pw = 206, rh = 32, ph = 10 + rh * show.length;
@@ -308,9 +456,9 @@ BOAT.Race = (function () {
           chip(px + 64, y, 12, h); c.font = 'bold 16px ' + NOTO; c.fillStyle = '#fff'; c.textAlign = 'left'; c.fillText(h.name, px + 84, y + 1, pw - 96); }); }
       // ---- 下: 順位の丸の列（js/race3d.js の通過順の帯と同じ動き） ----
       c.globalAlpha = fa * sa;
-      const order = s.ord.slice(), gone = []; for (let i = 0; i < this.n; i++) if (order.indexOf(i) < 0 && (s.S[i].on || out(i))) gone.push(i);
+      const order = ordV.slice(), gone = []; for (let i = 0; i < this.n; i++) if (order.indexOf(i) < 0 && (s.S[i].on || out(i))) gone.push(i);
       const nn = order.length - 1, EMK = [1.2, 1.1], RANK_COL = ['#f2b705', '#c9d3de'], xo = (k) => (k >= 1 ? 3 : 0) + (k >= 2 ? 7 : 0), cap = 420 - xo(nn);
-      const ex = [0]; for (let k = 1; k < order.length; k++) ex.push(ex[k - 1] + Math.min(40, Math.max(0, (run.pos[order[k - 1]] - run.pos[order[k]]) * DIST) * 4));
+      const ex = [0]; for (let k = 1; k < order.length; k++) ex.push(ex[k - 1] + Math.min(40, Math.max(0, s.S[order[k - 1]].vis - s.S[order[k]].vis) * 4)); // 間は画面で見える前後の差（m）
       const stp = nn > 0 ? Math.min(25, cap / nn) : 0, esc = Math.min(1, Math.max(0, cap - stp * nn) / (ex[ex.length - 1] || 1)), x0 = 240;
       // 画面で艇が走っている向きに先頭を置く（先頭の進む向きをカメラの右に投影。カットが変わったらすぐ、同じカットの中でははっきり傾いたときだけ）
       const L0 = s.S[order[0]], cr = new T.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0), along = Math.cos(L0.yaw) * cr.x - Math.sin(L0.yaw) * cr.z, ck = (this.cam ? this.cam.id + this.cam.t0 : '') + '';
@@ -397,7 +545,7 @@ BOAT.Race = (function () {
       if (RACE && this.state) this.drawRaceHud(c);
       // オッズの札（x70.9〜95.3%・y4.9〜。えんじ色、右の端ななめ。最終周の 1 マークを出て数秒〜最後の 2 マークに入るまで）。ゲームは 2 連単なので、いまの 1・2 番手の組とその逆の 2 行
       if ((sh === 'back-B' || sh === 'side-123') && this.state && this.info.odds && this.state.ord.length >= 2 && tt >= 22) {
-        const a = this.state.ord[0], b = this.state.ord[1], ex = this.info.odds.exacta || {}, rows = [[a, b], [b, a]], rh = Y(6.2), s = Y(4.4);
+        const oV = this.ordShown && this.ordShown.length >= 2 ? this.ordShown : this.state.ordV || this.state.ord, a = oV[0], b = oV[1], ex = this.info.odds.exacta || {}, rows = [[a, b], [b, a]], rh = Y(6.2), s = Y(4.4);
         const oy = 7; // TIME の札の下へ（2026-11-19。前は y13% から）
         band(X(70.9), X(95.3), Y(13 + oy), Y(18.5 + oy), '#8a1f3a', '#5c1226'); c.fillStyle = '#fff'; c.font = '800 ' + Math.round(Y(3.6)) + 'px ' + FONT; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText('2連単 オッズ', X(72), Y(15.9 + oy));
         rows.forEach((r2, k2) => { const y = Y(18.5 + oy) + k2 * rh; band(X(70.9), X(95.3) - (k2 + 1) * rh * 0.45, y, y + rh, 'rgba(110,26,48,.92)', 'rgba(84,18,36,.92)'); sq(X(72), y + (rh - s) / 2, s, Hh[r2[0]]); sq(X(72) + s + 4, y + (rh - s) / 2, s, Hh[r2[1]]); const o = ex[r2[0] + '-' + r2[1]]; c.fillStyle = '#fff'; c.font = '800 ' + Math.round(Y(4.2)) + 'px ' + FONT; c.textAlign = 'right'; c.textBaseline = 'middle'; c.fillText(o != null ? o.toFixed(1) : '-', X(89), y + rh / 2 + 1); });
@@ -464,7 +612,7 @@ BOAT.Race = (function () {
       const in1 = minT(D.turnIn, 0), out1 = minT(D.turnOut, 0), in2 = minT(D.turnIn, 1), out2 = minT(D.turnOut, 1), in3 = minT(D.turnIn, 2), out3 = minT(D.turnOut, 2), in4 = minT(D.turnIn, 3), out4 = minT(D.turnOut, 3);
       const L = Array.isArray(D.lines) ? D.lines : [], act = (i) => { const t = (L[i] || [])[0]; return t === 'B' || t === 'F' ? '差して ' + B(i) : t === 'C' ? '握って ' + B(i) : t === 'D' ? '切り込んで ' + B(i) : t === 'E' ? '外を回って ' + B(i) : t === 'G' ? B(i) + 'は流れた' : B(i); };
       // 先頭が入れ替わった時刻（t0〜t1 で順位の 1 番目が変わった最初の時刻。無ければ -1）
-      const leadChange = (t0, t1) => { let p = ordAt(t0)[0]; for (let t = t0 + 0.25; t <= t1; t += 0.25) { const q = ordAt(t)[0]; if (q !== p) return { t, who: q }; } return null; };
+      const leadChange = (t0, t1) => { let p = ordAt(t0)[0]; for (let t = t0 + 0.25; t <= t1; t += 0.25) { const st = this.stateAt(t), q = st.ord[0]; if (q !== p) { if (st.S[p] && st.S[p].out) { p = q; continue; } /* 先頭の艇が外れた（フライングの発表・転覆）のは「抜いた」ではない */ return { t, who: q }; } } return null; };
       const sc = D.scenario || {}, att = sc.attacker != null && sc.attacker >= 0 ? sc.attacker : -1;
       if (isFinite(in1) && isFinite(out1)) {
         const a = ordAt(in1 + 0.2), e1 = ordAt(out1 + 0.4);
@@ -472,7 +620,7 @@ BOAT.Race = (function () {
         else say(in1 - 1.6, '1周1マーク。' + (a[0] === ent[0] ? '逃げる ' + BN(a[0]) : '先に回って ' + BN(a[0])));
         const others = e1.filter((i) => i !== e1[0]).slice(0, 2); say(in1 + 1.2, others.map(act).join('、') + '！', 2.6);
         const k1 = D.kimarite1 || D.kimarite, w = e1[0];
-        say(out1 + 0.2, k1 === 'nige' ? '押し切った ' + BN(w) : k1 === 'sashi' ? '差しが届いた ' + BN(w) : k1 === 'makuri' ? 'まくり切った ' + BN(w) + '！' : k1 === 'makurizashi' ? 'まくり差しが入った ' + BN(w) + '！' : '先頭は ' + BN(w));
+        say(out1 + 0.2, w === F ? '先頭は ' + BN(w) /* 発表の前のフライングの艇が先頭（決まり手は残りの艇のものなので言わない） */ : k1 === 'nige' ? '押し切った ' + BN(w) : k1 === 'sashi' ? '差しが届いた ' + BN(w) : k1 === 'makuri' ? 'まくり切った ' + BN(w) + '！' : k1 === 'makurizashi' ? 'まくり差しが入った ' + BN(w) + '！' : '先頭は ' + BN(w));
         const b1 = ordAt(out1 + 3); say(out1 + 3, 'バックストレッチ、先頭は ' + BN(b1[0]) + '。2番手 ' + B(b1[1]) + '、3番手 ' + B(b1[2]), 4.6);
       }
       say(16.5, F >= 0 ? 'お知らせいたします。' + BN(F) + '、フライング。返還欠場です' : 'スタートは正常です', F >= 0 ? 4.5 : 2);
@@ -512,12 +660,51 @@ BOAT.Race = (function () {
       list.sort((x, y) => x.t - y.t);
       this.capList = list; this.capCur = null;
     }
-    dispose() { try { if (this.tags) this.tags.dispose(); } catch (e) { } try { this.wake.dispose(); this.venue.dispose(); } catch (e) { } this.renderer.dispose(); }
+    dispose() { this.prepJob = null; /* 準備中の setRaceAsync は捨てる */ try { this.dropBoats(); } catch (e) { } try { if (this.tags) this.tags.dispose(); } catch (e) { } try { this.wake.dispose(); this.venue.dispose(); } catch (e) { } this.renderer.dispose(); }
   }
+  /* 進路の計画を作る仕事（少しずつ進められる形。yield のたびに止めてよい）。返り値 { plan, run, desc, alt }（alt ＝ 何番目の入れ替え方を使ったか。0 ＝ もらった走りのまま）。
+     2026-11-20 直し（不具合 E2）: 着順を指定した再現（run.swaps ＝ 途中で 2 艇の走りを入れ替えた）で、計画が不合格（艇が重なる・すき間が足りない）や急な動き（ターンで毎秒 80° より速く回るなど）になった時は、
+     入れ替える時刻を後ろへずらした走り（Engine.replayRun の opt.swapFrom）で作り直す。着順とゴールの時刻は変わらない（入れ替えは 2 艇の「ゴールまでの残りの走り」を取りかえるだけなので、いつ入れ替えても同じ）。
+     調べる順（最初に「合格で急な動きも無い」物が出たら、そこで終わり）:
+       ① もらった走りで 1 回（ふつうのレース・ほとんどの着順指定はここで終わり ＝ 前と同じ答え）
+       ② 入れ替え方を変えた走りで 1 回ずつ: 全艇が 1 周 1 マークを回り終えてから入れ替える → 1 周 2 マークのあと → 2 周 1 マークのあと
+       ③ 進路の部品の作り直しの段（横と前後の余裕を広げる など。boat/lines.js の planGen）を、もらった走り → 入れ替え方 1〜3 の順に
+     どれも合格しなかった時だけ、足りない所のいちばん少ない物を使う（parts.Lines は 'ng'。tests/boat-order.test.js が、この道に落ちるレースが無いことを見張る）。
+     計算は全部のテレビで同じ順・同じ答え（乱数を使わない）なので、どの店でも同じ映像になる。
+     stop（省ける）: 時間切れなら true を返す関数。true になったら、合格している計画があればそこでやめる（急な動きを減らす作り直しを切り上げる。重なりのある計画では切り上げない）。
+       時間切れで切り上げたテレビは、ほかの店と少しちがう映像になりうる（着順とゴールの時刻は同じ） */
+  Race.planJob = function* (race, run, desc, stop) {
+    const L = BOAT.Lines, E = window.Engine, info = (d, more) => Object.assign({}, d, { Course: C, preT: PRE_T, postT: POST_T + 2 }, stop ? { stop } : {}, more || {});
+    const rank = (c) => (c.plan.ok !== false ? c.plan.score || 0 : 1e9 + (c.plan.overlapFrames || 0) * 1000 + (c.plan.badFrames || 0));
+    const bestOf = (L2) => { let b = L2[0]; L2.forEach((c) => { if (rank(c) < rank(b)) b = c; }); return b; }, late = (L2) => !!(stop && stop() && L2.some((c) => c.plan && c.plan.ok !== false));
+    if (!L._planGen) return { plan: L.plan(race, run, info(desc)), run, desc, alt: 0 }; // 古い進路の部品: 前のまま
+    const cands = [{ run, desc, alt: 0, plan: null }];
+    cands[0].plan = yield* L._planGen(race, run, info(desc, { quick: true }));
+    if (cands[0].plan.score === 0) return cands[0];
+    // ② 入れ替え方を変えた走り
+    const order = run.finalOrder ? run.finalOrder() : null, seed = run.seed;
+    if (run.swaps && run.swaps.length && order && seed != null && E && E.replayRun && M && M.describe) {
+      let outs = []; try { outs = M.describe(race, seed).turnOut || []; } catch (e) { outs = []; }
+      const tried = [JSON.stringify(run.swaps)];
+      for (let k = 0; k < 3; k++) {
+        if (late(cands)) return bestOf(cands);
+        let from = 0; outs.forEach((a) => { if (a && a[k] != null && a[k] > from) from = a[k]; }); if (!(from > 0)) continue;
+        let r2 = null, d2 = null;
+        try { r2 = E.replayRun(race, seed, { order, swapFrom: from + 1 }); if (!r2.swaps || !r2.swaps.length) continue; const key = JSON.stringify(r2.swaps); if (tried.indexOf(key) >= 0) continue; tried.push(key); d2 = M.describe(race, seed, { swaps: r2.swaps }); } catch (e) { console.warn('planJob', e); continue; }
+        yield 'L:alt';
+        const c = { run: r2, desc: d2, alt: k + 1, plan: yield* L._planGen(race, r2, info(d2, { quick: true })) };
+        if (c.plan.score === 0) return c;
+        cands.push(c);
+      }
+    }
+    // ③ 作り直しの段
+    for (const c of cands) { if (late(cands)) break; c.plan = yield* L._planGen(race, c.run, info(c.desc, { first: c.plan })); if (c.plan.score === 0) return c; }
+    return bestOf(cands);
+  };
   // 声の部品の鍵 → 字幕の文（tools/make-boat-voice.js の P と同じ鍵）
   Race.PHRASES = { pitout: 'ピットアウト', moved: 'が動いた！　内のコースを取りに行く', turnto: '各艇、スタートラインへ艇を向けます', wakunari: '進入は枠なり 3 対 3', shinnyu: '進入は', santai: '3 対 3', clock: '大時計が回って、各艇 スタートへ',
     start: 'スタートしました！', flying: 'フライング', m1: '1周 1マーク、', sakini: 'が先に回る', semeru: 'が攻める！', innige: 'イン逃げ態勢', nukeda: 'が抜け出した！', niban: '2番手', back: 'バックストレッチ、先頭は', m2: '1周 2マーク', sashita: 'が差した！',
     lastlap: '最終周に入ります。先頭', m1b: '2周 1マーク', gyakuten: 'が逆転！', lastmark: '最終ターンマーク', sento: '先頭は', ato: '、あとは直線', tenpuku: '転覆！', goal: 'ゴールイン！', ichaku: '1着', nichaku: '2着' };
-  Race.PRE_T = PRE_T; Race.POST_T = POST_T; Race.PIT_T = -PRE_T; Race.LEAVE_T = -PRE_T;
+  Race.PRE_T = PRE_T; Race.POST_T = POST_T; Race.PIT_T = -PRE_T; Race.LEAVE_T = -PRE_T; Race.F_ANNOUNCE = F_ANNOUNCE; Race.SOFT_SEEK = SOFT_SEEK;
   return Race;
 })();

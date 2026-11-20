@@ -155,6 +155,10 @@
   function turnedDeg(tx, tz, tk) { const d = tk % 2 === 0 ? 1 : -1; let a = Math.atan2(-tz * d, tx * d) * 180 / Math.PI; if (a < -90) a += 360; return clamp(a, 0, 180); }
   // 横すべりを許す区間の重み 0〜1（線 b の上の道のり L、ターン tk）: 弧の始まりの slipLead m 手前から立ち上がり、弧の終わりの slipTail m 先で 0
   function slipGate(b, tk, L) { const a0 = b.arc0[tk], a1 = b.arc1[tk]; if (a0 == null || a1 == null) return 0; return sm((L - (a0 - CFG.slipLead)) / CFG.slipLead) * sm((a1 + CFG.slipTail - L) / (CFG.slipTail * 0.5)); }
+  /* 2026-11-20（不具合 E の疑い・D7「進路の計算でテレビが止まる」）: 重い所（検査・位置を出す・レース前・線の上の場所）を「少しずつ進められる形」（function*）にした。
+     brk ＝ 区切り（そこで止めて次の順番へ回せる）。同期の入口（plan()・plan.check()）は、区切りで止めずに最後まで回すだけなので、計算の中身と答えは前とまったく同じ */
+  const NO_BRK = function* () { };
+  const runAll = (g) => { let r = g.next(); while (!r.done) r = g.next(); return r.value; };
   /* ---------- 小さな数学の部品 ---------- */
   // 3 次の自然スプライン（節点 u[k] で値 y[k]。2 階微分 m を返す）
   function splineM(u, y) {
@@ -488,11 +492,14 @@
     } else for (let q = Math.max(0, f - 1); q < F - 1; q++) ell[q + 1] = ell[q];
   }
   // 1/60 秒ごとの線の上の場所・向き・曲がり・速さ、ずれの上下限
-  function geometry(ctx) {
+  function geometry(ctx) { return runAll(geometryGen(ctx, NO_BRK)); }
+  function* geometryGen(ctx, brk) {
     const C = ctx.C, n = ctx.n, F = ctx.F, o = {}, hl = HULL_L / 2, hw = HULL_W / 2;
     for (let i = 0; i < n; i++) {
+      if (i) yield* brk('geo');
       const b = ctx.base[i], G = ctx.G[i], ell = ctx.ELL[i], nt = NT(C);
       for (let f = 0; f < F; f++) {
+        if ((f & 2047) === 2047) yield* brk('geo');
         baseAt(b, ell[f], o); G.x[f] = o.x; G.z[f] = o.z; G.tx[f] = o.tx; G.tz[f] = o.tz; G.kp[f] = o.kp;
         const v = (ell[Math.min(F - 1, f + 1)] - ell[Math.max(0, f - 1)]) / ((Math.min(F - 1, f + 1) - Math.max(0, f - 1)) * DT); G.v[f] = v;
         // 舳先の向きのずれ（内へ）の大きさ → 船体が横へ張り出す量
@@ -655,10 +662,12 @@
   }
 
   /* ---------- レース中〜ゴール後のワールド座標 ---------- */
-  function world(ctx) {
+  function world(ctx) { return runAll(worldGen(ctx, NO_BRK)); }
+  function* worldGen(ctx, brk) {
     const n = ctx.n, F = ctx.F, G = ctx.G, pre = ctx.preF, C = ctx.C, hl = HULL_L / 2, hw = HULL_W / 2;
     const TG = [], PH = [], TK = []; // 艇ごとの「目標の横すべり」rad（表 × 区間 × 速さ。ほかの艇を見る前の値）・進む向きが回った角度 rad・どのターンか
     for (let i = 0; i < n; i++) {
+      if (i) yield* brk('world1');
       const O = ctx.O[i], e = ctx.E60[i], b = ctx.base[i];
       /* 最後の守り: ずれが、岸・マーク・消波装置の上下限（G.lo・G.hi）を 5cm 以上破っている所があれば、その分だけ戻す。
          急に動かないよう、戻す量は前後 1 秒かけてなめらかに立ち上げる（ずれを解いたあとで時刻の割り付けが少し動くと、上下限の場所とずれることがあるため） */
@@ -666,13 +675,16 @@
         for (let f = 0; f < F; f++) { const lo = Math.min(G[i].lo[f], G[i].hi[f]), hi = Math.max(G[i].lo[f], G[i].hi[f]); if (!ctx.on[i][f]) continue; if (e[f] < lo - 0.05) { need[f] = lo - e[f]; any = true; } else if (e[f] > hi + 0.05) { need[f] = hi - e[f]; any = true; } }
         if (any) { const D = new Float32Array(F); for (let f = 0; f < F; f++) { if (!need[f]) continue; for (let q = Math.max(0, f - W); q <= Math.min(F - 1, f + W); q++) { const w = 0.5 + 0.5 * Math.cos(Math.PI * (q - f) / W), v = need[f] * w; if (Math.abs(v) > Math.abs(D[q])) D[q] = v; } } for (let f = 0; f < F; f++) e[f] += D[f]; ctx.guards = (ctx.guards || 0) + 1; } }
       for (let f = 0; f < F; f++) { O.x[pre + f] = G[i].x[f] - e[f] * G[i].tz[f]; O.z[pre + f] = G[i].z[f] + e[f] * G[i].tx[f]; }
+      yield* brk('world1');
       let hx = 1, hz = 0;
       for (let f = 0; f < F; f++) {
         const g = pre + f, a = pre + Math.max(0, f - 1), c = pre + Math.min(F - 1, f + 1), dx = O.x[c] - O.x[a], dz = O.z[c] - O.z[a], l = Math.hypot(dx, dz), dtt = (c - a) * DT;
         O.speed[g] = l / dtt; if (l > 0.02) { hx = dx / l; hz = dz / l; } O.hd[g] = Math.atan2(-hz, hx);
       }
       const T = new Float32Array(F), ph = new Float32Array(F), tkA = new Int8Array(F); TG.push(T); PH.push(ph); TK.push(tkA);
+      yield* brk('world1');
       for (let f = 0; f < F; f++) {
+        if ((f & 2047) === 2047) yield* brk('world1');
         const g = pre + f, a = pre + Math.max(0, f - 1), c = pre + Math.min(F - 1, f + 1); let dy = O.hd[c] - O.hd[a]; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
         const yr = O.speed[g] > 1 ? dy / ((c - a) * DT) : 0; O.yr[g] = yr;
         O.turn[g] = clamp(Math.abs(yr) / CFG.turnRate, 0, 1); O.dir[g] = yr >= 0 ? 1 : -1;
@@ -694,9 +706,10 @@
       if (ax * bx + az * bz > 0.94 && Math.abs(dx * ax + dz * az) < 0.6 * HULL_L) { const d = Math.hypot(dx, dz); if (d < CFG.abreast + 0.05) gap = Math.min(gap, CFG.clear - (CFG.abreast + 0.05 - d)); } // 並走の決まり（検査と同じ）
       return gap;
     };
-    const limit = (useS) => {
+    const limit = function* (useS) {
       let hit = 0;
       for (let f = 0; f < F; f++) {
+        if ((f & 255) === 255) yield* brk('limit');
         const g = pre + f;
         for (let i = 0; i < n; i++) { if (!ctx.on[i][f]) continue; for (let j = i + 1; j < n; j++) {
           if (!ctx.on[j][f]) continue; const ti = TG[i][f], tj = TG[j][f]; if (ti < 0.02 && tj < 0.02) continue;
@@ -711,11 +724,12 @@
       return hit;
     };
     const W = 30, dUp = CFG.slipRise * Math.PI / 180 * DT;
-    const apply = () => {
+    const apply = function* () {
       ctx.SL = ctx.SL || []; 
       for (let i = 0; i < n; i++) {
+        yield* brk('slip');
         const sI = S[i], mn = new Float32Array(F), av = new Float32Array(F);
-        for (let f = 0; f < F; f++) { let m = 1; const a = Math.max(0, f - W), c = Math.min(F - 1, f + W); for (let q = a; q <= c; q++) if (sI[q] < m) m = sI[q]; mn[f] = m; } // 前後 0.5 秒の最小
+        for (let f = 0; f < F; f++) { if ((f & 1023) === 1023) yield* brk('slip'); let m = 1; const a = Math.max(0, f - W), c = Math.min(F - 1, f + W); for (let q = a; q <= c; q++) if (sI[q] < m) m = sI[q]; mn[f] = m; } // 前後 0.5 秒の最小
         const pf = new Float64Array(F + 1); for (let f = 0; f < F; f++) pf[f + 1] = pf[f] + mn[f];
         for (let f = 0; f < F; f++) { const a = Math.max(0, f - W), c = Math.min(F - 1, f + W); av[f] = (pf[c + 1] - pf[a]) / (c - a + 1); if (av[f] > sI[f]) av[f] = sI[f]; }
         const out = ctx.SL[i] || (ctx.SL[i] = new Float32Array(F)); let prev = 0;
@@ -729,9 +743,10 @@
         { let mMin = 1e9, tkPrev = -9; for (let f = F - 1; f >= 0; f--) { if (TK[i][f] !== tkPrev || out[f] <= 1e-4) { tkPrev = TK[i][f]; mMin = PH[i][f] + out[f]; continue; } const y = PH[i][f] + out[f]; if (y > mMin) out[f] = Math.max(0, mMin - PH[i][f]); else mMin = y; } }
       }
     };
-    ctx.PH = PH; ctx.TK = TK; ctx.slipCuts = limit(false); apply();
-    for (let pass = 0; pass < 3; pass++) { if (!limit(true)) break; apply(); }
+    ctx.PH = PH; ctx.TK = TK; ctx.slipCuts = yield* limit(false); yield* apply();
+    for (let pass = 0; pass < 3; pass++) { if (!(yield* limit(true))) break; yield* apply(); }
     for (let i = 0; i < n; i++) {
+      yield* brk('world2');
       const O = ctx.O[i], SLi = ctx.SL[i];
       for (let f = 0; f < F; f++) { const g = pre + f; O.slip[g] = SLi[f]; O.turn[g] = Math.max(O.turn[g], clamp(SLi[f] / 0.6, 0, 1)); }
       // 旋回の強さをならす（前後 0.1 秒）。回り始めの 0.4 秒前から少し立てる（選手は向きを変える前に立つ。実測 13 の 6 章）。前後の加速度 accel
@@ -797,7 +812,8 @@
     ctx.preWaitZ[i] = zw; ctx.preFaceT[i] = tf;
     return pts;
   }
-  function preRace(ctx, info) {
+  function preRace(ctx, info) { return runAll(preRaceGen(ctx, info, NO_BRK)); }
+  function* preRaceGen(ctx, info, brk) {
     const n = ctx.n, pre = ctx.preF, preT = ctx.preT, hl = HULL_L / 2, hw = HULL_W / 2;
     const pit = Object.assign({ x: PRE.pit.x, z: PRE.pit.z0, gap: PRE.pit.gap, dirX: 0, dirZ: 1, outX: 1, outZ: 0 }, (info && info.pit) || {}); if (pit.out) { pit.outX = pit.out.x; pit.outZ = pit.out.z; }
     ctx.kickT = []; ctx.waitEndT = []; ctx.preWaitZ = []; ctx.preFaceT = [];
@@ -811,6 +827,7 @@
     const VS = (info && info.VS) || 22.6, TAU = (info && info.TAU) || 3.0, rd = (t) => (t <= 0 ? 0 : VS * (t - TAU * (1 - Math.exp(-t / TAU)))); // 助走の式（js/boat-model.js の runupDist と同じ。01 1-7）
     const launchDef = { slow: [133, 142, 145, 145, 145, 145], dash: 205, deep: 100 };
     for (let i = 0; i < n; i++) {
+      yield* brk('pre1');
       const O = ctx.O[i], c = Math.min(5, ctx.course[i]), isSlow = c < ctx.slowN, lane = ctx.laneOf[i], x00 = ctx.SR[i][0], st = ctx.stSec[i];
       // 助走: 起こしの位置（線の手前 D m）と、起こしてから線までの秒 T（describe の runup。無ければ同じ式で出す）
       const rn = info && info.runup && info.runup[i]; let D = rn && rn.from > 20 ? rn.from : (isSlow ? (ctx.deep ? launchDef.deep : launchDef.slow[c]) : launchDef.dash), T = rn && rn.T > 1 ? rn.T : 0;
@@ -830,12 +847,14 @@
       for (let g = 0; g < pre; g++) { const t = -preT + g * DT; O.x[g] = pchipAt(Tq, Xq, dX, t, sx); O.z[g] = pchipAt(Tq, Zq, dZ, t, sz); }
     }
     // 通る点のつなぎ目で向きの変わり方が角ばらないよう、前後 0.25 秒の平均を 2 回かける（大時計の 0 の手前は幅をしぼる＝ run とのつなぎ目は動かさない。ピットで止まっている間も動かない）
-    for (let i = 0; i < n; i++) for (const A of [ctx.O[i].x, ctx.O[i].z]) for (let passN = 0; passN < 2; passN++) { const pf = new Float64Array(pre + 1); for (let g = 0; g < pre; g++) pf[g + 1] = pf[g] + A[g]; for (let g = 0; g < pre; g++) { const h = Math.min(15, g, pre - 1 - g); A[g] = (pf[g + h + 1] - pf[g - h]) / (2 * h + 1); } }
+    for (let i = 0; i < n; i++) for (const A of [ctx.O[i].x, ctx.O[i].z]) for (let passN = 0; passN < 2; passN++) { yield* brk('pre2'); const pf = new Float64Array(pre + 1); for (let g = 0; g < pre; g++) pf[g + 1] = pf[g] + A[g]; for (let g = 0; g < pre; g++) { const h = Math.min(15, g, pre - 1 - g); A[g] = (pf[g + h + 1] - pf[g - h]) / (2 * h + 1); } }
     // 仕上げ: 船体のすき間が足りない所は、2 艇を結ぶ向きに少しずつ離す（内のコースの艇はあまり動かさない）。離す量は前後 1.2 秒かけてなめらかに立ち上げる
     const gA = clamp(Math.round((PRE.sepFrom + preT) / DT), 0, pre), gB = clamp(Math.round((PRE.sepTo + preT) / DT), 0, pre), Wn = 72; ctx.preSep = 0;
     for (let round = 0; round < 12 && gB > gA + 10; round++) {
-      const HX = [], HZ = []; for (let i = 0; i < n; i++) { const O = ctx.O[i], hx = new Float32Array(pre), hz = new Float32Array(pre); let ux = pit.outX, uz = pit.outZ; for (let g = 0; g < pre; g++) { const a = Math.max(0, g - 3), c = Math.min(pre - 1, g + 3), dx = O.x[c] - O.x[a], dz = O.z[c] - O.z[a], l = Math.hypot(dx, dz); if (l > 0.02) { ux = dx / l; uz = dz / l; } hx[g] = ux; hz[g] = uz; } HX.push(hx); HZ.push(hz); }
+      yield* brk('pre3');
+      const HX = [], HZ = []; for (let i = 0; i < n; i++) { const O = ctx.O[i], hx = new Float32Array(pre), hz = new Float32Array(pre); let ux = pit.outX, uz = pit.outZ; for (let g = 0; g < pre; g++) { const a = Math.max(0, g - 3), c = Math.min(pre - 1, g + 3), dx = O.x[c] - O.x[a], dz = O.z[c] - O.z[a], l = Math.hypot(dx, dz); if (l > 0.02) { ux = dx / l; uz = dz / l; } hx[g] = ux; hz[g] = uz; } HX.push(hx); HZ.push(hz); if (i & 1) yield* brk('pre3h'); }
       const NX = [], NZ = []; for (let i = 0; i < n; i++) { NX.push(new Float32Array(pre)); NZ.push(new Float32Array(pre)); } let any = 0;
+      yield* brk('pre3b');
       for (let g = gA; g < gB; g += 2) for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
         const A = ctx.O[a], Bo = ctx.O[b], dx = A.x[g] - Bo.x[g], dz = A.z[g] - Bo.z[g], d2 = dx * dx + dz * dz; if (d2 > 30) continue;
         const gap = obbGap(A.x[g], A.z[g], HX[a][g], HZ[a][g], Bo.x[g], Bo.z[g], HX[b][g], HZ[b][g], hl, hw), d = Math.sqrt(d2) || 1e-6;
@@ -845,6 +864,7 @@
         for (const [arrX, arrZ, sgn, w] of [[NX[a], NZ[a], 1, wa], [NX[b], NZ[b], -1, 1 - wa]]) { const vx = sgn * ux * need * w, vz = sgn * uz * need * w; if (Math.abs(vx) > Math.abs(arrX[g])) arrX[g] = vx; if (Math.abs(vz) > Math.abs(arrZ[g])) arrZ[g] = vz; }
       }
       if (!any) break; ctx.preSep += any;
+      yield* brk('pre3c');
       for (let i = 0; i < n; i++) for (const [need, A] of [[NX[i], ctx.O[i].x], [NZ[i], ctx.O[i].z]]) { const Dv = new Float32Array(pre); let has = false;
         for (let g = gA; g < gB; g += 2) { const v = need[g]; if (!v) continue; has = true; for (let q = Math.max(gA, g - Wn); q <= Math.min(gB - 1, g + Wn); q++) { const w = 0.5 + 0.5 * Math.cos(Math.PI * (q - g) / Wn), u = v * w; if (Math.abs(u) > Math.abs(Dv[q])) Dv[q] = u; } }
         if (!has) continue; for (let passN = 0; passN < 2; passN++) { const pf = new Float64Array(pre + 1); for (let g = 0; g < pre; g++) pf[g + 1] = pf[g] + Dv[g]; for (let g = 0; g < pre; g++) { const h = Math.min(18, g, pre - 1 - g); Dv[g] = (pf[g + h + 1] - pf[g - h]) / (2 * h + 1); } } // 離す量そのものもならす（速さが飛ばないように）
@@ -853,11 +873,14 @@
     // 速さ・進む向き・向きの回る速さ
     const span = (g, w) => [Math.max(0, g - w), Math.min(pre + 2, g + w)];
     for (let i = 0; i < n; i++) {
+      yield* brk('pre4');
       const O = ctx.O[i]; let hx = pit.outX, hz = pit.outZ;
       for (let g = 0; g < pre; g++) { const [a, c] = span(g, 2), dx = O.x[c] - O.x[a], dz = O.z[c] - O.z[a], l = Math.hypot(dx, dz); O.speed[g] = l / ((c - a) * DT); if (l > 0.004 * (c - a)) { hx = dx / l; hz = dz / l; } O.hd[g] = Math.atan2(-hz, hx); }
+      yield* brk('pre4');
       // 微速の間は、位置のわずかな揺れで向きが震えないよう、向きを前後 0.4 秒でならす（速い時はそのまま）
       { const cs = new Float64Array(pre), sn = new Float64Array(pre); for (let g = 0; g < pre; g++) { cs[g] = Math.cos(O.hd[g]); sn[g] = Math.sin(O.hd[g]); } const pc = new Float64Array(pre + 1), ps = new Float64Array(pre + 1); for (let g = 0; g < pre; g++) { pc[g + 1] = pc[g] + cs[g]; ps[g + 1] = ps[g] + sn[g]; }
         for (let g = 0; g < pre; g++) { const h = Math.min(Math.round(24 * clamp((6 - O.speed[g]) / 4, 0, 1)), g, pre - 1 - g); if (h < 1) continue; const a = pc[g + h + 1] - pc[g - h], b = ps[g + h + 1] - ps[g - h]; if (a * a + b * b > 1e-6) O.hd[g] = Math.atan2(b, a); } }
+      yield* brk('pre4');
       for (let g = 0; g < pre; g++) { const [a, c] = span(g, 3), c2 = Math.min(c, pre - 1); if (c2 <= a) { O.yr[g] = 0; O.turn[g] = 0; O.slip[g] = 0; O.dir[g] = 1; continue; }
         let dy = O.hd[c2] - O.hd[a]; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
         const yr = dy / ((c2 - a) * DT); O.yr[g] = yr; O.turn[g] = clamp(Math.abs(yr) / CFG.turnRate, 0, 1) * clamp(O.speed[g] / 12, 0.2, 1); O.dir[g] = yr >= 0 ? 1 : -1; O.slip[g] = (yr >= 0 ? 1 : -1) * 0.25 * O.turn[g] * clamp((O.speed[g] - 3) / 5, 0, 1); } // 横すべりは速い時だけ（微速の艇は進む向きを向く）
@@ -890,12 +913,14 @@
   }
 
   /* ---------- 自己検査（全コマ） ---------- */
-  function check(ctx, quick) {
+  function check(ctx, quick) { return runAll(checkGen(ctx, quick, NO_BRK)); }
+  function* checkGen(ctx, quick, brk) {
     const n = ctx.n, NF = ctx.NF, C = ctx.C, O = ctx.O, pre = ctx.preF, hl = HULL_L / 2, hw = HULL_W / 2, gc = ctx.gPit, nearC = (g) => ctx.cutG.some((q) => Math.abs(g - q) <= 4);
     const r = { overlapFrames: 0, minGap: 99, minGapRace: 99, minGapPre: 99, bad: [], abreastMin: 99, at: {} };
     const tOf = (g) => +((g - pre) * DT).toFixed(2), mx = (key, v, i, g) => { if (v > r[key]) { r[key] = v; r.at[key] = [i, tOf(g)]; } }, mn = (key, v, i, g) => { if (v < r[key]) { r[key] = v; r.at[key] = [i, tOf(g)]; } };
     const fx = (i, g) => Math.cos(O[i].hd[g] + O[i].slip[g]), fz = (i, g) => -Math.sin(O[i].hd[g] + O[i].slip[g]);
     for (let g = 0; g < NF; g++) {
+      if ((g & 511) === 511) yield* brk('check1');
       for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
         if (!ctx.onG(a, g) || !ctx.onG(b, g)) continue;
         const dx = O[a].x[g] - O[b].x[g], dz = O[a].z[g] - O[b].z[g], d2 = dx * dx + dz * dz; if (d2 > 49) continue;
@@ -915,6 +940,7 @@
     for (let i = 0; i < n; i++) {
       const X = O[i].x, Z = O[i].z, SP = O[i].speed, YR = O[i].yr, fEndRace = ctx.finOk[i] ? Math.floor(ctx.fin[i] / DT) : ctx.F - 1;
       for (let g = 4; g < NF - 4; g++) {
+        if ((g & 1023) === 1023) yield* brk('check2');
         if (!ctx.onG(i, g)) continue; const nearCut = nearC(g);
         // 岸・マーク・ブイ・消波装置（船体のいちばん遠い角まで見込む）
         const reach2 = Math.hypot(hl, hw);
@@ -943,11 +969,13 @@
     }
     /* 横すべりの時刻表の検査【実測 14 の 4 章】: ターンごとに「艇の向きが出口の向きの 10° 以内になった時刻 Ty」を取り、その時・1 秒後・2 秒後・2.8 秒後の横すべり（°）のいちばん大きい値を出す。
        本物（レースの先頭の艇 4 例）: Ty で 60〜88°、1 秒後 45〜55°、2 秒後 13〜30°。回り終わったあと、いつまでも横へ滑り続けないことを見る */
+    yield* brk('check3');
     Object.assign(r, { slipFacing: 0, slipAfter1: 0, slipAfter2: 0, slipAfter28: 0, slipTurns: 0 });
     if (ctx.PH && ctx.SL) for (let i = 0; i < n; i++) { let tk = -9, Ty = -1; const lim = 170 * Math.PI / 180, fEnd = Math.min(ctx.F - 1, ctx.finOk[i] ? Math.floor(ctx.fin[i] / DT) + 600 : (i === ctx.fallBoat && ctx.fallT != null ? Math.floor(ctx.fallT / DT) - 30 : ctx.F - 1));
       for (let f = 0; f <= fEnd; f++) { if (!ctx.on[i][f]) continue; if (ctx.TK[i][f] !== tk) { tk = ctx.TK[i][f]; Ty = -1; } const sl = ctx.SL[i][f] * rad;
         if (Ty < 0) { if (sl > 1 && ctx.PH[i][f] + ctx.SL[i][f] >= lim) { Ty = f; r.slipTurns++; if (sl > r.slipFacing) r.slipFacing = sl; } continue; }
         const d = f - Ty; if (d === 60 && sl > r.slipAfter1) { r.slipAfter1 = sl; r.at.slipAfter1 = [i, +(f * DT).toFixed(2)]; } if (d === 120 && sl > r.slipAfter2) { r.slipAfter2 = sl; r.at.slipAfter2 = [i, +(f * DT).toFixed(2)]; } if (d >= 168 && sl > r.slipAfter28) { r.slipAfter28 = sl; r.at.slipAfter28 = [i, +(f * DT).toFixed(2)]; } } }
+    yield* brk('check3');
     // ゴール線・スタート線を切る時刻と順（x = 0 を +x 向きに切る時刻を、線の補間で求める）
     const ft = [];
     for (let i = 0; i < n; i++) {
@@ -971,23 +999,36 @@
 
   /* ---------- 計画を作る ---------- */
   // 計画を作る。万一、最後の検査に通らなかった時は、横と前後の余裕を広げてもう 1 回だけ作り直す（それでも通らなければ plan.ok = false のまま返す。呼ぶ側は今までの置き方に戻す）
+  /* 2026-11-20: info.quick ＝ 最初の 1 回だけ作って返す（作り直しの段はしない）。info.first ＝ 前に quick で作った計画（それを 1 回めとして、作り直しの段から続ける）。
+     どちらも boat/race-boat.js の Race.planJob が使う（着順を指定した再現で、作り直しの段より先に「入れ替え方を変えた走り」を試すため）。返す計画の score ＝ 0 なら合格で急な動きも無い（1e9 ＝ 不合格） */
   function* planGen(race, run, info) {
-    let P = yield* planOnceGen(race, run, info, null);
+    let P = info && info.first ? info.first : yield* planOnceGen(race, run, info, null);
     /* 作り直しの順: ①横と前後の余裕を広げる ②「内の艇の後ろを横切る」をやめる（直す前の入れ子の線）③ ② で余裕も広げる。最初に合格した物を使う（どれも不合格なら最初の物） */
     const tries = [{ marginW: CFG.marginW + 0.5, marginL: CFG.marginL + 1.5, gapVar: 0, wake: 2.5 }, { behind: false }, { behind: false, marginW: CFG.marginW + 0.5, marginL: CFG.marginL + 1.5, gapVar: 0, wake: 2.5 }];
     /* 合格でも「急な動き」（瞬間移動・速さの飛び・ターンの向きの回る速さが毎秒 80° 超え）がある時は、同じ順で作り直して、いちばん良い物を使う（オーナーの決まり「急にずれる動きもなし」） */
-    const score = (Q) => { if (!Q.ok) return 1e9; const c = check(Q._ctx, false); return (c.teleports + c.speedJumps) * 1000 + Math.max(0, c.maxYawRateTurn - 80); };
-    let best = P, bs = score(P), ms = P.ms;
+    const plain = function* (lab) { yield lab; }; // 計画 1 つを作り終えたあと（CFG は元に戻っている）の区切り
+    /* 2026-11-20（不具合 E3）: 画面の速さが走りの計算から大きく外れた計画（比が 0.85〜1.20 の外）も「急な動き」に数える。ふつうは ±6% の速さ合わせ（aMax）と前後の調整 ±2% の中に入る
+       （152 レースで測って 0.88〜1.18）。外れるのは、艇が横へ急に振られた計画（転覆した艇をよける所などで 1.8 倍になっていた）で、下の作り直しで直る */
+    const score = function* (Q) { if (!Q.ok) return 1e9; const c = yield* checkGen(Q._ctx, false, plain); yield 'L:score'; return (c.teleports + c.speedJumps) * 1000 + Math.max(0, c.maxYawRateTurn - 80) + 300 * (Math.max(0, c.speedRatioMax - 1.20) + Math.max(0, 0.85 - c.speedRatioMin)); };
+    let best = P, bs = info && info.first && info.first.score != null ? info.first.score : yield* score(P), ms = P.ms;
+    if (info && info.quick) { best.score = bs; return best; }
     /* 2026-11-18: 横切り（behind・behindK）が 1 つも無いレース（着順指定・形を配り直したレースなど）では、「横切りをやめる」作り直しは前の段と同じ計算になるので飛ばす */
     const cx = P._ctx, hasBeh = (cx.behind && cx.behind.some((a) => a.length)) || (cx.behindK && cx.behindK.some((a) => a.length));
     if (!hasBeh) tries.splice(1, 2);
-    for (let q = 0; q < tries.length && bs > 0; q++) { const P2 = yield* planOnceGen(race, run, info, tries[q]); ms += P2.ms; P2.retried = q + 1; const s2 = score(P2); if (s2 < bs) { best = P2; bs = s2; } else best.retried = q + 1; }
+    /* 2026-11-20（不具合 E2・E3）: ここまでの作り直しでも急な動きが残る時だけ（今までは、そのまま使っていた）、横の動きをゆっくりにする作り直しを足す。
+       ①横の速さの重み 3 倍（wv 3）②同 6 倍（wv 6）③横の加速度の重み 8 倍（wa 40）④引き波よけをやめる（wake 0）⑤左右の並びを 0.5 秒覚える（grace 30）。急な動きが無くなった所でやめる。
+       数字は【仮】: 本番の決め方で出た 4 本が収まった値（フライングの 6-5: 2 周目のホームで 2 号艇が毎秒 173° 振れる → ①で 65°／転覆の 1-3: 転覆した艇をよける 3 号艇が毎秒 196°・画面の速さ 1.8 倍 → ①で 76°／
+       事故なしの 1-2（b20261120-1017）: 129° → ②で 63°／フライングの 6-2（-1105）: 1 マークの出口で 299° → ④で 96°）。
+       急な動きの無い計画（ほとんど全部。580 レースの試験では 576）は、ここへ来ないので前と同じ答え。info.stop() が true を返したら（時間切れ）、合格している物があればそこでやめる */
+    tries.push({ wv: 3 }, { wv: 6 }, { wa: 40 }, { wake: 0.01 }, { grace: 30 });
+    const late = () => !!(info && info.stop && best.ok && info.stop());
+    for (let q = 0; q < tries.length && bs > 0 && !late(); q++) { const P2 = yield* planOnceGen(race, run, info, tries[q]); ms += P2.ms; P2.retried = q + 1; const s2 = yield* score(P2); if (s2 < bs) { best = P2; bs = s2; } else best.retried = q + 1; }
     /* 2026-11-18 最後の手: 作り直しを全部試しても不合格の時だけ、「時刻の割り付けを動かさずに、なぞり → ずれだけやり直す」仕上げ（moreFix）を入れてもう 1 回作る。
        決まりと実際の位置が必ず合うので重なりは消えやすいが、ずれが変わった分は道のりに合わせ直さないので、その艇の画面の速さが run と違う（速さの比が崩れる）ため、最後にだけ使う。
        それでも不合格なら、横と前後の余裕を大きく取って（横 ＋1.0m・前後 ＋3.0m。【仮】着順指定の種 3573・4563 で合格した値）もう 1 回（4 艇が 1 つのマークで固まる着順指定のレース） */
     const last = [{ moreFix: 2 }, { moreFix: 3, marginW: CFG.marginW + 1.0, marginL: CFG.marginL + 3.0, gapVar: 0, wake: 1.5 }];
-    for (let q = 0; q < last.length && !best.ok; q++) { const P3 = yield* planOnceGen(race, run, info, last[q]); ms += P3.ms; P3.retried = tries.length + 1 + q; if (score(P3) < bs) { best = P3; bs = score(P3); } }
-    best.ms = ms; return best;
+    for (let q = 0; q < last.length && !best.ok; q++) { const P3 = yield* planOnceGen(race, run, info, last[q]); ms += P3.ms; P3.retried = tries.length + 1 + q; const s3 = yield* score(P3); if (s3 < bs) { best = P3; bs = s3; } }
+    best.ms = ms; best.score = bs; return best;
   }
   function plan(race, run, info) { const g = planGen(race, run, info); let r = g.next(); while (!r.done) r = g.next(); return r.value; }
   /* 時間を分けて計画する（Fire TV 向け）: 1 回に budgetMs ミリ秒ぶんだけ進めて、残りは次の順番に回す。答えは plan() とまったく同じ。
@@ -1009,7 +1050,7 @@
     useCfg(); try { return yield* planBody(race, run, info, useCfg, freeCfg); } finally { freeCfg(); }
   }
   function* planBody(race, run, info, useCfg, freeCfg) {
-    const brk = function* () { freeCfg(); yield; useCfg(); }; // 区切り（その間はほかの計画に CFG を返す）
+    const brk = function* (lab) { freeCfg(); yield lab; useCfg(); }; // 区切り（その間はほかの計画に CFG を返す）。lab ＝ どこの区切りか（計る時の目印。'L:…'）
     info = info || {};
     const C = (info.Course && info.Course.pointAt && info.Course) || (info.course && info.course.pointAt && info.course) || (typeof self !== 'undefined' && self.BOAT && self.BOAT.Course) || (typeof globalThis !== 'undefined' && globalThis.BOAT && globalThis.BOAT.Course);
     if (!C) throw new Error('BOAT.Lines.plan: コース（BOAT.Course）が要る');
@@ -1018,7 +1059,7 @@
     /* レース前はカットなしの続いた動き（資料 15）。cuts は空。info.pitOutT（合図の時刻）だけ外から渡せる。preT が 100 より短い時は、その時刻から途中の場面で始まる */
     ctx.cuts = []; ctx.cutG = []; ctx.pitOutT = info.pitOutT != null ? info.pitOutT : PRE.pitOut; ctx.cutT = PRE.seg[0][2];
     ctx.preF = Math.round(ctx.preT / DT); ctx.gPit = clamp(Math.round((ctx.cutT + ctx.preT) / DT), 0, ctx.preF); ctx.boost = {}; ctx.adapted = 0;
-    sampleRun(ctx, race, run, info);
+    sampleRun(ctx, race, run, info); yield* brk('L:sample');
     const n = ctx.n, F = ctx.F, nt = NT(C); ctx.NF = ctx.preF + F;
     if ((run.dist || race.dist) && Math.abs((run.dist || race.dist) - C.DIST) > 1) ctx.warnings.push('run の距離（' + (run.dist || race.dist) + 'm）がコースの道のり（' + C.DIST.toFixed(1) + 'm）と違う。進み具合の割合で合わせた');
     // 型
@@ -1088,13 +1129,13 @@
     const f32 = () => new Float32Array(F), f64 = () => new Float64Array(F);
     for (let i = 0; i < n; i++) {
       const lane = CFG.lanes[ctx.course[i]] != null ? CFG.lanes[ctx.course[i]] : 8 + 5.5 * ctx.course[i];
-      ctx.adj.push([]); ctx.laneOf.push(lane); ctx.base.push(null); makeBase(i);
+      ctx.adj.push([]); ctx.laneOf.push(lane); ctx.base.push(null); makeBase(i); yield* brk('L:base');
       ctx.ELL.push(f64()); ctx.E60.push(f64()); ctx.ES.push(f64()); ctx.PX.push(f64()); ctx.PZ.push(f64()); ctx.ratio.push(f32()); ctx.winA.push(new Array(nt).fill(0)); ctx.winS.push(new Array(nt).fill(0)); ctx.winRes.push(new Array(nt).fill(0));
       ctx.G.push({ x: f64(), z: f64(), tx: f64(), tz: f64(), kp: f64(), v: f64(), lat: f32(), lon: f32(), str: f32(), lo: f32(), hi: f32(), kn: new Uint8Array(F) });
       const NF = ctx.NF; ctx.O.push({ x: new Float64Array(NF), z: new Float64Array(NF), hd: new Float64Array(NF), speed: new Float64Array(NF), yr: new Float64Array(NF), turn: new Float32Array(NF), slip: new Float32Array(NF), acc: new Float32Array(NF), dir: new Int8Array(NF) });
       ctx.on.push(new Uint8Array(F).fill(1));
     }
-    const pass = function* () { for (let i = 0; i < n; i++) { retime(ctx, i); yield* brk(); } geometry(ctx); yield* brk(); if (ctx.scratchBoat >= 0) { const i = ctx.scratchBoat, b = ctx.base[i]; for (let f = 0; f < F; f++) ctx.on[i][f] = ctx.ELL[i][f] < b.len - 4 ? 1 : 0; } };
+    const pass = function* () { for (let i = 0; i < n; i++) { retime(ctx, i); yield* brk('L:retime'); } yield* geometryGen(ctx, brk); yield* brk('L:geo'); if (ctx.scratchBoat >= 0) { const i = ctx.scratchBoat, b = ctx.base[i]; for (let f = 0; f < F; f++) ctx.on[i][f] = ctx.ELL[i][f] < b.len - 4 ? 1 : 0; } };
     ctx.onG = (i, g) => (g < ctx.preF ? 1 : ctx.on[i][g - ctx.preF]);
     // 線の上の時刻の割り付け → 左右を決める → ずれを解く、を CFG.outer 回くり返す（ずれると道のりが変わり、時刻の割り付けも少し変わるため）
     /* 1 回めのあと: ターンの入口側・出口側で線からのずれがずっと大きい艇は、型の寸法そのものをその分だけ直して線を引き直す
@@ -1156,19 +1197,19 @@
     }
     for (let it = 0; it < CFG.outer; it++) { yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); yield* pass(); if (it === 0 && CFG.adapt && !hasLines && adapt()) yield* pass(); }
     for (let it = 0; it < CFG.fitRounds; it++) { if (!fitLen()) break; ctx.fits = (ctx.fits || 0) + 1; yield* pass(); yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); yield* pass(); }
-    world(ctx); yield* brk(); preRace(ctx, info); yield* brk();
+    yield* worldGen(ctx, brk); yield* brk('L:world'); yield* preRaceGen(ctx, info, brk); yield* brk('L:pre');
     /* 仕上げ: 全コマ検査して、すき間が足りなかった 2 艇・その時刻の前後だけ「横の間を広く・前後の見込みを長く」して、もう 1 回同じ手順（左右 → ずれ → 時刻）で作り直す。
        その場しのぎの押し分けはしない（線が荒れるため）。最大 CFG.repairMax 回 */
-    const pre0 = ctx.preF; let chk = check(ctx, true); ctx.bad0 = chk.bad.length;
+    const pre0 = ctx.preF; let chk = yield* checkGen(ctx, true, brk); ctx.bad0 = chk.bad.length; yield* brk('L:check');
     /* 2026-11-18: すき間が足りない所がある時は、まず同じ手順（左右 → ずれ → 時刻）をあと outerMore 回くり返す（なぞりが前の回の解から始まるので、くり返すほど決まりが実際の位置に合う）。
        合格しているレースは何もしない（計算の時間は増えない） */
     ctx.more = 0; ctx.inMore = true;
     const badScore = (q) => q.overlapFrames * 1000 + q.bad.length;
     // いちばん良かった状態（線の上の進み・ずれ）を覚えておき、悪くなったら戻す（くり返しが行ったり来たりする時。着順指定の種 3139）
     const snap = () => ({ ELL: ctx.ELL.map((a) => a.slice()), E60: ctx.E60.map((a) => a.slice()), ratio: ctx.ratio.map((a) => a.slice()), on: ctx.on.map((a) => a.slice()), knots: ctx.knots, chk });
-    const back = function* (S) { for (let i = 0; i < n; i++) { ctx.ELL[i].set(S.ELL[i]); ctx.E60[i].set(S.E60[i]); ctx.ratio[i].set(S.ratio[i]); ctx.on[i].set(S.on[i]); } ctx.knots = S.knots; geometry(ctx); yield* brk(); world(ctx); yield* brk(); chk = S.chk; };
+    const back = function* (S) { for (let i = 0; i < n; i++) { ctx.ELL[i].set(S.ELL[i]); ctx.E60[i].set(S.E60[i]); ctx.ratio[i].set(S.ratio[i]); ctx.on[i].set(S.on[i]); } ctx.knots = S.knots; yield* geometryGen(ctx, brk); yield* brk('L:geo'); yield* worldGen(ctx, brk); yield* brk('L:world'); chk = S.chk; };
     let best = snap();
-    while (chk.bad.length && ctx.more < CFG.outerMore) { ctx.more++; yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); yield* pass(); world(ctx); yield* brk(); chk = check(ctx, true); yield* brk(); if (badScore(chk) < badScore(best.chk)) best = snap(); }
+    while (chk.bad.length && ctx.more < CFG.outerMore) { ctx.more++; yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); yield* pass(); yield* worldGen(ctx, brk); yield* brk('L:world'); chk = yield* checkGen(ctx, true, brk); yield* brk('L:check'); if (badScore(chk) < badScore(best.chk)) best = snap(); }
     if (badScore(chk) > badScore(best.chk)) yield* back(best);
     while (chk.bad.length && ctx.repairs < CFG.repairMax) {
       ctx.repairs++;
@@ -1178,7 +1219,7 @@
         if (hit) { hit.f0 = Math.min(hit.f0, v.f); hit.f1 = Math.max(hit.f1, v.f); hit.dW = Math.max(hit.dW, CFG.clear - v.g + 0.25); }
         else list.push({ f0: v.f, f1: v.f, dW: CFG.clear - v.g + 0.25, dL: 2.5, rep: ctx.repairs });
       }
-      yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); yield* pass(); world(ctx); yield* brk(); chk = check(ctx, true); yield* brk(); if (badScore(chk) < badScore(best.chk)) best = snap();
+      yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); yield* pass(); yield* worldGen(ctx, brk); yield* brk('L:world'); chk = yield* checkGen(ctx, true, brk); yield* brk('L:check'); if (badScore(chk) < badScore(best.chk)) best = snap();
     }
     if (badScore(chk) > badScore(best.chk)) yield* back(best); // 作り直しで悪くなっていたら、いちばん良かった状態へ
     /* それでも残った所（左右をなぞった時の前後の間と、解いたあとの前後の間が食い違った所）は、後ろの艇の「線の上の進み」を少しだけ遅らせて前後に離す。
@@ -1205,19 +1246,19 @@
         for (let f = fa; f < F; f++) { const w = f < q.f0 ? sm((f - fa) / (q.f0 - fa)) : f > q.f1 ? (fb >= F - 1 ? 1 : sm((fb - f) / (fb - q.f1))) : 1; if (w <= 0 && f > q.f1) break; ell[f] += sgn * need * w; if (ctx.ratio[who][f] === 1) ctx.ratio[who][f] = 0.9999; } // 計画の終わりにかかる時は、戻さずそのまま
         ctx.shifts++; if (need > ctx.shiftMax) ctx.shiftMax = need;
       }
-      geometry(ctx); yield* brk(); world(ctx); yield* brk(); chk = check(ctx, true); yield* brk();
+      yield* geometryGen(ctx, brk); yield* brk('L:geo'); yield* worldGen(ctx, brk); yield* brk('L:world'); chk = yield* checkGen(ctx, true, brk); yield* brk('L:check');
       if (badScore(chk) >= badScore(chk0)) { // 良くならなかった: この回の調整を捨てて元に戻す
         for (let i = 0; i < n; i++) { ctx.ELL[i].set(keepELL[i]); ctx.ratio[i].set(keepRatio[i]); } ctx.shifts = keepShifts[0]; ctx.shiftMax = keepShifts[1]; for (const k in nShift) delete nShift[k]; Object.assign(nShift, keepN);
-        geometry(ctx); yield* brk(); world(ctx); yield* brk(); chk = chk0; ctx.shiftUndo = (ctx.shiftUndo || 0) + 1; break;
+        yield* geometryGen(ctx, brk); yield* brk('L:geo'); yield* worldGen(ctx, brk); yield* brk('L:world'); chk = chk0; ctx.shiftUndo = (ctx.shiftUndo || 0) + 1; break;
       }
     }
     /* 最後の手（ここまでで足りない時だけ）: 時刻の割り付け（線の上の進み）は動かさずに、なぞり → ずれだけをやり直す（moreFix 回まで）。時刻の割り付けを変えないので、なぞりで作った横の決まりが
        そのまま最後の位置の決まりになる（くり返しのたびに割り付けが数十 m 動いて、決まりと実際の位置が食い違う行ったり来たりを止める。転覆の種 2210）。
        代わりに、ずれが変わった分は道のりに合わせ直さないので、その艇の画面の速さが run と少し違う（速さの比が 0.95〜1.05 を外れることがある） */
     ctx.fixN = 0;
-    while (chk.bad.length && ctx.fixN < CFG.moreFix) { ctx.fixN++; const keepE = ctx.E60.map((a) => a.slice()), keepK = ctx.knots, chk0 = chk; yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); world(ctx); yield* brk(); chk = check(ctx, true); yield* brk();
-      if (badScore(chk) >= badScore(chk0)) { for (let i = 0; i < n; i++) ctx.E60[i].set(keepE[i]); ctx.knots = keepK; world(ctx); yield* brk(); chk = chk0; break; } } // 良くならなければ元に戻す
-    ctx.ok = chk.bad.length === 0 && chk.overlapFrames === 0; ctx.ms = now() - tStart;
+    while (chk.bad.length && ctx.fixN < CFG.moreFix) { ctx.fixN++; const keepE = ctx.E60.map((a) => a.slice()), keepK = ctx.knots, chk0 = chk; yield* sweepGen(ctx); yield* solveOffsetsGen(ctx, null); yield* worldGen(ctx, brk); yield* brk('L:world'); chk = yield* checkGen(ctx, true, brk); yield* brk('L:check');
+      if (badScore(chk) >= badScore(chk0)) { for (let i = 0; i < n; i++) ctx.E60[i].set(keepE[i]); ctx.knots = keepK; yield* worldGen(ctx, brk); yield* brk('L:world'); chk = chk0; break; } } // 良くならなければ元に戻す
+    ctx.ok = chk.bad.length === 0 && chk.overlapFrames === 0; ctx.badN = chk.bad.length; ctx.ovN = chk.overlapFrames; ctx.ms = now() - tStart;
     return makePlan(ctx);
   }
   function makePlan(ctx) {
@@ -1236,7 +1277,7 @@
       t0: -ctx.preT, t1: ctx.t1, dt: DT, n, cuts: ctx.cuts.slice(), pitOutT: ctx.pitOutT,
       /* 場面（カメラの台本用）: name ＝ pit／buoy／back／turn2／wait／runup、t0〜t1 ＝ ゲームの秒（＝ 本物の時刻。real0 も同じ。カットで飛ばさない） */
       segments: PRE.seg.filter((q) => q[2] > -ctx.preT).map((q) => ({ name: q[0], t0: Math.max(-ctx.preT, q[1]), t1: q[2], real0: Math.max(-ctx.preT, q[1]) })), faceT: (ctx.preFaceT || []).slice(), waitZ: (ctx.preWaitZ || []).slice(), preSep: ctx.preSep || 0,
-      ok: ctx.ok, ms: ctx.ms, repairs: ctx.repairs, shifts: ctx.shifts, shiftMax: ctx.shiftMax, solves: ctx.solves, adapted: ctx.adapted, iters: ctx.iters, warnings: ctx.warnings,
+      ok: ctx.ok, badFrames: ctx.badN || 0, overlapFrames: ctx.ovN || 0, ms: ctx.ms, repairs: ctx.repairs, shifts: ctx.shifts, shiftMax: ctx.shiftMax, solves: ctx.solves, adapted: ctx.adapted, iters: ctx.iters, warnings: ctx.warnings,
       types: ctx.types, kimarite: ctx.kimarite, scenario: ctx.scn, press: ctx.press || [], course: ctx.course.slice(), st: ctx.stSec.slice(), kickT: ctx.kickT.slice(), finish: ctx.fin.slice(), speedScale: ctx.winA,
       at(t) {
         let g = (t - P.t0) / DT; if (g < 0) g = 0; if (g > NF - 1.001) g = NF - 1.001; let k = Math.floor(g), f = g - k;
@@ -1255,5 +1296,5 @@
   }
   // 型の形の「物差し（直線 ＋ 半径 RC の半円）より長い道のり」m（マイナスは近道）。走りの計算の shape.geo と同じ数
   function typeExcess(C, type, k, lane) { const S = defaultShape(type, k || 0, lane == null ? CFG.lanes[0] : lane, null); return turnGeom(S.R1, S.R2, S.a, S.w).geo - C.TURN_LEN; }
-  return { plan, planAsync, CFG, TYPE, SHAPE, turnGeom, PRE, HULL_L, HULL_W, DT, assignTypes, typeExcess, obbGap, _buildBase: buildBase, _boatNodes: boatNodes };
+  return { plan, planAsync, CFG, TYPE, SHAPE, turnGeom, PRE, HULL_L, HULL_W, DT, assignTypes, typeExcess, obbGap, _buildBase: buildBase, _boatNodes: boatNodes, _planGen: planGen };
 });

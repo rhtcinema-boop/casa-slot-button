@@ -103,6 +103,28 @@ body.boat .btn small { display: block; font-size: 12px; font-weight: 700; opacit
 .fune .bk { background: #6b7590; color: #fff; }
 .incl { flex: none; margin: 0; display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; font-size: 13px; color: #ffb3a6; }
 .os-s .qty .qb { height: 32px; }
+/* 画面の中身の送りの棒は出さない（2026-11-20）: 1 画面に収める作りで、棒の出るブラウザ（パソコン）では 1px 未満のはみ出しでも棒が出て幅が狭くなり、字が折れて本当にはみ出していた。
+   スマホは棒が幅を取らないので見た目は変わらない（指では今までどおり動く） */
+body.boat main { scrollbar-width: none; } body.boat main::-webkit-scrollbar { display: none; }
+/* 舟券の行（2026-11-20）: 「無料」「的中」「返還」の印が金額（◆◆◆100）に重なって読めなかった（前からの崩れ。券の一覧は中で動く欄なので崩れの試験に掛からなかった）。
+   金額の幅を先に取り、組番の横に入らない印は組番の下の行へ折る */
+.fune .tk { grid-template-columns: minmax(min-content, 1fr) auto; }
+.fune .kumi { flex-wrap: wrap; row-gap: 3px; min-width: 0; }
+.fune .kn { flex: none; display: inline-flex; align-items: center; gap: 3px; } /* 組番（1▶4）は折らない。折るのは印だけ */
+.fune .kn + em { margin-left: 0; }
+.os-s .fune .am { font-size: 14px; }
+/* 結果の画面を小さい画面（SE）でも 1 画面に（2026-11-20）: 当たり＋フライング・転覆の返還の知らせが重なると、いちばん詰めても入らなかった（艇番だけ 1 行に落ちて 3 行になっていた）。
+   知らせは艇番を字と同じ行に流す。いちばん詰めるときは「おめでとうございます」を 1 行に・下の枠は残りの数字だけ（競馬に使える案内はすぐ下のボタンに書いてある） */
+.incl { display: block; text-align: center; line-height: 1.55; } .incl .waku { display: inline-flex; vertical-align: middle; margin-right: 4px; }
+.os-xs .incl { font-size: 12px; }
+.os-xs .b-result .hitmsg { font-size: 14px; } .os-xs .b-result .hitmsg br { display: none; }
+.os-xs .b-result .bnote .bn2 { display: none; }
+.bnote small { font-size: 12px; margin-left: 4px; white-space: nowrap; }
+/* 当たりの額の下の「（上限 3,000 BPT）」（2026-11-20: BPT は 3,000 まで。上限で止まったときだけ） */
+.gain em { display: block; margin-top: -4px; font-style: normal; font-size: 14px; font-weight: 700; color: var(--cream); white-space: nowrap; }
+.os-xs .gain em { margin-top: -6px; font-size: 12px; } /* いちばん詰めるとき（SE）は額と同じ行に（1 画面に収める） */
+/* 上限のための返還・払い戻しなし（2026-11-20。事故の知らせの赤とは分けて、ふつうの知らせの色） */
+.incl.capl { color: var(--cream); } .incl.capl b { color: var(--gold); font-size: 15px; white-space: nowrap; }
 
 /* ---------- 2026-11-19 作り直し: 競馬のスマホ（bet.css の .waitbox・.bt の表・.pickdock）と同じ作り ---------- */
 body.boat .top { display: flex; align-items: center; gap: 10px; padding: calc(var(--sat) + 8px) 16px 8px; text-align: left; }
@@ -165,6 +187,8 @@ body.boat .top .store { overflow: visible; text-overflow: clip; font-size: 13px;
 .b-intro .icard p { margin: 0; font-size: 15px; line-height: 1.65; color: var(--dim); word-break: auto-phrase; text-wrap: pretty; }
 .b-intro .idots { flex: none; display: flex; justify-content: center; gap: 8px; } .b-intro .idots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); } .b-intro .idots i.on { background: var(--gold); }
 .os-s .b-intro .ipic svg { width: 120px; height: 102px; } .os-s .b-intro .icard { padding: 16px 14px; gap: 8px; } .os-xs .b-intro .ipic svg { width: 96px; height: 82px; }
+/* いちばん詰めるとき（SE）: 案内の文を少し小さく（2026-11-20「BPT は 3,000 まで」で 3 枚目の文が 1 行増えた分） */
+.os-xs .b-intro .icard p { font-size: 14px; line-height: 1.55; } .os-xs .b-intro .icard { gap: 6px; }
 .howb { flex: none; align-self: center; width: auto !important; min-height: 40px !important; padding: 6px 20px !important; font-size: 14px !important; }
 .btn.tokeiba { flex: none; display: flex; align-items: center; justify-content: center; text-decoration: none; min-height: 50px; font-size: 16px; background: linear-gradient(180deg, #ffe9a8, #c9a03e); color: #1a1408; }
 .os-s .btn.tokeiba { min-height: 44px; } .os-s .scr.b-result .nextr { display: none; } /* 詰めるときは「次のボートレース」を省く（上の帯に出ている） */

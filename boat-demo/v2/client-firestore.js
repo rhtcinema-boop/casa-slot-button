@@ -494,6 +494,7 @@
       if (!bptP) bptP = (async () => { let d; try { d = data(await doc(COL.bpt, uid()).get()) || {}; } catch (e) { d = null; } bptP = null; bptCache = d; bptAt = local(); return d; })();
       return bptP;
     }
+    const bptNote = (d) => { bptCache = d || null; bptAt = d ? local() : 0; }; // casa BOAT（v2/boat-firestore.js）が自分で書いたあとの中身を写しに入れる（null ＝ 次は読み直す。2026-11-20）
     async function bpt() { await ready(); const d = await myBpt(true); return d ? { bal: Core.bptBalance(d, now()), earned: Number(d.earned) || 0, spent: Number(d.spent) || 0, cost: Core.BPT_PER_TICKET } : null; }
     // いま追加の券を入れられるか: { bal, cost, have（もう足した枚数）, left（あと何枚） } | null（投票の時間でない・テスト・読めない）
     async function bptCan(v1, r, v2) { // v2: 2 票目（あれば合計 5 枚までの残りが 1 枚へる。2026-11-18）
@@ -738,8 +739,11 @@
         /* 追加の券（2026-11-18）: 1 枚ずつ「券を消す・持ち主の BPT の spent を 100 減らす（refund ＝ その券の id）」を 1 回の書き込みで（置き場の決まりが確かめる）。1 票目より先に消す */
         for (let k = Core.extraCount(v1); k >= 1; k--) {
           const xr = doc(COL.votes, Core.extraVid(vid, k)), x = data(await xr.get()); if (!x) continue;
-          const bx = db.batch(); bx.delete(xr); if (x.owner && !x.test && x.bptBack !== true) bx.update(doc(COL.bpt, x.owner), { spent: FieldValue.increment(-Core.BPT_PER_TICKET), refund: x.vid });
-          await bx.commit();
+          const wantBack = !!(x.owner && !x.test && x.bptBack !== true);
+          const drop = (withBack) => { const bx = db.batch(); bx.delete(xr); if (withBack) bx.update(doc(COL.bpt, x.owner), { spent: FieldValue.increment(-Core.BPT_PER_TICKET), refund: x.vid }); return bx.commit(); };
+          /* 持てる BPT の上限 3,000（2026-11-20 夜）: 戻すと残りが 3,000 を超える・もう戻す分が無い（週が変わった）ときは、置き場の決まりが BPT の戻しを断る。
+             そのときは券だけ消す（番号を空けるのは止めない。スタッフはお客さんの BPT を読めないので、断られてから券だけ消す） */
+          try { await drop(wantBack); } catch (e) { if (!(wantBack && e && e.code === 'permission-denied')) throw e; await drop(false); }
         }
         const b = db.batch(); if (v1) b.delete(ref); if (v2) b.delete(ref2);
         const SR = v2 && v2.stamp === true && v2.owner ? Core.stampOf(await getPublic()) : null;
@@ -869,6 +873,25 @@
       if (d.decision.manyBills) logD([now(), 'many_bills ' + raceId + ' ' + d.decision.manyBills.map((x) => x.dev + ':' + x.bills).join(',')]); // 1 台で番号が多いスマホ（2026-10-27。決め方に数えない。記録は derbyRaceSecrets の decision と当たりの flag）
       const exp = Core.expireAtFor(Math.max(r.at, d.revealAt), sc.tuning.dayStartHour);
       const mine = (x) => !!x && x.status === 'closing' && x.closingKey === key;
+      /* 上限のため返還する追加の券（2026-11-20。Core.decideRace の bptBack）: 当たりを書く前に、券に bptBack の印を付けて BPT を戻す。
+         取引の中で印を確かめるので、決め直し（止まって復帰）でも 2 回は戻さない。印の付いた券は決め方に数えない（Core.decideRace）。進行役のテレビは 3 枚ずつ（決まりの中の読み取りの上限） */
+      if (d.bptBack && d.bptBack.length) {
+        const BK = cap(100, 3);
+        for (let i = 0; i < d.bptBack.length; i += BK) {
+          const part = d.bptBack.slice(i, i + BK);
+          const okb = await db.runTransaction(async (tx) => {
+            if (!mine(data(await tx.get(ref)))) return false;
+            const vs = []; for (const x of part) vs.push(data(await tx.get(doc(COL.votes, x.vid))));
+            const need = {}; vs.forEach((v) => { if (v && v.bptBack !== true && v.owner) need[v.owner] = (need[v.owner] || 0) + 1; });
+            const owners = Object.keys(need), bds = []; for (const o of owners) bds.push(data(await tx.get(doc(COL.bpt, o))));
+            part.forEach((x, j) => { const v = vs[j]; if (v && v.bptBack !== true) tx.update(doc(COL.votes, x.vid), { bptBack: true }); });
+            owners.forEach((o, j) => { if (bds[j]) tx.update(doc(COL.bpt, o), { spent: Core.bptBackSpent(bds[j], need[o]) }); }); // 残りが 3,000 を超えるところまでは戻さない（Core.BPT_MAX）
+            return true;
+          });
+          if (!okb) return null;
+        }
+        logD([now(), 'bpt back (cap) ' + raceId + ' tickets=' + d.bptBack.length]);
+      }
       const list = d.payouts.map((p) => ({ p, pid: Core.pidFor(Outcome, sc.salt, raceId, p.vid, 'win') }));
       const CH = cap(CHUNK, 6); // 進行役のテレビは 1 回 15 件まで（当たり 1 件 = 2 件の書き込み＋確かめ）
       for (let i = 0; i < list.length; i += CH) { // 同じ id なので何度書いても同じ
@@ -997,7 +1020,7 @@
         tx.set(doc(COL.secrets, raceId), { decision: { paid: pl.kept.reduce((a, p) => a + p.amount, 0), refunded: true } }, { merge: true });
         pl.voids.forEach((p) => tx.update(doc(COL.payouts, p.pid), { status: 'void', voidAt: t }));
         stampDocs.forEach(([v, sd]) => { if (sd && (Number(sd.spent) || 0) >= SR.cost && sd.refund !== v.vid) tx.update(doc(COL.stamps, v.owner), { spent: FieldValue.increment(-SR.cost), refund: v.vid }); }); // スタンプの 2 票目のぶんを戻す（無い・足りない・もう戻した人は何もしない。2026-11-03）
-        bptDocs.forEach(([o, bd]) => { const n = bptPlan[o].vids.filter((x) => backVids.indexOf(x) >= 0).length; if (bd && n) tx.update(doc(COL.bpt, o), { spent: Math.max(0, (Number(bd.spent) || 0) - n * Core.BPT_PER_TICKET) }); }); // 追加の券の BPT を戻す（2026-11-18）
+        bptDocs.forEach(([o, bd]) => { const n = bptPlan[o].vids.filter((x) => backVids.indexOf(x) >= 0).length; if (bd && n) tx.update(doc(COL.bpt, o), { spent: Core.bptBackSpent(bd, n) }); }); // 追加の券の BPT を戻す（2026-11-18）。残りが 3,000 を超えるところまでは戻さない（2026-11-20 夜）
         backVids.forEach((vid) => tx.update(doc(COL.votes, vid), { bptBack: true }));
         return { pl, wd };
       });
@@ -1281,6 +1304,7 @@
         /* v4: 投票は 60 秒（Core.testStages）。発走の 60 秒前から投票（startIn が 120 なら 60 秒待ってから） */
         const sg = Core.testStages(sec, sc.tuning); sec = sg.startIn;
         if (Core.testRaceBusy(races, sid, t, sec, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
+        if (boat) { const sp = Core.testRaceSpan(t, sec, sc.tuning); let hit = null; try { hit = await boat.testBusy(sp[0], sp[1]); } catch (e) { hit = null; } if (hit) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy(boat) ' + sid); continue; } } // casa BOAT（全店同時）と被る時間には作らない（2026-11-20）
         const r = await writeRace({ id, at: t + sec * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, sg); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
         await ref.set({ raceId: r.id, raceAt: r.at, doneAt: t }, { merge: true });
         did.push('test ' + r.id);
@@ -1328,6 +1352,11 @@
       const pubT = await getPublic();
       const runIn = Core.testStages(sec, pubT).startIn; // 実際の発走まで（投票 60 秒）
       if (Core.testRaceBusy(await getRaces(true), store, now(), runIn, pubT, [])) throw E(409, 'busy', 'いまはテストのレースを作れません（投票中・レース中か、もうすぐ次のレースです）');
+      /* casa BOAT と被る時間（2026-11-20）: ボートの「いまの状態」の 1 件（boatLive/all）だけ読んで、いまのレース・次のレースと重なるなら断る。
+         読めない（ボートの決まりを入れる前）ときは見ない。進行役も作る前にもう一度、時刻表まで見て確かめる（processTestReqs） */
+      { const bl = await doc('boatLive', 'all').get().then(data).catch(() => null);
+        if (bl) { const sp = Core.testRaceSpan(now(), runIn, pubT), hit = (a, b) => a < sp[1] && sp[0] < b, c = bl.race, n = bl.next;
+          if ((c && c.status !== 'void' && c.refunded !== true && hit(c.openAt, c.endAt)) || (n && hit(n.openAt, n.at + 6 * 60000))) throw E(409, 'busy', 'いまはテストのレースを作れません（ボートレースの時間です）'); } }
       const write = async () => {
         const b = db.batch();
         b.set(doc(COL.testReq, store), { at: FieldValue.serverTimestamp(), by: uid(), startIn: sec });
@@ -1690,12 +1719,16 @@
           const have = new Set(dq.docs.map((d) => d.id)), b = db.batch(), added = [];
           q.docs.forEach((d) => { const x = d.data() || {}; if (x.kind !== 'casatv' || have.has(d.id)) return; b.set(doc(COL.deciders, d.id), { role: 'backup', store: x.store || null, setAt: now(), at: now() }); added.push(d.id); });
           if (added.length) await b.commit();
+          /* casa BOAT（2026-11-20）: 進行役でも予備でもないテレビ（パソコンのブラウザのテレビなど）は QR の合言葉（boatKeys）を読めず QR を出せなかった。
+             14 日以内に連絡のあったテレビのうち、進行役・予備でないものに印（boatTvs/<uid>）を付ける（マスターだけが書ける。ボートの決まりを入れる前は書けないので何もしない） */
+          try { const bb = db.batch(); let n = 0; q.docs.forEach((d) => { const x = d.data() || {}; if (have.has(d.id) || added.indexOf(d.id) >= 0) return; bb.set(doc('boatTvs', d.id), { store: x.store || null, kind: x.kind || null, at: now() }); n++; }); if (n) await bb.commit(); } catch (e) { /* 決まりを入れる前 */ }
           return { ok: true, added };
         }),
         health: wrap(async () => deciderHealth(null)),
         preview: wrap(async (date, s) => { const sc = await secretConfig(), ds = date || Core.dateStr(now()); return { date: ds, holiday: Core.holidayName(ds), weekday: Core.weekday(ds), /* holiday: 祝日の名前 | null（模擬クラウドの GET /api/admin/timetable/preview と同じ。2026-10-27） */ races: Core.expandDate(ds, sc.timetable.rules || []).filter((e) => !s || !e.storeId || e.storeId === s) }; }),
         saveTuning: wrap(async (t) => {
-          const sc = await secretConfig(), merged = Core.mergeTuning(sc.tuning, t || {}, now());
+          const sc = await secretConfig(true), merged = Core.mergeTuning(sc.tuning, t || {}, now()); // 読み直す（30 秒おぼえた設定のままだと、直前にほかの端末で変えた時刻表を見逃す。2026-11-20）
+          if (boat) await boat.checkDerbyTuning(sc.tuning, merged, sc.timetable.rules || []); // casa BOAT（2026-11-20）: 競馬がテレビをふさぐ長さ（投票の秒数など）・朝の区切りを変える保存は、ボートと被るなら保存しない
           const b = db.batch(); b.set(doc(COL.config, 'secret'), { tuning: merged }, { merge: true }); b.set(doc(COL.config, 'public'), Core.publicTuning(merged)); b.set(doc(COL.schedule, 'public'), Core.publicSchedule(sc.timetable.rules || [], merged, now(), sc.timetable.bigNames)); /* bigNames（2026-11-11）: 調整の保存で名前が消えないように */ for (const x of Core.revoteRaces(await getRaces(true), merged, now())) b.set(doc(COL.races, x.id), { openAt: x.openAt, openAtTs: Ts(x.openAt), voteSec: x.voteSec }, { merge: true }); /* まだ投票が始まっていないレースも新しい投票の秒数に */ await b.commit(); pubCache = null; secretCache = null;
           await publishLive(await getRaces(true)).catch(() => {});
           return { ok: true, tuning: merged };
@@ -1792,7 +1825,7 @@
 
     /* casa BOAT（2026-11-19）: v2/boat-firestore.js を同じログイン・同じ見回りにつなぐ（部品が無いページ＝競馬のスマホでは何もしない） */
     const BoatFS = env.BoatFS || (typeof self !== 'undefined' && self.DerbyBoatFS) || null, BoatC = env.Boat || (typeof self !== 'undefined' && self.BoatCore) || null, BoatM = env.BoatModel || (typeof self !== 'undefined' && self.BoatModel) || null;
-    const boat = BoatFS && BoatC ? BoatFS.attach({ db, doc, data, now, uid, ready, role, store, Ts, Core, Boat: BoatC, Engine, Outcome, BoatModel: BoatM, E, oddsAsync: env.oddsAsync || null, getStores, auto: opts.deciderAuto !== false && typeof setTimeout !== 'undefined' }) : null;
+    const boat = BoatFS && BoatC ? BoatFS.attach({ db, doc, data, now, uid, ready, role, store, Ts, Core, Boat: BoatC, Engine, Outcome, BoatModel: BoatM, E, oddsAsync: env.oddsAsync || null, getStores, auto: opts.deciderAuto !== false && typeof setTimeout !== 'undefined', cap, myBpt, bptNote /* 2026-11-20: 取引を分ける大きさ（競馬と同じ）・自分の BPT の手元の写し（競馬と同じもの） */ }) : null;
     return {
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
       get link() { return linkState ? Object.assign({}, linkState) : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）

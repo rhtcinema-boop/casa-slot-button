@@ -750,6 +750,8 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 .os-s .stampgot span { font-size: 14px; }
 .os-s .keeptill { margin: 0; }
 .os-s .incline { margin: 0; }
+/* 返還した BPT の追加の券の知らせ（2026-11-20。事故の赤とは分ける） */
+.incline.bptback { background: rgba(143, 220, 255, .12); border-color: rgba(143, 220, 255, .45); color: #d8f3ff; }
 /* 結果（はずれ）: 「はずれ」と結果の 1着・2着を 1 行に */
 .os-s .lhead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; }
 .os-s .lhead .miss { padding: 0; }

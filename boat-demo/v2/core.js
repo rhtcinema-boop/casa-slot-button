@@ -709,17 +709,25 @@
      1 票目に xn（追加の券の枚数 0〜4）を持たせる（置き場の決まりで 1 枚ずつ・最大 4 枚に止める。スマホは xn が 0 なら追加の券を読まない）。
      2 票目（初参加ボーナス・スタンプ）には付けない（未決のため。足せない形）。テストのレース・テストの店では使えない。
      BPT の置き場: derbyBpt/<端末 ID> ＝ { earned（もらった合計）, spent（使った合計）, use（最後に使った券の id）, refund（最後に戻した券の id） }。残り ＝ earned − spent。
-     増やすのは決める係だけ（ボートの結果。まだ作っていない）。お客さんのスマホは「使う」（spent を BPT_PER_TICKET 増やす＋同じ書き込みで券を作る）だけ。持ち上限・期限なし。
+     増やすのは決める係だけ（ボートの結果。v2/boat-core.js）。お客さんのスマホは「使う」（spent を BPT_PER_TICKET 増やす＋同じ書き込みで券を作る）だけ。持てるのは 3,000 まで（BPT_MAX。2026-11-20）・毎週月曜の朝 5 時にリセット。
      戻す: 取り消したレース（決める係が spent を減らし、券に bptBack: true）・スタッフが番号を空けたとき（券ごとに spent を減らす）。
      スタンプは追加の券には付かない（stampsForRace。BPT でスタンプを買えないように）。参加人数（countVotes の total）にも数えない（人気の combos には数える） */
   const BPT_PER_TICKET = 100, TICKETS_MAX = 5, EXTRA_MAX = TICKETS_MAX - 1;
   const extraVid = (vid1, k) => String(vid1) + '~b' + Number(k);
   const isExtra = (v) => !!v && (v.bpt === true || /~b[1-4]$/.test(String(v.vid || '')));
   /* 毎週月曜の朝 5 時（日本時間）に BPT をリセット（2026-11-18 オーナー決定）: 置き場に週の番号 wk（bptWeek）を持ち、いまの週と違えば残りは 0。
-     wk の無い書類（前の形）はいまの週として数える。t を渡さなければ週は見ない。BPT_WEEK0 ＝ 1970-01-05（月）05:00 日本時間（決まりの下書きも同じ数） */
+     wk の無い書類は使えない（残り 0。2026-11-20: 印が無いと永久にリセットされないため。BPT を増やす所＝v2/boat-core.js の creditDoc は必ず wk を書く）。
+     t を渡さなければ週は見ない。BPT_WEEK0 ＝ 1970-01-05（月）05:00 日本時間（決まりの下書きも同じ数） */
   const BPT_WEEK0 = 331200000, BPT_WEEK_MS = 7 * 86400000;
   const bptWeek = (t) => Math.floor((Number(t) - BPT_WEEK0) / BPT_WEEK_MS);
-  const bptBalance = (d, t) => (d && t != null && d.wk != null && Number(d.wk) !== bptWeek(t) ? 0 : Math.max(0, (Number(d && d.earned) || 0) - (Number(d && d.spent) || 0)));
+  /* 持てる BPT の上限（2026-11-20 夜 オーナー決定「3,000 を絶対に超えて貯められない」。「持ち上限なし」を改めた）: 残り ＝ もらった合計 − 使った合計 は BPT_MAX まで。
+     増やす所（ボートの当たり・返還・取り消しの戻し＝v2/boat-core.js の creditPlan、競馬の追加の券の戻し＝下の bptBackSpent）が書くときに止め、置き場の決まり（bptCapOk）も断る。
+     ここ（残りの計算）でも BPT_MAX で止める（二重の守り） */
+  const BPT_MAX = 3000;
+  const bptBalance = (d, t) => (d && t != null && (d.wk == null || Number(d.wk) !== bptWeek(t)) ? 0 : Math.min(BPT_MAX, Math.max(0, (Number(d && d.earned) || 0) - (Number(d && d.spent) || 0))));
+  /* 競馬の追加の券 n 枚ぶんの BPT を戻したあとの「使った合計」（spent）: 0 より下げない・残りが BPT_MAX を超えるところまでは戻さない
+     （使ってから戻すまでの間にボートの当たりで 3,000 まで増えていたとき。ふつうは起きない＝ボートの発表は競馬の投票の時間と重ならない） */
+  const bptBackSpent = (d, n) => Math.max(0, (Number(d && d.spent) || 0) - Math.max(0, Number(n) || 0) * BPT_PER_TICKET, (Number(d && d.earned) || 0) - BPT_MAX);
   const extraCount = (v1) => Math.max(0, Math.min(EXTRA_MAX, Math.floor(Number(v1 && v1.xn) || 0)));
   /* いま追加の券を入れられる枚数（0 ＝ 出さない）。v1: 自分の 1 票目、race: レース、bal: BPT の残り（null ＝ 読めない）、t: いま */
   /* 2026-11-18 オーナー決定: 2 票目（初参加ボーナス・スタンプ）にも BPT の券を足せる。ただし 1 レースで 1 票目・2 票目・追加の券を合わせて最大 TICKETS_MAX（5）枚。
@@ -768,9 +776,9 @@
   function voteView(v, race, payout) {
     if (!v) return null;
     const out = { vid: v.vid, raceId: v.raceId, storeId: v.storeId, bill: v.bill, nick: v.nick, first: v.first, second: v.second, combo: comboOf(v), votedAt: v.votedAt || null, updatedAt: v.updatedAt || null, test: !!v.test, n: v.n === 2 ? 2 : 1, stamp: v.stamp === true, result: null }; // stamp: スタンプで入れた 2 票目（2026-11-02）
-    if (isExtra(v)) { out.bpt = true; out.k = Number(v.k) || (parseVoteId(v.vid) || {}).k || 0; } else if (v.n !== 2) out.xn = extraCount(v); // 追加の券（2026-11-18）: bpt・k（何枚目）。1 票目は xn（追加の券の枚数）
+    if (isExtra(v)) { out.bpt = true; out.k = Number(v.k) || (parseVoteId(v.vid) || {}).k || 0; if (v.bptBack === true) out.bptBack = true; /* 返還（BPT を戻した券。取り消したレース・上限のための返還 2026-11-20） */ } else if (v.n !== 2) out.xn = extraCount(v); // 追加の券（2026-11-18）: bpt・k（何枚目）。1 票目は xn（追加の券の枚数）
     if (race && race.status === 'done' && race.result) {
-      const R = race.result, combo = R.combo || (R.order ? R.order[0] + '-' + R.order[1] : null), win = combo === out.combo && !race.refunded;
+      const R = race.result, combo = R.combo || (R.order ? R.order[0] + '-' + R.order[1] : null), win = combo === out.combo && !race.refunded && v.bptBack !== true; // bptBack: 返還した追加の券は当たりにしない
       const odds = R.finalExacta && combo ? Number(R.finalExacta[combo]) : null, p = payout && payout.status !== 'void' ? payout : null;
       out.result = { raceId: race.id, combo, first: R.first != null ? R.first : R.winner, second: R.second != null ? R.second : (R.order ? R.order[1] : null), odds, win, refunded: !!race.refunded,
         amount: win ? (p ? p.amount : odds ? payFor(odds) : 0) : 0, test: !!(v.test || race.test),
@@ -938,7 +946,7 @@
        読めなかったときは { error: '…' }（決まりを使わずに決める＝レースは止めない。decision.noRepeat.error に残す）。null・省略 ＝ 使わない */
   function decideRace(Engine, Outcome, race, secret, votes, tuning, salt, t, usedToday, recent) {
     const T = tuningOf(tuning);
-    const list = (votes || []).filter((v) => v && v.first != null && v.second != null).sort((a, b) => (a.vid < b.vid ? -1 : 1)); // 順番で結果が変わらないように
+    const list = (votes || []).filter((v) => v && v.first != null && v.second != null && v.bptBack !== true).sort((a, b) => (a.vid < b.vid ? -1 : 1)); // 順番で結果が変わらないように。bptBack: もう BPT を戻した追加の券（2026-11-20。追加の券が無ければ今までと同じ）
     const isT = (v) => !!v.test || !!race.test;
     const real = list.filter((v) => !isT(v)), basis = real.length ? real : list;
     /* 1 台で番号が多いスマホ（2026-10-27）: 本物の票で、同じ持ち主（owner＝uid・模擬クラウドは device）が maxBillsPerDevice 個以上の会計番号を使ったら、その票は
@@ -960,6 +968,20 @@
     /* 参加の多い店（2026-10-31）: 本物の票（多いスマホの票は数えない）で参加がいちばん多い店。テストのレースは使わない */
     const big = T.favorBigStore === true && !race.test ? bigStoreOf(race, real.filter((v) => !isHeavy(v))) : null;
     if (big && big.store) input.favor = big.store;
+    /* BPT の追加の券で払い出しの上限を超えない（2026-11-20 オーナー「競馬の予算は絶対に変えない」）: 追加の券があるレースだけ、先に決め方の中心（chooseCombo）で選ばれる組み合わせを見る。
+       その組み合わせで払う額（本物の券の枚数 × 当選額）が上限（1 レース・1 日の残り）を超えるなら、追加の券を全部「返還」（BPT を戻す・払わない）にして、
+       無料の券だけで今までどおりに決め直す（＝追加の券が無かったときとまったく同じ結果）。返り値に bptBack: [{ vid, owner }]（呼ぶ側が券に bptBack: true を付けて BPT を戻す）。
+       追加の券が 1 枚も無いレースはここを通らない＝今までとまったく同じ */
+    if (cap > 0 && real.some(isExtra)) {
+      const ch0 = Outcome.chooseCombo(input), n0 = ch0.combo == null ? 0 : real.filter((v) => comboOf(v) === ch0.combo).length, would = n0 ? n0 * payFor(ch0.comboOdds) : 0;
+      if (would > cap) {
+        const backs = real.filter(isExtra), out = decideRace(Engine, Outcome, race, secret, (votes || []).filter((v) => !isExtra(v)), tuning, salt, t, usedToday, recent);
+        out.bptBack = backs.map((v) => ({ vid: v.vid, owner: ownerOf(v) }));
+        out.decision.bptBack = { tickets: backs.length, why: 'cap', combo: ch0.combo, would, cap };
+        out.participants = countVotes(list); // 人気の数は投票のときのまま（返還した券も入れる）
+        return out;
+      }
+    }
     const res = Outcome.resolveExacta(Engine, er, input);
     const run = Engine.replayRun(er, res.seed, { order: res.order });
     const cues = cuesFor(Outcome, salt, race.id, res.first, T, (race.horses || []).length || 6);
@@ -1095,6 +1117,8 @@
     return [start, end];
   }
   // 新しいテストレースがふさぐ時間: 今〜（発走 sec 秒後 ＋ ゲート ＋ 走り 60 秒 ＋ 結果まで postSec）
+  // テストレースがテレビをふさぐ時間 [始まり, 終わり]（testRaceBusy と同じ式。casa BOAT との被りの確かめ用 2026-11-20）
+  function testRaceSpan(t, startIn, tuning) { const T = tuningOf(tuning), gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec; return [t, t + (testStartIn(startIn) + gate + 60 + T.postSec) * 1000]; }
   function testRaceBusy(races, store, t, startIn, tuning, rules) {
     const T = tuningOf(tuning), sec = testStartIn(startIn);
     const gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec, end = t + (sec + gate + 60 + T.postSec) * 1000;
@@ -1132,13 +1156,13 @@
   // 決まった id（同じレース・同じ票ならいつも同じ。決める係がやり直しても二重にならない）
   function pidFor(Outcome, salt, raceId, vid, kind) { return 'p' + Outcome.hash(salt, raceId, vid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', vid, raceId, salt).toString(36); }
 
-  return { stampReport, STAMP_LAUNCH, TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
+  return { stampReport, STAMP_LAUNCH, TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testRaceSpan, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
     isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, cleanBigNames, saveBigNames, bigNameOf, bigPatch, nextBigRace, BIG_NAME_MAX, BIG_LOOK_DAYS, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool, FRESH_RACES, recentHorseNames, freshPick,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
-    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, BPT_PER_TICKET, TICKETS_MAX, EXTRA_MAX, extraVid, isExtra, bptBalance, bptWeek, BPT_WEEK0, extraCount, extraLeft, bptBackPlan, ticketsOf, secondOk, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
+    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, BPT_PER_TICKET, TICKETS_MAX, EXTRA_MAX, BPT_MAX, bptBackSpent, extraVid, isExtra, bptBalance, bptWeek, BPT_WEEK0, extraCount, extraLeft, bptBackPlan, ticketsOf, secondOk, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, unpaidByStore, UNPAID_HOLD_MAX_MS, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues, DEFAULT_INCIDENT, SCRATCH_EXTRA_SEC, incidentTuning, incidentFor,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, TV_STRIP_KEYS, TV_STRIP_A, TV_STRIP_B, tvStripOf, tvStripCode, PW_CHARS, genTvPassword };

@@ -33,6 +33,7 @@
 .bo-wins .nk { font-weight: 900; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bo-wins .st { font-size: 18px; color: #9fb6d6; } .bo-wins b { font-size: 26px; color: #ffe08a; } .bo-wins b small { font-size: 16px; margin-left: 2px; }
 .bo-none { font-size: 26px; color: #9fb6d6; }
+.bo-wins .cp { flex: none; font-style: normal; font-size: 15px; font-weight: 900; color: #0b2f55; background: #ffe08a; border-radius: 5px; padding: 1px 6px; align-self: center; } /* BPT の持ち上限 3,000 で止まった人の印（2026-11-20） */
 .bo-next { grid-column: 1; align-self: end; margin: 0; font-size: 26px; color: #cfe3ff; }
 .bo-void { position: absolute; inset: 66px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .bo-void h2 { font-size: 56px; margin: 0 0 16px; } .bo-void p { font-size: 30px; color: #cfe3ff; }
@@ -41,6 +42,14 @@
 .bo-order .or { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 700; } .bo-order .rk { width: 52px; color: #9fb6d6; font-size: 20px; } .bo-order .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bo-note { grid-column: 1; margin: 0; font-size: 22px; color: #ffe08a; }
 .bo-inc { grid-column: 1; display: flex; align-items: center; gap: 14px; font-size: 24px; color: #ffb3a6; } .bo-inc b { font-size: 30px; color: #fff; background: #8a2a20; padding: 2px 12px; border-radius: 8px; }
+/* 結果の知らせの段（2026-11-20）: 事故の艇・上限のため BPT の券は返還・上限のため払い戻しなしを 1 行ずつ */
+.bo-notes { grid-column: 1; display: flex; flex-direction: column; gap: 8px; } .bo-inc.cap b { background: #6a4a12; }
+.bo-pay b.np { font-size: 46px; }
+/* フライング・転覆の艇は着順に数えない: 着の欄に本物と同じ記号「Ｆ」「転」（2026-11-20。ref/boat/research/27_返還のルール.md） */
+.bo-order .or.out .rk { color: #fff; background: #8a2a20; border-radius: 6px; text-align: center; font-size: 22px; font-weight: 900; line-height: 1.5; } .bo-order .or.out .nm { color: #ffb3a6; }
+/* 発表がまだ届いていない間（2026-11-20）: 「結果を確認中」だけを真ん中に */
+.bo-res.is-pend { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.bo-pend { text-align: center; } .bo-pend h2 { font-size: 56px; margin: 0 0 16px; } .bo-pend p { font-size: 30px; color: #cfe3ff; margin: 0; }
 
 /* ---------- 2026-11-19 作り直し: 競馬のテレビ（v2/tv.css の待ち時間・投票受付中）と同じ作り。色は水色系 ---------- */
 .bo-top { position: absolute; left: 30px; right: 30px; top: 12px; height: 56px; display: flex; align-items: center; gap: 12px; z-index: 3; }
@@ -137,4 +146,6 @@
 .bo-how .big { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 4px 0 10px; }
 .bo-how .big .c { font-size: 74px; font-weight: 900; color: #1f7fd6; } .bo-how .big .c small { font-size: 30px; margin-left: 6px; } .bo-how .big .ar { font-size: 40px; color: #c9a03e; } .bo-how .big .t { font-size: 54px; font-weight: 900; background: #0b2f55; color: #ffe08a; padding: 4px 22px; border-radius: 14px; }
 .bo-how .l { margin: 0; text-align: center; font-size: 28px; font-weight: 900; }
+.bo-how.h1 { gap: 6px; } .bo-how.h1 .big { margin: 2px 0 6px; } /* 2 枚目は 3 行（5 枚まで・3,000 まで・月曜にリセット。2026-11-20）: 行の間を少し詰める */
+.is-wait .bo-how.h1 { gap: 10px; }
 .is-wait .bo-how { padding: 30px 60px; gap: 16px; } .is-wait .bo-how h4 { font-size: 44px; } .is-wait .bo-how .hw em { font-size: 38px; } .is-wait .bo-how .hw small { font-size: 24px; } .is-wait .bo-how .hw { padding: 12px 22px; } .is-wait .bo-how .big .c { font-size: 100px; } .is-wait .bo-how .big .t { font-size: 70px; } .is-wait .bo-how .l { font-size: 34px; }

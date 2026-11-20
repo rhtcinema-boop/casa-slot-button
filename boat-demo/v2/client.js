@@ -88,7 +88,7 @@
     return (race, seed, sims) => new Promise((res, rej) => {
       try {
         if (!w) {
-          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js?v=v4e5', location.href).href) + ',' + JSON.stringify(new URL(DIR + '../js/boat-model.js?v=b1', location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai,exacta:o.exacta,exactaProb:o.exactaProb}});};';
+          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js?v=v4e6', location.href).href) + ',' + JSON.stringify(new URL(DIR + '../js/boat-model.js' + (VQ || '?v=b1'), location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai,exacta:o.exacta,exactaProb:o.exactaProb}});};';
           w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
           w.onmessage = (e) => { const f = pend[e.data.id]; if (f) { delete pend[e.data.id]; f(e.data.o); } };
         }
@@ -130,11 +130,14 @@
            お客さんのスマホ（phone）はレースを決めないので、エンジン（engine.js）と結果の計算（outcome.js）を読まない（決めるのはテレビ・管理だけ） */
         const L = [];
         if (opt.role !== 'phone') {
-          if (!window.Engine) L.push(DIR + '../js/engine.js?v=v4e5');
+          if (!window.Engine) L.push(DIR + '../js/engine.js?v=v4e6');
           if (!window.Outcome) L.push(DIR + 'outcome.js' + VQ); // 2026-10-20: 当選額の切り上げ（roundPay）が入ったので版の印を付ける（古い控えを使わない）
         }
         if (!window.DerbyCore) L.push(DIR + 'core.js' + VQ);
-        if (opt.role === 'tv' || opt.boat) { if (!window.BoatCore) L.push(DIR + 'boat-core.js' + VQ); if (!window.DerbyBoatFS) L.push(DIR + 'boat-firestore.js' + VQ); if (opt.role === 'tv' && !window.BoatModel) L.push(DIR + '../js/boat-model.js?v=b1'); } // casa BOAT（2026-11-19）: テレビ（決める係）とボートの投票ページだけ（競馬のスマホは読まない）
+        /* casa BOAT（2026-11-19）: テレビ（決める係）・ボートの投票ページ・管理画面だけ（競馬のスマホ・スタッフは読まない）。
+           2026-11-20: 管理画面（role 'admin'）でも読む（読まないと本番の「ボート」タブが動かず、競馬の時刻表・設定を保存するときのボートとの被りの確かめも素通りしていた）。
+           艇の走りの部品（js/boat-model.js）はレースを作る・決めるテレビと管理画面（すぐ始めるレース）だけ。版の印はこのファイルと同じ（公開のたびに変わる。以前は ?v=b1 固定で古い控えが残った） */
+        if (opt.role === 'tv' || opt.role === 'admin' || opt.boat) { if (!window.BoatCore) L.push(DIR + 'boat-core.js' + VQ); if (!window.DerbyBoatFS) L.push(DIR + 'boat-firestore.js' + VQ); if ((opt.role === 'tv' || opt.role === 'admin') && !window.BoatModel) L.push(DIR + '../js/boat-model.js' + (VQ || '?v=b1')); }
         if (!window.DerbyFirestore) L.push(DIR + 'client-firestore.js' + VQ);
         if (typeof window.firebase === 'undefined') L.push(SDK + 'firebase-app-compat.js', SDK + 'firebase-auth-compat.js', SDK + 'firebase-firestore-compat.js');
         await Promise.all(L.map((u) => loadScript(u)));

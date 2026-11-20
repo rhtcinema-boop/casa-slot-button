@@ -643,7 +643,8 @@ BOAT.Boat = (function () {
       }
     }
     pose(0, 0, 0, 0);
-    return { mesh, pose, dispose() { tex.dispose(); mat.dispose(); } };
+    /* 2026-11-20 直し（不具合 D7）: 骨の絵（three.js が骨の数だけ作る小さな絵。mesh.skeleton.boneTexture）を片付けていなかったので、レースの準備のたびに 1 艇 1 枚 ＝ 6 枚ずつ残っていた */
+    return { mesh, pose, dispose() { tex.dispose(); mat.dispose(); try { if (mesh.skeleton && mesh.skeleton.dispose) mesh.skeleton.dispose(); } catch (e) { } } };
   }
 
   function palette(h) {

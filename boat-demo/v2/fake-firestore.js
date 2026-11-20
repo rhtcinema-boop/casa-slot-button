@@ -173,8 +173,8 @@
           check(Object.assign(ctxBase(), { op: 'list', path: cpath, coll: cpath, filters: filters.slice() }));
           let rows = [];
           for (const [p, rec] of store) { if (p.startsWith(cpath + '/') && p.split('/').length === cpath.split('/').length + 1) rows.push([p, rec]); }
-          rows = rows.filter(([, rec]) => filters.every(([f, op, v]) => {
-            const x = cmpVal(getPath(rec.data, f)), y = Array.isArray(v) ? v.map(cmpVal) : cmpVal(v);
+          rows = rows.filter(([p, rec]) => filters.every(([f, op, v]) => {
+            const x = f === '__name__' ? p.split('/').pop() /* ドキュメントの id（本物の FieldPath.documentId() ＝ '__name__'。2026-11-20） */ : cmpVal(getPath(rec.data, f)), y = Array.isArray(v) ? v.map(cmpVal) : cmpVal(v);
             switch (op) { case '==': return x === y; case '!=': return x !== y && x !== undefined; case '<': return x < y; case '<=': return x <= y; case '>': return x > y; case '>=': return x >= y; case 'in': return y.includes(x); case 'array-contains': return Array.isArray(x) && x.includes(y); }
             return false;
           }));
