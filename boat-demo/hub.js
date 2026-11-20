@@ -27,9 +27,9 @@
 
   // 時刻表: 6 分ごと（時刻 ＝ 締切）。最初のレースの投票が 20〜80 秒後に始まるように刻みをずらす
   function rules() {
-    /* 2026-11-20: ボートは朝 4:30〜5:30 に入れられない決まりになった（BPT のリセットと営業日の区切りの前後。v2/boat-core.js の normalizeRules）ので、5:36 から 28:24 までにする
+    /* 2026-11-20: ボートは朝 4:30〜5:30 に入れられない決まりになった（BPT のリセットと営業日の区切りの前後。v2/boat-core.js の normalizeRules）ので、5:36 から 28:14 までにする（11/21: 朝の判定が投票の始まり〜結果画面の終わりになったので、最後を早めた）
        （その間にデモを開くと、次のレースは 5:36 から） */
-    const t = Date.now() + 9 * 3600e3, inDay = t % 86400000, m0 = Math.ceil((inDay + (VOTE + 20) * 1000) / 60000), off = m0 % EVERY, p = (n) => String(n).padStart(2, '0'), first = 5 * 60 + 36 + off, last = 28 * 60 + 24 + off;
+    const t = Date.now() + 9 * 3600e3, inDay = t % 86400000, m0 = Math.ceil((inDay + (VOTE + 20) * 1000) / 60000), off = m0 % EVERY, p = (n) => String(n).padStart(2, '0'), first = 5 * 60 + 36 + off, last = 28 * 60 + 14 + off;
     return [{ id: 'demo', kind: 'daily', from: p(Math.floor(first / 60)) + ':' + p(first % 60), to: p(Math.floor(last / 60)) + ':' + p(last % 60), everyMin: EVERY, payout: TARGET }];
   }
   const today = () => Core.bizDate(Date.now(), 5);

@@ -1677,6 +1677,8 @@
           /* 2026-10-28: 予備（derbyDeciders の role 'backup'）も。一覧は 7 日以内に連絡のあったテレビ（予備にしたテレビは 14 日まで）。fireTvs: 「全店の Fire TV を予備にする」の候補（14 日以内の Fire TV） */
           const [q, dq, lk, okm] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get(), doc(COL.lock, 'decider').get(), tvOkMap()]);
           const all = q.docs.map((d) => { const x = d.data(); return { id: d.id, store: x.store, kind: x.kind, at: msOf(x.at), code: x.code, ask: Number(x.ask) || 0, h: x.h && typeof x.h === 'object' ? x.h : null, ok: !!okm[d.id] /* 2026-11-21 管理画面で許可したテレビ */ }; }).sort((a, b) => b.at - a.at);
+          /* 2026-11-21 深夜（M1）: 許可ずみ（tvOk にある）なのに印 ok の無い進行役・予備の書類（印を足す前に作ったもの）は、ここで ok を付ける（新しい決まりでも働くように）。許可の無いものはそのまま＝新しい決まりでは働かない */
+          try { const fix = dq.docs.filter((d) => okm[d.id] && (d.data() || {}).ok !== true); if (fix.length) { const fb = db.batch(); fix.forEach((d) => fb.update(doc(COL.deciders, d.id), { ok: true })); await fb.commit(); } } catch (e) { /* 次に開いたとき */ }
           const ds = dq.docs.map((d) => Object.assign({ id: d.id }, d.data())), bset = new Set(ds.filter((d) => d.role === 'backup').map((d) => d.id));
           const tvs = all.filter((x) => now() - x.at < 7 * 86400000 || bset.has(x.id) || ds.some((d) => d.id === x.id));
           const dd = ds.filter((d) => d.role !== 'backup').sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null, l = data(lk);
@@ -1693,11 +1695,17 @@
           if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(id || ''))) throw E(400, 'bad_tv', 'テレビの指定がちがいます');
           if (on) {
             const tv = data(await doc(COL.tvs, id).get()); if (!tv) throw E(404, 'no_tv', 'テレビが見つかりません');
-            await doc(COL.config, 'secret').set({ tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true }); secretCache = null;
+            /* 2026-11-21 深夜（M1）: 新しい決まりでは、進行役・予備の書類は印 ok == true のものだけが働く。もう進行役・予備の書類があれば同じ書き込みで ok を付ける（古い決まりのころに作った書類も、許可すれば働く） */
+            const b = db.batch(); b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true });
+            if ((await doc(COL.deciders, id).get()).exists) b.update(doc(COL.deciders, id), { ok: true });
+            await b.commit(); secretCache = null;
             return { ok: true, id, approved: true };
           }
-          const b = db.batch(); b.update(doc(COL.config, 'secret'), { ['tvOk.' + id]: FieldValue.delete() }); b.delete(doc(COL.deciders, id)); await b.commit(); secretCache = null;
-          try { await doc('boatTvs', id).delete(); } catch (e) { /* ボートの決まりを入れる前 */ }
+          /* 2026-11-21 深夜（M1）: 許可を外すときは、同じ書き込みでそのテレビの進行役・予備（derbyDeciders）と QR の印（boatTvs）も消す（新しい決まりは tvOff と一緒でないと許可を外せない＝権限が残らない）。
+             ボートの決まりを入れる前（boatTvs を消せない）は boatTvs を除いてもう一度 */
+          const off = (withBoat) => { const b = db.batch(); b.update(doc(COL.config, 'secret'), { ['tvOk.' + id]: FieldValue.delete(), tvOff: id }); b.delete(doc(COL.deciders, id)); if (withBoat) b.delete(doc('boatTvs', id)); return b.commit(); };
+          try { await off(true); } catch (e) { if (!(e && e.code === 'permission-denied')) throw e; await off(false); }
+          secretCache = null;
           return { ok: true, id, approved: false };
         }),
         // 「進行役にする」を押した: そのテレビに数字を出してもらう（on=false で消す）。答えはそのテレビの数字（管理画面の確認に出す）
@@ -1715,7 +1723,7 @@
           if (id && !tv) throw E(404, 'no_tv', 'テレビが見つかりません');
           const b = db.batch(), keep = new Set();
           dq.docs.forEach((d) => { const x = d.data() || {}; if (d.id === id) return; if (x.role === 'backup') keep.add(d.id); else b.delete(doc(COL.deciders, d.id)); });
-          if (id) { b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true }); /* 数字を確かめて進行役にした＝許可（2026-11-21） */ b.set(doc(COL.deciders, id), { role: 'primary', store: tv.store || null, setAt: now(), at: now() }); b.update(doc(COL.tvs, id), { ask: FieldValue.delete() }); }
+          if (id) { b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true }); /* 数字を確かめて進行役にした＝許可（2026-11-21） */ b.set(doc(COL.deciders, id), { role: 'primary', store: tv.store || null, setAt: now(), at: now(), ok: true /* 許可ずみの印（2026-11-21 深夜 M1） */ }); b.update(doc(COL.tvs, id), { ask: FieldValue.delete() }); }
           if (l && l.kind === 'paired' && l.uid !== id && !keep.has(l.uid)) b.delete(doc(COL.lock, 'decider'));
           await b.commit(); if (id) secretCache = null;
           return { ok: true, decider: id ? { id, store: tv.store || null, at: now() } : null };
@@ -1727,14 +1735,14 @@
           if (cur && cur.role !== 'backup') throw E(409, 'is_primary', 'このテレビは進行役です');
           if (!on) { if (cur) await doc(COL.deciders, id).delete(); return { ok: true, id, backup: false }; }
           const tv = data(await doc(COL.tvs, id).get()); if (!tv) throw E(404, 'no_tv', 'テレビが見つかりません');
-          const b = db.batch(); b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true }); /* 手で「予備にする」を押した＝許可（2026-11-21） */ b.set(doc(COL.deciders, id), { role: 'backup', store: tv.store || null, setAt: now(), at: now() }); await b.commit(); secretCache = null;
+          const b = db.batch(); b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true }); /* 手で「予備にする」を押した＝許可（2026-11-21） */ b.set(doc(COL.deciders, id), { role: 'backup', store: tv.store || null, setAt: now(), at: now(), ok: true }); await b.commit(); secretCache = null;
           return { ok: true, id, backup: true };
         }),
         // 全店の Fire TV（14 日以内に連絡）を予備にする。進行役・もう予備のテレビはそのまま → { ok, added: [id] }
         setBackupsAll: wrap(async () => {
           const [q, dq, okm] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get(), tvOkMap()]);
           const have = new Set(dq.docs.map((d) => d.id)), b = db.batch(), added = [];
-          q.docs.forEach((d) => { const x = d.data() || {}; if (x.kind !== 'casatv' || have.has(d.id) || !okm[d.id]) return; /* 許可したテレビだけ（2026-11-21 G1） */ b.set(doc(COL.deciders, d.id), { role: 'backup', store: x.store || null, setAt: now(), at: now() }); added.push(d.id); });
+          q.docs.forEach((d) => { const x = d.data() || {}; if (x.kind !== 'casatv' || have.has(d.id) || !okm[d.id]) return; /* 許可したテレビだけ（2026-11-21 G1） */ b.set(doc(COL.deciders, d.id), { role: 'backup', store: x.store || null, setAt: now(), at: now(), ok: true }); added.push(d.id); });
           if (added.length) await b.commit();
           /* casa BOAT（2026-11-20）: 進行役でも予備でもないテレビ（パソコンのブラウザのテレビなど）は QR の合言葉（boatKeys）を読めず QR を出せなかった。
              14 日以内に連絡のあったテレビのうち、進行役・予備でないものに印（boatTvs/<uid>）を付ける（マスターだけが書ける。ボートの決まりを入れる前は書けないので何もしない） */
@@ -1819,6 +1827,8 @@
         createRace: wrap(async (o) => {
           o = o || {}; const sc = await secretConfig(), t = now(), sid = o.storeId || null;
           const storeIds = sid ? null : Core.cleanStoreIds(o.storeIds, (await getStores(true)).map((s) => s.id)); /* 投票できる店（省くと全店。2026-10-26） */
+          /* 2026-11-21 深夜（K1）: casa BOAT（全店同時）の投票・映像・結果の時間と重なる手動の競馬は作らない（同じ BPT を両方に使う道をふさぐ・テレビの流れが崩れる） */
+          if (boat && BoatC) { const at0 = t + Math.max(0, Number(o.inSec) || 0) * 1000, sp = BoatC.derbySpan(at0, sc.tuning), hit = await boat.derbyBusy(Math.min(t, sp[0]), sp[1]); if (hit) throw E(409, 'boat_busy', 'ボートレース（' + Core.fmtBizTime(hit.at, sc.tuning.dayStartHour) + ' 締切）の投票・映像・結果の時間と重なります。終わってから作ってください'); }
           const r = await writeRace({ id: 'x-' + t.toString(36) + randId('', 4).toLowerCase() + (sid ? '-' + sid : ''), /* 乱数つき: 同じミリ秒に 2 つ作ると前のレースを上書きしていた（RED TEAM） */ at: t + Math.max(0, Number(o.inSec) || 0) * 1000, payout: Math.max(0, Math.floor(Number(o.payout) || 0)), scope: o.scope === 'store' ? 'store' : 'all', storeId: sid, storeIds, test: !!o.test }, sc, Core.manualStages(o, Number(o.inSec) || 0, sc.tuning));
           const secret = data(await doc(COL.secrets, r.id).get());
           return { race: Core.publicRace(r, { role: 'admin', secret }) };

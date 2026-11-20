@@ -692,7 +692,9 @@
   }
   /* 2026-11-21（H10）: 見えない字・向きを変える印・制御文字を取りのぞく（取りのぞいて空なら通さない） */
   const NICK_HIDDEN = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8]/g;
-  function cleanNick(v) { const nick = String(v == null ? '' : v).replace(NICK_HIDDEN, '').trim(); if (!nick || Array.from(nick).length > 8) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); return nick; }
+  // 2026-11-21 深夜（L6）: 結合文字（濁点・囲みの印など）と空白だけの名前は断る（スマホの整え方と同じ。見えない制御文字は上で取りのぞくので、それだけの名前は空になって断る）
+  const NICK_VISIBLE = (() => { try { return new RegExp('[^\\s\\p{M}\\u200d]', 'u'); } catch (e) { return /[^\s\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\u3099\u309a\ufe20-\ufe2f\u200d]/; } })();
+  function cleanNick(v) { const nick = String(v == null ? '' : v).replace(NICK_HIDDEN, '').trim(); if (!nick || Array.from(nick).length > 8 || !NICK_VISIBLE.test(nick)) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); return nick; }
   function cleanPair(b, n) {
     n = n || 6; const num = (v) => (typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v.trim())) ? Number(v) : NaN), a = num(b.first), c = num(b.second);
     if (!Number.isInteger(a) || !Number.isInteger(c) || a < 0 || c < 0 || a >= n || c >= n) throw err(400, 'bad_pick', '1 着と 2 着の馬をえらんでください');

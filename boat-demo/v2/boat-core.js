@@ -110,6 +110,8 @@
     (boatRules || []).forEach((r) => { if (r && r.kind === 'date' && r.date && r.date >= d0) dates[r.date] = 1; });
     /* 2026-11-21（I6）: 先の日付の競馬の行（14 日より先）も、その日と前後の日のボートと被りを見る（日付の行の前後 1 日は日付をまたぐ競馬・ボートのため） */
     allDerby.forEach((r) => { if (r && r.kind === 'date' && r.date && r.date >= d0) [-1, 0, 1].forEach((k) => { const x = shift(r.date, k); if (x >= d0) dates[x] = 1; }); });
+    /* 2026-11-21 深夜（K3）: 祝日の行（競馬・ボートのどちらか）があれば、先 400 日の祝日とその前後の日も見る（14 日の外の祝日の被りを保存のときに見逃していた） */
+    if ((boatRules || []).concat(allDerby).some((r) => r && r.kind === 'holiday' && r.enabled !== false)) for (let k = 0; k < 400; k++) { const x = shift(d0, k); if (Core.isHoliday(x)) [-1, 0, 1].forEach((j) => { const y = shift(x, j); if (y >= d0) dates[y] = 1; }); }
     Object.keys(dates).sort().forEach((ds) => {
       const bs = Core.expandDate(ds, boatRules || []).filter((e) => e.at >= from);
       if (!bs.length) return;
@@ -301,7 +303,7 @@
   function voteView(v, race) {
     if (!v) return null;
     const bets = betsOf(v);
-    const o = { id: v.id || voteId(v.raceId, v.owner), raceId: v.raceId, storeId: v.storeId, nick: v.nick, first: v.first, second: v.second, bets, n: betCount(bets), votedAt: v.votedAt || 0, updatedAt: v.updatedAt || v.votedAt || 0, op: typeof v.op === 'string' ? v.op : null }; // op: 最後に通った操作の番号（2026-11-21。ref/boat/opId_の使い方.md）
+    const o = { id: v.id || voteId(v.raceId, v.owner), raceId: v.raceId, storeId: v.storeId, nick: v.nick, first: v.first, second: v.second, bets, n: betCount(bets), votedAt: v.votedAt || 0, updatedAt: v.updatedAt || v.votedAt || 0, op: typeof v.op === 'string' ? v.op : null, ops: opsOf(v), dead: deadOf(v) }; // op: 最後に通った操作の番号・ops: 通った番号の一覧・dead: 取り消した番号の一覧（2026-11-21。ref/boat/opId_の使い方.md）
     if (race && race.status === 'done' && race.result) {
       const R = race.result, k = R.combo, pay = R.pay || 0, n = ticketsOn(v, k, R.bptBack === true); // bptBack: BPT の券は全部返還（当たりに数えない）
       o.hit = n; o.won = R.noPay === true ? 0 : n * pay; // noPay: 上限のため払い戻しなし（2026-11-20。ごくまれ）
@@ -443,12 +445,32 @@
   // 操作の番号（opId。2026-11-21 ref/boat/opId_の使い方.md）: 英数字と _ - で 8〜40 文字。無い ＝ null（呼ぶ側が作る）
   const OP_RE = /^[A-Za-z0-9_-]{8,40}$/;
   function cleanOp(v) { if (v == null || v === '') return null; const s = String(v); if (!OP_RE.test(s)) throw err(400, 'bad_op', '操作の番号の形がちがいます'); return s; }
+  /* 2026-11-21 深夜（L1・M3）: 使った番号を全部覚える。ops ＝ 通った番号（古い順）・dead ＝ 取り消した番号（あとから届いても足さない）。前の形（op だけ）は [op] と見る */
+  const OPS_MAX = 200, PREV_MAX = 5;
+  const opsOf = (v) => (v && Array.isArray(v.ops) ? v.ops.filter((x) => typeof x === 'string') : v && typeof v.op === 'string' ? [v.op] : []);
+  const deadOf = (v) => (v && Array.isArray(v.dead) ? v.dead.filter((x) => typeof x === 'string') : []);
+  // 打ち切りのあとの押し直しで、まだ決着していない前の番号（最大 5 つ・形は opId と同じ）
+  function cleanPrevOps(v, op) { if (v == null) return []; if (!Array.isArray(v) || v.length > PREV_MAX) throw err(400, 'bad_op', '前の操作の番号の形がちがいます'); const o = []; v.forEach((x) => { const s = cleanOp(x); if (s && s !== op && o.indexOf(s) < 0) o.push(s); }); return o; }
+  /* その番号の決着（書く前に今の票で見る）: { same: もう通っている, prevLanded: 届いていた前の番号, dead: 取り消した番号 } のどれか、または null（新しい操作） */
+  function opState(v, op, prev) {
+    const ops = opsOf(v), dead = deadOf(v);
+    if (ops.indexOf(op) >= 0) return { same: true };
+    const pl = (prev || []).find((x) => ops.indexOf(x) >= 0); if (pl) return { prevLanded: pl };
+    if (dead.indexOf(op) >= 0) return { dead: true };
+    return null;
+  }
+  // 書くときの一覧: ops に今の番号を足し、dead に前の番号を足す（数の上限を超えるなら 409）
+  function opLists(v, op, prev) {
+    const ops = opsOf(v).concat([op]), d0 = deadOf(v), dead = d0.concat((prev || []).filter((x) => d0.indexOf(x) < 0));
+    if (ops.length > OPS_MAX || dead.length > OPS_MAX) throw err(409, 'too_many_ops', 'この レースではもう券を足せません');
+    return { ops, dead };
+  }
   function newOp(rand) { const a = 'abcdefghijklmnopqrstuvwxyz0123456789'; let s = 'o'; for (let i = 0; i < 15; i++) s += a[Math.floor(rand() * a.length)]; return s; }
   // QR の住所: <サイト>/v2/boat.html?s=<店>#<レース id>.<合言葉>（合言葉は # の後ろ＝サーバーに送られない）
   function joinURL(base, store, raceId, code) { return base + (base.indexOf('?') >= 0 ? '&' : '?') + 's=' + encodeURIComponent(store) + '#' + raceId + '.' + code; }
   function parseHash(h) { const m = /^#?(b[0-9A-Za-z_-]{3,40})\.([A-Za-z0-9]{8})$/.exec(String(h || '')); return m ? { raceId: m[1], code: m[2] } : null; }
 
-  return { BPT_MAX, STAKE, N, ALL, DEF, FILM_PRE, FILM_POST, RUN_EST, RUN_MAX, DERBY_GUARD_SEC, COUNT_SEC, ODDS_LO, ODDS_MID, ODDS_HI, CODE_RE, OP_RE, CAP_MIN, BET_MAX, QUIET_MIN,
-    configOf, mergeConfig, normalizeRules, quietMin, quietAt, quietText, quietSpan, quietSpanMin, cleanOp, newOp, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
+  return { BPT_MAX, STAKE, N, ALL, DEF, FILM_PRE, FILM_POST, RUN_EST, RUN_MAX, DERBY_GUARD_SEC, COUNT_SEC, ODDS_LO, ODDS_MID, ODDS_HI, CODE_RE, OP_RE, OPS_MAX, PREV_MAX, CAP_MIN, BET_MAX, QUIET_MIN,
+    configOf, mergeConfig, normalizeRules, quietMin, quietAt, quietText, quietSpan, quietSpanMin, cleanOp, newOp, opsOf, deadOf, cleanPrevOps, opState, opLists, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
     voteId, comboKey, cleanPair, cleanPicks, betsOf, betsBad, betCount, addBets, freeKey, ticketsOn, comboCounts, refundOf, hasBoat, ticketsOf, countVotes, voteView, clampOdds, decide, refundPlan, creditPlan, creditDoc, picksLeft, derbyVoteInfo, derbyVoteDay, newCode, joinURL, parseHash };
 });

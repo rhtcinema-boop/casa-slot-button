@@ -279,7 +279,7 @@
       boatState: () => get('/api/boat/state'),
       boatRace: (id) => get('/api/boat/race?' + qs({ id, store, tv, tvid })),
       boatKey: (id) => get('/api/boat/key?' + qs({ id, store, tv, tvid })),
-      boatVote: (o) => { o = o || {}; return request('POST', '/api/boat/vote', { store, raceId: o.raceId, code: o.code, device: deviceId(), nick: o.nick, first: o.first, second: o.second, add: o.add && o.add.length ? o.add : undefined, opId: o.opId || undefined /* 操作の番号（2026-11-21） */ }, undefined, 15000); },
+      boatVote: (o) => { o = o || {}; return request('POST', '/api/boat/vote', { store, raceId: o.raceId, code: o.code, device: deviceId(), nick: o.nick, first: o.first, second: o.second, add: o.add && o.add.length ? o.add : undefined, opId: o.opId || undefined /* 操作の番号（2026-11-21） */, prevOps: Array.isArray(o.prevOps) && o.prevOps.length ? o.prevOps : undefined /* まだ決着していない前の番号（2026-11-21 深夜 L1） */ }, undefined, 15000); },
       myBoatVote: (raceId) => get('/api/boat/vote?' + qs({ raceId, device: deviceId() })),
       bptNow: () => get('/api/bpt?' + qs({ device: deviceId() })),
       // 見張り: handlers = { boat(live), count(参加人数。テレビ), error }。返り値の関数で止める

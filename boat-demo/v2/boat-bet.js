@@ -17,7 +17,10 @@
    2026-11-21 2 回目の直し（ref/boat/直しの依頼_2回目_2026-11-21.md の B。確かめは tests/boat-phone-bugs.plan.js の場面 9〜）:
      ・投票に操作の番号（opId）。1 回の「投票する」に 1 つ、打ち切り後の押し直し（中身が同じ）は同じ番号。届いたかは番号で確かめる（票に番号が無い古い置き場では枚数で）。古い返事は捨てる（H1・J11・J12）
      ・画面が替わる直後 0.4 秒は指の早押しを受けない（H2・H9）／待ちの画面の長い時間（H3）／消して戻ったときの前のレースの知らせ（H4）／送信中も確認の画面（H5）
-     ・BPT がマイナスにならない（H6）／上限 3,000 の文（H7）／返還は実際に戻った額（H8・J16）／ニックネームの見えない字（H10）／BPT の読み直しの時間切れ（J13） */
+     ・BPT がマイナスにならない（H6）／上限 3,000 の文（H7）／返還は実際に戻った額（H8・J16）／ニックネームの見えない字（H10）／BPT の読み直しの時間切れ（J13）
+   2026-11-21 3 回目の直し（ref/boat/直しの依頼_3回目_2026-11-21.md の B。確かめは tests/boat-phone-bugs3.plan.js・横向きは tests/boat-phone.plan.js の ROWS）:
+     ・番号ごとの決着（ops・dead）。打ち切りのあと中身を変えた押し直しは前の番号を prevOps に（L1）／届いた番号の券はカートから引く・読み込み直したあとも（L2）
+     ・横向きの予想の画面は 2 列（L3・boat-bet.css）／カートの「×」も早押しよけ（L4）／「前の結果」は直前のレースだけ（L5）／ニックネームの整え方を競馬とそろえた（L6）／取り消しは戻し終えた合図（backDone）で読み直す */
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -55,8 +58,10 @@
   }
   /* 見えない字・向きを変える印（2026-11-21 H10）: 幅のない字・向きの印・ハングルの空き字・言葉の印など。取りのぞいて空なら通さない */
   /* 絵文字をつなぐ字（‍）・絵文字の形の印（︎・️）は絵文字の一部なので残す。ただしそれだけ（見える字が無い）なら空 */
-  const INVIS = /[­͏؜ᅟᅠ឴឵᠋-᠏​‌‎‏‪-‮⁠-⁯ㅤ﻿ﾠ￰-￻]/g;
-  const cleanNick = (s) => { const n = cutNick(String(s || '').normalize('NFKC').replace(INVIS, '').replace(/[\u0000-\u001f\u007f<>&"'`]/g, '').replace(/\s+/g, ' ').trim()); return /[^\s‍︎️⃣̀-゙゚ͯ]/.test(n) ? n : ''; };
+  /* 2026-11-21 3 回目 L6: 競馬（v2/bet.js の cleanNick）と同じ 1 つの決まりにそろえた。U+0080〜U+009F の見えない制御文字（U+0085 など）も取りのぞく。
+     結合文字（濁点・囲みの印など \p{M}）と絵文字をつなぐ字だけ（見える字が無い）なら空＝通さない */
+  const INVIS = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u206f\u3164\ufeff\uffa0\ufff0-\ufffb]/g;
+  const cleanNick = (s) => { const n = cutNick(String(s || '').normalize('NFKC').replace(INVIS, '').replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim()); return /[^\s\p{M}\u200d]/u.test(n) ? n : ''; };
   let memNick = ''; // 覚えの置き場が使えないブラウザ用（このページの間だけ）
   const savedNick = () => cleanNick(ls.get(NKEY) || memNick);
   /* このレースで投票した（しようとした）印（2026-11-20 C3・B1）: 印のあるレースだけ、開いたときに自分の票を読んでから画面を決める。印の無いスマホは読まない */
@@ -192,6 +197,7 @@
   /* BPT がカートの分より少なくなった（競馬で券を買って戻った・週が変わった。2026-11-21 H6）→ カートの BPT の券を後ろから減らして知らせる。送信中・確かめ中は触らない */
   function fitCart() {
     if (!S.bpt || S.busy || S.pend || !cartN()) return;
+    const rt = S.race && retryOf(S.race.id); if (rt && rt.op) return; // まだ決着していない送信がある: 中身を変えない（同じ番号で押し直せるように。届いていたら settle がカートから引く。2026-11-21 3 回目 L2）
     let over = cartN() - Math.floor((S.bpt.bal || 0) / 100); if (over <= 0) return;
     const cut = over;
     for (let i = S.cart.length - 1; i >= 0 && over > 0; i--) { const x = S.cart[i]; if (x.free) continue; const n = x.n || 1, d = Math.min(n, over); over -= d; if (d >= n) S.cart.splice(i, 1); else x.n = n - d; }
@@ -444,6 +450,7 @@
     if (x.vote) {
       mark(id);
       if (x.vote.won != null) S.donefor = id; // 発表のあとの中身（BPT も増えたあと）
+      if (!S.busy && !S.pend && settle(x.vote, id).landed) { S.err = ''; toast('投票は届いていました'); } // 読み込み直す前に送った投票が届いていた: その券をカートから引く（2026-11-21 3 回目 L2）
       if (freeInCart()) { S.cart = S.cart.filter((c) => !c.free); saveCart(); } // 無料券はもう使ってある（覚えていた券に無料券が残っていた）
       if (S.screen === 'pick' && S.mode === 'buy' && !S.cart.length && S.f == null) S.screen = 'voted';
     }
@@ -479,6 +486,7 @@
     S.live = live || { race: null, next: null };
     const r = S.live.race || null, changed = !r || !S.race || r.id !== S.race.id;
     let prevHad = false;
+    if (changed && S.race && !myVote()) { S.prev = null; S.viewPrev = false; prevTok++; } // 直前のレースに票が無い: 「前の結果」の入口は消す（2 レース前を残さない。2026-11-21 L5）
     /* 2026-11-20: 次のレースの投票が始まると、前の結果画面の途中でも切り替わる → 前の結果を知らせ、BPT は読み直す。
        2026-11-21 H4: 画面を消していて前のレースの発表を見ていない（結果がまだ手元に無い）ときは、前のレースの自分の票を 1 回だけ読んで知らせる。
        知らせは 8 秒・「前の結果を見る」ボタン付き（S.prev。待ちの画面などにも入口） */
@@ -499,7 +507,11 @@
     if (r && needMine(r)) loadMine(false);
     else if (first || prevHad || bptStale || (r && !S.bpt && keyFor(r.id))) { bptStale = false; loadBpt(true); } // 開いたとき 1 回（＋ QR を読んだのに BPT がまだ分からないとき）
     if (r && r.status === 'done' && S.doneAsk !== r.id && S.donefor !== r.id && S.known === r.id && gained(r)) { S.doneAsk = r.id; S.pre = { id: r.id, bal: S.bpt ? S.bpt.bal : null }; loadMine(true, true); } // 発表: 当たり・返還のある人だけ読み直す（BPT が増えた）
-    if (r && (r.status === 'void' || r.refunded === true) && S.doneAsk !== r.id && S.known === r.id && myVote() && myVote().n > 0) { S.doneAsk = r.id; loadMine(true, true); } // 取り消し: BPT の券を足していた人だけ読み直す（BPT が戻った）
+    /* 取り消し: BPT の券を足していた人だけ読み直す（BPT が戻った）。戻し終えた合図（race.backDone。ref/boat/opId_の使い方.md）が来たら、まだ戻った額が無いときもう 1 回（2026-11-21 3 回目の疑い） */
+    if (r && (r.status === 'void' || r.refunded === true) && S.known === r.id && myVote() && myVote().n > 0) {
+      const bd = r.backDone === true, ak = r.id + (bd ? ':bd' : '');
+      if (S.doneAsk !== ak && !(bd && myVote().voidBack)) { S.doneAsk = ak; loadMine(true, true); }
+    }
     draw();
   }
   /* 前のレースの結果（2026-11-21 H4）: S.prev ＝ { race（結果つき）, vote（そのときの自分の票） }。S.viewPrev ＝ 前の結果を見ている */
@@ -510,38 +522,78 @@
     if (x.hit > 0 && race.result && race.result.noPay === true) return '前のレース: 的中（上限のため払い戻しなし）';
     return '前のレース: ' + (x.back && x.back.bpt > 0 ? '返還 ＋' + amt(x.back.bpt) + ' BPT' : x.back && x.back.n ? '返還' : 'はずれ');
   }
+  let prevTok = 0; // 前のレースが替わったら増える（読んでいる間に次のレースへ進んだら、古いレースを「前の結果」にしない。L5）
   function prevShow(race, v) {
-    S.prev = { race, vote: v }; const t = prevLine(race, v);
+    prevTok++; S.prev = { race, vote: v }; const t = prevLine(race, v);
     if (t) toast(t, { ms: 8000, btn: race.result ? ['前の結果を見る', 'prevres'] : null });
   }
   async function prevFetch(old) {
+    const tok = ++prevTok; S.prev = null; // 読み終わるまでは前の前のレースの入口を出さない
     let x = null; try { x = await timed(C.myBoatVote(old.id, { fresh: true }), 12000); } catch (e) { x = null; }
-    if (!x || !x.vote || !x.race) return;
+    if (tok !== prevTok || !x || !x.vote || !x.race) return;
     const race = Object.assign({}, old, x.race, { boats: (x.race.boats && x.race.boats.length ? x.race.boats : old.boats) });
     if (race.status !== 'done' && race.status !== 'void' && race.refunded !== true) return; // まだ発表されていない（ふつうは無い）
     if (x.bpt && !S.busy && !S.pend) setBpt(x.bpt);
     prevShow(race, x.vote); draw();
   }
   /* 操作の番号（opId）の道具（2026-11-21 H1・J11・J12。置き場の側は ref/boat/opId_の使い方.md）
-     ・newOp: 新しい番号／retryOf・setRetry: 届いたか分からないまま終わった送信（レース・種類・中身・番号）。スマホに覚える（読み込み直しても同じ番号で押し直せる）
-     ・opsOf・lastOpOf: 票に残った番号（一覧 ops・最後の番号 op／opId／lastOp。どれも無い古い置き場では null）
-     ・olderVote(a, b): 票 a が票 b より古いか（BPT の券の枚数は減らない・更新の時刻があれば時刻で） */
-  const RKEY = 'casa.boat.retry';
+     ・newOp: 新しい番号／retryOf・setRetry: まだ決着していない送信（レース・種類・中身・番号）。スマホに覚える（読み込み直しても同じ番号で押し直せる）
+     ・opsOf・deadOf・lastOpOf: 票に残った番号（ops ＝ 通った番号の一覧・dead ＝ 取り消した番号の一覧・op ＝ 最後の番号。一覧の無い古い置き場では null）
+     ・olderVote(a, b): 票 a が票 b より古いか（BPT の券の枚数は減らない・更新の時刻があれば時刻で）
+     2026-11-21 3 回目 L1・L2（opId_の使い方.md の「深夜の書き足し」）: 送った番号ごとに決着（ops ＝ 届いた・dead ＝ 取り消した）を見る。
+       打ち切りのあと中身を変えて押し直すときは新しい番号にし、まだ決着していない前の番号を全部 prevOps に入れて送る（前のが届いていたら置き場は何も足さない＝prevLanded。
+       届いていなければ置き場が前の番号を取り消す＝あとから届いても足さない）。届いた番号の券はカートから引く（読み込み直したあとも。fitCart で中身を変えない） */
+  const RKEY = 'casa.boat.retry', PREV_MAX = 5;
   let memRetry = null;
   function newOp() { let r = ''; try { const a = new Uint32Array(3); crypto.getRandomValues(a); r = Array.from(a, (x) => x.toString(36)).join(''); } catch (e) { r = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); } return ('o' + Date.now().toString(36) + r).replace(/[^a-z0-9]/g, '').slice(0, 32); }
-  function retryOf(id) { let x = memRetry; if (lsOk) { try { x = JSON.parse(ls.get(RKEY) || 'null'); } catch (e) { x = null; } } return x && x.id === id && typeof x.op === 'string' ? x : null; }
-  function setRetry(ctx) { memRetry = ctx ? { id: ctx.id, kind: ctx.kind, sig: ctx.sig, op: ctx.op } : null; if (lsOk) ls.set(RKEY, memRetry ? JSON.stringify(memRetry) : ''); }
+  /* 覚える中身: { id, kind, sig, op（押し直しで使い回す番号。無いときは null）, sent（その番号で送った券）, olds（それより前の、まだ決着していない番号 [{ op, kind, sent }]） } */
+  const plainCart = (L) => (L || []).map((x) => (x.free ? { k: x.k, free: true } : { k: x.k, n: x.n || 1 }));
+  function retryOf(id) {
+    let x = memRetry; if (lsOk) { try { x = JSON.parse(ls.get(RKEY) || 'null'); } catch (e) { x = null; } }
+    if (!x || x.id !== id) return null; x = Object.assign({ sent: [], olds: [] }, x); if (typeof x.op !== 'string') x.op = null; if (!Array.isArray(x.olds)) x.olds = [];
+    x.olds = x.olds.filter((o) => o && typeof o.op === 'string');
+    return x.op || x.olds.length ? x : null;
+  }
+  function setRetry(ctx) {
+    const olds = ctx ? (ctx.olds || []).filter((o) => o && o.op).map((o) => ({ op: o.op, kind: o.kind, sent: plainCart(o.sent) })) : [];
+    memRetry = ctx && (ctx.op || olds.length) ? { id: ctx.id, kind: ctx.kind, sig: ctx.op ? ctx.sig : '', op: ctx.op || null, sent: ctx.op ? plainCart(ctx.sent) : [], olds } : null;
+    if (lsOk) ls.set(RKEY, memRetry ? JSON.stringify(memRetry) : '');
+  }
+  // この番号は決着した（返事が来た・はっきり断られた）: 使い回す番号から外し、まだ決着していない前の番号（olds）だけ残す
+  function dropOp(ctx, keepOlds) { setRetry(keepOlds ? { id: ctx.id, kind: ctx.kind, op: null, olds: ctx.olds } : null); }
   /* 置き場が自分の番号を受け取っているか（返事の票の op が送った番号と同じだったことがある）。受け取らない古いつなぎ（番号を渡さない）では、置き場が別の番号を付けるので、番号では決めず枚数で */
   let opOkMem = false;
   const opWorks = () => opOkMem || ls.get('casa.boat.opok') === '1';
-  function opSeen(ctx, v) { if (ctx && ctx.op && v && lastOpOf(v) === ctx.op && !opWorks()) { opOkMem = true; ls.set('casa.boat.opok', '1'); } }
+  function opSeen(ctx, v) { if (ctx && ctx.op && v && (lastOpOf(v) === ctx.op || (opsOf(v) || []).indexOf(ctx.op) >= 0) && !opWorks()) { opOkMem = true; ls.set('casa.boat.opok', '1'); } }
   const opsOf = (v) => { const L = v && (v.ops || v.opIds); return Array.isArray(L) ? L.map(String) : null; };
+  const deadOf = (v) => (v && Array.isArray(v.dead) ? v.dead.map(String) : []);
   const lastOpOf = (v) => { const o = v && (v.op != null ? v.op : v.opId != null ? v.opId : v.lastOp); return o != null && o !== '' ? String(o) : null; };
   function olderVote(a, b) {
     if (!b) return false; if (!a) return true; // 票は消えない（同じレースで今の票があるのに「無い」は古い読み取り）
     if (a.raceId && b.raceId && a.raceId !== b.raceId) return false;
     const na = Number(a.n) || 0, nb = Number(b.n) || 0; if (na !== nb) return na < nb;
     const ta = Number(a.updatedAt) || 0, tb = Number(b.updatedAt) || 0; return !!(ta && tb && ta < tb);
+  }
+  // 届いた券をカートから引く（数で引く。読み込み直したあとのカートは別の入れ物なので、同じ物かでは見ない）
+  function minusCart(sent) {
+    (sent || []).forEach((x) => {
+      if (x.free) { const i = S.cart.findIndex((c) => c.free); if (i >= 0) S.cart.splice(i, 1); return; }
+      let left = x.n || 1;
+      for (let i = S.cart.length - 1; i >= 0 && left > 0; i--) { const c = S.cart[i]; if (c.free || c.k !== x.k) continue; const n = c.n || 1, d = Math.min(n, left); left -= d; if (d >= n) S.cart.splice(i, 1); else c.n = n - d; }
+    });
+  }
+  /* 読んだ票で、覚えている番号の決着を見る（L1・L2）。届いた番号の券はカートから引き、決着した番号は忘れる。返り値 { landed: 届いていた番号の数, cur: 使い回す番号が届いていた }。
+     番号の一覧（ops）の無い古い置き場では何もしない（今までどおり verify の arrived で見る） */
+  function settle(v, id) {
+    const rt = retryOf(id), ops = opsOf(v); if (!rt || !v || !ops) return { landed: 0, cur: false };
+    const dead = deadOf(v); let landed = 0, cur = false;
+    const olds = rt.olds.filter((o) => { if (ops.indexOf(o.op) >= 0) { landed++; minusCart(o.sent); return false; } return dead.indexOf(o.op) < 0; });
+    let op = rt.op;
+    if (op && ops.indexOf(op) >= 0) { landed++; cur = true; minusCart(rt.sent); op = null; } else if (op && dead.indexOf(op) >= 0) op = null;
+    if (cur) olds.length = 0; // 使い回す番号が通った ＝ そのとき前の番号は置き場が取り消している
+    setRetry({ id, kind: rt.kind, sig: rt.sig, op, sent: rt.sent, olds });
+    if (landed) { saveCart(); if (!S.cart.length && S.screen === 'confirm') S.screen = 'pick'; }
+    return { landed, cur };
   }
   /* 投票（kind 'vote' ＝ カートの券）・無料券の組番を変える（kind 'change'）。
      返事が届いたとき、送ったときのレースのままなら入れる。レースが切り替わっていたら捨てる（S.send が変わっている。F1）。
@@ -559,10 +611,13 @@
       o.code = keyFor(r.id); o.nick = savedNick() || (v0 && v0.nick); o.add = add;
       if (free) { const p = free.k.split('-').map(Number); o.first = p[0]; o.second = p[1]; }
     }
-    /* 操作の番号（opId。2026-11-21 H1・J11）: 1 回の「投票する」に 1 つ。届いたか分からないまま終わった送信と同じ中身の押し直しは、同じ番号（置き場が同じ番号を 2 回は数えない） */
+    /* 操作の番号（opId。2026-11-21 H1・J11）: 1 回の「投票する」に 1 つ。まだ決着していない送信と同じ中身の押し直しは、同じ番号（置き場が同じ番号を 2 回は数えない）。
+       中身を変えたら新しい番号にして、まだ決着していない前の番号を prevOps に入れる（3 回目 L1） */
     const sig = kind + '|' + JSON.stringify([o.first, o.second, (o.add || []).slice().sort()]), rt = retryOf(r.id);
-    const reused = !!(rt && rt.kind === kind && rt.sig === sig); o.opId = reused ? rt.op : newOp();
-    const ctx = { id: r.id, kind, sent, sig, op: o.opId, reused, base: v0 ? { n: v0.n || 0, first: v0.first, second: v0.second } : null, addN: (o.add || []).length, want: o.first != null ? { first: o.first, second: o.second } : null, tries: 0, wasMarked: marked(r.id), checking: false };
+    const reused = !!(rt && rt.op && rt.kind === kind && rt.sig === sig); o.opId = reused ? rt.op : newOp();
+    const olds = rt ? rt.olds.concat(rt.op && !reused ? [{ op: rt.op, kind: rt.kind, sent: rt.sent }] : []) : [];
+    if (olds.length) o.prevOps = olds.slice(-PREV_MAX).map((x) => x.op);
+    const ctx = { id: r.id, kind, sent, sig, op: o.opId, reused, olds, base: v0 ? { n: v0.n || 0, first: v0.first, second: v0.second } : null, addN: (o.add || []).length, want: o.first != null ? { first: o.first, second: o.second } : null, tries: 0, wasMarked: marked(r.id), checking: false };
     setRetry(ctx); // 返事が来るまでは「届いたか分からない」扱い（読み込み直しても同じ番号で押し直せる）
     const my = ++S.send; S.busy = true; S.sendCtx = ctx; S.err = ''; S.ver++; mark(r.id); draw();
     let x = null, err = null;
@@ -572,25 +627,44 @@
     if (x) sendDone(ctx, x); else sendFail(ctx, err);
     draw();
   }
+  function useVote(x) { if (x && !olderVote(x.vote, myVote())) { S.mine = { vote: x.vote || null, bpt: x.bpt }; setBpt(x.bpt); } } // 今の票より古い返事（遅れて届いた）は票の中身に使わない
   function sendDone(ctx, x) {
-    S.pend = null; clearTimeout(verT); setRetry(null); S.sendCtx = null; opSeen(ctx, x.vote);
-    if (!olderVote(x.vote, myVote())) { S.mine = { vote: x.vote || null, bpt: x.bpt }; setBpt(x.bpt); } // 今の票より古い返事（遅れて届いた）は票の中身に使わない
-    S.known = ctx.id; S.ver++; mark(ctx.id);
+    S.pend = null; clearTimeout(verT); S.sendCtx = null; opSeen(ctx, x.vote);
+    useVote(x); S.known = ctx.id; S.ver++; mark(ctx.id);
     if (x.vote && x.vote.won != null) S.donefor = ctx.id;
-    S.cart = S.cart.filter((c) => ctx.sent.indexOf(c) < 0); saveCart(); // 送った券だけカートから消す
+    /* 前の押し直しが届いていた（prevLanded）・この番号はもう取り消してあった（dead）: 今回は何も足されていない（3 回目 L1） */
+    if (x.prevLanded || x.dead === true) {
+      dropOp(ctx, true); settle(x.vote, ctx.id); S.err = '';
+      if (x.prevLanded) toast('前の投票が届いていました。' + (S.cart.length ? '残りの券を確かめて、もう一度押してください' : ''), { ms: 6000 });
+      else S.err = '送れませんでした。もう一度押してください';
+      if (!S.cart.length) { S.f = S.s = null; S.mode = 'buy'; S.screen = 'voted'; } else S.screen = 'confirm';
+      return;
+    }
+    setRetry(null); // この番号が通った ＝ 前の番号は置き場が取り消した（あとから届いても足さない）
+    minusCart(ctx.sent); saveCart(); // 送った券だけカートから消す
     S.f = S.s = null; S.mode = 'buy'; S.qty = 1; S.err = '';
     if (ctx.kind === 'change') toast('組番を変えました'); else S.thanks = true;
     S.screen = 'voted';
   }
   function sendFail(ctx, e) {
     const c = e && e.code;
-    if (!e || c === 'timeout' || c === 'network' || !e.status || e.status >= 500 || (c === 'denied' && ctx.op && retryOf(ctx.id) && retryOf(ctx.id).op === ctx.op && ctx.reused)) { // 届いたか分からない → 確かめる（同じ番号の押し直しが断られた＝前の書き込みが届いていたかもしれない。opId_の使い方.md）
+    if (!e || c === 'timeout' || c === 'network' || !e.status || e.status >= 500 || (c === 'denied' && ctx.op && ctx.reused)) { // 届いたか分からない → 確かめる（同じ番号の押し直しが断られた＝前の書き込みが届いていたかもしれない。opId_の使い方.md）
       S.pend = ctx; if (c === 'denied') ctx.denied = e;
-      // 打ち切ったあとに届いた返事: 確かめ中ならそれで済ませる。もう確かめが済んでいたら、今の票より古くないときだけ入れる（古い返事で新しい票を上書きしない。J11）
-      if (e && e.late) e.late.then((x) => { if (S.race && S.race.id === ctx.id && x) { if (S.pend === ctx) sendDone(ctx, x); else { const rt = retryOf(ctx.id); if (rt && rt.op === ctx.op) setRetry(null); if (!olderVote(x.vote, myVote()) && !S.busy && !S.pend) { S.mine = { vote: x.vote || null, bpt: x.bpt }; setBpt(x.bpt); S.ver++; if (S.err && arrived(ctx, x.vote)) { S.err = ''; S.cart = S.cart.filter((c) => ctx.sent.indexOf(c) < 0); saveCart(); toast('投票は届いていました'); } } } draw(); } }, () => { if (!S.race || S.race.id !== ctx.id) return; if (S.pend === ctx) verify(); else loadMine(true, true); });
+      /* 打ち切ったあとに届いた返事: 確かめ中ならそれで済ませる。もう確かめが済んでいたら（中身を変えて押し直した・カートを触っている）、
+         返事の票で番号の決着を見て、今の票より古くないときだけ入れる（古い返事で新しい票を上書きしない。J11）。送信中・確かめ中はその流れに任せる */
+      if (e && e.late) e.late.then((x) => {
+        if (!S.race || S.race.id !== ctx.id || !x) return;
+        if (S.pend === ctx) sendDone(ctx, x);
+        else if (!S.busy && !S.pend) {
+          useVote(x); S.ver++;
+          if (opsOf(x.vote)) { const st = settle(x.vote, ctx.id); if (st.landed) { S.err = ''; toast('投票は届いていました'); } }
+          else { const rt = retryOf(ctx.id); if (rt && rt.op === ctx.op) setRetry(null); if (S.err && arrived(ctx, x.vote)) { S.err = ''; minusCart(ctx.sent); saveCart(); toast('投票は届いていました'); } }
+        }
+        draw();
+      }, () => { if (!S.race || S.race.id !== ctx.id) return; if (S.pend === ctx) verify(); else if (!S.busy && !S.pend) loadMine(true, true); });
       verify(); return;
     }
-    S.sendCtx = null; setRetry(null); // はっきり断られた（届いていない）: 次は新しい番号
+    S.sendCtx = null; dropOp(ctx, true); // はっきり断られた（この番号は届いていない）: 次は新しい番号。前の決着していない番号は残す（次の押し直しで prevOps に）
     if (!ctx.wasMarked && !myVote()) unmark();
     errOf(e, ctx);
     if (S.race && S.known !== ctx.id && needMine(S.race)) loadMine(true, true);
@@ -598,8 +672,8 @@
   // 送った票が届いていたか（読み直した自分の票 v と、送る前の中身を見比べる）
   function arrived(ctx, v) {
     if (!v) return false;
-    /* 操作の番号で確かめる（2026-11-21 J12: 枚数だけで見ると、ほかのタブの追加を自分の成功と取り違える。ref/boat/opId_の使い方.md「vote.op === 自分の opId なら届いている。枚数では見ない」）。
-       番号の一覧があればそれで、票に最後の番号（op）があればそれで決める。番号の無い古い置き場だけ今までどおり枚数で */
+    /* 操作の番号で確かめる（2026-11-21 J12: 枚数だけで見ると、ほかのタブの追加を自分の成功と取り違える）。
+       番号の一覧（ops）があればそれだけで決める（3 回目: vote.op === 自分の番号 では見ない。A のあとに B が通ると op は B）。番号の無い古い置き場だけ今までどおり */
     const ops = opsOf(v);
     if (ops && ctx.op) return ops.indexOf(ctx.op) >= 0;
     const lo = lastOpOf(v); if (lo && ctx.op) { if (lo === ctx.op) return true; if (opWorks()) return false; } // 番号が置き場まで届くと分かっている（前に返事の op が自分の番号だった）ときだけ「ちがう＝届いていない」と決める
@@ -622,10 +696,12 @@
     else {
       S.mine = { vote: x.vote || null, bpt: x.bpt }; setBpt(x.bpt); S.known = p.id; S.ver++; S.sendCtx = null;
       setRetry(p); // まだ届いていない: 同じ中身の押し直しは同じ番号（遅れて届いても 2 回は数えない。H1）
+      const st = settle(x.vote, p.id); // 前の番号（prevOps）のどれかが届いていた → その券はカートから引く。取り消しずみの番号は忘れる（3 回目 L1）
       if (!x.vote && !p.wasMarked) unmark();
       const r = S.race;
       if (r.status !== 'upcoming' || now() >= r.closeAt) { S.cart = []; saveCart(); S.err = ''; setRetry(null); toast('締め切りました（投票は届いていません）'); }
-      else if (p.denied) { setRetry(null); errOf(p.denied, p); } // 断られていて、前の書き込みも届いていない: 断られた理由を出す（次は新しい番号）
+      else if (p.denied) { dropOp(Object.assign({}, p, { olds: (retryOf(p.id) || { olds: [] }).olds }), true); errOf(p.denied, p); } // 断られていて、前の書き込みも届いていない: 断られた理由を出す（次は新しい番号）
+      else if (st.landed) { S.err = ''; toast('前の投票が届いていました。' + (S.cart.length ? '残りの券を確かめて、もう一度押してください' : ''), { ms: 6000 }); if (!S.cart.length) { S.f = S.s = null; S.mode = 'buy'; S.screen = 'voted'; } }
       else S.err = '送れませんでした。もう一度押してください';
     }
     draw();
@@ -673,7 +749,7 @@
     const a = b.dataset.act, tn = performance.now();
     if (tn < tapLock) return;
     if (ev.isTrusted && tn < holdUntil) return; // 指の早押し（H2・H9）
-    if (MOVE.indexOf(a) >= 0) holdTaps();
+    if (MOVE.indexOf(a) >= 0 || b.dataset.del != null) holdTaps(); // カートの「×」も（2026-11-21 L4: 早押しで、詰まって同じ場所に来た次の券まで消えていた）
     const edit = b.dataset.f != null || b.dataset.s != null || b.dataset.del != null || ['add', 'qm', 'qp', 'q10', 'confirm', 'fix', 'vote', 'tochange', 'tobuy', 'back', 'change'].indexOf(a) >= 0;
     if ((S.busy || S.pend) && edit) return; // 送信中・届いたか確かめ中は券を動かさない（入れた券が黙って消えない。B4）
     if (b.dataset.f != null) { const i = Number(b.dataset.f); S.f = S.f === i ? null : i; if (S.s === S.f) S.s = null; S.qty = 1; S.err = ''; return draw(); } // 組番を選び直したら枚数は 1 に戻す（B6）

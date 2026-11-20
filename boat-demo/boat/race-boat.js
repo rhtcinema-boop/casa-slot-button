@@ -171,7 +171,7 @@ BOAT.Race = (function () {
       });
     }
     /* 準備中の setRaceAsync をやめる（2026-11-21。テレビの係の頼み）。返り値の Promise は false で終わり、作りかけの絵は片付ける。準備中でなければ何もしない */
-    cancelPrep() { const j = this.prepJob; this.prepJob = null; if (j && j.bail) j.bail(); }
+    cancelPrep() { const j = this.prepJob; this.prepJob = null; if (j && j.bail) j.bail(); if (j) { try { poolPump(); } catch (e) { } } } // 別の糸で計算中の、このレースの分も止める（2026-11-21 N1）
     get preparing() { return !!this.prepJob; }
     /* 艇の絵を 1 艇作る（部品が壊れていても止まらないよう、だめなら代わりの箱）。まだ水面には置かない */
     makeBoat(h) { let b = null; try { if (BOAT.Boat) { b = BOAT.Boat.create(h, { quality: this.quality }); this.parts.Boat = 'real'; } } catch (e) { console.warn('BOAT.Boat', e); } if (!b || !b.object3d) { b = Stub.boat(h); this.parts.Boat = this.parts.Boat || 'stub'; } return b; }
@@ -740,15 +740,25 @@ BOAT.Race = (function () {
     if (!ch && typeof MessageChannel === 'function') { ch = new MessageChannel(); ch.port1.onmessage = () => { const g = chQ.shift(); if (g) g(); }; if (ch.port1.unref) ch.port1.unref(); }
     if (!ch) { setTimeout(f, 0); return; } chQ.push(f); ch.port2.postMessage(0);
   };
-  const Pool = { ws: null, broken: false, seq: 0, queue: [], UNIT_MS: 120000 };
+  /* 2026-11-21（不具合 N1「重いレースは別の糸を使うほうが遅い」）:
+     ・先回りの 1 回分が、本当に要る 1 回分（選ぶ順で次に待っている物）より先に並ばないように、待ち始めた 1 回分は「いま要る」として列の先頭へ（need）。
+       1 回めの答えで作り直しの並び（横切りの有無で変わる）が分かったら、先回り分の並びもその順に付け直す（前は「横切りをやめる」2 つが、要らないかもしれない先回り 5 つの後ろに回っていた）。
+     ・計画が決まったら（または準備をやめたら）、そのレースの先回り分は列から捨て、計算中の物も糸ごと止めて作り直す（前は最後まで計算を続け、走りの映像の間も糸が埋まっていた）。
+     ・どの 1 回分も答えは糸に関係なく同じで、選ぶ順も前と同じなので、映像は前と同じ（別の糸があっても無くても同じ） */
+  const Pool = { ws: null, broken: false, seq: 0, queue: [], UNIT_MS: 120000, url: '', killed: 0 };
+  function poolSpawn(s) { // 糸を 1 本作る（前の糸の返事が後から来ても、作り直したあとの糸の物でなければ無視する）
+    const w = new Worker(Pool.url); s.w = w; s.u = null;
+    w.onmessage = (e) => { if (s.w === w) poolDone(s, e.data); };
+    w.onerror = (e) => { try { e.preventDefault(); } catch (x) { } if (s.w === w) poolBreak('別の糸のエラー ' + ((e && e.message) || '')); };
+  }
   function poolOk() {
     if (Pool.broken || Race.useWorker === false) return false; if (Pool.ws) return true;
     if (typeof Worker !== 'function' || !ME_SRC || !/^https?:/.test(ME_SRC)) return false;
     const url = ME_SRC.replace(/race-boat\.js(?=[?#]|$)/, 'plan-worker.js'); if (url === ME_SRC) return false;
     try {
       const N = Math.max(1, Math.min(3, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1));
-      Pool.ws = [];
-      for (let i = 0; i < N; i++) { const s = { w: new Worker(url), u: null }; s.w.onmessage = (e) => poolDone(s, e.data); s.w.onerror = (e) => { try { e.preventDefault(); } catch (x) { } poolBreak('別の糸のエラー ' + ((e && e.message) || '')); }; Pool.ws.push(s); }
+      Pool.url = url; Pool.ws = [];
+      for (let i = 0; i < N; i++) { const s = { w: null, u: null }; poolSpawn(s); Pool.ws.push(s); }
     } catch (e) { poolBreak('別の糸を作れない ' + e.message); return false; }
     return true;
   }
@@ -759,11 +769,21 @@ BOAT.Race = (function () {
   }
   function poolDone(s, d) {
     const u = s.u; s.u = null; if (u) { clearTimeout(u.timer); if (!d || d.err || d.id !== u.id) u.reject(new Error('計算の失敗 ' + ((d && d.err) || ''))); else u.resolve(d); }
-    poolPump();
+    pumpSoon();
   }
+  /* 列を回すのは、いまの仕事（答えを受け取った続きの処理）が全部終わってから 1 回だけ（2026-11-21 N1。1 回めの答えで先回りの順を付け直す前に、古い順で次の物を配らないように） */
+  function pumpSoon() { if (Pool.pumpAt) return; Pool.pumpAt = true; soon(() => { Pool.pumpAt = false; poolPump(); }); }
   function poolPump() {
     if (!Pool.ws) return;
-    Pool.queue = Pool.queue.filter((u) => { if (u.alive()) return true; u.reject(new Error('捨てた')); return false; });
+    const dead = (u) => { try { return !u.alive(); } catch (e) { return true; } };
+    Pool.queue = Pool.queue.filter((u) => { if (!dead(u)) return true; u.reject(new Error('捨てた')); return false; });
+    // 計算中でも、もう要らない物（計画が決まった・準備をやめたレースの先回り分）は糸ごと止めて作り直す
+    for (const s of Pool.ws) {
+      if (!s.u || !dead(s.u)) continue;
+      const u = s.u; clearTimeout(u.timer); try { s.w.terminate(); } catch (e) { }
+      Pool.killed++; u.reject(new Error('捨てた'));
+      try { poolSpawn(s); } catch (e) { poolBreak('別の糸を作れない ' + e.message); return; }
+    }
     Pool.queue.sort((a, b) => a.pri - b.pri || a.id - b.id);
     for (const s of Pool.ws) {
       if (s.u || !Pool.queue.length) continue;
@@ -772,21 +792,27 @@ BOAT.Race = (function () {
       u.timer = setTimeout(() => poolBreak('別の糸の返事が来ない'), Pool.UNIT_MS);
     }
   }
-  function poolRun(msg, pri, alive) { return new Promise((resolve, reject) => { Pool.queue.push({ id: ++Pool.seq, msg, pri, alive, resolve, reject }); poolPump(); }); }
+  // 返り値は列の 1 件（u.p が答えの Promise。u.pri はあとから付け直せる）
+  function poolRun(msg, pri, alive) { const u = { id: ++Pool.seq, msg, pri, alive }; u.p = new Promise((resolve, reject) => { u.resolve = resolve; u.reject = reject; }); Pool.queue.push(u); pumpSoon(); return u; }
   /* Race.planJob と同じ選び方を、別の糸の答えで行う。返り値は Promise（{ plan, run, desc, alt }）か、別の糸が使えない時は null */
   Race.planPar = function (race, run, desc, alive, stat) {
     if (!poolOk() || !run || run.seed == null) return null;
     const L = BOAT.Lines, E = window.Engine; if (!L || !L.planUnit || !L.unpackPlan || !L.retryList) return null;
     const order = run.finalOrder ? run.finalOrder() : null; if (!run.natural && !order) return null;
-    const live = alive || (() => true), base = { race, seed: run.seed, preT: PRE_T, postT: POST_T + 2 };
-    const one = (c, over, pri) => { // 1 回分（同じ設定の物は 1 回だけ計算。設定の中身で見分ける）
+    let fin = false; // 計画が決まった（または失敗した）ら true。このレースの先回り分は捨てる
+    const live0 = alive || (() => true), live = () => !fin && live0(), base = { race, seed: run.seed, preT: PRE_T, postT: POST_T + 2 };
+    /* 1 回分（同じ設定の物は 1 回だけ計算。設定の中身で見分ける）。pri: 列の順（小さいほど先）。まだ列で待っている物は、あとから呼ばれた時の pri に付け直す（「いま要る」物は付け直さない）。
+       need: 選ぶ順で、いま答えを待つ物 → 列の先頭へ */
+    const one = (c, over, pri, need) => {
       const key = over ? JSON.stringify(over) : 'b';
-      if (!c.got[key]) {
-        const p = poolRun(Object.assign({ order: c.order, swapFrom: c.swapFrom, desc: c.desc, over: over || null }, base), pri, live)
-          .then((d) => { if (d.fp !== c.fp) throw new Error('走りの印が合わない'); if (stat) stat.units++; return d; });
-        p.catch(() => { }); c.got[key] = p;
-      }
-      return c.got[key];
+      let e = c.got[key];
+      if (e && e.drop) e = null; // 先回りをやめた物がやっぱり要る時は、もう一度頼む（ふつうは起きない）
+      if (!e) {
+        const x = { drop: false }, u = poolRun(Object.assign({ order: c.order, swapFrom: c.swapFrom, desc: c.desc, over: over || null }, base), need ? -1 : pri, () => !x.drop && live());
+        const p = u.p.then((d) => { if (d.fp !== c.fp) throw new Error('走りの印が合わない'); if (stat) stat.units++; return d; });
+        p.catch(() => { }); e = c.got[key] = Object.assign(x, { u, p, key });
+      } else if (Pool.queue.indexOf(e.u) >= 0 && e.u.pri !== -1) { e.u.pri = need ? -1 : pri; pumpSoon(); }
+      return e.p;
     };
     const plan = (d) => { const P = L.unpackPlan(d.plan); return P; };
     const c0 = { run, desc, alt: 0, order: run.natural ? null : order, swapFrom: null, fp: runPrint(run), got: {}, idx: 0 };
@@ -803,15 +829,26 @@ BOAT.Race = (function () {
       }
     }
     const all = [c0].concat(alts);
-    const retries = (c, d) => { if (d.score === 0) return; const RL = L.retryList(d.hasBeh); RL.tries.forEach((o, q) => one(c, o, 10 + c.idx * 20 + q)); }; // 先回り
+    // 先回り: 1 回めの答えで作り直しの並び（横切りの有無で変わる）が分かったら、その順に付け直す（選ぶ時に待つ順と同じ）
+    const retries = (c, d) => {
+      if (!live()) return;
+      const keep = d.score === 0 ? [] : L.retryList(d.hasBeh).tries;
+      keep.forEach((o, q) => one(c, o, 10 + c.idx * 20 + q));
+      // 合格なら作り直しは要らない・横切りの無いレースなら「横切りをやめる」は要らない → その先回りはやめる
+      const ks = keep.map((o) => JSON.stringify(o)); let n = 0;
+      Object.keys(c.got).forEach((k) => { const e = c.got[k]; if (k !== 'b' && ks.indexOf(k) < 0 && !e.drop) { e.drop = true; n++; } });
+      if (n) pumpSoon();
+    };
     all.forEach((c) => one(c, null, c.idx).then((d) => retries(c, d), () => { }));
     /* 事故のあるレース・着順を指定したレースは、作り直しになりやすい（ふつうのレースはほとんど 1 回め で合格）。別の糸が 3 本以上ある時だけ、1 回めの答えを待たずに
-       もらった走りの作り直し（横切りの有無に関係なく入る物）も先回りで計算しておく（使わなければ捨てる。答えは変わらない） */
-    if ((race.incident || !run.natural) && Pool.ws.length >= 3) L.retryList(false).tries.forEach((o, q) => one(c0, o, 4 + q));
+       もらった走りの作り直しも先回りで計算しておく（使わなければ捨てる。答えは変わらない）。
+       2026-11-21 N1: 並びは「横切りあり」の時の順（作り直しになったレースはほとんど横切りあり）。1 回めの答えで横切りが無いと分かったら、横切りをやめる 2 つは捨てて順を付け直す（上の retries）。
+       入れ替え方を変えた走りの 1 回め（列の順 1〜3）より後 */
+    if ((race.incident || !run.natural) && Pool.ws.length >= 3) L.retryList(true).tries.forEach((o, q) => one(c0, o, 4 + q)); // 作り直しになるレースは、ほとんど横切りあり（その時に要る順）
     return (async () => {
       const cands = [];
       for (const c of all) {
-        const d = await one(c, null, c.idx), P = plan(d); P.score = d.score;
+        const d = await one(c, null, c.idx, true), P = plan(d); P.score = d.score;
         const cand = { run: c.run, desc: c.desc, alt: c.alt, plan: P, src: c, hasBeh: d.hasBeh };
         if (d.score === 0) return cand;
         cands.push(cand);
@@ -820,16 +857,17 @@ BOAT.Race = (function () {
       for (const cand of cands) {
         const c = cand.src, RL = L.retryList(cand.hasBeh), tries = RL.tries, last = RL.last;
         let best = cand.plan, bs = best.score;
-        for (let q = 0; q < tries.length && bs > 0; q++) { const d = await one(c, tries[q], 10 + c.idx * 20 + q), P2 = plan(d); P2.retried = q + 1; if (d.score < bs) { best = P2; bs = d.score; } else best.retried = q + 1; }
-        for (let q = 0; q < last.length && !best.ok; q++) { const d = await one(c, last[q], 10 + c.idx * 20 + 10 + q), P3 = plan(d); P3.retried = tries.length + 1 + q; if (d.score < bs) { best = P3; bs = d.score; } }
+        for (let q = 0; q < tries.length && bs > 0; q++) { const d = await one(c, tries[q], 10 + c.idx * 20 + q, true), P2 = plan(d); P2.retried = q + 1; if (d.score < bs) { best = P2; bs = d.score; } else best.retried = q + 1; }
+        for (let q = 0; q < last.length && !best.ok; q++) { const d = await one(c, last[q], 10 + c.idx * 20 + 10 + q, true), P3 = plan(d); P3.retried = tries.length + 1 + q; if (d.score < bs) { best = P3; bs = d.score; } }
         best.score = bs; cand.plan = best;
         if (bs === 0) return cand;
       }
       const rank = (x) => (x.plan.ok !== false ? x.plan.score || 0 : 1e9 + (x.plan.overlapFrames || 0) * 1000 + (x.plan.badFrames || 0));
       let b = cands[0]; cands.forEach((x) => { if (rank(x) < rank(b)) b = x; }); return b;
-    })().then((x) => ({ plan: x.plan, run: x.run, desc: x.desc, alt: x.alt }));
+    })().then((x) => { fin = true; poolPump(); return { plan: x.plan, run: x.run, desc: x.desc, alt: x.alt }; },
+      (e) => { fin = true; poolPump(); throw e; }); // 決まったら（失敗でも）、このレースの先回り分を捨てる
   };
-  Race.workerPool = () => ({ n: Pool.ws ? Pool.ws.length : 0, broken: Pool.broken, queued: Pool.queue.length }); // 試験で見る用
+  Race.workerPool = () => ({ n: Pool.ws ? Pool.ws.length : 0, broken: Pool.broken, queued: Pool.queue.length, busy: Pool.ws ? Pool.ws.filter((s) => s.u).length : 0, killed: Pool.killed }); // 試験で見る用（busy: 計算中の糸の数、killed: 要らなくなって止めた数）
   // 声の部品の鍵 → 字幕の文（tools/make-boat-voice.js の P と同じ鍵）
   Race.PHRASES = { pitout: 'ピットアウト', moved: 'が動いた！　内のコースを取りに行く', turnto: '各艇、スタートラインへ艇を向けます', wakunari: '進入は枠なり 3 対 3', shinnyu: '進入は', santai: '3 対 3', clock: '大時計が回って、各艇 スタートへ',
     start: 'スタートしました！', flying: 'フライング', m1: '1周 1マーク、', sakini: 'が先に回る', semeru: 'が攻める！', innige: 'イン逃げ態勢', nukeda: 'が抜け出した！', niban: '2番手', back: 'バックストレッチ、先頭は', m2: '1周 2マーク', sashita: 'が差した！',

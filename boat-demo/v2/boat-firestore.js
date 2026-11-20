@@ -63,15 +63,22 @@
     const bptView = (w, r, v) => { const bal = w ? Core.bptBalance(w, now()) : 0; return { bal, cost: Boat.STAKE, left: Boat.picksLeft(v, r, bal, now()) }; };
     async function raceOf(id) { const L = watching > 0 && liveCache && liveCache.race; if (L && L.id === id && L.day) return L; return strip(data(await doc(COLB.races, id).get())); } // 見張っているいまの状態にあれば読まない（読み取りを増やさない）
     const bptSeen = {}; // 結果のあとに BPT を読み直したレース（1 回だけ）
-    /* 自分の票と BPT。opt.fresh: BPT も読み直す（電波が戻った・投票の返事が来なかったあとなど、画面が「確かめ直したい」とき） */
+    /* 2026-11-21 深夜: 届いたかの確かめは置き場（サーバー）から読む（手元の写しを使わない）。まだ送り終わっていない自分の書き込みが混ざっているときは pending */
+    async function srvRead(ref) { const sn = await ref.get({ source: 'server' }); return { v: data(sn), pending: !!(sn && sn.metadata && sn.metadata.hasPendingWrites) }; }
+    const pendingErr = () => E(0, 'pending', '前の送信がまだ終わっていません。電波を確かめて、少し待ってからもう一度押してください');
+    /* 自分の票と BPT。opt.fresh: 票をサーバーから・BPT も読み直す（電波が戻った・投票の返事が来なかったあとなど、画面が「確かめ直したい」とき） */
     async function myBoatVote(raceId, opt) {
       await ready(); const id = String(raceId || ''), r = await raceOf(id); if (!r) throw E(404, 'no_race', 'レースが見つかりません');
-      let v = null; try { v = data(await doc(COLB.votes, Boat.voteId(id, uid())).get()); } catch (e) { v = null; }
+      const fresh = !!(opt && opt.fresh), ref = doc(COLB.votes, Boat.voteId(id, uid()));
+      let v = null;
+      if (fresh) { let x; try { x = await srvRead(ref); } catch (e) { throw mapVoteErr(e); } if (x.pending) throw pendingErr(); v = x.v; } // 届いたかの確かめ: 読めない・送り途中は「まだ分からない」（失敗で返す）
+      else { try { v = data(await ref.get()); } catch (e) { v = null; } }
       const view = Boat.voteView(v, r);
       // 当たり・返還・取り消しで BPT が増えたはずのレースは、そのとき 1 回だけ読み直す（ほかは手元の写し）
       const grew = !!(view && !bptSeen[id] && ((r.status === 'done' && (view.won > 0 || (view.back && view.back.bpt > 0))) || (view.refunded && view.n > 0 && r.backDone === true))); // 取り消しは戻し終えてから（backDone）1 回
-      if (grew) bptSeen[id] = 1;
-      return { vote: view, bpt: bptView(await bptDoc(grew || !!(opt && opt.fresh)), r, v), race: Boat.lite(r) };
+      const w = await bptDoc(grew || fresh);
+      if (grew && w) bptSeen[id] = 1; // 2026-11-21 深夜（M7）: 読めたときだけ「読み直しずみ」（読めなければ次の回にもう一度）
+      return { vote: view, bpt: bptView(w, r, v), race: Boat.lite(r) };
     }
     /* その日（ボートの営業日）に競馬へ参加した自分の票の候補（2026-11-20 読み取りを減らす）: dvs（このスマホが覚えている競馬の票の id。新しい順）から。
        時刻表のレースの票は id（営業日 YYYYMMDD-HHMM…~店~番号）から営業日と店が分かるので読まない（本当に自分の票かは、置き場の決まりが投票の書き込みのときに確かめる）。
@@ -99,13 +106,19 @@
       await ready(); o = o || {};
       const raceId = String(o.raceId || ''), vid = Boat.voteId(raceId, uid()), ref = doc(COLB.votes, vid), t = now();
       const op = Boat.cleanOp(o.opId) || Boat.newOp(rand); // 操作の番号（2026-11-21 H1・J11。同じ番号の書き込みは 1 回だけ通す。ref/boat/opId_の使い方.md）
+      const prev = Boat.cleanPrevOps(o.prevOps, op); // 打ち切りのあとに中身を変えた押し直し: まだ決着していない前の番号（2026-11-21 深夜 L1。届いていたら足さない・届いていなければ取り消す）
       const r = await raceOf(raceId);
-      const sameView = async (v) => { delete v._id; return { vote: Boat.voteView(v, r), bpt: bptView(await bptDoc(true), r, v), race: Boat.lite(r), same: true }; };
-      const landed = async () => { let v = null; try { v = data(await ref.get()); } catch (e) { v = null; } return v && v.op === op ? v : null; }; // 届いていたか（番号で見る）
-      if (!r || r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切りました');
+      if (!r) throw E(409, 'closed', '締め切りました');
+      const sameView = async (v, st) => { delete v._id; return Object.assign({ vote: Boat.voteView(v, r), bpt: bptView(await bptDoc(true), r, v), race: Boat.lite(r), same: true }, st && st.prevLanded ? { prevLanded: st.prevLanded } : {}, st && st.dead ? { dead: true } : {}); };
+      const landed = async () => { let x = null; try { x = await srvRead(ref); } catch (e) { return null; } if (!x.v || x.pending) return null; const st = Boat.opState(x.v, op, prev); return st ? { v: x.v, st } : null; }; // 届いていたか（番号の一覧で見る・サーバーから）
+      /* 今の票はサーバーから読む（2026-11-21 深夜: 手元の写しにまだ送り終わっていない書き込みが混ざると「届いていた」と見てしまうため）。読めない・送り途中は失敗で返す */
+      let old = null;
+      { let x; try { x = await srvRead(ref); } catch (e) { throw mapVoteErr(e); } if (x.pending) throw pendingErr(); old = x.v; }
+      /* 2026-11-21 深夜（M4）: 同じ番号の確かめ（もう通っている・前の番号が届いていた・取り消した番号）は、締切の判定より先に答える（何も足さない） */
+      { const st = Boat.opState(old, op, prev); if (st) return sameView(old, st); }
+      if (r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切りました');
       if (t < r.openAt) throw E(409, 'not_open', '投票はまだ始まっていません');
-      let old = null; try { old = data(await ref.get()); } catch (e) { old = null; }
-      if (old && old.op === op) return sameView(old); // 同じ番号はもう通っている: 何も足さずに今の票
+      const lists = Boat.opLists(old, op, prev); // ops に今の番号・dead に前の番号（このあと遅れて届いても決まりが断る）
       const add = Boat.cleanPicks(o.add || []);
       const nick = Core.cleanNick(o.nick != null ? o.nick : old && old.nick);
       const pair = o.first != null || !old ? Boat.cleanPair(o) : { first: old.first, second: old.second };
@@ -125,20 +138,21 @@
       const write = async (dv, sid) => {
         const b = db.batch();
         if (add.length) b.update(doc(COLB.bpt, uid()), { spent: (Number(w.spent) || 0) + add.length * Boat.STAKE, buse: vid });
-        const nv = old ? Object.assign({}, old, { nick, first: pair.first, second: pair.second, bets, n, op, updatedAt: t }) : { raceId, owner: uid(), storeId: sid, nick, first: pair.first, second: pair.second, bets, n, code: String(o.code), dv, op, votedAt: t, updatedAt: t };
-        if (old) b.update(ref, { nick, first: pair.first, second: pair.second, bets, n, op, updatedAt: t }); else b.set(ref, nv);
+        const patch = { nick, first: pair.first, second: pair.second, bets, n, op, ops: lists.ops, dead: lists.dead, updatedAt: t };
+        const nv = old ? Object.assign({}, old, patch) : Object.assign({ raceId, owner: uid(), storeId: sid, code: String(o.code), dv, votedAt: t }, patch);
+        if (old) b.update(ref, patch); else b.set(ref, nv);
         try { await b.commit(); } catch (e) { if (add.length) bptNote(null); throw e; } // 届いたか分からない: BPT の写しは捨てる（次は読み直す）
         return nv;
       };
       let nv = null;
-      if (old) { try { nv = await write(); } catch (e) { const v = await landed(); if (v) return sameView(v); throw mapVoteErr(e); } }
+      if (old) { try { nv = await write(); } catch (e) { const x = await landed(); if (x) return sameView(x.v, x.st); throw mapVoteErr(e); } }
       else {
         let last = null;
         for (const x of cands) {
           if (x.day == null && !x.sure && !(await verifyDv(x, r.day))) continue; // 手動のレースの票: 読んで確かめる
           try { nv = await write(x.vid, x.storeId); break; }
           catch (e) {
-            { const v = await landed(); if (v) return sameView(v); } // 同じ番号が先に届いていた（打ち切りのあとの押し直しなど）
+            { const y = await landed(); if (y) return sameView(y.v, y.st); } // 同じ番号（または前の番号）が先に届いていた（打ち切りのあとの押し直しなど）
             if (!(e && e.code === 'permission-denied')) throw mapVoteErr(e);
             last = e;
             if (x.sure || dvMemo[x.vid]) break; // 競馬の票は確かめてある → 断られたのは別の理由（合言葉・締切・BPT）
@@ -146,7 +160,7 @@
             // この競馬の票は使えない（スタッフが番号を空けた・別の日）→ 次の候補
           }
         }
-        if (!nv) { if (last && cands.some((x) => dvMemo[x.vid] && dvMemo[x.vid].day === r.day)) throw mapVoteErr(last); throw last ? E(403, 'no_derby', '今日の競馬に会計番号で参加したスマホだけ投票できます') : E(403, 'no_derby', '今日の競馬に会計番号で参加したスマホだけ投票できます'); }
+        if (!nv) { if (last && cands.some((x) => dvMemo[x.vid] && dvMemo[x.vid].day === r.day)) throw mapVoteErr(last); throw E(403, 'no_derby', '今日の競馬に会計番号で参加したスマホだけ投票できます'); }
       }
       if (add.length) { w = Object.assign({}, w, { spent: (Number(w.spent) || 0) + add.length * Boat.STAKE, buse: vid }); bptNote(w); }
       else w = await bptDoc(false);
@@ -173,8 +187,19 @@
     async function pendingRaces() {
       if (T.pendAt && now() - T.pendAt < 60000 && T.pend) return T.pend;
       const m = {};
-      for (const q of [db.collection(COLB.races).where('status', '==', 'decided'), db.collection(COLB.races).where('backDone', '==', false)]) { try { (await q.get()).docs.forEach((d) => { m[d.id] = strip(Object.assign({ id: d.id }, d.data())); }); } catch (e) { /* 次の回 */ } }
+      /* 2026-11-21 深夜（K2・M8）: 締切を過ぎて「投票中」のまま残ったレース（進行役が締切の前から長く止まった）も探す（投票中のレースはふつう 1〜2 件） */
+      for (const q of [db.collection(COLB.races).where('status', '==', 'decided'), db.collection(COLB.races).where('backDone', '==', false), db.collection(COLB.races).where('status', '==', 'upcoming')]) { try { (await q.get()).docs.forEach((d) => { m[d.id] = strip(Object.assign({ id: d.id }, d.data())); }); } catch (e) { /* 次の回 */ } }
       T.pendAt = now(); T.pend = Object.values(m); return T.pend;
+    }
+    /* 2026-11-21 深夜（K2・M8）: 締切から 6 時間を過ぎても決めていないレースは、決めずに取り消して BPT を全額戻す（映像も結果画面も出せない古いレースに、あとから結果だけ付けない。
+       取り消しと同じ道＝スマホは「取り消し・BPT を戻しました」、戻し終わりは backDone）。画面には出さない（endAt ＝ いま） */
+    const STALE_MS = 6 * 3600000;
+    async function voidStale(r) {
+      const rref = doc(COLB.races, r.id); let ok = false;
+      await db.runTransaction(async (tx) => { ok = false; const cur = data(await tx.get(rref)); if (!cur || cur.status !== 'upcoming' || now() < cur.closeAt + STALE_MS) return; const t = now(); tx.update(rref, { status: 'void', refunded: true, backDone: false, voidWhy: 'stale', revealAt: t, endAt: t }); ok = true; });
+      if (!ok) return null;
+      note(r.id, { status: 'void', refunded: true, backDone: false, voidWhy: 'stale' });
+      return finishVoid(r.id);
     }
     /* 2026-11-21（J5）: 小分けの処理（決める・発表・取り消しの戻し）が失敗したら、理由と続けて失敗した回数を boatSecrets/<id> の stuck に残す（管理画面が赤字で出す）。うまくいったら消す */
     async function markStuck(id, step, e) {
@@ -354,10 +379,11 @@
       const all = races.slice(), seen = new Set(all.map((r) => r.id)); (await pendingRaces()).forEach((r) => { if (!seen.has(r.id)) all.push(r); });
       let firstErr = null;
       for (const r of all.sort((a, b) => a.at - b.at)) {
-        const step = r.status === 'upcoming' && t >= r.closeAt + 1500 ? 'decide' : r.status === 'decided' && t >= r.revealAt ? 'reveal' : r.status === 'void' && r.backDone === false ? 'void' : null;
+        const step = r.status === 'upcoming' && t >= r.closeAt + 1500 ? (t >= r.closeAt + STALE_MS ? 'stale' : 'decide') : r.status === 'decided' && t >= r.revealAt ? 'reveal' : r.status === 'void' && r.backDone === false ? 'void' : null;
         if (!step) continue;
         try {
           if (step === 'decide') { if (await decideOne(r, cfg, sc)) did.push('boat decide ' + r.id); }
+          else if (step === 'stale') { if (await voidStale(r)) did.push('boat void-stale ' + r.id); }
           else if (step === 'reveal') { if (await revealOne(r.id)) did.push('boat reveal ' + r.id); }
           else if (await finishVoid(r.id)) did.push('boat void-back ' + r.id); // 取り消しの BPT の戻しが途中（管理画面が閉じた）: 続きをやる
           await clearStuck(r.id);
@@ -407,7 +433,8 @@
           const hit = Boat.busyWithBoat(span[0], span[1], bq.docs.map((d) => strip(Object.assign({ id: d.id }, d.data()))), cfg0.rules, cfg0, now());
           if (hit) throw E(409, 'boat_busy', 'ほかのボート（' + Core.fmtBizTime(hit.at, tu.dayStartHour) + ' 締切）の投票・映像・結果の時間と重なります。終わってから始めてください');
           let ders = Core.scheduleAround(now(), (s.timetable && s.timetable.rules) || []).map((x) => x.at);
-          try { (await db.collection(COLB.draces).where('at', '>=', now() - 3 * 3600000).get()).docs.forEach((d) => { const x = d.data() || {}; if (/^\d{8}-\d{4}/.test(d.id) && !x.refunded && x.status !== 'void') ders.push(x.at); }); } catch (e) { /* 読めなければ時刻表だけ */ }
+          /* 2026-11-21 深夜（K1）: 管理画面で作った手動の競馬（id が x-）・スタッフのテストレースも見る（以前は時刻表の競馬だけ＝手動の競馬の投票中にボートを始められ、同じ BPT を両方に使う道が開いていた） */
+          try { (await db.collection(COLB.draces).where('at', '>=', now() - 3 * 3600000).get()).docs.forEach((d) => { const x = d.data() || {}; if (!x.refunded && x.status !== 'void' && Number(x.at) > 0) ders.push(Number(x.at)); }); } catch (e) { /* 読めなければ時刻表だけ */ }
           ders = ders.filter((x) => Boat.busyWithDerby(at, [x], tu, cfg));
           if (ders.length) throw E(409, 'derby_busy', Core.fmtBizTime(ders[0], tu.dayStartHour) + ' の競馬と重なります（競馬の投票から結果画面の最初の 2 分まで）。時刻をずらしてください');
           const r = await create({ id, at, payout: o.payout, test: !!o.test }, Object.assign(cfg, { oddsSims: o.sims || cfg.oddsSims }), { salt: s.salt || 'nosalt', tuning: tu });
@@ -434,10 +461,16 @@
     async function checkDerbyRules(rules, tuning) { const cfg = Boat.configOf(data(await doc(COLB.config, 'boat').get()) || {}); if (!cfg.rules.length) return; const cs = Boat.conflicts(cfg.rules, rules, tuning, cfg, now(), 14); if (cs.length) throw conflictErr(cs); }
     // 競馬の設定（投票の秒数など）を保存するとき（2026-11-20）: 競馬がテレビをふさぐ長さ・朝の区切りが変わるときだけ、ボートと被らないか確かめる（ほかの設定の保存は止めない）
     async function checkDerbyTuning(curTuning, nextTuning, rules) { if (!Boat.derbyTimingChanged(curTuning, nextTuning)) return; const cfg = Boat.configOf(data(await doc(COLB.config, 'boat').get()) || {}); if (!cfg.rules.length) return; const cs = Boat.conflicts(cfg.rules, rules || [], nextTuning, cfg, now(), 14); if (cs.length) throw conflictErr(cs, 'この設定にすると競馬がボートと重なります: '); }
+    /* 管理画面の手動の競馬（2026-11-21 深夜 K1）: 時間 [t0, t1] がボートと被るか → 被るボート | null。管理画面から 1 回だけ読む（見張りを作らない）。ボートの決まりを入れる前（読めない）は null */
+    async function derbyBusy(t0, t1) {
+      let cfg, races;
+      try { cfg = Boat.configOf(data(await doc(COLB.config, 'boat').get()) || {}); races = (await db.collection(COLB.races).where('at', '>=', now() - 6 * 3600000).get()).docs.map((d) => strip(Object.assign({ id: d.id }, d.data()))); } catch (e) { return null; }
+      return Boat.busyWithBoat(t0, t1, races, cfg.rules, cfg, now());
+    }
     // 競馬のスタッフのテストレース（時間 [t0, t1]）がボートと被るか（進行役が作る前に確かめる。2026-11-20）→ 被るボート | null
     async function testBusy(t0, t1) { const cfg = await getCfg(), races = await getRaces(); return Boat.busyWithBoat(t0, t1, races, cfg.rules, cfg, now()); }
 
-    return { api: { boatState, boatWatch, boatRace, boatKey, boatVote, myBoatVote }, tick, stop, admin, checkDerbyRules, checkDerbyTuning, testBusy, finishVoid, create /* create: 試験用（同じレースを 2 回作っても上書きしないこと） */ };
+    return { api: { boatState, boatWatch, boatRace, boatKey, boatVote, myBoatVote }, tick, stop, admin, checkDerbyRules, checkDerbyTuning, testBusy, derbyBusy, finishVoid, create /* create: 試験用（同じレースを 2 回作っても上書きしないこと） */ };
   }
   return { attach, COLB };
 });

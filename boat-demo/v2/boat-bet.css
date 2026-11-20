@@ -217,3 +217,31 @@ body.boat .waitbox .clock .v { white-space: nowrap; }
 .fune.small .fl { padding-left: 7px; padding-right: 4px; } .fune.small .brand { font-size: 10.5px; } .fune.small .rno b { font-size: 16px; }
 .fune.small .fm span { font-size: 13px; padding: 4px 1px; }
 .fune.small .fr { overflow-x: hidden; padding: 6px 8px !important; } .fune.small .am { font-size: 13px; } .fune.small .am small { font-size: 9px; }
+/* ---------- 2026-11-21 3 回目 L3: 横向き（高さ 500px まで）の予想の画面 ----------
+   縦に積むと、えらんだ券の帯・倍率・枚数・ボタンで高さを使い切り、艇の表が 0〜2 行しか見えず選べなかった（SE 横 667×320・844×340）。
+   横向きは 2 列: 左＝艇の表（入らない分は中で動く）、右＝見出し・えらんだ券・倍率と枚数・ボタン。表の行は低く（選手の説明は 1 行） */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.boat main:has(> .scr.b-pick) { max-width: 960px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); } /* 横は幅を広く使う（ふだんは 520px まで） */
+  .scr.b-pick > .pickdock .pdc .waku { width: 32px; height: 32px; font-size: 18px; }
+  .scr.b-pick > .pickdock .pdw { font-size: 12px; } .scr.b-pick > .pickdock .pdw b { font-size: 16px; }
+  .scr.b-pick { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); column-gap: 12px; row-gap: 6px; }
+  .scr.b-pick > * { grid-column: 2; margin-top: 0; min-width: 0; }
+  .scr.b-pick > .pkbody { grid-column: 1; grid-row: 1 / -1; align-self: stretch; min-height: 0; scrollbar-width: none; }
+  .scr.b-pick > .pkbody::-webkit-scrollbar, .scr.b-pick .cartl::-webkit-scrollbar { display: none; }
+  .scr.b-pick > .pkh2 { grid-row: 1; flex-wrap: nowrap; }
+  .scr.b-pick > .pkh2 h1 { font-size: 18px; white-space: nowrap; }
+  .scr.b-pick > .pkh2 .bpts { white-space: nowrap; }
+  .scr.b-pick .cartl { scrollbar-width: none; }
+  .scr.b-pick > .pickdock { grid-row: 4; align-self: end; margin: 0; padding: 0; border-top: 0; background: none; gap: 4px; }
+  .scr.b-pick > .pickdock .btn { margin-top: 4px; min-height: 44px; padding: 6px; font-size: 15px; }
+  .scr.b-pick > .pickdock .qty { margin: 0; gap: 6px; } .scr.b-pick > .pickdock .qty .qb { height: 32px; }
+  .scr.b-pick > .pickdock .pdh { margin: 2px 0; font-size: 14px; }
+  .scr.b-pick > .pickdock .pdsel { gap: 6px; } .scr.b-pick > .pickdock .pdo b { font-size: 22px; }
+  .b-pick .bth { min-height: 26px; }
+  .b-pick .btr { min-height: 38px; padding-top: 2px; padding-bottom: 2px; }
+  .b-pick .pk { height: 33px; font-size: 14px; } .b-pick .pk.k2.od b { font-size: 15px; }
+  .b-pick .btr .waku.lg { width: 28px; height: 28px; font-size: 16px; }
+  .b-pick .btr .bn { gap: 0; } .b-pick .btr .bn b { font-size: 13.5px; line-height: 1.2; }
+  .b-pick .btr .bn small { font-size: 10.5px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .b-pick .bth, .b-pick .btr { grid-template-columns: 28px minmax(0, 1fr) 52px 62px; column-gap: 6px; padding: 0 8px; }
+}
