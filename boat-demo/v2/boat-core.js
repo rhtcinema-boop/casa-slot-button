@@ -50,7 +50,7 @@
     ['capRace', 'capDay'].forEach((k) => { c[k] = Math.max(CAP_MIN, c[k]); });
     if (b.incidentOn != null) c.incidentOn = b.incidentOn === true || Number(b.incidentOn) > 0 ? 1 : 0; // フライング・転覆を出す（2026-11-19）
     c.refundFall = 1; // 転覆の券はいつも返還（2026-11-20。送られてきても見ない）
-    if (b.rules !== undefined) c.rules = normalizeRules(b.rules, storeIds, dayStartHour);
+    if (b.rules !== undefined) c.rules = normalizeRules(b.rules, storeIds, dayStartHour, c);
     return c;
   }
   /* 朝 5 時の前後（QUIET_MIN 分）か: BPT のリセット（月曜 5:00）と営業日の区切り（dayStartHour。初期 5）をボートがまたがないように、時刻表で断る（2026-11-20 オーナー決定）。
@@ -61,11 +61,19 @@
   }
   const quietAt = (ms, h) => { const d = new Date(Number(ms) + Core.JST); return quietMin(d.getUTCHours() * 60 + d.getUTCMinutes(), h); }; // 時刻（ms）で
   const quietText = (h) => { const f = (x) => { const y = ((x % 1440) + 1440) % 1440; return Math.floor(y / 60) + ':' + String(y % 60).padStart(2, '0'); }, hh = h == null ? 5 : Number(h) || 0; return f(hh * 60 - QUIET_MIN) + '〜' + f(hh * 60 + QUIET_MIN); };
-  function normalizeRules(input, storeIds, dayStartHour) {
+  /* 2026-11-21（J7）: 朝の判定は締切の時刻だけでなく、投票の始まりから結果画面の終わりまで（boatSpan）のどこかが朝 4:30〜5:30 にかかるかで見る。
+     quietSpan: 時刻（ms）で・quietSpanMin: 締切の分（営業日の時刻）で。cfg: ボートの設定（投票の秒数・結果画面の秒数） */
+  function quietSpanMin(min, h, cfg) {
+    const c = configOf(cfg), a = Math.floor(Number(min) - c.voteSec / 60), b = Math.ceil(Number(min) + (c.leadSec + FILM_PRE + RUN_MAX + FILM_POST + c.resultSec) / 60);
+    for (let x = a; x <= b; x++) if (quietMin(x, h)) return true;
+    return false;
+  }
+  function quietSpan(at, cfg, h) { const s = boatSpan(at, cfg); for (let x = s[0]; x < s[1]; x += 60000) if (quietAt(x, h)) return true; return quietAt(s[1], h); }
+  function normalizeRules(input, storeIds, dayStartHour, cfg) {
     const list = (Array.isArray(input) ? input : []).map((r) => Object.assign({}, r, { storeId: null, storeIds: null, scope: 'all', big: false }));
     const h = dayStartHour == null ? 5 : Math.max(0, Math.min(12, Number(dayStartHour) || 0));
     const rules = Core.normalizeRules(list, storeIds, null, dayStartHour).map((r) => { const o = Object.assign({}, r); delete o.big; return o; });
-    rules.forEach((r, i) => { if (r.enabled !== false && Core.ruleSlots(r).some((x) => quietMin(x.min, h))) throw err(400, 'bad_rule', 'ボートは朝 ' + quietText(h) + ' には入れられません（BPT のリセットと営業日の区切りの前後。' + (i + 1) + ' 行目）'); });
+    rules.forEach((r, i) => { if (r.enabled !== false && Core.ruleSlots(r).some((x) => quietSpanMin(x.min, h, cfg))) throw err(400, 'bad_rule', 'ボートは朝 ' + quietText(h) + ' には入れられません（BPT のリセットと営業日の区切りの前後。投票の始まりから結果画面の終わりまでがかからないように。' + (i + 1) + ' 行目）'); });
     return rules;
   }
   const publicRules = (rules) => Core.publicRules(rules || []);
@@ -100,6 +108,8 @@
     const dates = {}; const d0 = Core.bizDate(from, h); const n = Math.max(1, Math.min(60, Number(days) || 14));
     for (let k = 0; k < n; k++) dates[shift(d0, k)] = 1;
     (boatRules || []).forEach((r) => { if (r && r.kind === 'date' && r.date && r.date >= d0) dates[r.date] = 1; });
+    /* 2026-11-21（I6）: 先の日付の競馬の行（14 日より先）も、その日と前後の日のボートと被りを見る（日付の行の前後 1 日は日付をまたぐ競馬・ボートのため） */
+    allDerby.forEach((r) => { if (r && r.kind === 'date' && r.date && r.date >= d0) [-1, 0, 1].forEach((k) => { const x = shift(r.date, k); if (x >= d0) dates[x] = 1; }); });
     Object.keys(dates).sort().forEach((ds) => {
       const bs = Core.expandDate(ds, boatRules || []).filter((e) => e.at >= from);
       if (!bs.length) return;
@@ -178,7 +188,7 @@
     return hs.map((h, i) => ({ no: i + 1, name: h.name, cls: h.cls, color: h.color, ink: h.ink, type: h.type, st: h.st, cond: h.cond ? h.cond.mark : '', past: h.past || [] }));
   }
   // 公開の「いまの状態」に入れる軽い形（艇の走りの再現 model は入れない。テレビはレースの書類を 1 回読む）
-  const LITE_KEYS = ['id', 'kind', 'at', 'openAt', 'closeAt', 'runAt', 'revealAt', 'endAt', 'voteSec', 'resultSec', 'status', 'day', 'test', 'exacta', 'refunded', 'backBpt'];
+  const LITE_KEYS = ['id', 'kind', 'at', 'openAt', 'closeAt', 'runAt', 'revealAt', 'endAt', 'voteSec', 'resultSec', 'status', 'day', 'test', 'exacta', 'refunded', 'backBpt', 'backDone']; // backDone: 取り消しの戻しが終わった合図（2026-11-21。スマホはこれを見て票・BPT を読み直す）
   function lite(r) {
     if (!r) return null; const o = {};
     LITE_KEYS.forEach((k) => { if (r[k] !== undefined) o[k] = r[k]; });
@@ -189,7 +199,10 @@
   /* 「いまの状態」の 1 件（boatLive/all）: いま映す・投票するレースと、次のレース。races は作ってあるボートのレース */
   function liveOf(races, t) {
     const L = (races || []).filter((r) => r && r.kind === 'boat').sort((a, b) => a.at - b.at);
-    const inWin = L.filter((r) => t >= r.openAt - 60000 && t < (r.endAt || 0)); // 取り消したレース（void）も endAt まで出す（「取り消し・BPT は戻しました」）
+    /* 取り消したレース（void）も endAt まで出す（「取り消し・BPT は戻しました」）。
+       2026-11-21: 決めるのが・発表が遅れたレース（締切を過ぎた upcoming・decided）は endAt を過ぎても 30 分までは出しておく（画面から消さない。発表のときに endAt を延ばす） */
+    const pend = (r) => (r.status === 'decided' || (r.status === 'upcoming' && t >= r.closeAt)) && t < (r.endAt || 0) + 30 * 60000;
+    const inWin = L.filter((r) => t >= r.openAt - 60000 && (t < (r.endAt || 0) || pend(r)));
     /* 2026-11-20: 次のレースの投票がもう始まっていたら、そちらを「いまのレース」にする（前のボートの発表が遅れて結果画面が長引いても、次の QR・投票を待たせない。テレビもスマホもこの決め方に従う） */
     const voting = inWin.filter((r) => r.status === 'upcoming' && t >= r.openAt && t < r.closeAt);
     const cur = voting.length ? voting[voting.length - 1] : inWin[0] || null;
@@ -288,16 +301,17 @@
   function voteView(v, race) {
     if (!v) return null;
     const bets = betsOf(v);
-    const o = { id: v.id || voteId(v.raceId, v.owner), raceId: v.raceId, storeId: v.storeId, nick: v.nick, first: v.first, second: v.second, bets, n: betCount(bets), votedAt: v.votedAt || 0 };
+    const o = { id: v.id || voteId(v.raceId, v.owner), raceId: v.raceId, storeId: v.storeId, nick: v.nick, first: v.first, second: v.second, bets, n: betCount(bets), votedAt: v.votedAt || 0, updatedAt: v.updatedAt || v.votedAt || 0, op: typeof v.op === 'string' ? v.op : null }; // op: 最後に通った操作の番号（2026-11-21。ref/boat/opId_の使い方.md）
     if (race && race.status === 'done' && race.result) {
       const R = race.result, k = R.combo, pay = R.pay || 0, n = ticketsOn(v, k, R.bptBack === true); // bptBack: BPT の券は全部返還（当たりに数えない）
       o.hit = n; o.won = R.noPay === true ? 0 : n * pay; // noPay: 上限のため払い戻しなし（2026-11-20。ごくまれ）
       /* 持てる BPT の上限 3,000（2026-11-20 夜）: won ＝ 当たりの額・gain ＝ 実際に増えた分・capped ＝ 上限で止まった（全部は入らなかった）。
          発表のときに進行役が票に got（増えた分）・capped を書く。まだ無い（前の形）ときは won と同じ */
       o.gain = v.got != null ? Math.max(0, Number(v.got) || 0) : o.won; if (v.capped === true || o.gain < o.won) o.capped = true;
-      const rf = refundOf(v, R.incident, R.bptBack === true); if (rf.n || rf.free) o.back = rf;
+      const rf = refundOf(v, R.incident, R.bptBack === true);
+      if (rf.n || rf.free) { o.back = rf; rf.plan = rf.bpt; if (v.backGot != null) { rf.bpt = Math.max(0, Math.min(rf.plan, Number(v.backGot) || 0)); if (rf.bpt < rf.plan) rf.cut = true; } } // bpt: 実際に戻った額（上限 3,000 で減る。2026-11-21）・plan: 予定の額
     }
-    if (race && race.refunded) o.refunded = true;
+    if (race && race.refunded) { o.refunded = true; if (v.voidGot != null) { const plan = betCount(bets) * STAKE, got = Math.max(0, Math.min(plan, Number(v.voidGot) || 0)); o.voidBack = Object.assign({ bpt: got, plan }, got < plan ? { cut: true } : {}); } } // 取り消しで実際に戻った額
     return o;
   }
 
@@ -343,7 +357,7 @@
     const holders = (noBpt) => { const H = {}; list.forEach((v) => { const room = Math.max(0, BPT_MAX - balOf(v.owner) - (noBpt ? betCount(betsOf(v)) * STAKE : 0)), fk = freeKey(v), b = noBpt ? {} : betsOf(v), ks = Object.keys(b); if (fk && ks.indexOf(fk) < 0) ks.push(fk); ks.forEach((k) => { (H[k] = H[k] || []).push([ticketsOn(v, k, noBpt), room]); }); }); return H; };
     const gainAt = (H, k, per) => (H[k] || []).reduce((a, x) => a + Math.min(x[0] * per, x[1]), 0); // その組番が当たったときに実際に増える分の合計（1 枚 per BPT）
     const choose = (m, H) => Outcome.chooseCombo(Object.assign({}, input, { votes: Object.keys(m).sort().map((k) => { const p = k.split('-').map(Number); return { first: p[0], second: p[1], w: m[k] }; }), // 組番ごとの枚数のまま（券を 1 枚ずつ並べない）
-      payAt: (k, oddT) => { const tot = gainAt(H, k, Outcome.amountT(oddT)); return { per: { _: tot }, total: tot }; } }));
+      payAt: (k, oddT) => { const tot = gainAt(H, k, Outcome.amountT(Math.min(Number(oddT) || 0, ODDS_HI * 10))); return { per: { _: tot }, total: tot }; } })); // 選ぶときも 40 倍で止めて数える（2026-11-21。確定の倍率は 40 倍で止まるので、44 倍で数えると目安より低く出た）
     const wouldPay = (ch, H) => (ch.combo == null ? 0 : gainAt(H, ch.combo, Outcome.payFor(clampOdds(ch.comboOdds))));
     const bptTickets = list.reduce((a, v) => a + betCount(betsOf(v)), 0);
     let m = comboCounts(list, false), H = holders(false), ch = choose(m, H), backAll = false, noPay = false;
@@ -426,11 +440,15 @@
   // 合言葉（QR）: 8 文字。rand は 0〜1 を返す関数（ブラウザ・node の暗号の乱数から作ったもの）
   function newCode(rand) { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 8; i++) s += a[Math.floor(rand() * a.length)]; return s; }
   const CODE_RE = /^[A-Za-z0-9]{8}$/;
+  // 操作の番号（opId。2026-11-21 ref/boat/opId_の使い方.md）: 英数字と _ - で 8〜40 文字。無い ＝ null（呼ぶ側が作る）
+  const OP_RE = /^[A-Za-z0-9_-]{8,40}$/;
+  function cleanOp(v) { if (v == null || v === '') return null; const s = String(v); if (!OP_RE.test(s)) throw err(400, 'bad_op', '操作の番号の形がちがいます'); return s; }
+  function newOp(rand) { const a = 'abcdefghijklmnopqrstuvwxyz0123456789'; let s = 'o'; for (let i = 0; i < 15; i++) s += a[Math.floor(rand() * a.length)]; return s; }
   // QR の住所: <サイト>/v2/boat.html?s=<店>#<レース id>.<合言葉>（合言葉は # の後ろ＝サーバーに送られない）
   function joinURL(base, store, raceId, code) { return base + (base.indexOf('?') >= 0 ? '&' : '?') + 's=' + encodeURIComponent(store) + '#' + raceId + '.' + code; }
   function parseHash(h) { const m = /^#?(b[0-9A-Za-z_-]{3,40})\.([A-Za-z0-9]{8})$/.exec(String(h || '')); return m ? { raceId: m[1], code: m[2] } : null; }
 
-  return { BPT_MAX, STAKE, N, ALL, DEF, FILM_PRE, FILM_POST, RUN_EST, RUN_MAX, DERBY_GUARD_SEC, COUNT_SEC, ODDS_LO, ODDS_MID, ODDS_HI, CODE_RE, CAP_MIN, BET_MAX, QUIET_MIN,
-    configOf, mergeConfig, normalizeRules, quietMin, quietAt, quietText, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
+  return { BPT_MAX, STAKE, N, ALL, DEF, FILM_PRE, FILM_POST, RUN_EST, RUN_MAX, DERBY_GUARD_SEC, COUNT_SEC, ODDS_LO, ODDS_MID, ODDS_HI, CODE_RE, OP_RE, CAP_MIN, BET_MAX, QUIET_MIN,
+    configOf, mergeConfig, normalizeRules, quietMin, quietAt, quietText, quietSpan, quietSpanMin, cleanOp, newOp, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
     voteId, comboKey, cleanPair, cleanPicks, betsOf, betsBad, betCount, addBets, freeKey, ticketsOn, comboCounts, refundOf, hasBoat, ticketsOf, countVotes, voteView, clampOdds, decide, refundPlan, creditPlan, creditDoc, picksLeft, derbyVoteInfo, derbyVoteDay, newCode, joinURL, parseHash };
 });

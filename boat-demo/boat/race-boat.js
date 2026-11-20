@@ -89,63 +89,89 @@ BOAT.Race = (function () {
        ここで全部を一度に準備する（進路の計算のあいだ画面は止まる。Mac で 0.3〜3 秒）。テレビは下の setRaceAsync を使う。
        着順を指定した再現で進路の計画が不合格だった時は、入れ替え方を変えた走りに取りかえる（Race.planJob）。使った走りと中身は this.run・this.desc に入る */
     setRace(race, run, info, desc) {
-      this.prepJob = null; // 準備中の setRaceAsync があれば、その結果は捨てる（あとから頼まれた方を使う）
+      this.cancelPrep(); // 準備中の setRaceAsync があれば、その結果は捨てる（あとから頼まれた方を使う）
       let P = null;
       try { const g = Race.planJob(race, run, desc || {}); let r = g.next(); while (!r.done) r = g.next(); P = r.value; } catch (e) { console.warn('BOAT.Lines', e); }
       this.dropBoats();
       const boats = race.horses.map((h) => this.makeBoat(h));
       this.applyRace(race, P ? P.run : run, info, P ? P.desc : desc, P ? P.plan : null, boats, null);
     }
-    /* 画面を止めずに準備する（2026-11-20。不具合 E の疑い・D7）。進路の計算・艇の絵づくりを少しずつ進め、全部そろってから一度に入れ替える。
-       それまでは前のレース（スタート展示など）がそのまま動く（tick・seek を呼び続けてよい）。返り値は Promise（入れ替えたら true。あとから別の setRace / setRaceAsync が来て捨てられたら false）。
-       opt.budgetMs: 1 回に使う計算の時間（既定 4。遅いテレビは同じ仕事に 5 倍かかるので、1 区切りを小さくしてある）、opt.gapMs: 区切りの間に空ける時間（既定 0 ＝ 次の順番まで）、opt.onProgress(0〜1)、
-       opt.deadlineMs: これを過ぎたら、進路の「急な動きを減らす作り直し」を切り上げる（重なりの無い計画ができていれば、それで始める。省くと最後まで探す）。
-       終わったあと this.prepStat ＝ { ms: かかった時間, maxMs: いちばん長かった 1 回, alt: 使った入れ替え方 }、this.run・this.desc ＝ 実際に使った走りと中身（入れ替え方を変えた時は、もらった物と違う） */
+    /* 画面を止めずに準備する（2026-11-20。不具合 E の疑い・D7）。全部そろってから一度に入れ替える。それまでは前のレース（スタート展示など）がそのまま動く（tick・seek を呼び続けてよい）。
+       返り値は Promise（入れ替えたら true。あとから別の setRace / setRaceAsync・cancelPrep・dispose で捨てられたら false）。
+       2026-11-21 作り直し（不具合 I3「遅いテレビで、作り直しになるレースの準備が 6 倍遅い機械で 27 秒・20 倍で 85 秒」）:
+         ① 進路の計算は、画面とは別の糸（Web Worker。boat/plan-worker.js）2〜3 本で、作り直しの候補を同時に計算する（Race.planPar）。選び方は Race.planJob と同じ順なので答えは同じ。
+            別の糸が使えないブラウザ・読み込めない時は、前と同じく画面の糸で少しずつ計算する。
+         ② その間に、画面の糸で艇の絵・札・絵の下描き（着順に関係ない物）を進める。
+         ③ 少しずつ進める区切りの間を、setTimeout（続けると 4ms 以上あく）でなく MessageChannel でつなぐ（前は「4ms 働いて 4ms 待つ」で計算の約 2 倍かかっていた）。
+         ④ 「いまは動かない場面」（出走表だけを出している など）の時は、1 回に長く（40ms）働く。知らせ方は 2 つ: opt.still（true か、true/false を返す関数）か、this.idle = true。
+         ⑤ 時間切れの切り上げはやめた（どのテレビでも同じ計画になるように。前は opt.deadlineMs を過ぎると作り直しを切り上げ、そのテレビだけ艇の位置が少しちがった）。opt.deadlineMs は受け取るが使わない。
+       opt.budgetMs: 動いている場面で 1 回に使う時間（既定 4）、opt.stillMs: 動かない場面で 1 回に使う時間（既定 40）、opt.gapMs: 区切りの間に空ける時間（既定 0）、opt.onProgress(0〜1)、opt.worker: false で別の糸を使わない。
+       途中でやめる: this.cancelPrep()（返り値の Promise は false で終わる。作りかけの絵も片付ける）。
+       終わったあと this.prepStat ＝ { ms: かかった時間, planMs: 進路の計算が終わるまで, maxMs: 画面の糸でいちばん長かった 1 回, alt: 使った入れ替え方, worker: 別の糸で計算したか, units: 計算した計画の数 }、
+       this.run・this.desc ＝ 実際に使った走りと中身（入れ替え方を変えた時は、もらった物と違う） */
     setRaceAsync(race, run, info, desc, opt) {
       opt = opt || {};
-      const job = this.prepJob = { t0: performance.now() }, alive = () => this.prepJob === job;
-      const budget = opt.budgetMs != null ? opt.budgetMs : 4, gap = opt.gapMs || 0, self = this;
-      // 少しずつ進める仕事の並び（1 つ 1 つは短い）: 進路の計算 → 艇の絵を 1 艇ずつ → 札 → 絵を先に 1 回描いておく（見えない大きさで。最初の 1 コマで止まらないように）
-      function* work() {
-        let P = null;
-        try { P = yield* Race.planJob(race, run, desc || {}, opt.deadlineMs > 0 ? () => performance.now() - job.t0 > opt.deadlineMs : null); } catch (e) { console.warn('BOAT.Lines', e); }
-        yield 0.7;
+      this.cancelPrep();
+      const self = this, job = this.prepJob = { t0: performance.now(), bail: null }, alive = () => this.prepJob === job;
+      const still = () => { try { return !!(self.idle || (typeof opt.still === 'function' ? opt.still() : opt.still)); } catch (e) { return false; } };
+      const budget = () => (still() ? (opt.stillMs != null ? opt.stillMs : 40) : (opt.budgetMs != null ? opt.budgetMs : 4)), gap = opt.gapMs || 0;
+      const made = { boats: [], tags: null }; // 作った絵（途中で捨てられた時はここから片付ける）
+      const stat = this.prepStat = { maxMs: 0, maxAt: '', slices: 0, ms: 0, planMs: 0, alt: 0, worker: false, units: 0 };
+      const drop = () => { made.boats.forEach((b) => { try { this.scene.remove(b.object3d); b.dispose(); } catch (e) { } }); try { if (made.tags) made.tags.dispose(); } catch (e) { } made.boats = []; made.tags = null; };
+      // 着順に関係ない物: 艇の絵を 1 艇ずつ → 札 → 絵を先に 1 回描いておく（見えない大きさで。最初の 1 コマで止まらないように）
+      function* pieces() {
         for (const h of race.horses) { made.boats.push(self.makeBoat(h)); yield 'wait:boat'; }
         try { if (BOAT.Tags) made.tags = BOAT.Tags.create(self.scene, race.horses); } catch (e) { console.warn('BOAT.Tags', e); made.tags = null; }
         if (made.tags) { try { made.tags.setVisible(false); } catch (e) { } } // 入れ替えるまでは出さない
         yield 'wait:tags';
         yield* self.warmGen(made.boats, made.tags);
-        yield 0.95;
-        return P;
       }
-      const made = { boats: [], tags: null }; // 作った絵（途中で捨てられた時はここから片付ける）
-      const stat = this.prepStat = { maxMs: 0, maxAt: '', slices: 0, ms: 0, alt: 0 };
-      const drop = () => { made.boats.forEach((b) => { try { this.scene.remove(b.object3d); b.dispose(); } catch (e) { } }); try { if (made.tags) made.tags.dispose(); } catch (e) { } made.boats = []; made.tags = null; };
       return new Promise((resolve, reject) => {
-        const g = work();
-        const step = () => {
-          if (!alive()) { try { g.return(); } catch (e) { } drop(); resolve(false); return; }
+        let done = false, P = null, planOk = false, piecesOk = false;
+        const end = (v, err) => { if (done) return; done = true; if (v !== true) drop(); if (err) reject(err); else resolve(v); };
+        job.bail = () => end(false);
+        const finish = () => {
+          if (!planOk || !piecesOk || done || !alive()) return;
           try {
-            const t0 = performance.now(); let lab = '';
-            const note = (what) => { const ms = performance.now() - t0; if (ms > stat.maxMs) { stat.maxMs = ms; stat.maxAt = what; } stat.slices++; }; // いちばん長かった 1 回（計る用。this.prepStat）
-            for (;;) {
-              const r = g.next();
-              if (r.done) {
-                const P = r.value; this.prepJob = null; this.prepMs = performance.now() - job.t0;
-                this.applyRace(race, P ? P.run : run, info, P ? P.desc : desc, P ? P.plan : null, made.boats, made.tags);
-                note('apply'); stat.ms = this.prepMs; stat.alt = P ? P.alt || 0 : -1;
-                if (opt.onProgress) opt.onProgress(1); resolve(true); return;
-              }
-              if (typeof r.value === 'number' && opt.onProgress) opt.onProgress(r.value);
-              lab = typeof r.value === 'string' ? r.value : lab;
-              if ((typeof r.value === 'string' && r.value.slice(0, 4) === 'wait') || performance.now() - t0 >= budget) break; // 'wait…' ＝ 重い 1 つのあとは必ず次の順番へ回す
-            }
-            note(lab); setTimeout(step, gap || (performance.now() - t0 > 10 ? 10 : 0)); // 遅い機械（1 回が 10ms を超える）では、次の 1 回の前に 10ms あけて、間に画面を 1 コマ描かせる
-          } catch (e) { if (alive()) this.prepJob = null; drop(); reject(e); }
+            const t0 = performance.now(); this.prepJob = null; this.prepMs = t0 - job.t0;
+            this.applyRace(race, P ? P.run : run, info, P ? P.desc : desc, P ? P.plan : null, made.boats, made.tags);
+            const ms = performance.now() - t0; if (ms > stat.maxMs) { stat.maxMs = ms; stat.maxAt = 'apply'; }
+            stat.ms = this.prepMs; stat.alt = P ? P.alt || 0 : -1; done = true;
+            if (opt.onProgress) opt.onProgress(1); resolve(true);
+          } catch (e) { end(false, e); }
         };
-        setTimeout(step, 0);
+        // 画面の糸で少しずつ進める（1 回 budget() ms。'wait…' の区切りのあとは必ず次の順番へ）
+        const sliced = (g, onDone, prog) => {
+          const step = () => {
+            if (!alive() || done) { try { g.return(); } catch (e) { } end(false); return; }
+            try {
+              const t0 = performance.now(), B = budget(); let lab = '';
+              for (;;) {
+                const r = g.next();
+                if (r.done) { onDone(r.value); return; }
+                if (prog && typeof r.value === 'number' && opt.onProgress) opt.onProgress(r.value);
+                lab = typeof r.value === 'string' ? r.value : lab;
+                if ((typeof r.value === 'string' && r.value.slice(0, 4) === 'wait') || performance.now() - t0 >= B) break;
+              }
+              const ms = performance.now() - t0; if (ms > stat.maxMs) { stat.maxMs = ms; stat.maxAt = lab; } stat.slices++;
+              if (gap) setTimeout(step, gap);
+              else if (!still() && ms > 10) setTimeout(step, 10); // 遅い機械（1 回が 10ms を超える）で動いている場面では、次の 1 回の前に 10ms あけて、間に画面を 1 コマ描かせる
+              else soon(step);
+            } catch (e) { if (alive()) this.prepJob = null; end(false, e); }
+          };
+          soon(step);
+        };
+        const planDone = (v) => { P = v; planOk = true; stat.planMs = performance.now() - job.t0; if (opt.onProgress) opt.onProgress(0.7); finish(); };
+        const onMain = () => sliced((function* () { let v = null; try { v = yield* Race.planJob(race, run, desc || {}); } catch (e) { console.warn('BOAT.Lines', e); } return v; })(), planDone, true);
+        let par = null;
+        if (opt.worker !== false) { try { par = Race.planPar(race, run, desc || {}, alive, stat); } catch (e) { console.warn('BOAT.planPar', e); par = null; } }
+        if (par) { stat.worker = true; par.then((v) => { if (alive() && !done) planDone(v); }, (e) => { if (!alive() || done) return; console.warn('BOAT.planPar', e); stat.worker = false; onMain(); }); }
+        else onMain();
+        sliced(pieces(), () => { piecesOk = true; finish(); }, false);
       });
     }
+    /* 準備中の setRaceAsync をやめる（2026-11-21。テレビの係の頼み）。返り値の Promise は false で終わり、作りかけの絵は片付ける。準備中でなければ何もしない */
+    cancelPrep() { const j = this.prepJob; this.prepJob = null; if (j && j.bail) j.bail(); }
     get preparing() { return !!this.prepJob; }
     /* 艇の絵を 1 艇作る（部品が壊れていても止まらないよう、だめなら代わりの箱）。まだ水面には置かない */
     makeBoat(h) { let b = null; try { if (BOAT.Boat) { b = BOAT.Boat.create(h, { quality: this.quality }); this.parts.Boat = 'real'; } } catch (e) { console.warn('BOAT.Boat', e); } if (!b || !b.object3d) { b = Stub.boat(h); this.parts.Boat = this.parts.Boat || 'stub'; } return b; }
@@ -660,7 +686,7 @@ BOAT.Race = (function () {
       list.sort((x, y) => x.t - y.t);
       this.capList = list; this.capCur = null;
     }
-    dispose() { this.prepJob = null; /* 準備中の setRaceAsync は捨てる */ try { this.dropBoats(); } catch (e) { } try { if (this.tags) this.tags.dispose(); } catch (e) { } try { this.wake.dispose(); this.venue.dispose(); } catch (e) { } this.renderer.dispose(); }
+    dispose() { this.cancelPrep(); /* 準備中の setRaceAsync は捨てる */ try { this.dropBoats(); } catch (e) { } try { if (this.tags) this.tags.dispose(); } catch (e) { } try { this.wake.dispose(); this.venue.dispose(); } catch (e) { } this.renderer.dispose(); }
   }
   /* 進路の計画を作る仕事（少しずつ進められる形。yield のたびに止めてよい）。返り値 { plan, run, desc, alt }（alt ＝ 何番目の入れ替え方を使ったか。0 ＝ もらった走りのまま）。
      2026-11-20 直し（不具合 E2）: 着順を指定した再現（run.swaps ＝ 途中で 2 艇の走りを入れ替えた）で、計画が不合格（艇が重なる・すき間が足りない）や急な動き（ターンで毎秒 80° より速く回るなど）になった時は、
@@ -701,6 +727,109 @@ BOAT.Race = (function () {
     for (const c of cands) { if (late(cands)) break; c.plan = yield* L._planGen(race, c.run, info(c.desc, { first: c.plan })); if (c.plan.score === 0) return c; }
     return bestOf(cands);
   };
+  /* ---------- 別の糸（Web Worker）で進路を計算する（2026-11-21。不具合 I3） ----------
+     計画の「1 回分」（BOAT.Lines.planUnit ＝ 走り 1 つ × 作り直しの設定 1 つ）を、boat/plan-worker.js 2〜3 本に同時に配り、Race.planJob とまったく同じ順で選ぶ。
+     1 回分の答えは計算する糸に関係なく同じ（乱数なし・時間で切り上げない）なので、選ばれる計画も Race.planJob と同じ（＝ どのテレビでも、別の糸があっても無くても同じ映像）。
+     先に要りそうな 1 回分（入れ替え方を変えた走り・作り直し）も、空いている糸で先回りして計算しておく（使わなければ捨てる）。
+     別の糸が作れない・読み込めない・答えがおかしい（走りの印が合わない）時は Promise が失敗し、setRaceAsync は画面の糸の計算（前と同じ）に切りかえる */
+  const ME_SRC = (typeof document !== 'undefined' && document.currentScript && document.currentScript.src) || '';
+  const runPrint = (r) => JSON.stringify([r.natural, r.duration, r.winTime, r.finishTimes, r.swaps, r.out, r.fallT]); // boat/plan-worker.js にも同じ物
+  // 区切りの間を 4ms あけずにつなぐ（setTimeout は 5 回続けると 4ms 以上あく）
+  let ch = null; const chQ = []; // 使う時に作る（node の試験で読み込んだだけの時に、口が開いたままで終わらなくならないように）
+  const soon = (f) => {
+    if (!ch && typeof MessageChannel === 'function') { ch = new MessageChannel(); ch.port1.onmessage = () => { const g = chQ.shift(); if (g) g(); }; if (ch.port1.unref) ch.port1.unref(); }
+    if (!ch) { setTimeout(f, 0); return; } chQ.push(f); ch.port2.postMessage(0);
+  };
+  const Pool = { ws: null, broken: false, seq: 0, queue: [], UNIT_MS: 120000 };
+  function poolOk() {
+    if (Pool.broken || Race.useWorker === false) return false; if (Pool.ws) return true;
+    if (typeof Worker !== 'function' || !ME_SRC || !/^https?:/.test(ME_SRC)) return false;
+    const url = ME_SRC.replace(/race-boat\.js(?=[?#]|$)/, 'plan-worker.js'); if (url === ME_SRC) return false;
+    try {
+      const N = Math.max(1, Math.min(3, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1));
+      Pool.ws = [];
+      for (let i = 0; i < N; i++) { const s = { w: new Worker(url), u: null }; s.w.onmessage = (e) => poolDone(s, e.data); s.w.onerror = (e) => { try { e.preventDefault(); } catch (x) { } poolBreak('別の糸のエラー ' + ((e && e.message) || '')); }; Pool.ws.push(s); }
+    } catch (e) { poolBreak('別の糸を作れない ' + e.message); return false; }
+    return true;
+  }
+  function poolBreak(why) { // こわれたら全部やめて、以後は画面の糸で計算する
+    Pool.broken = true; const ws = Pool.ws || []; Pool.ws = null;
+    ws.forEach((s) => { try { s.w.terminate(); } catch (e) { } if (s.u) { clearTimeout(s.u.timer); s.u.reject(new Error(why)); } });
+    Pool.queue.splice(0).forEach((u) => u.reject(new Error(why)));
+  }
+  function poolDone(s, d) {
+    const u = s.u; s.u = null; if (u) { clearTimeout(u.timer); if (!d || d.err || d.id !== u.id) u.reject(new Error('計算の失敗 ' + ((d && d.err) || ''))); else u.resolve(d); }
+    poolPump();
+  }
+  function poolPump() {
+    if (!Pool.ws) return;
+    Pool.queue = Pool.queue.filter((u) => { if (u.alive()) return true; u.reject(new Error('捨てた')); return false; });
+    Pool.queue.sort((a, b) => a.pri - b.pri || a.id - b.id);
+    for (const s of Pool.ws) {
+      if (s.u || !Pool.queue.length) continue;
+      const u = Pool.queue.shift(); s.u = u;
+      try { s.w.postMessage(Object.assign({ id: u.id }, u.msg)); } catch (e) { s.u = null; u.reject(e); continue; }
+      u.timer = setTimeout(() => poolBreak('別の糸の返事が来ない'), Pool.UNIT_MS);
+    }
+  }
+  function poolRun(msg, pri, alive) { return new Promise((resolve, reject) => { Pool.queue.push({ id: ++Pool.seq, msg, pri, alive, resolve, reject }); poolPump(); }); }
+  /* Race.planJob と同じ選び方を、別の糸の答えで行う。返り値は Promise（{ plan, run, desc, alt }）か、別の糸が使えない時は null */
+  Race.planPar = function (race, run, desc, alive, stat) {
+    if (!poolOk() || !run || run.seed == null) return null;
+    const L = BOAT.Lines, E = window.Engine; if (!L || !L.planUnit || !L.unpackPlan || !L.retryList) return null;
+    const order = run.finalOrder ? run.finalOrder() : null; if (!run.natural && !order) return null;
+    const live = alive || (() => true), base = { race, seed: run.seed, preT: PRE_T, postT: POST_T + 2 };
+    const one = (c, over, pri) => { // 1 回分（同じ設定の物は 1 回だけ計算。設定の中身で見分ける）
+      const key = over ? JSON.stringify(over) : 'b';
+      if (!c.got[key]) {
+        const p = poolRun(Object.assign({ order: c.order, swapFrom: c.swapFrom, desc: c.desc, over: over || null }, base), pri, live)
+          .then((d) => { if (d.fp !== c.fp) throw new Error('走りの印が合わない'); if (stat) stat.units++; return d; });
+        p.catch(() => { }); c.got[key] = p;
+      }
+      return c.got[key];
+    };
+    const plan = (d) => { const P = L.unpackPlan(d.plan); return P; };
+    const c0 = { run, desc, alt: 0, order: run.natural ? null : order, swapFrom: null, fp: runPrint(run), got: {}, idx: 0 };
+    // 入れ替え方を変えた走り（Race.planJob の②と同じ物を同じ順で。画面の糸で作る。軽い）
+    const alts = [];
+    if (run.swaps && run.swaps.length && order && E && E.replayRun && M && M.describe) {
+      let outs = []; try { outs = M.describe(race, run.seed).turnOut || []; } catch (e) { outs = []; }
+      const tried = [JSON.stringify(run.swaps)];
+      for (let k = 0; k < 3; k++) {
+        let from = 0; outs.forEach((a) => { if (a && a[k] != null && a[k] > from) from = a[k]; }); if (!(from > 0)) continue;
+        let r2 = null, d2 = null;
+        try { r2 = E.replayRun(race, run.seed, { order, swapFrom: from + 1 }); if (!r2.swaps || !r2.swaps.length) continue; const key = JSON.stringify(r2.swaps); if (tried.indexOf(key) >= 0) continue; tried.push(key); d2 = M.describe(race, run.seed, { swaps: r2.swaps }); } catch (e) { console.warn('planPar', e); continue; }
+        alts.push({ run: r2, desc: d2, alt: k + 1, order, swapFrom: from + 1, fp: runPrint(r2), got: {}, idx: alts.length + 1 });
+      }
+    }
+    const all = [c0].concat(alts);
+    const retries = (c, d) => { if (d.score === 0) return; const RL = L.retryList(d.hasBeh); RL.tries.forEach((o, q) => one(c, o, 10 + c.idx * 20 + q)); }; // 先回り
+    all.forEach((c) => one(c, null, c.idx).then((d) => retries(c, d), () => { }));
+    /* 事故のあるレース・着順を指定したレースは、作り直しになりやすい（ふつうのレースはほとんど 1 回め で合格）。別の糸が 3 本以上ある時だけ、1 回めの答えを待たずに
+       もらった走りの作り直し（横切りの有無に関係なく入る物）も先回りで計算しておく（使わなければ捨てる。答えは変わらない） */
+    if ((race.incident || !run.natural) && Pool.ws.length >= 3) L.retryList(false).tries.forEach((o, q) => one(c0, o, 4 + q));
+    return (async () => {
+      const cands = [];
+      for (const c of all) {
+        const d = await one(c, null, c.idx), P = plan(d); P.score = d.score;
+        const cand = { run: c.run, desc: c.desc, alt: c.alt, plan: P, src: c, hasBeh: d.hasBeh };
+        if (d.score === 0) return cand;
+        cands.push(cand);
+      }
+      // 作り直しの段（BOAT.Lines の planGen を info.first で続けた時と同じ）
+      for (const cand of cands) {
+        const c = cand.src, RL = L.retryList(cand.hasBeh), tries = RL.tries, last = RL.last;
+        let best = cand.plan, bs = best.score;
+        for (let q = 0; q < tries.length && bs > 0; q++) { const d = await one(c, tries[q], 10 + c.idx * 20 + q), P2 = plan(d); P2.retried = q + 1; if (d.score < bs) { best = P2; bs = d.score; } else best.retried = q + 1; }
+        for (let q = 0; q < last.length && !best.ok; q++) { const d = await one(c, last[q], 10 + c.idx * 20 + 10 + q), P3 = plan(d); P3.retried = tries.length + 1 + q; if (d.score < bs) { best = P3; bs = d.score; } }
+        best.score = bs; cand.plan = best;
+        if (bs === 0) return cand;
+      }
+      const rank = (x) => (x.plan.ok !== false ? x.plan.score || 0 : 1e9 + (x.plan.overlapFrames || 0) * 1000 + (x.plan.badFrames || 0));
+      let b = cands[0]; cands.forEach((x) => { if (rank(x) < rank(b)) b = x; }); return b;
+    })().then((x) => ({ plan: x.plan, run: x.run, desc: x.desc, alt: x.alt }));
+  };
+  Race.workerPool = () => ({ n: Pool.ws ? Pool.ws.length : 0, broken: Pool.broken, queued: Pool.queue.length }); // 試験で見る用
   // 声の部品の鍵 → 字幕の文（tools/make-boat-voice.js の P と同じ鍵）
   Race.PHRASES = { pitout: 'ピットアウト', moved: 'が動いた！　内のコースを取りに行く', turnto: '各艇、スタートラインへ艇を向けます', wakunari: '進入は枠なり 3 対 3', shinnyu: '進入は', santai: '3 対 3', clock: '大時計が回って、各艇 スタートへ',
     start: 'スタートしました！', flying: 'フライング', m1: '1周 1マーク、', sakini: 'が先に回る', semeru: 'が攻める！', innige: 'イン逃げ態勢', nukeda: 'が抜け出した！', niban: '2番手', back: 'バックストレッチ、先頭は', m2: '1周 2マーク', sashita: 'が差した！',

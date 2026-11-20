@@ -149,3 +149,7 @@
 .bo-how.h1 { gap: 6px; } .bo-how.h1 .big { margin: 2px 0 6px; } /* 2 枚目は 3 行（5 枚まで・3,000 まで・月曜にリセット。2026-11-20）: 行の間を少し詰める */
 .is-wait .bo-how.h1 { gap: 10px; }
 .is-wait .bo-how { padding: 30px 60px; gap: 16px; } .is-wait .bo-how h4 { font-size: 44px; } .is-wait .bo-how .hw em { font-size: 38px; } .is-wait .bo-how .hw small { font-size: 24px; } .is-wait .bo-how .hw { padding: 12px 22px; } .is-wait .bo-how .big .c { font-size: 100px; } .is-wait .bo-how .big .t { font-size: 70px; } .is-wait .bo-how .l { font-size: 34px; }
+/* 2026-11-21 I4: 映像の絵は「いまの場面の映像の準備ができているときだけ」見せる（v2/tv-boat.js の setReady。前のレースの最後の絵を展示の枠・本番の枠に残さない） */
+#boatOv:not(.bo-ready) #boGl, #boatOv:not(.bo-ready) #boHud { visibility: hidden; }
+/* 2026-11-21 I3: 映像の準備が発走に間に合わないテレビの「まもなく発走・スタートまで あと m:ss」 */
+.bo-closed.soon { color: #ffe08a; font-variant-numeric: tabular-nums; }

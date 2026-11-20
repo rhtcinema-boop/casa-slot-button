@@ -15,6 +15,7 @@
   const HAS_DOC = typeof document !== 'undefined';
   const ME = (HAS_DOC && document.currentScript && document.currentScript.src) || '';
   const DIR = ME ? ME.replace(/[?#].*$/, '').replace(/[^/]*$/, '') : '';
+  const BQ = '?v=' + Date.now().toString(36); // 版が分からないときはその場で毎回読み直す（2026-11-21。古い ?v=b1 をやめた）
   const VQ = (/[?]v=[^#&]+/.exec(ME) || [''])[0]; // 自分（client.js?v=…）の版を、あとから読む core.js などにも付ける（古いファイルがキャッシュに残らないように。2026-10-14）
   try { if (HAS_DOC && DIR && document.readyState === 'loading' && typeof window.DERBY_FIREBASE === 'undefined') document.write('<script src="' + DIR + 'config.js"><\/script>'); } catch (e) { /* なし */ }
 
@@ -88,7 +89,7 @@
     return (race, seed, sims) => new Promise((res, rej) => {
       try {
         if (!w) {
-          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js?v=v4e6', location.href).href) + ',' + JSON.stringify(new URL(DIR + '../js/boat-model.js' + (VQ || '?v=b1'), location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai,exacta:o.exacta,exactaProb:o.exactaProb}});};';
+          const src = 'importScripts(' + JSON.stringify(new URL(DIR + '../js/engine.js?v=v4e6', location.href).href) + ',' + JSON.stringify(new URL(DIR + '../js/boat-model.js' + (VQ || BQ), location.href).href) + ');onmessage=function(e){var d=e.data;var o=Engine.calcOdds(d.race,Engine.rng(d.seed),d.sims);postMessage({id:d.id,o:{tansho:o.tansho,winProb:o.winProb,tenkai:o.tenkai,exacta:o.exacta,exactaProb:o.exactaProb}});};';
           w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
           w.onmessage = (e) => { const f = pend[e.data.id]; if (f) { delete pend[e.data.id]; f(e.data.o); } };
         }
@@ -137,7 +138,7 @@
         /* casa BOAT（2026-11-19）: テレビ（決める係）・ボートの投票ページ・管理画面だけ（競馬のスマホ・スタッフは読まない）。
            2026-11-20: 管理画面（role 'admin'）でも読む（読まないと本番の「ボート」タブが動かず、競馬の時刻表・設定を保存するときのボートとの被りの確かめも素通りしていた）。
            艇の走りの部品（js/boat-model.js）はレースを作る・決めるテレビと管理画面（すぐ始めるレース）だけ。版の印はこのファイルと同じ（公開のたびに変わる。以前は ?v=b1 固定で古い控えが残った） */
-        if (opt.role === 'tv' || opt.role === 'admin' || opt.boat) { if (!window.BoatCore) L.push(DIR + 'boat-core.js' + VQ); if (!window.DerbyBoatFS) L.push(DIR + 'boat-firestore.js' + VQ); if ((opt.role === 'tv' || opt.role === 'admin') && !window.BoatModel) L.push(DIR + '../js/boat-model.js' + (VQ || '?v=b1')); }
+        if (opt.role === 'tv' || opt.role === 'admin' || opt.boat) { if (!window.BoatCore) L.push(DIR + 'boat-core.js' + VQ); if (!window.DerbyBoatFS) L.push(DIR + 'boat-firestore.js' + VQ); if ((opt.role === 'tv' || opt.role === 'admin') && !window.BoatModel) L.push(DIR + '../js/boat-model.js' + (VQ || BQ)); }
         if (!window.DerbyFirestore) L.push(DIR + 'client-firestore.js' + VQ);
         if (typeof window.firebase === 'undefined') L.push(SDK + 'firebase-app-compat.js', SDK + 'firebase-auth-compat.js', SDK + 'firebase-firestore-compat.js');
         await Promise.all(L.map((u) => loadScript(u)));
@@ -155,7 +156,7 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
+    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'tvApprove', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
@@ -278,7 +279,7 @@
       boatState: () => get('/api/boat/state'),
       boatRace: (id) => get('/api/boat/race?' + qs({ id, store, tv, tvid })),
       boatKey: (id) => get('/api/boat/key?' + qs({ id, store, tv, tvid })),
-      boatVote: (o) => { o = o || {}; return request('POST', '/api/boat/vote', { store, raceId: o.raceId, code: o.code, device: deviceId(), nick: o.nick, first: o.first, second: o.second, add: o.add && o.add.length ? o.add : undefined }, undefined, 15000); },
+      boatVote: (o) => { o = o || {}; return request('POST', '/api/boat/vote', { store, raceId: o.raceId, code: o.code, device: deviceId(), nick: o.nick, first: o.first, second: o.second, add: o.add && o.add.length ? o.add : undefined, opId: o.opId || undefined /* 操作の番号（2026-11-21） */ }, undefined, 15000); },
       myBoatVote: (raceId) => get('/api/boat/vote?' + qs({ raceId, device: deviceId() })),
       bptNow: () => get('/api/bpt?' + qs({ device: deviceId() })),
       // 見張り: handlers = { boat(live), count(参加人数。テレビ), error }。返り値の関数で止める
@@ -322,6 +323,7 @@
           setDecider: (id) => post('/api/admin/decider', { id: id || null }, h),
           setBackup: (id, on) => post('/api/admin/backup', { id, on: !!on }, h), // 予備の進行役（2026-10-28）
           setBackupsAll: () => post('/api/admin/backups/all', {}, h),
+          tvApprove: (id, on) => post('/api/admin/tv/approve', { id, on: !!on }, h), // テレビの許可（2026-11-21）
           health: () => request('GET', '/api/decider/health', undefined, h),
           boatConfig: () => request('GET', '/api/admin/boat', undefined, h), // casa BOAT（2026-11-19）: 設定・時刻表・今日のレース・競馬と被る時刻
           saveBoat: (o) => post('/api/admin/boat', o || {}, h),

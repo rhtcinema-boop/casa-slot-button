@@ -690,7 +690,9 @@
     if (!/^\d{1,2}$/.test(s) || Number(s) < 1 || Number(s) > 99) throw err(400, 'bad_bill', '会計番号は 2 けた（01〜99）で入れてください');
     return s.padStart(2, '0');
   }
-  function cleanNick(v) { const nick = String(v == null ? '' : v).trim(); if (!nick || Array.from(nick).length > 8) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); return nick; }
+  /* 2026-11-21（H10）: 見えない字・向きを変える印・制御文字を取りのぞく（取りのぞいて空なら通さない） */
+  const NICK_HIDDEN = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8]/g;
+  function cleanNick(v) { const nick = String(v == null ? '' : v).replace(NICK_HIDDEN, '').trim(); if (!nick || Array.from(nick).length > 8) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); return nick; }
   function cleanPair(b, n) {
     n = n || 6; const num = (v) => (typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v.trim())) ? Number(v) : NaN), a = num(b.first), c = num(b.second);
     if (!Number.isInteger(a) || !Number.isInteger(c) || a < 0 || c < 0 || a >= n || c >= n) throw err(400, 'bad_pick', '1 着と 2 着の馬をえらんでください');
@@ -727,7 +729,13 @@
   const bptBalance = (d, t) => (d && t != null && (d.wk == null || Number(d.wk) !== bptWeek(t)) ? 0 : Math.min(BPT_MAX, Math.max(0, (Number(d && d.earned) || 0) - (Number(d && d.spent) || 0))));
   /* 競馬の追加の券 n 枚ぶんの BPT を戻したあとの「使った合計」（spent）: 0 より下げない・残りが BPT_MAX を超えるところまでは戻さない
      （使ってから戻すまでの間にボートの当たりで 3,000 まで増えていたとき。ふつうは起きない＝ボートの発表は競馬の投票の時間と重ならない） */
-  const bptBackSpent = (d, n) => Math.max(0, (Number(d && d.spent) || 0) - Math.max(0, Number(n) || 0) * BPT_PER_TICKET, (Number(d && d.earned) || 0) - BPT_MAX);
+  /* 2026-11-21: raceAt・t（どちらもあるとき）: レースの週・BPT の書類の週がいまの週と違えば戻さない（先週の競馬レースを今週取り消しても、今週使った BPT は戻さない） */
+  const bptBackSpent = (d, n, raceAt, t) => {
+    if (raceAt != null && t != null && (bptWeek(raceAt) !== bptWeek(t) || d == null || d.wk == null || Number(d.wk) !== bptWeek(t))) return Number(d && d.spent) || 0;
+    return Math.max(0, (Number(d && d.spent) || 0) - Math.max(0, Number(n) || 0) * BPT_PER_TICKET, (Number(d && d.earned) || 0) - BPT_MAX);
+  };
+  /* 戻した額を券ごとに分ける（2026-11-21 J6）: got ＝ 実際に戻った合計 → 券 1 枚ずつ 100 まで（前から順に）。[券 1 枚目の額, …] */
+  const bptBackSplit = (got, n) => { const out = []; let left = Math.max(0, Number(got) || 0); for (let i = 0; i < n; i++) { const g = Math.min(BPT_PER_TICKET, left); out.push(g); left -= g; } return out; };
   const extraCount = (v1) => Math.max(0, Math.min(EXTRA_MAX, Math.floor(Number(v1 && v1.xn) || 0)));
   /* いま追加の券を入れられる枚数（0 ＝ 出さない）。v1: 自分の 1 票目、race: レース、bal: BPT の残り（null ＝ 読めない）、t: いま */
   /* 2026-11-18 オーナー決定: 2 票目（初参加ボーナス・スタンプ）にも BPT の券を足せる。ただし 1 レースで 1 票目・2 票目・追加の券を合わせて最大 TICKETS_MAX（5）枚。
@@ -776,7 +784,7 @@
   function voteView(v, race, payout) {
     if (!v) return null;
     const out = { vid: v.vid, raceId: v.raceId, storeId: v.storeId, bill: v.bill, nick: v.nick, first: v.first, second: v.second, combo: comboOf(v), votedAt: v.votedAt || null, updatedAt: v.updatedAt || null, test: !!v.test, n: v.n === 2 ? 2 : 1, stamp: v.stamp === true, result: null }; // stamp: スタンプで入れた 2 票目（2026-11-02）
-    if (isExtra(v)) { out.bpt = true; out.k = Number(v.k) || (parseVoteId(v.vid) || {}).k || 0; if (v.bptBack === true) out.bptBack = true; /* 返還（BPT を戻した券。取り消したレース・上限のための返還 2026-11-20） */ } else if (v.n !== 2) out.xn = extraCount(v); // 追加の券（2026-11-18）: bpt・k（何枚目）。1 票目は xn（追加の券の枚数）
+    if (isExtra(v)) { out.bpt = true; out.k = Number(v.k) || (parseVoteId(v.vid) || {}).k || 0; if (v.bptBack === true) { out.bptBack = true; out.bptBackGot = v.bptBackGot != null ? Math.max(0, Math.min(BPT_PER_TICKET, Number(v.bptBackGot) || 0)) : BPT_PER_TICKET; } /* bptBackGot: その券で実際に戻った額（2026-11-21。上限 3,000 で減る） */ /* 返還（BPT を戻した券。取り消したレース・上限のための返還 2026-11-20） */ } else if (v.n !== 2) out.xn = extraCount(v); // 追加の券（2026-11-18）: bpt・k（何枚目）。1 票目は xn（追加の券の枚数）
     if (race && race.status === 'done' && race.result) {
       const R = race.result, combo = R.combo || (R.order ? R.order[0] + '-' + R.order[1] : null), win = combo === out.combo && !race.refunded && v.bptBack !== true; // bptBack: 返還した追加の券は当たりにしない
       const odds = R.finalExacta && combo ? Number(R.finalExacta[combo]) : null, p = payout && payout.status !== 'void' ? payout : null;
@@ -1162,7 +1170,7 @@
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, cleanBigNames, saveBigNames, bigNameOf, bigPatch, nextBigRace, BIG_NAME_MAX, BIG_LOOK_DAYS, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool, FRESH_RACES, recentHorseNames, freshPick,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
-    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, BPT_PER_TICKET, TICKETS_MAX, EXTRA_MAX, BPT_MAX, bptBackSpent, extraVid, isExtra, bptBalance, bptWeek, BPT_WEEK0, extraCount, extraLeft, bptBackPlan, ticketsOf, secondOk, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
+    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, BPT_PER_TICKET, TICKETS_MAX, EXTRA_MAX, BPT_MAX, bptBackSpent, bptBackSplit, extraVid, isExtra, bptBalance, bptWeek, BPT_WEEK0, extraCount, extraLeft, bptBackPlan, ticketsOf, secondOk, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, unpaidByStore, UNPAID_HOLD_MAX_MS, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues, DEFAULT_INCIDENT, SCRATCH_EXTRA_SEC, incidentTuning, incidentFor,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, TV_STRIP_KEYS, TV_STRIP_A, TV_STRIP_B, tvStripOf, tvStripCode, PW_CHARS, genTvPassword };

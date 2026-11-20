@@ -1004,31 +1004,58 @@
   function* planGen(race, run, info) {
     let P = info && info.first ? info.first : yield* planOnceGen(race, run, info, null);
     /* 作り直しの順: ①横と前後の余裕を広げる ②「内の艇の後ろを横切る」をやめる（直す前の入れ子の線）③ ② で余裕も広げる。最初に合格した物を使う（どれも不合格なら最初の物） */
-    const tries = [{ marginW: CFG.marginW + 0.5, marginL: CFG.marginL + 1.5, gapVar: 0, wake: 2.5 }, { behind: false }, { behind: false, marginW: CFG.marginW + 0.5, marginL: CFG.marginL + 1.5, gapVar: 0, wake: 2.5 }];
+    // 作り直しの並び（tries・last）は retryList が作る（2026-11-21: 別の糸（boat/plan-worker.js）で 1 つずつ計算する時も同じ並びにするため。中身は前と同じ）
     /* 合格でも「急な動き」（瞬間移動・速さの飛び・ターンの向きの回る速さが毎秒 80° 超え）がある時は、同じ順で作り直して、いちばん良い物を使う（オーナーの決まり「急にずれる動きもなし」） */
     const plain = function* (lab) { yield lab; }; // 計画 1 つを作り終えたあと（CFG は元に戻っている）の区切り
     /* 2026-11-20（不具合 E3）: 画面の速さが走りの計算から大きく外れた計画（比が 0.85〜1.20 の外）も「急な動き」に数える。ふつうは ±6% の速さ合わせ（aMax）と前後の調整 ±2% の中に入る
        （152 レースで測って 0.88〜1.18）。外れるのは、艇が横へ急に振られた計画（転覆した艇をよける所などで 1.8 倍になっていた）で、下の作り直しで直る */
-    const score = function* (Q) { if (!Q.ok) return 1e9; const c = yield* checkGen(Q._ctx, false, plain); yield 'L:score'; return (c.teleports + c.speedJumps) * 1000 + Math.max(0, c.maxYawRateTurn - 80) + 300 * (Math.max(0, c.speedRatioMax - 1.20) + Math.max(0, 0.85 - c.speedRatioMin)); };
+    const score = (Q) => scoreGen(Q, plain);
     let best = P, bs = info && info.first && info.first.score != null ? info.first.score : yield* score(P), ms = P.ms;
     if (info && info.quick) { best.score = bs; return best; }
     /* 2026-11-18: 横切り（behind・behindK）が 1 つも無いレース（着順指定・形を配り直したレースなど）では、「横切りをやめる」作り直しは前の段と同じ計算になるので飛ばす */
-    const cx = P._ctx, hasBeh = (cx.behind && cx.behind.some((a) => a.length)) || (cx.behindK && cx.behindK.some((a) => a.length));
-    if (!hasBeh) tries.splice(1, 2);
+    const RL = retryList(hasBehOf(P)), tries = RL.tries; // 横切りの無いレースは、横切りをやめる 2 つを飛ばす（retryList の中）
     /* 2026-11-20（不具合 E2・E3）: ここまでの作り直しでも急な動きが残る時だけ（今までは、そのまま使っていた）、横の動きをゆっくりにする作り直しを足す。
        ①横の速さの重み 3 倍（wv 3）②同 6 倍（wv 6）③横の加速度の重み 8 倍（wa 40）④引き波よけをやめる（wake 0）⑤左右の並びを 0.5 秒覚える（grace 30）。急な動きが無くなった所でやめる。
        数字は【仮】: 本番の決め方で出た 4 本が収まった値（フライングの 6-5: 2 周目のホームで 2 号艇が毎秒 173° 振れる → ①で 65°／転覆の 1-3: 転覆した艇をよける 3 号艇が毎秒 196°・画面の速さ 1.8 倍 → ①で 76°／
        事故なしの 1-2（b20261120-1017）: 129° → ②で 63°／フライングの 6-2（-1105）: 1 マークの出口で 299° → ④で 96°）。
        急な動きの無い計画（ほとんど全部。580 レースの試験では 576）は、ここへ来ないので前と同じ答え。info.stop() が true を返したら（時間切れ）、合格している物があればそこでやめる */
-    tries.push({ wv: 3 }, { wv: 6 }, { wa: 40 }, { wake: 0.01 }, { grace: 30 });
     const late = () => !!(info && info.stop && best.ok && info.stop());
     for (let q = 0; q < tries.length && bs > 0 && !late(); q++) { const P2 = yield* planOnceGen(race, run, info, tries[q]); ms += P2.ms; P2.retried = q + 1; const s2 = yield* score(P2); if (s2 < bs) { best = P2; bs = s2; } else best.retried = q + 1; }
     /* 2026-11-18 最後の手: 作り直しを全部試しても不合格の時だけ、「時刻の割り付けを動かさずに、なぞり → ずれだけやり直す」仕上げ（moreFix）を入れてもう 1 回作る。
        決まりと実際の位置が必ず合うので重なりは消えやすいが、ずれが変わった分は道のりに合わせ直さないので、その艇の画面の速さが run と違う（速さの比が崩れる）ため、最後にだけ使う。
        それでも不合格なら、横と前後の余裕を大きく取って（横 ＋1.0m・前後 ＋3.0m。【仮】着順指定の種 3573・4563 で合格した値）もう 1 回（4 艇が 1 つのマークで固まる着順指定のレース） */
-    const last = [{ moreFix: 2 }, { moreFix: 3, marginW: CFG.marginW + 1.0, marginL: CFG.marginL + 3.0, gapVar: 0, wake: 1.5 }];
+    const last = RL.last;
     for (let q = 0; q < last.length && !best.ok; q++) { const P3 = yield* planOnceGen(race, run, info, last[q]); ms += P3.ms; P3.retried = tries.length + 1 + q; const s3 = yield* score(P3); if (s3 < bs) { best = P3; bs = s3; } }
     best.ms = ms; best.score = bs; return best;
+  }
+  /* 2026-11-21（不具合 I3）: 作り直しの並びと点のつけ方を、planGen の外に出した（中身は前と同じ）。boat/race-boat.js が、計画 1 つずつ（「1 回分」＝ planUnit）を別の糸（Web Worker。boat/plan-worker.js）で
+     同時に計算して、planGen とまったく同じ順で選ぶため */
+  function retryList(hasBeh) {
+    const tries = [{ marginW: CFG.marginW + 0.5, marginL: CFG.marginL + 1.5, gapVar: 0, wake: 2.5 }, { behind: false }, { behind: false, marginW: CFG.marginW + 0.5, marginL: CFG.marginL + 1.5, gapVar: 0, wake: 2.5 }];
+    if (!hasBeh) tries.splice(1, 2);
+    tries.push({ wv: 3 }, { wv: 6 }, { wa: 40 }, { wake: 0.01 }, { grace: 30 });
+    const last = [{ moreFix: 2 }, { moreFix: 3, marginW: CFG.marginW + 1.0, marginL: CFG.marginL + 3.0, gapVar: 0, wake: 1.5 }];
+    return { tries, last };
+  }
+  const hasBehOf = (P) => { const cx = P._ctx; return !!((cx.behind && cx.behind.some((a) => a.length)) || (cx.behindK && cx.behindK.some((a) => a.length))); };
+  function* scoreGen(Q, brk) { if (!Q.ok) return 1e9; const c = yield* checkGen(Q._ctx, false, brk); yield 'L:score'; return (c.teleports + c.speedJumps) * 1000 + Math.max(0, c.maxYawRateTurn - 80) + 300 * (Math.max(0, c.speedRatioMax - 1.20) + Math.max(0, 0.85 - c.speedRatioMin)); }
+  /* 計画 1 回分（over ＝ 作り直しの設定。null ＝ 1 回め）と、その点・横切りの有無。planGen の中の 1 回と同じ答え */
+  function planUnit(race, run, info, over) { const P = runAll(planOnceGen(race, run, info, over || null)); const sc = runAll(scoreGen(P, function* (lab) { yield lab; })); return { plan: P, score: sc, hasBeh: hasBehOf(P) }; }
+  /* 計画を別の糸から渡せる形にする（関数を除いた数の並びだけ）と、もとに戻す。戻した計画の at(t) は元とまったく同じ。check() は使えない（null を返す） */
+  const PACK_KEYS = ['n', 'preF', 'NF', 'cutG', 'stSec', 'cutT', 'kickT', 'scratchBoat', 'fallBoat', 'fallT', 'finOk', 'fin', 'preT', 't1', 'cuts', 'pitOutT', 'preFaceT', 'preWaitZ', 'preSep', 'ok', 'badN', 'ovN', 'ms', 'repairs', 'shifts', 'shiftMax', 'solves', 'adapted', 'iters', 'warnings', 'types', 'kimarite', 'scn', 'press', 'course', 'winA', 'on'];
+  const O_KEYS = ['x', 'z', 'hd', 'slip', 'speed', 'turn', 'dir', 'acc'];
+  function packPlan(P) {
+    const ctx = P._ctx, o = { extra: { retried: P.retried, score: P.score } };
+    PACK_KEYS.forEach((k) => { if (ctx[k] !== undefined) o[k] = ctx[k]; });
+    o.O = ctx.O.map((A) => { const a = {}; O_KEYS.forEach((k) => { a[k] = A[k]; }); return a; });
+    return o;
+  }
+  function unpackPlan(o) {
+    const ctx = Object.assign({}, o); delete ctx.extra;
+    ctx.onG = (i, g) => (g < ctx.preF ? 1 : ctx.on[i][g - ctx.preF]);
+    const P = makePlan(ctx); P.check = () => null; P.packed = true;
+    if (o.extra) { if (o.extra.retried != null) P.retried = o.extra.retried; if (o.extra.score != null) P.score = o.extra.score; }
+    return P;
   }
   function plan(race, run, info) { const g = planGen(race, run, info); let r = g.next(); while (!r.done) r = g.next(); return r.value; }
   /* 時間を分けて計画する（Fire TV 向け）: 1 回に budgetMs ミリ秒ぶんだけ進めて、残りは次の順番に回す。答えは plan() とまったく同じ。
@@ -1296,5 +1323,5 @@
   }
   // 型の形の「物差し（直線 ＋ 半径 RC の半円）より長い道のり」m（マイナスは近道）。走りの計算の shape.geo と同じ数
   function typeExcess(C, type, k, lane) { const S = defaultShape(type, k || 0, lane == null ? CFG.lanes[0] : lane, null); return turnGeom(S.R1, S.R2, S.a, S.w).geo - C.TURN_LEN; }
-  return { plan, planAsync, CFG, TYPE, SHAPE, turnGeom, PRE, HULL_L, HULL_W, DT, assignTypes, typeExcess, obbGap, _buildBase: buildBase, _boatNodes: boatNodes, _planGen: planGen };
+  return { plan, planAsync, CFG, TYPE, SHAPE, turnGeom, PRE, HULL_L, HULL_W, DT, assignTypes, typeExcess, obbGap, _buildBase: buildBase, _boatNodes: boatNodes, _planGen: planGen, retryList, planUnit, packPlan, unpackPlan };
 });

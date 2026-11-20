@@ -193,3 +193,27 @@ body.boat .top .store { overflow: visible; text-overflow: clip; font-size: 13px;
 .btn.tokeiba { flex: none; display: flex; align-items: center; justify-content: center; text-decoration: none; min-height: 50px; font-size: 16px; background: linear-gradient(180deg, #ffe9a8, #c9a03e); color: #1a1408; }
 .os-s .btn.tokeiba { min-height: 44px; } .os-s .scr.b-result .nextr { display: none; } /* 詰めるときは「次のボートレース」を省く（上の帯に出ている） */
 .os-xs .b-noqr .bptcard { display: none; } /* いちばん詰めるときは「あなたの BPT」を省いて「あそびかた」を残す */
+/* ---------- 2026-11-21 2 回目の直し ---------- */
+/* H3 待ちの画面: 投票開始まで 10 分以上・1 時間以上（2:10:00）でも横にはみ出さない（時刻の欄を折り返す） */
+body.boat .waitbox .wr { flex-wrap: wrap; row-gap: 2px; max-width: 100%; }
+body.boat .waitbox .clock { flex-wrap: wrap; justify-content: center; min-width: 0; }
+body.boat .waitbox .clock .v { white-space: nowrap; }
+/* H4 前のレースの知らせ（ボタン付き。押せるように）と、待ちの画面の「前の結果」「あそびかた」の並び */
+#toast.act { pointer-events: auto; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+#toast .tbtn { flex: none; min-height: 36px; padding: 4px 14px; border-radius: 10px; border: 1px solid var(--gold2); background: transparent; color: var(--cream); font: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.btnrow.howr { flex: none; justify-content: center; gap: 10px; } .btnrow.howr .howb { flex: none; }
+.scr.b-prev > .btn.ghost:last-child { flex: none; min-height: 44px; }
+/* H7 当たれば ○ BPT（上限で減る・増えない）: SE でも切れない */
+.b-pick .pickdock .pdsel { min-width: 0; } .b-pick .pickdock .pdw { min-width: 0; flex-shrink: 1; }
+.b-pick .pickdock .pdw em { font-style: normal; font-size: 11px; } .b-pick .pickdock .pdw.capw { color: var(--cream); }
+.os-s .b-pick .pickdock .pdw b { font-size: 16px; }
+/* H7 上限で 1 BPT も増えなかった当たり */
+.gain.zero em { margin-top: 0; font-size: 16px; white-space: normal; word-break: auto-phrase; }
+/* 当たれば ○ BPT は 2 段（上に小さく「当たれば」・下に額）。上限のときは「上限まで」。SE でも切れない（2026-11-21 H7） */
+.b-pick .pickdock .pdw { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.b-pick .pickdock .pdw small { font-size: 11px; color: var(--dim); } .b-pick .pickdock .pdw.capw small { color: var(--cream); }
+/* 結果画面の小さい券（SE など幅の狭いとき）: 右の券の欄が横に切れて送りの棒が出ていた（2 回目の疑い）→ 左の欄を細く・額の字を少し小さく・横には動かさない */
+.fune.small, .os-s .fune.small { grid-template-columns: 80px 24px minmax(0, 1fr); }
+.fune.small .fl { padding-left: 7px; padding-right: 4px; } .fune.small .brand { font-size: 10.5px; } .fune.small .rno b { font-size: 16px; }
+.fune.small .fm span { font-size: 13px; padding: 4px 1px; }
+.fune.small .fr { overflow-x: hidden; padding: 6px 8px !important; } .fune.small .am { font-size: 13px; } .fune.small .am small { font-size: 9px; }

@@ -66,7 +66,21 @@
   const waku = (b, cls) => '<i class="bo-waku ' + (cls || '') + '" style="background:' + b.color + ';color:' + b.ink + '">' + b.no + '</i>';
   const TYPES = { nige: '逃げ', senko: 'まくり', sashi: '差し', oikomi: 'まくり差し' };
   // 映像の絵（canvas）は 1 組だけ。スタート展示の枠と本番の映像の枠の間で入れ替える（3D を 2 つ動かさない＝Fire TV を重くしない）
-  function putCanvas(where) { const box = where === 'vid' ? $('boVfit') : $('boFit'); [$('boGl'), $('boHud')].forEach((c) => { if (c.parentNode !== box) box.insertBefore(c, box.firstChild && box.firstChild.id === 'boCard' ? box.firstChild : null); }); }
+  /* 2026-11-21 I1: 並びは必ず「映像の絵 → 字の絵 → 出走表の板」（後ろほど手前）。前は展示の枠から戻すとき、字の絵（boHud）が出走表の板（boCard）の手前に入り、締切の出走表の上に映像の字が重なっていた。
+     並びが合っているときは何もしない（毎コマ呼ばれる。部品を動かし直さない） */
+  function putCanvas(where) {
+    const box = where === 'vid' ? $('boVfit') : $('boFit'), gl = $('boGl'), hud = $('boHud'), card = $('boCard'), ref = card && card.parentNode === box ? card : null;
+    if (gl.parentNode === box && hud.parentNode === box && gl.nextSibling === hud && hud.nextSibling === ref) return;
+    box.insertBefore(gl, ref); box.insertBefore(hud, ref);
+  }
+  /* 2026-11-21 I4: 映像の絵（boGl・boHud）は「いまの場面の映像の準備ができているときだけ」見せる（#boatOv の印 bo-ready。tv-boat.css が隠す）。
+     前は次のレースの投票が前の結果の途中で始まると、展示の枠に前のレースの最後の絵が残っていた */
+  const setReady = (on) => { on = !!on; if (ov.__ready !== on) { ov.__ready = on; ov.classList.toggle('bo-ready', on); } };
+  // 準備を打ち切る（映像の係の入口 cancelPrep があれば使う。無ければ準備の印 prepJob を外す＝setRaceAsync は次の区切りで「捨てられた」で終わる）
+  function dropPrep() { const R = B.R; if (!R) return; try { if (typeof R.cancelPrep === 'function') R.cancelPrep(); else if (R.prepJob) R.prepJob = null; } catch (e) { /* noop */ } }
+  /* いまは動かない場面か（映像の係への知らせ。setRaceAsync の opt.still ＝ この関数。映像の係は毎回これを見て、動かない場面では 1 回に長く（40ms）計算する。ref/boat/opId_の使い方.md の末尾）: B.R の絵を動かしていない（展示も本番もまだ）＝画面は字だけ。
+     このときは準備を 1 回に長く進めてよい（字は 1 秒に 1 回しか変わらない） */
+  const stillNow = () => !ov.__ready || !BOATTV.active;
 
   // 出走表（競馬の出馬表と同じ並び: 枠・名前・得意・調子・近走）
   function cardTable(r, full) {
@@ -133,9 +147,10 @@
       if (B.want !== key) { B.nSkip++; return false; }
       B.tj = null; B.film = null; hide($('boSt'), true); hide($('boHow'), true); // ここから B.R の中身が入れ替わる（終わるまで展示も本番も「無い」）
       if (before) before();
-      B.nPrep++;
-      const R = B.R, out = (R.setRaceAsync || R.setRace).apply(R, args);
-      const ok = out && typeof out.then === 'function' ? await out : true; // setRaceAsync は、入れ替えたら true・捨てられたら false を返す
+      B.nPrep++; B.prepKey = key;
+      const R = B.R, a = args.slice(); if (R.setRaceAsync) { a[4] = Object.assign({}, a[4] || {}, { still: stillNow }); }
+      const out = (R.setRaceAsync || R.setRace).apply(R, a);
+      let ok; try { ok = out && typeof out.then === 'function' ? await out : true; } finally { if (B.prepKey === key) B.prepKey = ''; } // setRaceAsync は、入れ替えたら true・捨てられたら false を返す
       return ok !== false && B.want === key;
     };
     const p = (B.q || Promise.resolve()).then(job, job); B.q = p.catch(() => {});
@@ -259,6 +274,15 @@
     const c = $('boCard'); if (c.dataset.id === r.id) return; c.dataset.id = r.id;
     c.innerHTML = '<h2>出走表<small>' + hm(r.at) + ' のレース・2周 1200m</small></h2>' + cardTable(r, f) + '<p class="bo-closed">投票は締め切りました</p>';
   }
+  /* 出走表の板の下の字（2026-11-21 I3）: 映像の準備が発走（映像の始まり runAt）に間に合わないテレビ（遅いテレビ・作り直しになるレース）は、固まって見えないように
+     「まもなく発走・スタートまで あと m:ss」（毎秒動く）。準備ができたら、ほかの店と同じ時刻の位置から始める（ピット離れ・ブザー・ファンファーレはそのテレビだけ飛ぶ＝途中から鳴らすとほかの店とずれるため） */
+  function cardNote(r, t, ready) {
+    const e = $('boCard').querySelector('.bo-closed'); if (!e) return;
+    const f = B.full[r.id], runAt = (f && f.hidden && f.hidden.runAt) || r.runAt, startAt = runAt + ((window.BOAT && BOAT.Race && BOAT.Race.PRE_T) || 100) * 1000;
+    const late = !ready && runAt && t >= runAt;
+    setT(e, !late ? '投票は締め切りました' : t < startAt ? 'まもなく発走・スタートまで あと ' + left(startAt - t) : 'まもなく映像が始まります');
+    if (e.__late !== late) { e.__late = late; e.classList.toggle('soon', late); }
+  }
 
   /* ---------- 結果 ---------- */
   // 発表（決める係が結果を書く）がまだ届いていない間（2026-11-20 D2）: 前は中身が空のまま「確定 undefined - undefined 払戻 0 BPT 的中なし」と出ていた
@@ -310,6 +334,16 @@
      （2026-11-20 F6: 競馬が遅れて結果発表がずれると、ボートの投票受付中の画面が競馬の結果の最初の 2 分を覆っていた）。締切のあと（映像）は止めない */
   function derbyGuard(t) { const L = window.DERBY && DERBY.state && DERBY.state.last; return !!(L && L.revealAt && t < L.revealAt + 120000); }
   function topFor(label, on, time) { setT($('boPill'), label); $('boPill').classList.toggle('on', !!on); setT($('boTime'), time || ''); hide($('boCnt'), true); setT($('boStore'), storeNm || STORE); }
+  // いま欲しい映像（B.want）とちがう準備が走っていたら打ち切る（展示の準備の途中で締切・取り消し・競馬に戻る など。2026-11-21 I3）
+  function dropOld() { if (B.prepKey && B.prepKey !== B.want) { B.nDrop = (B.nDrop || 0) + 1; dropPrep(); B.prepKey = ''; } }
+  /* 発表が届かないまま時間が過ぎたら（2026-11-21 J14）: 発表予定の 10 秒後・30 秒後・あとは 60 秒おきに、見張りをつなぎ直していまの状態を読み直す
+     （前は見張りが戻らないと「結果を確認中」のままで、読み直す道が無かった） */
+  const PEND_AT = (k) => (k === 0 ? 10000 : k === 1 ? 30000 : 30000 + 60000 * (k - 1));
+  function pendRetry(r, t) {
+    if (!B.pend || B.pend.id !== r.id) B.pend = { id: r.id, k: 0 };
+    if (t < r.revealAt + PEND_AT(B.pend.k)) return;
+    B.pend.k++; B.nRewatch = (B.nRewatch || 0) + 1; rewatch();
+  }
   let tjLast = 0;
   function tjEnsure(r) {
     const pn = performance.now(), dt = tjLast ? Math.min(0.1, (pn - tjLast) / 1000) : 0; tjLast = pn;
@@ -326,50 +360,60 @@
       BOATTV.stage = st; BOATTV.race = r ? r.id : null;
       const pre = st === 'wait' || st === 'vote';
       const waitOk = st !== 'wait' || r.openAt - t <= 60000; // 投票の 1 分前から「次のボートレース」（スタート展示つき）
-      if (!r || st === 'none' || st === 'over' || !waitOk || (pre && derbyGuard(t)) || derbyBusy()) { B.want = ''; setActive(false); tjLast = 0; return; }
+      if (!r || st === 'none' || st === 'over' || !waitOk || (pre && derbyGuard(t)) || derbyBusy()) { B.want = ''; dropOld(); setActive(false); tjLast = 0; return; }
       setActive(true);
-      if (pre) { B.want = 'tj:' + r.id; quiet(); show('boVote'); if (!B.full[r.id]) fullRace(r); renderVote(r, st === 'wait', t); tjEnsure(r); return; }
+      if (pre) { B.want = 'tj:' + r.id; dropOld(); quiet(); show('boVote'); if (!B.full[r.id]) fullRace(r); renderVote(r, st === 'wait', t); tjEnsure(r); setReady(B.tj && B.tj.id === r.id); return; }
       tjLast = 0;
-      if (st === 'void') { B.want = ''; quiet(); B.lastFrame = 0; show('boVoid'); topFor('● 取り消し', false, hm(r.at)); return; } // 映像の途中の取り消しでも音を止める（D5）
+      if (st === 'void') { B.want = ''; dropOld(); setReady(false); quiet(); B.lastFrame = 0; show('boVoid'); topFor('● 取り消し', false, hm(r.at)); return; } // 映像の途中の取り消しでも音を止める（D5）
       if (st === 'closed' || st === 'film') {
-        B.want = 'film:' + r.id;
+        B.want = 'film:' + r.id; dropOld(); // 展示の準備が走っていたら、本番を頼んだ時点で打ち切る（2026-11-21 I3）
         show('boFilm'); topFor('● レース中', true, hm(r.at) + ' のレース'); renderCard(r);
-        if (!B.film || B.film.id !== r.id) { hide($('boCard'), false); tryFilm(r); return; }
+        const ready = !!(B.film && B.film.id === r.id); setReady(ready); putCanvas('film'); cardNote(r, t, ready);
+        if (!ready) { hide($('boCard'), false); tryFilm(r); return; }
         filmFrame(r, t); return;
       }
       if (st === 'result') {
         const done = r.status === 'done' && !!r.result, mine = !!(B.film && B.film.id === r.id && B.R);
-        B.want = mine ? 'film:' + r.id : '';
+        B.want = mine ? 'film:' + r.id : ''; dropOld(); setReady(mine);
         if (mine && (!B.R.done || !done) && t < r.revealAt + 20000) { show('boFilm'); filmFrame(r, t); return; } // 映像の最後（ゴール後）まで。発表（決める係が結果を書く）が届くまでは勝った艇のアップのまま（20 秒まで）
         show('boRes'); B.lastFrame = 0;
-        if (!done) { topFor('● 結果を確認中', false, hm(r.at) + ' のレース'); renderPending(r); return; } // 発表がまだ: 中身が届いたら下で描き直す（D2）
-        topFor('● 確定', true, 'この画面 あと ' + left(r.endAt - t)); renderResult(r);
-        const n = B.live && B.live.next; setT($('boNext'), n ? '次のボートレース ' + hm(n.at) + '（投票は ' + hm(n.openAt) + ' から）' : '');
+        if (!done) { topFor('● 結果を確認中', false, hm(r.at) + ' のレース'); renderPending(r); quiet(); pendRetry(r, t); return; } // 発表がまだ: 中身が届いたら下で描き直す（D2）。音は止める・届かなければ読み直す（2026-11-21 J14）
+        const n = B.live && B.live.next, endShow = n && n.openAt > t && n.openAt < r.endAt ? n.openAt : r.endAt; // 「あと ○:○○」は次の投票開始が先ならそちらまで（2026-11-21 I4: 前は途中で次の投票に替わり「あと 1:10」で切れていた）
+        topFor('● 確定', true, 'この画面 あと ' + left(endShow - t)); renderResult(r); setT($('boNext'), n ? '次のボートレース ' + hm(n.at) + '（投票は ' + hm(n.openAt) + ' から）' : '');
         if (mine && performance.now() - B.sndAt > 300) sound({ state: 'result' }); // 音は今までどおり（この映像を流したテレビだけ）。毎コマは呼ばない（1 秒 3 回。F18）
         return;
       }
-      B.want = ''; setActive(false);
+      B.want = ''; dropOld(); setActive(false);
     } catch (e) { BOATTV.err = String(e && e.message); console.error('casa BOAT', e); }
   }
   // 画面を出している間は毎コマ。出していない間（ボートの無い時間）は 1 秒 4 回だけ場面を確かめる（F18: 何も無い間も毎コマ回していた）
-  let stopped = false, unwatch = null, timer = 0;
-  function raf() { if (stopped) return; loop(); if (BOATTV.active) requestAnimationFrame(raf); else timer = setTimeout(raf, 250); }
-  BOATTV.stop = () => { stopped = true; clearTimeout(timer); if (unwatch) { try { unwatch(); } catch (e) { /* noop */ } unwatch = null; } B.want = ''; setActive(false); }; // 見張りとくり返しを止める（確かめ・片付け用）
+  let stopped = false, unwatch = null, timer = 0, rafId = 0, onLive = null, onCount = null;
+  function raf() { rafId = 0; timer = 0; if (stopped) return; loop(); if (stopped) return; if (BOATTV.active) rafId = requestAnimationFrame(raf); else timer = setTimeout(raf, 250); }
+  // 見張りとくり返しを止める（確かめ・片付け用）。予約ずみのコマも取り消す・準備中（はじめの待ちの途中）に止めたら見張りを始めない（2026-11-21 J14）
+  BOATTV.stop = () => { stopped = true; clearTimeout(timer); if (rafId) cancelAnimationFrame(rafId); rafId = 0; timer = 0; if (unwatch) { try { unwatch(); } catch (e) { /* noop */ } unwatch = null; } B.want = ''; dropOld(); setActive(false); };
+  // 見張りをつなぎ直して、いまの状態を読み直す（発表が届かないとき）
+  function rewatch() {
+    if (stopped || !B.C || !onLive) return;
+    if (unwatch) { try { unwatch(); } catch (e) { /* noop */ } unwatch = null; }
+    unwatch = B.C.boatWatch({ boat: onLive, count: onCount, error: () => {} });
+    if (B.C.boatState) B.C.boatState().then((x) => { if (!stopped && x && x.live) onLive(x.live); }).catch(() => {});
+  }
 
   /* ---------- はじめ: 競馬のテレビ（v2/tv.js）の DerbyCloud をそのまま使う（つなぎ・ログイン・時計は 1 つ） ---------- */
   (async () => {
-    for (let i = 0; i < 600 && !(window.DERBY && DERBY.cloud); i++) await new Promise((r) => setTimeout(r, 100));
-    if (!(window.DERBY && DERBY.cloud) || DERBY.watch || !STORE) return;
+    for (let i = 0; i < 600 && !(window.DERBY && DERBY.cloud) && !stopped; i++) await new Promise((r) => setTimeout(r, 100));
+    if (stopped || !(window.DERBY && DERBY.cloud) || DERBY.watch || !STORE) return;
     B.C = DERBY.cloud;
     if (B.C.stores) B.C.stores().then((L) => { const s = (L || []).find((x) => x.id === STORE); if (s) storeNm = s.name + '店'; }).catch(() => {});
     await needCore();
-    if (!B.C.boatWatch) return; // 古い部品
-    const onLive = (live) => { B.live = live; const r = live && live.race; if (r && B.full[r.id] && r.status !== B.full[r.id].status) { B.full[r.id] = Object.assign({}, B.full[r.id], r); if (r.status === 'decided') delete B.full[r.id].hidden; } prune(); };
-    unwatch = B.C.boatWatch({ boat: onLive, count: (c) => { B.count = c; }, error: () => {} });
+    if (stopped || !B.C.boatWatch) return; // 古い部品・待ちの間に止められた
+    onLive = (live) => { B.live = live; const r = live && live.race; if (r && B.full[r.id] && r.status !== B.full[r.id].status) { B.full[r.id] = Object.assign({}, B.full[r.id], r); if (r.status === 'decided') delete B.full[r.id].hidden; } prune(); };
+    onCount = (c) => { B.count = c; };
+    unwatch = B.C.boatWatch({ boat: onLive, count: onCount, error: () => {} });
     BOATTV.preview = (live) => { if (live) onLive(live); return B.live; }; // 確かめ用（tests/boat-tv-bugs.plan.js）: いまの状態を好きな中身にして描かせる（見張りの次の知らせで本物に戻る）。引数なしなら今の状態を返す
     if (B.C.boatState) { try { const x = await B.C.boatState(); if (!B.live) onLive(x.live); } catch (e) { /* 見張りで届く */ } }
-    raf();
+    if (!stopped) raf();
   })();
   BOATTV.debug = () => ({ tj: B.tj && { id: B.tj.id, seg: B.tj.seg, tt: B.R && B.R.tt }, stage: BOATTV.stage, race: BOATTV.race, film: B.film && { id: B.film.id, tt: B.R && B.R.tt, done: B.R && B.R.done, shot: B.R && B.R.shot }, count: B.count, err: BOATTV.err, qr: BOATTV.qr, parts: B.R && B.R.parts,
-    want: B.want, sub: B.R && B.R.info && B.R.info.sub, tries: B.nTry, preps: B.nPrep, skips: B.nSkip, seeks: B.nSeek, kept: { full: Object.keys(B.full), key: Object.keys(B.key), fetchAt: Object.keys(B.fetchAt) }, vq: VQ });
+    want: B.want, prepKey: B.prepKey || '', drops: B.nDrop || 0, rewatch: B.nRewatch || 0, ready: !!ov.__ready, sub: B.R && B.R.info && B.R.info.sub, tries: B.nTry, preps: B.nPrep, skips: B.nSkip, seeks: B.nSeek, kept: { full: Object.keys(B.full), key: Object.keys(B.key), fetchAt: Object.keys(B.fetchAt) }, vq: VQ });
 })();

@@ -69,7 +69,7 @@
       let v = null; try { v = data(await doc(COLB.votes, Boat.voteId(id, uid())).get()); } catch (e) { v = null; }
       const view = Boat.voteView(v, r);
       // 当たり・返還・取り消しで BPT が増えたはずのレースは、そのとき 1 回だけ読み直す（ほかは手元の写し）
-      const grew = !!(view && !bptSeen[id] && ((r.status === 'done' && (view.won > 0 || (view.back && view.back.bpt > 0))) || (view.refunded && view.n > 0)));
+      const grew = !!(view && !bptSeen[id] && ((r.status === 'done' && (view.won > 0 || (view.back && view.back.bpt > 0))) || (view.refunded && view.n > 0 && r.backDone === true))); // 取り消しは戻し終えてから（backDone）1 回
       if (grew) bptSeen[id] = 1;
       return { vote: view, bpt: bptView(await bptDoc(grew || !!(opt && opt.fresh)), r, v), race: Boat.lite(r) };
     }
@@ -98,10 +98,14 @@
     async function boatVote(o) {
       await ready(); o = o || {};
       const raceId = String(o.raceId || ''), vid = Boat.voteId(raceId, uid()), ref = doc(COLB.votes, vid), t = now();
+      const op = Boat.cleanOp(o.opId) || Boat.newOp(rand); // 操作の番号（2026-11-21 H1・J11。同じ番号の書き込みは 1 回だけ通す。ref/boat/opId_の使い方.md）
       const r = await raceOf(raceId);
+      const sameView = async (v) => { delete v._id; return { vote: Boat.voteView(v, r), bpt: bptView(await bptDoc(true), r, v), race: Boat.lite(r), same: true }; };
+      const landed = async () => { let v = null; try { v = data(await ref.get()); } catch (e) { v = null; } return v && v.op === op ? v : null; }; // 届いていたか（番号で見る）
       if (!r || r.status !== 'upcoming' || t >= r.closeAt) throw E(409, 'closed', '締め切りました');
       if (t < r.openAt) throw E(409, 'not_open', '投票はまだ始まっていません');
       let old = null; try { old = data(await ref.get()); } catch (e) { old = null; }
+      if (old && old.op === op) return sameView(old); // 同じ番号はもう通っている: 何も足さずに今の票
       const add = Boat.cleanPicks(o.add || []);
       const nick = Core.cleanNick(o.nick != null ? o.nick : old && old.nick);
       const pair = o.first != null || !old ? Boat.cleanPair(o) : { first: old.first, second: old.second };
@@ -121,19 +125,20 @@
       const write = async (dv, sid) => {
         const b = db.batch();
         if (add.length) b.update(doc(COLB.bpt, uid()), { spent: (Number(w.spent) || 0) + add.length * Boat.STAKE, buse: vid });
-        const nv = old ? Object.assign({}, old, { nick, first: pair.first, second: pair.second, bets, n, updatedAt: t }) : { raceId, owner: uid(), storeId: sid, nick, first: pair.first, second: pair.second, bets, n, code: String(o.code), dv, votedAt: t, updatedAt: t };
-        if (old) b.update(ref, { nick, first: pair.first, second: pair.second, bets, n, updatedAt: t }); else b.set(ref, nv);
+        const nv = old ? Object.assign({}, old, { nick, first: pair.first, second: pair.second, bets, n, op, updatedAt: t }) : { raceId, owner: uid(), storeId: sid, nick, first: pair.first, second: pair.second, bets, n, code: String(o.code), dv, op, votedAt: t, updatedAt: t };
+        if (old) b.update(ref, { nick, first: pair.first, second: pair.second, bets, n, op, updatedAt: t }); else b.set(ref, nv);
         try { await b.commit(); } catch (e) { if (add.length) bptNote(null); throw e; } // 届いたか分からない: BPT の写しは捨てる（次は読み直す）
         return nv;
       };
       let nv = null;
-      if (old) { try { nv = await write(); } catch (e) { throw mapVoteErr(e); } }
+      if (old) { try { nv = await write(); } catch (e) { const v = await landed(); if (v) return sameView(v); throw mapVoteErr(e); } }
       else {
         let last = null;
         for (const x of cands) {
           if (x.day == null && !x.sure && !(await verifyDv(x, r.day))) continue; // 手動のレースの票: 読んで確かめる
           try { nv = await write(x.vid, x.storeId); break; }
           catch (e) {
+            { const v = await landed(); if (v) return sameView(v); } // 同じ番号が先に届いていた（打ち切りのあとの押し直しなど）
             if (!(e && e.code === 'permission-denied')) throw mapVoteErr(e);
             last = e;
             if (x.sure || dvMemo[x.vid]) break; // 競馬の票は確かめてある → 断られたのは別の理由（合言葉・締切・BPT）
@@ -164,6 +169,19 @@
       return Object.values(out);
     }
     const note = (id, patch) => { T.local[id] = Object.assign({}, T.local[id] || {}, patch); };
+    /* 2026-11-21（J2）: 発表・返還の途中のレースは、6 時間より古くても探して続ける（進行役が長く止まったあと）。60 秒に 1 回だけ読む（ふつうは 0 件） */
+    async function pendingRaces() {
+      if (T.pendAt && now() - T.pendAt < 60000 && T.pend) return T.pend;
+      const m = {};
+      for (const q of [db.collection(COLB.races).where('status', '==', 'decided'), db.collection(COLB.races).where('backDone', '==', false)]) { try { (await q.get()).docs.forEach((d) => { m[d.id] = strip(Object.assign({ id: d.id }, d.data())); }); } catch (e) { /* 次の回 */ } }
+      T.pendAt = now(); T.pend = Object.values(m); return T.pend;
+    }
+    /* 2026-11-21（J5）: 小分けの処理（決める・発表・取り消しの戻し）が失敗したら、理由と続けて失敗した回数を boatSecrets/<id> の stuck に残す（管理画面が赤字で出す）。うまくいったら消す */
+    async function markStuck(id, step, e) {
+      const f = (T.fail = T.fail || {}), x = (f[id] = { step, n: ((f[id] && f[id].step === step && f[id].n) || 0) + 1 });
+      try { await doc(COLB.secrets, id).set({ stuck: { step, n: x.n, err: String((e && (e.code || e.message)) || e || 'error').slice(0, 80), errAt: now() } }, { merge: true }); } catch (x2) { /* 書けなくても次の回 */ }
+    }
+    async function clearStuck(id) { if (!T.fail || !T.fail[id]) return; delete T.fail[id]; try { await doc(COLB.secrets, id).set({ stuck: null }, { merge: true }); } catch (e) { /* noop */ } }
     /* レースを作る。同じ id のレースがもうあれば作らない（2026-11-20: 2 回作ると QR の合言葉・倍率が変わってしまうので、取引の中で「まだ無い」を確かめる）→ 置いてあるレース */
     async function create(e, cfg, sc) {
       const model = Boat.modelOf(Engine, Outcome, BoatModel, sc.salt, e.id); let odds = null;
@@ -187,7 +205,7 @@
       for (const e of Boat.schedule(t, cfg.rules)) {
         if (e.at - t > horizon) break;
         if (e.at <= t + 1000 || have.has(e.id)) continue;
-        if (Boat.quietAt(e.at, sc.tuning && sc.tuning.dayStartHour)) continue; // 朝 5 時の前後は作らない（時刻表でも断っている。2026-11-20）
+        if (Boat.quietSpan(e.at, cfg, sc.tuning && sc.tuning.dayStartHour)) continue; // 朝 5 時の前後は作らない（時刻表でも断っている。2026-11-20）
         if (!ders) ders = (derbyRaces || []).map((r) => r.at).concat(Core.scheduleAround(t, (sc.timetable && sc.timetable.rules) || []).map((x) => x.at));
         if (Boat.busyWithDerby(e.at, ders, sc.tuning, cfg)) continue; // 念のため（管理画面で断っている）: 競馬が勝つ
         T.making = true; try { await create(e, cfg, sc); } finally { T.making = false; }
@@ -259,7 +277,8 @@
             const w = win[o] || { amount: 0, gain: 0 }, p = Boat.creditPlan(cur[j], w.amount, t, back[o] || 0, r.at, w.gain); // 当たりと返還（フライング・転覆・上限）を 1 回で。週をまたいだレースは書かない（null）
             if (p) tx.set(doc(COLB.bpt, o), p.doc, { merge: true });
             const g = p ? p.gain : 0; mark[o] = { g, b: p ? p.back : 0 };
-            if (w.amount > 0) tx.update(doc(COLB.votes, Boat.voteId(id, o)), Object.assign({ got: g }, g < w.amount ? { capped: true } : {})); // スマホの結果用: 実際に増えた分・上限で止まった印
+            const vu = {}; if (w.amount > 0) { vu.got = g; if (g < w.amount) vu.capped = true; } if ((back[o] || 0) > 0) vu.backGot = p ? p.back : 0; // スマホの結果用: 実際に増えた分・上限で止まった印・返還で実際に戻った額（2026-11-21 J6）
+            if (Object.keys(vu).length) tx.update(doc(COLB.votes, Boat.voteId(id, o)), vu);
           });
           if (todo.length) tx.set(cref, { credited: mark }, { merge: true });
           return true;
@@ -273,8 +292,10 @@
         const sec = data(await tx.get(cref)) || {}, cr = sec.credited || {}; if (owners.some((o) => cr[o] == null)) return; // まだ入れていない人がいる（次の見回りで続きから）
         const st = data(await tx.get(doc(COLB.stats, r.day))) || {}, gainOf = (o) => (cr[o] && Number(cr[o].g)) || 0;
         const got = r.test ? 0 : owners.reduce((a, o) => a + gainOf(o), 0), held = r.test ? 0 : Number(sec.paid) || 0; // got: 実際に増えた合計・held: 決めたときに数えた合計
-        const p = { status: 'done', result: sec.result || null, paid: got, backBpt: r.test ? 0 : sec.refunded || 0, /* 返還で戻した BPT（取り消しの印 refunded とは別） */ people: (sec.winners || []).length,
+        const backGot = r.test ? 0 : owners.reduce((a, o) => a + ((cr[o] && Number(cr[o].b)) || 0), 0); // 返還で実際に戻った合計（2026-11-21 J6。上限 3,000 で減った分は入れない）
+        const p = { status: 'done', result: sec.result || null, paid: got, backBpt: backGot, /* 返還で戻した BPT（取り消しの印 refunded とは別） */ people: (sec.winners || []).length,
           winners: (sec.winners || []).slice(0, 300).map((w) => { const g = r.test ? 0 : Math.min(Number(w.amount) || 0, gainOf(w.owner)); return Object.assign({ nick: w.nick, storeId: w.storeId, storeName: w.storeName || w.storeId, amount: w.amount, n: w.n, gain: g }, g < w.amount && !r.test ? { capped: true } : {}); }) }; // amount: 当たりの額・gain: 実際に増えた分・capped: 上限 3,000 で止まった
+        const tn = now(); if (tn > (Number(r.revealAt) || 0) + 5000) p.endAt = Math.max(Number(r.endAt) || 0, tn + (Number(r.resultSec) || 120) * 1000); // 発表が遅れた: 結果画面をここから出す（2026-11-21）
         const stp = { paid: (Number(st.paid) || 0) + got, races: (Number(st.races) || 0) + 1 };
         if (!r.test && got !== held) stp.committed = Math.max(0, usedOf(st) - (held - got)); // 決めたあとに残りが変わって、数えたより少なく増えた分は 1 日の使った額から戻す
         tx.set(doc(COLB.stats, r.day), stp, { merge: true });
@@ -297,7 +318,7 @@
           got = {};
           const vs = [], cur = []; for (const v of part) vs.push(data(await tx.get(doc(COLB.votes, v._vid)))); for (const v of part) cur.push(data(await tx.get(doc(COLB.bpt, v.owner))));
           const t = now();
-          part.forEach((v, j) => { const x = vs[j]; if (!x || x.back) return; const n = Boat.betCount(Boat.betsOf(x)) * Boat.STAKE, p = Boat.creditPlan(cur[j], n, t, true, r0.at); if (p) { tx.set(doc(COLB.bpt, v.owner), p.doc, { merge: true }); got[v.owner] = (got[v.owner] || 0) + p.back; /* 実際に戻した分（残りは 3,000 まで） */ } tx.update(doc(COLB.votes, v._vid), { back: true }); });
+          part.forEach((v, j) => { const x = vs[j]; if (!x || x.back) return; const n = Boat.betCount(Boat.betsOf(x)) * Boat.STAKE, p = Boat.creditPlan(cur[j], n, t, true, r0.at); if (p) { tx.set(doc(COLB.bpt, v.owner), p.doc, { merge: true }); got[v.owner] = (got[v.owner] || 0) + p.back; /* 実際に戻した分（残りは 3,000 まで） */ } tx.update(doc(COLB.votes, v._vid), { back: true, voidGot: p ? p.back : 0 }); /* voidGot: 実際に戻った額（2026-11-21 J6） */ });
         });
         Object.keys(got || {}).forEach((o) => { back[o] = (back[o] || 0) + got[o]; });
       }
@@ -318,7 +339,7 @@
     }
     async function publish(races, cfg, t) {
       const live = Boat.liveOf(races, t);
-      if (!live.next && cfg.rules.length) { const e = Boat.schedule(t, cfg.rules).find((x) => x.at - cfg.voteSec * 1000 > t && !Boat.quietAt(x.at)); if (e) live.next = { id: e.id, at: e.at, openAt: e.at - cfg.voteSec * 1000 }; } // まだ作っていない次のレース（時刻表から）
+      if (!live.next && cfg.rules.length) { const e = Boat.schedule(t, cfg.rules).find((x) => x.at - cfg.voteSec * 1000 > t && !Boat.quietSpan(x.at, cfg)); if (e) live.next = { id: e.id, at: e.at, openAt: e.at - cfg.voteSec * 1000 }; } // まだ作っていない次のレース（時刻表から）
       const sig = stable(live);
       if (sig === T.liveSig) return false;
       if (!T.liveSig) { // 進行役になって最初の 1 回（2026-11-20）: いま置いてある中身を 1 回読み、同じなら書かない（書くと、見張っているスマホ・テレビの全員がもう 1 回読むことになる）
@@ -330,15 +351,24 @@
     async function tick(sc, derbyRaces) {
       const did = [], cfg = await getCfg();
       let races = await getRaces(); const t = now();
-      for (const r of races.slice().sort((a, b) => a.at - b.at)) {
-        if (r.status === 'upcoming' && t >= r.closeAt + 1500) { if (await decideOne(r, cfg, sc)) did.push('boat decide ' + r.id); }
-        else if (r.status === 'decided' && t >= r.revealAt) { if (await revealOne(r.id)) did.push('boat reveal ' + r.id); }
-        else if (r.status === 'void' && r.backDone === false) { if (await finishVoid(r.id)) did.push('boat void-back ' + r.id); } // 取り消しの BPT の戻しが途中（管理画面が閉じた）: 続きをやる
+      const all = races.slice(), seen = new Set(all.map((r) => r.id)); (await pendingRaces()).forEach((r) => { if (!seen.has(r.id)) all.push(r); });
+      let firstErr = null;
+      for (const r of all.sort((a, b) => a.at - b.at)) {
+        const step = r.status === 'upcoming' && t >= r.closeAt + 1500 ? 'decide' : r.status === 'decided' && t >= r.revealAt ? 'reveal' : r.status === 'void' && r.backDone === false ? 'void' : null;
+        if (!step) continue;
+        try {
+          if (step === 'decide') { if (await decideOne(r, cfg, sc)) did.push('boat decide ' + r.id); }
+          else if (step === 'reveal') { if (await revealOne(r.id)) did.push('boat reveal ' + r.id); }
+          else if (await finishVoid(r.id)) did.push('boat void-back ' + r.id); // 取り消しの BPT の戻しが途中（管理画面が閉じた）: 続きをやる
+          await clearStuck(r.id);
+        } catch (e) { await markStuck(r.id, step, e); if (!firstErr) firstErr = e; } // ほかのレースは続ける。最後に投げる（鍵の lastErr にも残る）
       }
+      if (did.length) T.pendAt = 0;
       const made = await materialize(cfg, sc, races, derbyRaces); if (made) did.push('boat create ' + made);
       if (did.length) races = await getRaces();
       await counts(races, now());
       await publish(races, cfg, now());
+      if (firstErr) throw firstErr;
       return did;
     }
     function stop() { [T.cfgUn, T.raceUn, T.cntUn].forEach((u) => { if (u) { try { u(); } catch (e) { /* noop */ } } }); T.cfgUn = T.raceUn = T.cntUn = null; T.races = null; T.cfg = null; T.cntFor = null; T.liveSig = ''; /* liveSig を空に: 次に進行役になったら、置いてある中身を 1 回読んで比べる（publish） */ }
@@ -353,7 +383,11 @@
           const q = await db.collection(COLB.races).where('day', '==', day).get(), st = data(await doc(COLB.stats, day).get()) || {};
           const races = []; for (const d of q.docs) { const r = strip(Object.assign({ id: d.id }, d.data())), s = data(await doc(COLB.secrets, d.id).get()) || {}; races.push(Object.assign(Boat.lite(r), { participants: r.participants, target: s.target, decision: s.decision || null })); }
           races.sort((a, b) => a.at - b.at);
-          return { cfg, used: usedOf(st), races, conflicts: Boat.conflicts(cfg.rules, dr.rules, dr.tuning, cfg, now(), 14) };
+          /* 小分けの処理が失敗し続けている印（2026-11-21 J5）: 今日のレースと、発表・取り消しの戻しの途中のレース（前の日も） */
+          const stuck = [], sid = new Set(); const pushStuck = (r, sx) => { if (sid.has(r.id) || !sx || !sx.stuck || !(Number(sx.stuck.n) > 0)) return; sid.add(r.id); stuck.push(Object.assign({ id: r.id, at: r.at }, sx.stuck)); };
+          for (const d of q.docs) { const s2 = data(await doc(COLB.secrets, d.id).get()); pushStuck({ id: d.id, at: d.data().at }, s2); const it = races.find((x) => x.id === d.id); if (it && s2 && s2.stuck && Number(s2.stuck.n) > 0) it.stuck = s2.stuck; }
+          for (const qq of [db.collection(COLB.races).where('status', '==', 'decided'), db.collection(COLB.races).where('backDone', '==', false)]) { try { for (const d of (await qq.get()).docs) { if (!sid.has(d.id)) pushStuck({ id: d.id, at: d.data().at }, data(await doc(COLB.secrets, d.id).get())); } } catch (e) { /* noop */ } }
+          return { cfg, used: usedOf(st), races, stuck, conflicts: Boat.conflicts(cfg.rules, dr.rules, dr.tuning, cfg, now(), 14) };
         }),
         saveBoat: wrap(async (b) => {
           const cur = data(await doc(COLB.config, 'boat').get()) || {}, dr = await derbyRulesNow(), stores = await getStores();
@@ -366,9 +400,17 @@
         }),
         boatRace: wrap(async (o) => { // すぐ始めるレース（確かめ用）
           o = o || {}; const cfg0 = Boat.configOf(data(await doc(COLB.config, 'boat').get()) || {}), s = data(await doc(COLB.config, 'secret').get()) || {}, inSec = Math.max(5, Math.min(3600, Number(o.inSec) || 60)), tu = Core.tuningOf(s.tuning || {});
-          if (!o.test && Boat.quietAt(now() + inSec * 1000, tu.dayStartHour)) throw E(409, 'quiet', 'ボートは朝 ' + Boat.quietText(tu.dayStartHour) + ' には始められません（BPT のリセットと営業日の区切りの前後。テストのレースは始められます）');
-          const cfg = Object.assign({}, cfg0, { voteSec: Math.max(5, Math.min(cfg0.voteSec, Number(o.voteSec) || inSec)) }), id = 'bx-' + Boat.newCode(rand).toLowerCase().slice(0, 6);
-          const r = await create({ id, at: now() + inSec * 1000, payout: o.payout, test: !!o.test }, Object.assign(cfg, { oddsSims: o.sims || cfg.oddsSims }), { salt: s.salt || 'nosalt', tuning: tu });
+          const cfg = Object.assign({}, cfg0, { voteSec: Math.max(5, Math.min(cfg0.voteSec, Number(o.voteSec) || inSec)) }), id = 'bx-' + Boat.newCode(rand).toLowerCase().slice(0, 6), at = now() + inSec * 1000;
+          if (!o.test && Boat.quietSpan(at, cfg, tu.dayStartHour)) throw E(409, 'quiet', 'ボートは朝 ' + Boat.quietText(tu.dayStartHour) + ' には始められません（BPT のリセットと営業日の区切りの前後。投票の始まりから結果画面の終わりまでがかからないように。テストのレースは始められます）');
+          /* 2026-11-21（I2）: ほかのボート（投票中・映像中・結果中・作る予定）と、時刻表の競馬（作ったもの・作る予定）と被るなら断る（全店のテレビの流れが崩れるため） */
+          const span = Boat.boatSpan(at, cfg), bq = await db.collection(COLB.races).where('at', '>=', now() - 6 * 3600000).get();
+          const hit = Boat.busyWithBoat(span[0], span[1], bq.docs.map((d) => strip(Object.assign({ id: d.id }, d.data()))), cfg0.rules, cfg0, now());
+          if (hit) throw E(409, 'boat_busy', 'ほかのボート（' + Core.fmtBizTime(hit.at, tu.dayStartHour) + ' 締切）の投票・映像・結果の時間と重なります。終わってから始めてください');
+          let ders = Core.scheduleAround(now(), (s.timetable && s.timetable.rules) || []).map((x) => x.at);
+          try { (await db.collection(COLB.draces).where('at', '>=', now() - 3 * 3600000).get()).docs.forEach((d) => { const x = d.data() || {}; if (/^\d{8}-\d{4}/.test(d.id) && !x.refunded && x.status !== 'void') ders.push(x.at); }); } catch (e) { /* 読めなければ時刻表だけ */ }
+          ders = ders.filter((x) => Boat.busyWithDerby(at, [x], tu, cfg));
+          if (ders.length) throw E(409, 'derby_busy', Core.fmtBizTime(ders[0], tu.dayStartHour) + ' の競馬と重なります（競馬の投票から結果画面の最初の 2 分まで）。時刻をずらしてください');
+          const r = await create({ id, at, payout: o.payout, test: !!o.test }, Object.assign(cfg, { oddsSims: o.sims || cfg.oddsSims }), { salt: s.salt || 'nosalt', tuning: tu });
           return { race: Boat.lite(r) };
         }),
         /* 取り消し: 足した BPT の券を全額戻す（2026-11-18 オーナー決定）。
@@ -378,7 +420,8 @@
           await db.runTransaction(async (tx) => {
             const r = data(await tx.get(rref)); if (!r) throw E(404, 'no_race', 'レースが見つかりません'); if (r.status === 'done') throw E(409, 'done', '発表したレースは取り消せません'); if (r.status === 'void') return;
             const t = now(), held = r.status === 'decided' && !r.test;
-            const sec = held ? data(await tx.get(doc(COLB.secrets, id))) || {} : null, st = held ? data(await tx.get(doc(COLB.stats, r.day))) : null;
+            const sec = r.status === 'decided' ? data(await tx.get(doc(COLB.secrets, id))) || {} : null, st = held ? data(await tx.get(doc(COLB.stats, r.day))) : null;
+            if (sec && sec.credited && Object.keys(sec.credited).length) throw E(409, 'crediting', '発表の途中（BPT を入れ始めた）のレースは取り消せません。少し待つと発表されます'); // 2026-11-21（G2・J1）: 当たりと返還の両方が残らないように
             if (held) tx.set(doc(COLB.stats, r.day), { committed: Math.max(0, usedOf(st) - (Number(sec.paid) || 0)) }, { merge: true });
             tx.update(rref, { status: 'void', refunded: true, backDone: false, revealAt: Math.max(t, r.openAt), endAt: Math.max(t, r.openAt) + 60000 });
           });
