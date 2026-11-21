@@ -750,6 +750,8 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 .os-s .stampgot span { font-size: 14px; }
 .os-s .keeptill { margin: 0; }
 .os-s .incline { margin: 0; }
+/* 返還した BPT の追加の券の知らせ（2026-11-20。事故の赤とは分ける） */
+.incline.bptback { background: rgba(143, 220, 255, .12); border-color: rgba(143, 220, 255, .45); color: #d8f3ff; }
 /* 結果（はずれ）: 「はずれ」と結果の 1着・2着を 1 行に */
 .os-s .lhead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; }
 .os-s .lhead .miss { padding: 0; }
@@ -778,3 +780,25 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 .os-xs .scr.voted .tk-note, .os-xs .scr.racing .tk-note { display: none; } /* 券の下の「倍率と当たりの額は、締切まで動きます」は省く（確認の画面に「倍率は締切時に変動します」） */
 .os-xs .entry:has(.note) .nicksec .sub { display: none; } /* 知らせが出ているときは「8文字まで・当たるとテレビに出ます」を省く */
 .os-xs .entry:has(.note) .keypad { gap: 4px; } .os-xs .entry:has(.note) .digits .dg { height: 52px; font-size: 36px; }
+
+/* BPT（ボートレースポイント）の追加の券（2026-11-18）: 確認の画面の「BPT で券を追加」［−］［＋］・投票済みの「BPT で券を追加」・別の組み合わせの追加の券の行。BPT がある人だけに出る */
+.bptrow { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 14px; background: var(--card); border: 1px dashed var(--gold2); }
+.bptrow .bl { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.bptrow .bl b { font-size: 15px; font-weight: 900; color: var(--gold); white-space: nowrap; }
+.bptrow .bl small { font-size: 12px; color: var(--dim); font-weight: 600; white-space: nowrap; }
+.bptrow .stp { display: flex; align-items: center; gap: 6px; flex: none; }
+.bptrow .stp .btn { width: 44px; min-height: 40px; padding: 0; font-size: 22px; line-height: 1; border-radius: 10px; }
+.bptrow .stp .btn:disabled { opacity: .35; }
+.bptrow .stp b { min-width: 22px; text-align: center; font-family: var(--display); font-size: 24px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; }
+.ifwin .xn { font-size: 14px; font-weight: 800; color: var(--gold); white-space: nowrap; }
+.mine .mk .vn.xn { border-color: var(--gold); color: var(--gold); }
+.bptbtn { min-height: 46px; font-size: 15px; border-color: var(--gold2); color: var(--gold); padding: 6px 12px; }
+.bptbtn small { display: block; font-size: 11px; font-weight: 600; color: var(--dim); }
+.xlist { padding: 8px 14px; gap: 4px; }
+.xlist .vm small { font-size: 12px; font-weight: 700; color: var(--dim); margin-left: 4px; }
+.xlist .vr.w .vm { color: var(--gold); }
+.os-s .bptrow { padding: 6px 8px 6px 12px; } .os-s .bptrow .stp .btn { min-height: 36px; width: 40px; } .os-s .bptbtn { min-height: 42px; } .os-s .bptbtn small { display: none; }
+/* 2026-11-20 オーナー「BPT は競馬にも使えることを目立たせる」: ボートの BPT を持っている人の「BPT で券を追加」をボートの水色で光らせる（字・大きさは変えない＝1 画面の決まりは今のまま） */
+.bptrow { border: 1.5px solid #4fb0e2; background: linear-gradient(135deg, #12365a, #0d1f36); box-shadow: 0 0 0 1px rgba(79, 176, 226, .25) inset, 0 0 16px rgba(79, 176, 226, .35); }
+.bptrow .bl b { color: #8fdcff; }
+.bptbtn { border: 1.5px solid #4fb0e2; color: #8fdcff; box-shadow: 0 0 14px rgba(79, 176, 226, .3); }
