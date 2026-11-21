@@ -53,7 +53,8 @@
       const hit = !!(res && res.win), miss = !!(res && !res.win), fin = r && r.result && r.result.finalExacta ? Number(r.result.finalExacta[v.first + '-' + v.second]) : 0;
       const o = (hit || miss) && Number(res.odds) > 0 ? Number(res.odds) : fin > 0 ? fin : exOdds(r, v.first, v.second), hs = horsesOf(r), h1 = hs[v.first], h2 = hs[v.second];
       const closed = hit || miss || !!(r && r.closeAt && now() >= r.closeAt); // 締切のあと（レース中）は倍率が動かない＝「倍率」・「締切まで動きます」なし
-      const pay = hit ? Number(res.amount) || 0 : o ? payFor(o) : 0;
+      const cnt = Math.max(1, Math.floor(Number(v.tickets) || 1)); // 券の枚数（BPT の追加の券を同じ組み合わせに重ねた。2026-11-18）: 当たりの額は 1 枚の額 × 枚数
+      const pay = hit ? Number(res.amount) || 0 : o ? payFor(o) * cnt : 0;
       const no1 = h1 ? h1.no : v.first + 1, no2 = h2 ? h2.no : v.second + 1;
       const d = JST((r.at || now()) - dayStartHour() * 3600e3), ymd = d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日';
       const L = st && Array.isArray(st.today) ? st.today : [], ri = L.findIndex((x) => x && (x.id === r.id || x.at === r.at));
@@ -69,7 +70,7 @@
       /* 2026-11-08 オーナー「馬券のデザインを本物にサイズとかも全部寄せて」: 手本の写真（1.6:1）の割合で組む（scratchpad/ticket-ref-measure.md）。
          左の列 36%＝日付・店（大）・[番号]レース・QR 風 2 つ・レース名と発走・casa DERBY 店／帯 12%＝EXACTA・2連単・EXACTA（左右に細い線）／右の列＝本物の 3 行:
          行 1 [3]-[5] ★★★ 100pt・行 2 馬名＋いまの倍率・行 3 当たれば ○pt／下＝会計番号・名前・発行（本物の合計の位置。「合計」の行は入れない＝オーナー 11/7）、通し番号。大きさは券の幅に比例（cqw） */
-      return '<div class="mine tk' + (n === 2 ? ' b2' : '') + (hit ? ' hit' : miss ? ' miss' : '') + (cmp ? ' cmp' : '') + '"><p class="mk">' + esc(hit ? (n === 2 ? TX.vote2 : n === 1 ? TX.vote1 : '的中した投票券') : n === 2 ? TX.vote2 : miss && n === 1 ? TX.vote1 : TX.yourPick) + (hit ? '<span class="vn bt">' + esc(TX.hitMark) + '</span>' : miss ? '<span class="vn ms">' + esc(TX.missMark || 'はずれ') + '</span>' : n === 1 ? '<span class="vn">' + esc(TX.vote1) + '</span>' : n === 2 ? '<span class="vn bt">' + esc(v.stamp ? TX.stampTag : TX.bonusTag) + '</span>' : '') + '</p>' +
+      return '<div class="mine tk' + (n === 2 ? ' b2' : '') + (hit ? ' hit' : miss ? ' miss' : '') + (cmp ? ' cmp' : '') + '"><p class="mk">' + esc(hit ? (n === 2 ? TX.vote2 : n === 1 ? TX.vote1 : '的中した投票券') : n === 2 ? TX.vote2 : miss && n === 1 ? TX.vote1 : TX.yourPick) + (hit ? '<span class="vn bt">' + esc(TX.hitMark) + '</span>' : miss ? '<span class="vn ms">' + esc(TX.missMark || 'はずれ') + '</span>' : n === 1 ? '<span class="vn">' + esc(TX.vote1) + '</span>' : n === 2 ? '<span class="vn bt">' + esc(v.stamp ? TX.stampTag : TX.bonusTag) + '</span>' : '') + (cnt > 1 ? '<span class="vn xn">×' + cnt + '枚</span>' : '') + '</p>' +
         '<div class="tkt"><div class="tkin">' +
           '<div class="tk-l"><div class="tk-date">' + esc(ymd) + '</div><div class="tk-store" data-fit="14">' + esc(store) + '</div>' +
             (ri >= 0 ? '<div class="tk-rno"><b>' + (ri + 1) + '</b><span>レース</span></div>' : '<div class="tk-rno tm"><b>' + esc(at) + '</b><span>発走</span></div>') +
