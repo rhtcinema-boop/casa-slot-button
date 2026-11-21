@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>casa BOAT テスト版</title>
+<style>
+  html,body{margin:0;height:100%;background:#05080f;color:#fff;font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;overflow:hidden}
+  #stage{position:absolute;left:50%;top:50%;width:1000px;height:480px;transform-origin:center;background:#0b1626;overflow:hidden}
+  #gl,#hud{position:absolute;left:0;top:0;width:1000px;height:480px;display:block}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(5,10,20,.86);transition:opacity .5s}
+  .panel[hidden]{display:none}
+  .panel h1{font-size:30px;margin:0 0 10px;letter-spacing:.06em;font-weight:900}
+  .panel h1 small{font-size:16px;color:#ffd966;margin-left:12px}
+  table{border-collapse:collapse;font-size:17px;font-weight:800}
+  td,th{padding:5px 12px;border-bottom:1px solid rgba(255,255,255,.14);text-align:left;white-space:nowrap}
+  th{font-size:12px;color:#9fb6d6;font-weight:700}
+  .no{display:inline-block;width:30px;height:30px;line-height:30px;text-align:center;border-radius:5px;font-weight:900;font-size:20px;border:1px solid rgba(0,0,0,.5)}
+  .od{color:#ffd966;text-align:right}
+  .res{font-size:60px;font-weight:900;margin:8px 0;display:flex;align-items:center;gap:16px}
+  .res .no{width:74px;height:74px;line-height:74px;font-size:52px;border-radius:10px}
+  .sub{font-size:20px;color:#cfe3ff;font-weight:800}
+  .big{font-size:34px;color:#ffd966;font-weight:900;margin-top:6px}
+  /* 水面気象（風向・風速・波高）の 1 行。公式サイトの「水面気象情報」と同じ並び: 天気・風速と橙の矢印（風が吹いていく向き。右が 1 マーク・下がスタンド）・波高 */
+  #wx{display:flex;align-items:center;gap:14px;margin:0 0 8px;font-size:16px;font-weight:800;color:#e8f1ff}
+  #wx .t{font-size:12px;color:#9fb6d6;font-weight:700}
+  #wx b{color:#ffd966;font-weight:900}
+  #wx svg{width:34px;height:34px;display:block}
+  #wx .stab{font-size:12px;border:1px solid #fff;border-radius:3px;padding:1px 6px}
+  #note{position:absolute;right:8px;top:6px;font-size:11px;color:rgba(255,255,255,.45);z-index:5}
+</style></head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas><canvas id="hud"></canvas>
+  <div class="panel" id="card" hidden><h1>出走表<small id="cardSub"></small></h1><div id="wx"></div><table id="cardT"></table></div>
+  <div class="panel" id="result" hidden><div class="sub">確定</div><div class="res" id="resNo"></div><div class="sub" id="resName"></div><div class="big" id="resOdds"></div></div>
+  <div id="note"></div>
+  <div id="tap" style="position:absolute;left:8px;bottom:40px;font-size:12px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.45);padding:3px 8px;border-radius:6px;z-index:6">画面をクリックすると音が出ます</div>
+</div>
+<script src="../js/vendor/three.min.js"></script>
+<script src="../js/engine.js"></script>
+<script src="../js/boat-model.js"></script>
+<script src="course.js"></script>
+<script src="boat3d.js" onerror="void 0"></script>
+<script src="venue3d.js" onerror="void 0"></script>
+<script src="lines.js"></script>
+<script src="race-boat.js"></script>
+<script src="announce-boat.js"></script>
+<script src="fanfare-boat.js"></script>
+<script src="sound.js"></script>
+<script>
+/* casa BOAT テスト版のページ: 出走表（6 秒）→ レース → 確定 → 次のレース、をくり返す。賭けはまだ無い（走る場面の確認用）。音は boat/sound.js（?big=1 でビッグレースの音・?fan=A|B|C でファンファーレ）。
+   ?seed=数（レースを固定）・?inc=f（フライング）/ flip（転覆）・?speed=2（早回し）・?q=low・?pause=1（自動で進めない。BT.seek(秒) で好きな時刻へ）・?from=-14（その時刻から）・?loop=0・?mute=1（音なし。テストは必ずこれ）・?hour=21（時間帯を固定） */
+(function () {
+  'use strict';
+  const QS = new URLSearchParams(location.search), $ = (id) => document.getElementById(id);
+  const stage = $('stage');
+  function fit() { const k = Math.min(innerWidth / 1000, innerHeight / 480); stage.style.transform = 'translate(-50%,-50%) scale(' + k + ')'; }
+  addEventListener('resize', fit); fit();
+  const R = new BOAT.Race($('gl'), $('hud'), { quality: QS.get('q') === 'low' ? 'low' : 'high' });
+  let seed = Number(QS.get('seed')) || (Date.now() % 100000), raceNo = 1, state = 'card', cardT = 0, resT = 0, last = 0;
+  const PAUSE = QS.get('pause') === '1', SPEED = Number(QS.get('speed')) || 1, FROM = QS.has('from') ? Number(QS.get('from')) : null;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const noTag = (h) => '<span class="no" style="background:' + h.color + ';color:' + h.ink + '">' + h.no + '</span>';
+  /* 水面気象の 1 行【調査 11 ④】: 公式サイトは「風速 2m」＋橙の矢印（16 方位。風が吹いていく向き）＋「波高 1cm」、中継は「スタートラインに対して 追い風」。架空の場なので方角（北西など）は出さない。
+     矢印の小さい絵は公式と同じ向き（下がスタンド・右が 1 マーク・たての線がスタートライン）。無風は矢印なし */
+  function wxLine(race) {
+    const x = race.weather2; if (!x) return '';
+    const sky = { sunny: '晴', cloudy: '曇り', rain: '雨' }[race.weather] || '';
+    const arrow = x.windSpeed > 0 ? '<g transform="rotate(' + x.windDir + ' 17 17)"><path d="M17 4 L24 15 L19.5 15 L19.5 29 L14.5 29 L14.5 15 L10 15 Z" fill="#ff8a1e"/></g>' : '';
+    const pic = '<svg viewBox="0 0 34 34"><rect x="1" y="5" width="32" height="24" rx="3" fill="#1f5f96"/><line x1="17" y1="5" x2="17" y2="29" stroke="rgba(255,255,255,.55)" stroke-width="1"/><circle cx="6" cy="17" r="2" fill="#e33"/><circle cx="28" cy="17" r="2" fill="#e33"/>' + arrow + '</svg>';
+    return '<span class="t">水面気象</span><span>' + sky + '</span>' + pic + '<span><span class="t">スタートラインに対して</span> <b>' + esc(x.dirLabel) + '</b></span><span>風速 <b>' + x.windSpeed + 'm</b></span><span>波高 <b>' + x.wave + 'cm</b></span>' + (x.stabilizer ? '<span class="stab">安定板使用</span>' : '');
+  }
+  let cur = null;
+  BOAT.Sound.init();
+  R.onSay = (keys, line) => BOAT.Sound.say(line);
+  function sound() { BOAT.Sound.frame(R, { state, cardT, cardLen: 6 }); } // 音は boat/sound.js（6 艇のエンジン・ブザー・ファンファーレ・実況）
+  function newRace() {
+    const race = BoatModel.makeRace(Engine.rng(Engine.hashSeed('boat-race', seed)));
+    race.tune = { payoutRate: 0.85 };
+    const inc = QS.get('inc'); if (inc === 'f') race.incident = { type: 'scratch', horse: 3, at: 0.3 }; else if (inc === 'flip') race.incident = { type: 'fall', horse: 2, at: 0.2 };
+    const odds = Engine.calcOdds(race, Engine.rng(Engine.hashSeed('boat-odds', seed)), 500);
+    const rs = Engine.hashSeed('boat-run', seed), run = Engine.replayRun(race, rs);
+    let desc = {}; try { desc = BoatModel.describe(race, rs, { swaps: run.swaps }); } catch (e) { console.warn('describe', e); }
+    cur = { race, odds, run, order: run.finalOrder() };
+    R.setRace(race, run, { title: 'casa BOAT', sub: '第' + raceNo + 'レース', hour: QS.has('hour') ? Number(QS.get('hour')) : null, odds, weather: race.weather2 }, desc);
+    $('cardSub').textContent = '第' + raceNo + 'レース　2周 1200m';
+    cur.desc = desc;
+    $('wx').innerHTML = wxLine(race);
+    $('cardT').innerHTML = '<tr><th>枠</th><th>進入</th><th>選手</th><th>級</th><th>得意</th><th>平均ST</th><th>モーター</th><th>近5走</th><th style="text-align:right">単勝</th></tr>' + race.horses.map((h, i) =>
+      '<tr><td>' + noTag(h) + '</td><td>' + (race.entry.indexOf(i) + 1) + 'コース' + (race.moved[i] ? ' ←' : '') + '</td><td>' + esc(h.name) + '</td><td>' + h.cls + '</td><td>' + (BoatModel.TYPES[h.type] || {}).label + '</td><td>' + h.st.toFixed(2) + '</td><td>' + h.cond.mark + ' ' + h.cond.label + '</td><td>' + h.past.join(' ') + '</td><td class="od">' + odds.tansho[i].toFixed(1) + '</td></tr>').join('');
+    $('note').textContent = 'seed ' + seed + '・部品 ' + Object.keys(R.parts).map((k) => k + ':' + R.parts[k]).join(' ');
+    state = 'card'; cardT = 0; $('card').hidden = false; $('result').hidden = true;
+    if (FROM != null) { state = 'race'; $('card').hidden = true; R.seek(FROM); }
+  }
+  function showResult() {
+    const o = cur.order, H = cur.race.horses, key = o[0] + '-' + o[1];
+    $('resNo').innerHTML = noTag(H[o[0]]) + '<span>→</span>' + noTag(H[o[1]]);
+    $('resName').textContent = '1着 ' + H[o[0]].name + '　2着 ' + H[o[1]].name;
+    $('resOdds').textContent = '2連単 ' + (cur.odds.exacta[key] || 0).toFixed(1) + ' 倍';
+    $('result').hidden = false; state = 'result'; resT = 0;
+  }
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.1, (now - (last || now)) / 1000) * SPEED; last = now;
+    if (PAUSE) return;
+    if (state === 'card') { cardT += dt; R.tick(0); R.seek(BOAT.Race.PIT_T); sound(); if (cardT > 6) { state = 'race'; $('card').hidden = true; R.seek(BOAT.Race.PIT_T); } }
+    else if (state === 'race') { R.speedK = 1; R.tick(dt); sound(); if (R.done) showResult(); }
+    else if (state === 'result') { resT += dt; R.tick(dt); sound(); if (resT > 7 && QS.get('loop') !== '0') { seed++; raceNo++; newRace(); } }
+  }
+  newRace();
+  requestAnimationFrame(frame);
+  if (BOAT.Sound.MUTE) $('tap').hidden = true; else setInterval(() => { if (BOAT.Sound.on) $('tap').hidden = true; }, 500);
+  window.BT = { R, get cur() { return cur; }, seek(tt) { state = 'race'; $('card').hidden = true; $('result').hidden = true; R.seek(tt); return R.shot; }, step(dt) { R.tick(dt); return R.shot; }, info() { return { tt: R.tt, shot: R.shot, parts: R.parts, order: cur.order.map((i) => i + 1).join(''), inc: cur.run.incident, kim: cur.desc && cur.desc.kimarite, lines: cur.desc && cur.desc.lines && cur.desc.lines.map((a) => a.join('')).join(' '), planOk: R.plan && R.plan.ok, planMs: R.plan && R.plan.ms, shots: R.shots.map((s) => s.id + '@' + s.t.toFixed(1)).join(' '), draw: R.renderer.info.render.calls, tri: R.renderer.info.render.triangles }; } };
+})();
+</script>
+</body></html>
