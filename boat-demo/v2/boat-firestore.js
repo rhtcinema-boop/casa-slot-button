@@ -194,11 +194,11 @@
     /* 2026-11-21 深夜（K2・M8）: 締切から 6 時間を過ぎても決めていないレースは、決めずに取り消して BPT を全額戻す（映像も結果画面も出せない古いレースに、あとから結果だけ付けない。
        取り消しと同じ道＝スマホは「取り消し・BPT を戻しました」、戻し終わりは backDone）。画面には出さない（endAt ＝ いま） */
     const STALE_MS = 6 * 3600000;
-    async function voidStale(r) {
-      const rref = doc(COLB.races, r.id); let ok = false;
-      await db.runTransaction(async (tx) => { ok = false; const cur = data(await tx.get(rref)); if (!cur || cur.status !== 'upcoming' || now() < cur.closeAt + STALE_MS) return; const t = now(); tx.update(rref, { status: 'void', refunded: true, backDone: false, voidWhy: 'stale', revealAt: t, endAt: t }); ok = true; });
+    async function voidStale(r, why) {
+      const rref = doc(COLB.races, r.id); let ok = false; why = why || 'stale';
+      await db.runTransaction(async (tx) => { ok = false; const cur = data(await tx.get(rref)); if (!cur || cur.status !== 'upcoming' || (why === 'stale' && now() < cur.closeAt + STALE_MS)) return; const t = now(); tx.update(rref, { status: 'void', refunded: true, backDone: false, voidWhy: why, revealAt: t, endAt: why === 'late' ? t + 60000 : t }); ok = true; }); // late: 「取り消し・BPT を戻しました」を 1 分だけ出す
       if (!ok) return null;
-      note(r.id, { status: 'void', refunded: true, backDone: false, voidWhy: 'stale' });
+      note(r.id, { status: 'void', refunded: true, backDone: false, voidWhy: why });
       return finishVoid(r.id);
     }
     /* 2026-11-21（J5）: 小分けの処理（決める・発表・取り消しの戻し）が失敗したら、理由と続けて失敗した回数を boatSecrets/<id> の stuck に残す（管理画面が赤字で出す）。うまくいったら消す */
@@ -255,7 +255,16 @@
        （2026-11-20: 以前は発表のときに足していたので、発表待ちのレースの分を次のレースが知らず、1 日の上限を超えた）。
        取引の中で合計が読んだときから変わっていたら（ほかの進行役が同時に別のレースを決めた）、読み直して決め直す。
        票は置き場から読み直す（締切のあとは増えない。見張りの写しは届き遅れがありうるので、決めるときだけは使わない） */
-    async function decideOne(r, cfg, sc) {
+    /* 2026-11-21 深夜（M5 オーナー決定）: 決めるのが遅れたら、次のレース（ボートの投票の始まり・競馬がテレビを使い始める時刻）までは映像を後ろへずらす（前は 60 秒まで）。
+       映像の終わり（revealAt）がそれを超えるなら決めずに取り消して BPT を全額戻す（K2 と同じ道）。次のレースが無いときは上限なし（締切から 6 時間を過ぎたら K2 で取り消し） */
+    function lateLimit(r, races, cfg, sc, ders) {
+      let lim = r.closeAt + STALE_MS;
+      (races || []).forEach((x) => { if (x && x.id !== r.id && x.at > r.at && x.status !== 'void' && x.openAt > r.closeAt) lim = Math.min(lim, x.openAt); });
+      const nx = Boat.schedule(r.at + 1000, cfg.rules).find((e) => e.at > r.at && !(races || []).some((x) => x.id === e.id)); if (nx) lim = Math.min(lim, nx.at - cfg.voteSec * 1000);
+      (ders || []).forEach((d) => { const sp = Boat.derbySpan(d, sc.tuning); if (sp[0] > r.closeAt) lim = Math.min(lim, sp[0]); });
+      return lim;
+    }
+    async function decideOne(r, cfg, sc, lim) {
       const q = await db.collection(COLB.votes).where('raceId', '==', r.id).get(), votes = q.docs.map((d) => d.data()).filter((v) => v && v.owner);
       const sec = data(await doc(COLB.secrets, r.id).get()) || {}, names = await storeNames(), sref = doc(COLB.stats, r.day);
       /* 持てる BPT の上限 3,000（2026-11-20 夜）: 払い出しを「実際に増える分」で数えるため、票を持っている人の残りを読む（1 人 1 回。テストのレースは払わないので読まない）。
@@ -263,7 +272,8 @@
       const bals = r.test ? {} : await balsOf(votes.map((v) => v.owner));
       for (let k = 0; k < 3; k++) {
         const used = usedOf(data(await sref.get()));
-        const d = Boat.decide(Engine, Outcome, r, sec, votes, cfg, sc.salt, now(), used, bals);
+        const d = Boat.decide(Engine, Outcome, r, sec, votes, cfg, sc.salt, now(), used, bals, lim != null ? lim - r.runAt : null);
+        if (lim != null && d.runAt - r.runAt > 60000 && d.revealAt > lim) return (await voidStale(r, 'late')) ? true : false; // 次のレースまでに映像が終わらない: 取り消して全額戻す
         const patch = { status: 'decided', runAt: d.runAt, revealAt: d.revealAt, endAt: d.endAt, participants: Boat.countVotes(votes) };
         let res = null;
         await db.runTransaction(async (tx) => {
@@ -377,12 +387,12 @@
       const did = [], cfg = await getCfg();
       let races = await getRaces(); const t = now();
       const all = races.slice(), seen = new Set(all.map((r) => r.id)); (await pendingRaces()).forEach((r) => { if (!seen.has(r.id)) all.push(r); });
-      let firstErr = null;
+      let firstErr = null, ders = null;
       for (const r of all.sort((a, b) => a.at - b.at)) {
         const step = r.status === 'upcoming' && t >= r.closeAt + 1500 ? (t >= r.closeAt + STALE_MS ? 'stale' : 'decide') : r.status === 'decided' && t >= r.revealAt ? 'reveal' : r.status === 'void' && r.backDone === false ? 'void' : null;
         if (!step) continue;
         try {
-          if (step === 'decide') { if (await decideOne(r, cfg, sc)) did.push('boat decide ' + r.id); }
+          if (step === 'decide') { if (!ders) ders = (derbyRaces || []).map((x) => x.at).concat(Core.scheduleAround(t, (sc.timetable && sc.timetable.rules) || []).map((x) => x.at)); if (await decideOne(r, cfg, sc, lateLimit(r, all, cfg, sc, ders))) did.push('boat decide ' + r.id); }
           else if (step === 'stale') { if (await voidStale(r)) did.push('boat void-stale ' + r.id); }
           else if (step === 'reveal') { if (await revealOne(r.id)) did.push('boat reveal ' + r.id); }
           else if (await finishVoid(r.id)) did.push('boat void-back ' + r.id); // 取り消しの BPT の戻しが途中（管理画面が閉じた）: 続きをやる

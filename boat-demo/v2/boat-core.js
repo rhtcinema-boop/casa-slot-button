@@ -347,7 +347,7 @@
        winners の 1 行 ＝ { owner, nick, storeId, n: 当たった枚数, amount: 当たりの額（枚数 × 払戻）, gain: 実際に増える分, capped?: 上限で止まった }。paid ＝ gain の合計。
        発表のときに残りが変わっていても 3,000 は超えない（creditPlan が止める。決めた gain より多くは増やさない） */
   const clampOdds = (o) => Math.min(ODDS_HI, Math.max(ODDS_LO, Math.round((Number(o) || ODDS_HI) * 10) / 10)); // 確定の倍率も 2〜40 倍に収める（2026-11-20 オーナー決定「40 倍で止める」。締切後の ±10% のずらしのあと）
-  function decide(Engine, Outcome, race, secret, votes, cfg, salt, t, usedToday, bals) {
+  function decide(Engine, Outcome, race, secret, votes, cfg, salt, t, usedToday, bals, lateMaxMs) { // lateMaxMs（2026-11-21 深夜 M5）: 映像を後ろへずらしてよい長さ（省くと 60 秒）
     const c = configOf(cfg), list = (votes || []).filter((v) => v && v.owner);
     const balOf = (o) => Math.min(BPT_MAX, Math.max(0, Number(bals && bals[o]) || 0));
     const capPay = Math.max(0, Math.min(c.capRace, c.capDay - Math.max(0, Number(usedToday) || 0))); // 払ってよい BPT（0 ＝ 1 日の上限を使い切った）
@@ -390,7 +390,7 @@
     if (paid > capPay) { noPay = true; winners = []; paid = 0; } // 最後の守り（ここには来ないはず）: 上限を超えるなら払わない
     const nominal = race.test ? 0 : winners.reduce((a, w) => a + w.amount, 0); // 当たりの額の合計（3,000 で止まって消える分も入れた数。記録用）
     const late = Math.max(0, t + 3000 - race.runAt); // 決めるのが遅れたら映像を後ろへ（最大 60 秒）
-    const runAt = race.runAt + Math.min(60000, late), tm = timesOf(race.at, c, winSec);
+    const runAt = race.runAt + Math.min(lateMaxMs != null ? Math.max(60000, Number(lateMaxMs) || 0) : 60000, late), tm = timesOf(race.at, c, winSec);
     const revealAt = runAt + (tm.revealAt - tm.runAt), endAt = revealAt + c.resultSec * 1000;
     const result = { first, second, combo, odds, pay, order: fs.order, finalExacta };
     if (incPub) result.incident = incPub;

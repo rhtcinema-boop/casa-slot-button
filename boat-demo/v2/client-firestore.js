@@ -217,6 +217,13 @@
           else await signInAnon();
         } else mode = auth.currentUser.email && auth.currentUser.email === cfg.tvEmail ? 'tv' : auth.currentUser.email ? 'master' : 'anon';
         try { await auth.currentUser.getIdToken(); } catch (e) { /* noop */ }
+        /* 2026-11-21 深夜（M2 オーナー決定）: 新しい決まりではテレビ用のメールアカウントに特別な権限が無い（許可したテレビだけが進行役・予備）。
+           テレビ用アカウントで裏の設定が読めない（＝新しい決まり）と分かったら、匿名ログインに切り替えて名乗る（管理画面に出る→「許可する」→「進行役にする」か「予備にする」で動く）。
+           今の本番の決まりでは読めるので今までどおり。読めない理由が電波（unavailable など）のときは切り替えない */
+        if (mode === 'tv' && role === 'tv') {
+          let denied = false; try { await doc(COL.config, 'secret').get(); } catch (e) { denied = !!(e && e.code === 'permission-denied'); }
+          if (denied) { try { await auth.signOut(); } catch (e) { /* noop */ } await signInAnon(); mode = 'anon'; logD && logD([now(), 'tv account not approved → anon']); }
+        }
         /* 時刻合わせ: スマホは待たない（2026-10-28。書いて読み戻す 2 往復ぶん画面が遅れていた）。合うまでは端末の時計。投票は合ってから（vote の clockP） */
         watchUser();
         clockP = syncClock(role === 'tv' ? 3 : 1).catch(() => {});
