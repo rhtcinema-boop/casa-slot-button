@@ -903,6 +903,9 @@ window.Race3D = (function () {
     } catch (e) { }
     return d;
   }
+  /* casa BOAT（2026-11-20 D1）: ボートの画面を出している間は、待機だけでなく、走り・再生・勝ち馬のアップの描画ループも止める（v2/tv.js の DERBY.boatHold が呼ぶ。
+     前のレースのリプレイがボートの裏で描かれ続けて Fire TV が 2 倍重かった）。止めたあとは setRace で作り直す（start の約束は返らない＝途中でレースを切り替えたときと同じ） */
+  Race3D.prototype.stopRun = function () { this.runSeq = (this.runSeq || 0) + 1; this.endHold = 0; };
   Race3D.prototype.startIdle = function () {
     const self = this; if (this.idleOn) return; this.idleOn = true;
     let last = performance.now();
@@ -913,7 +916,7 @@ window.Race3D = (function () {
       // v2（全店同時）: ゲートインの時計をサーバーの時刻に合わせる（gateIn({ clock }) の秒。遅れていたら追いつき、進みすぎなら待つ）
       if (self.gi && self.gi.clock && !self.gi.finished) { let c = NaN; try { c = self.gi.clock(); } catch (e) { } if (isFinite(c)) sdt = clamp(c - self.gi.t, 0, 30); }
       if (self.gi) { try { self.giStep(sdt); } catch (e) { console.error(e); self.giFinish(); } }
-      if (self.offscreen && !self.gi && self.xlite) { self.offWas = true; raf(frame); return; } // lite2: 映像が画面に出ていない間（結果・遊び方の画面。v2/tv.js が立てる）は描かない
+      if ((self.offscreen && !self.gi && self.xlite) || (self.boatHold && !self.gi)) { self.offWas = true; raf(frame); return; } // boatHold: casa BOAT の映像・投票の画面を出している間（v2/tv-boat.js。2026-11-19）も描かない（テレビの重さを 2 倍にしない） // lite2: 映像が画面に出ていない間（結果・遊び方の画面。v2/tv.js が立てる）は描かない
       if (self.offWas) { self.offWas = false; self.cam.mode = ''; }
       try { self.placeCamera(sdt, false); if (self.cut > 0) self.cut -= dt; self.draw(sdt); } catch (e) { console.error(e); }
       raf(frame);
