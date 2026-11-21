@@ -43,7 +43,10 @@
     stampUseBtn: '券を使って2票目をえらぶ', stampTag: 'スタンプ', stampGot: 'スタンプ +{n}', stampVote: '投票', stampWin: '当たり', stampNear: '1・2着に1頭', noStamp: 'スタンプの2票目は使えません',
     vote1: '1票目', vote2: '2票目', pick2Head: '2票目をえらぶ', pick2Sub: '金の点が1票目・同じ組み合わせでもえらべます', vote2Btn: '2票目を投票する',
     redo1: '1票目を選び直す', redo2: '2票目を選び直す', noBonus: '初参加ボーナスの2票目は使えません',
-    times: '{a} × {n}票', hitMark: '当たり', missMark: 'はずれ', slideAll: 'スライドして2票分受け取り',
+    times: '{a} × {n}票', hitMark: '当たり', missMark: 'はずれ', slideAll: 'スライドして{n}票分受け取り',
+    /* BPT（ボートレースポイント）の追加の券（2026-11-18）。画面に「ポイント」とは書かない（競馬の当たりは pt、ボートは BPT） */
+    bptHead: 'BPT で券を追加（あと{n}枚）', bptLeft: '1枚 100 BPT・残り {b} BPT', bptTag: 'BPT の券', bptPickHead: '追加の券をえらぶ', bptPickSub: '同じ組み合わせでもOK・1枚 100 BPT', bptGo: '券を{n}枚追加する',
+    bptAdding: '券を追加しています…', bptDone: 'BPT で券を{n}枚追加しました', bptPart: 'BPT で券を{n}枚追加しました（残り{m}枚は追加できませんでした）', /* 2026-11-20: 何枚か入ったところで締め切られたとき */ bptNo: 'BPT の券は追加できませんでした', bptBack: 'BPT の券{n}枚は返還（{b} BPT を戻しました）', bptBackCut: 'BPT の券{n}枚は返還（{b} BPT を戻しました。BPT は 3,000 まで）', /* 2026-11-20: 返還した追加の券（上限のため・取り消したレース。券の bptBack の印） */ bptN: '×{n}枚', bptSum: '（{n}枚分）',
     /* この店は投票できないレース（2026-10-26 オーナー: レースごとに投票できる店を選べる）。待ち画面の上の知らせと、送ってしまったときのお知らせ */
     watchOnly: 'いまの {t} のレースは {s} だけの開催です', notMyStore: 'このレースはこの店では投票できません',
     /* 2026-10-28 速さと「必ず開ける・必ず投票できる」: つながるまでの知らせと、投票の自動の送り直し */
@@ -95,7 +98,10 @@
     if (typeof Intl !== 'undefined' && Intl.Segmenter) { let out = '', n = 0; for (const g of new Intl.Segmenter('ja', { granularity: 'grapheme' }).segment(s)) { const c = Array.from(g.segment).length; if (n + c > MAX_NICK) break; out += g.segment; n += c; } return out; }
     return Array.from(s).slice(0, MAX_NICK).join('');
   }
-  const cleanNick = (s) => cutNick(String(s || '').normalize('NFKC').replace(/[\u0000-\u001f\u007f<>&"'`]/g, '').replace(/\s+/g, ' ').trim());
+  /* 2026-11-21（ボート 3 回目 L6）: ボートのスマホ（v2/boat-bet.js の cleanNick）と同じ 1 つの決まり。見えない字・向きの印・U+0080〜U+009F の制御文字（U+0085 など）を取りのぞき、
+     結合文字（濁点・囲みの印など）と絵文字をつなぐ字だけ（見える字が無い）なら空＝通さない */
+  const NICK_INVIS = /[\u0000-\u001f\u007f-\u009f­͏؜ᅟᅠ឴឵᠋-᠏​‌‎‏‪-‮⁠-⁯ㅤ﻿ﾠ￰-￻]/g;
+  const cleanNick = (s) => { const n = cutNick(String(s || '').normalize('NFKC').replace(NICK_INVIS, '').replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim()); return /[^\s\p{M}‍]/u.test(n) ? n : ''; };
   const billOk = (b) => /^\d{1,2}$/.test(b) && Number(b) >= 1 && Number(b) <= 99;
   const bill2 = (b) => String(b).padStart(2, '0');
 
@@ -276,7 +282,7 @@
        1 着を選ぶと 2 着の欄にその組み合わせの倍率が出る（オッズの見方も同じ）。「人気順で選ぶ」は 30 通りを倍率の低い順に（押すとそのまま確認へ）。
        以前の 6×6 の表（上＝1 着・左＝2 着）はやめた（表の読み方を取り違えるお客さんがいた） */
     const both = d.first != null && d.second != null, pv = d.pv === 'pop' ? 'pop' : 'horse';
-    const v1 = d.n === 2 && my && my.vote ? my.vote : null; // 2 票目をえらぶとき: 1 票目の組み合わせを上に出す（同じ組み合わせも選べる）
+    const v1 = (d.n === 2 || d.x) && my && my.vote ? my.vote : null; // 2 票目・追加の券をえらぶとき: 1 票目の組み合わせを上に出す（同じ組み合わせも選べる）
     const tabs = '<div class="pvtabs" role="tablist">' + [['horse', TX.pvHorse], ['pop', TX.pvPop]].map(([k, l]) => '<button type="button" class="pvt' + (pv === k ? ' on' : '') + '" role="tab" aria-selected="' + (pv === k) + '" data-act="pv" data-v="' + k + '">' + esc(l) + '</button>').join('') + '</div>';
     const rows = hs.map((h) => {
       const is1 = d.first === h.i, is2 = d.second === h.i, o = d.first != null && !is1 ? exOdds(r, d.first, h.i) : null;
@@ -300,21 +306,25 @@
       : '<p class="pdh">' + esc(d.first == null ? TX.pickStep1 : TX.pickStep2) + '</p>') + '</div>';
     const v1Line = v1 ? '<p class="v1line">' + esc(TX.vote1) + ' ' + arrowNum(v1.first, v1.second) + '</p>' : '';
     /* 2026-11-18 オーナー「1 画面で全部」: 「戻る」はタブの横（上の 1 行）・表は残りの高さいっぱい（入らない小さい画面は表の中だけ動く）・下の帯はいちばん下 */
-    const backB = d.redo || d.n === 2 ? '<button type="button" class="btn ghost pkback" data-act="cancelRedo" aria-label="' + esc(TX.back) + '">‹ ' + esc(TX.backS) + '</button>' : '<button type="button" class="btn ghost pkback" data-act="toEntry" aria-label="' + esc(TX.back) + '">‹ ' + esc(TX.backS) + '</button>';
-    return '<div class="scr pickscr">' + checkNote() + testTag(r) + bigTag(r) + (d.n === 2 ? '<div class="b2head"><div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '</div><h1>' + esc(TX.pick2Head) + '</h1>' + v1Line + '</div><p class="sub b2sub">' + esc(TX.pick2SubT) + '</p>' : '<h1>' + esc(TX.pickHead) + '</h1>') + /* 見出しはふだん出す（詰める画面では読み上げだけ。bet.css の .os-s） */
+    const backB = d.redo || d.n === 2 || d.x ? '<button type="button" class="btn ghost pkback" data-act="cancelRedo" aria-label="' + esc(TX.back) + '">‹ ' + esc(TX.backS) + '</button>' : '<button type="button" class="btn ghost pkback" data-act="toEntry" aria-label="' + esc(TX.back) + '">‹ ' + esc(TX.backS) + '</button>';
+    return '<div class="scr pickscr">' + checkNote() + testTag(r) + bigTag(r) + (d.n === 2 || d.x ? '<div class="b2head"><div class="bonustag">' + esc(d.x ? TX.bptTag : d.stamp ? TX.stampTag : TX.bonusTag) + '</div><h1>' + esc(d.x ? TX.bptPickHead : TX.pick2Head) + '</h1>' + v1Line + '</div><p class="sub b2sub">' + esc(d.x ? TX.bptPickSub : TX.pick2SubT) + '</p>' : '<h1>' + esc(TX.pickHead) + '</h1>') + /* 見出しはふだん出す（詰める画面では読み上げだけ。bet.css の .os-s） */
       '<div class="pkhead">' + backB + tabs + '</div><div class="pkbody fx" data-scrollarea' + (pv === 'pop' ? ' data-long' : '') + '>' + horseView + popView + '</div>' + dock + '</div>';
   };
 
   /* ④ 確認: 組み合わせ・倍率・当たれば ○pt */
   R.confirm = () => {
     const r = st && st.current, d = draft; if (!r || d.first == null) return R.pick();
-    const o = exOdds(r, d.first, d.second);
-    return '<div class="scr confirm">' + checkNote() + testTag(r) + bigTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '・' + esc(TX.vote2) + '</div>' : '') + '<h1>' + esc(TX.confHead) + '</h1>' + pickCard(r, d.first, d.second, 'big') + /* 組み合わせの文は出さない（2026-10-21 文字帳 w0052） */
-      '<div class="ifwin"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(o ? payFor(o) : 0, 'n') + '</b></div>' +
+    const o = exOdds(r, d.first, d.second), left = d.x ? (my && my.bpt ? my.bpt.left : 0) : bptLeftFor(d, r);
+    /* BPT の追加の券（2026-11-18）: 足せる人だけ「BPT で券を追加（あと○枚）」の［−］［＋］。d.x ＝ 投票のあとに足す券だけをえらんでいる（1 枚から） */
+    const bal = my && my.raceId === d.raceId && my.bpt ? my.bpt.bal : bptSt ? bptSt.bal : 0;
+    const k = d.x ? Math.max(1, Math.min(left, d.xn || 1)) : Math.min(left, d.bptN || 0), cnt = (d.x ? 0 : 1) + k; if (d.x) d.xn = k; else d.bptN = k;
+    const bptRow = left > 0 ? '<div class="bptrow"><span class="bl"><b>' + esc(fill(TX.bptHead, { n: left - k })) + '</b><small>' + esc(fill(TX.bptLeft, { b: amt(bal - k * 100) })) + '</small></span><span class="stp"><button type="button" class="btn ghost" data-act="bptDec"' + (k <= (d.x ? 1 : 0) ? ' disabled' : '') + ' aria-label="1枚へらす">−</button><b>' + k + '</b><button type="button" class="btn ghost" data-act="bptInc"' + (k >= left ? ' disabled' : '') + ' aria-label="1枚ふやす">＋</button></span></div>' : '';
+    return '<div class="scr confirm">' + checkNote() + testTag(r) + bigTag(r) + (d.n === 2 ? '<div class="bonustag">' + esc(d.stamp ? TX.stampTag : TX.bonusTag) + '・' + esc(TX.vote2) + '</div>' : d.x ? '<div class="bonustag">' + esc(TX.bptTag) + '</div>' : '') + '<h1>' + esc(TX.confHead) + '</h1>' + pickCard(r, d.first, d.second, 'big') + /* 組み合わせの文は出さない（2026-10-21 文字帳 w0052） */
+      '<div class="ifwin"><span>' + esc(TX.ifWin) + '</span><b>' + bigAmt(o ? payFor(o) * Math.max(1, cnt) : 0, 'n') + '</b>' + (cnt > 1 ? '<small class="xn">' + esc(fill(TX.bptSum, { n: cnt })) + '</small>' : '') + '</div>' + bptRow +
       (shiftOn() ? '<p class="sub shift">' + esc(TX.shiftNote) + '</p>' : '') +
       whoLine(bill2(d.bill), d.nick) +
       '<p class="err" id="err" role="alert">' + esc(d.err && d.err !== 'bill_taken' ? d.err : '') + '</p>' +
-      '<div class="dock"><p class="vstat" id="vstat" role="status">' + esc(d.sendMsg || '') + '</p><button class="btn" data-act="vote"' + (d.sendDis ? ' disabled' : '') + '>' + esc(d.sendLabel || (d.redo ? TX.changeBtn : d.n === 2 ? TX.vote2Btn : TX.voteBtn)) + '</button><button class="btn ghost" data-act="toPick2">' + esc(TX.back) + '</button></div></div>'; // 送っている途中も描き直しで消えない（d.sendLabel・d.sendMsg。2026-10-28）
+      '<div class="dock"><p class="vstat" id="vstat" role="status">' + esc(d.sendMsg || '') + '</p><button class="btn" data-act="vote"' + (d.sendDis ? ' disabled' : '') + '>' + esc(d.sendLabel || (d.x ? fill(TX.bptGo, { n: k }) : d.redo ? TX.changeBtn : d.n === 2 ? TX.vote2Btn : TX.voteBtn)) + '</button><button class="btn ghost" data-act="toPick2">' + esc(TX.back) + '</button></div></div>'; // 送っている途中も描き直しで消えない（d.sendLabel・d.sendMsg。2026-10-28）
   };
 
   /* 「あなたの予想」の札（⑥レース中。⑤は券が届くまで）。n: 0＝1票/1＝1票目/2＝2票目。combo: 組み合わせの文 */
@@ -368,7 +378,26 @@
     const parts = [[TX.stampVote, sum('vote')], [TX.stampWin, sum('win')], [TX.stampNear, sum('near')]].filter((p) => p[1] > 0).map((p) => p[0] + ' +' + p[1]).join('・');
     return '<div class="stampgot" role="status"><b>' + esc(TX.stampTag) + '<em>+' + n + '</em></b><span>' + esc(parts) + '</span></div>';
   }
-  const tk = (r, v, n) => (window.BetTicket ? BetTicket(r, v, n) : mineCard(r, v, n, true, n < 2)); // ⑤ 馬券ふうの券（v2/ticket.js）
+  const tk = (r, v, n, c) => (window.BetTicket ? BetTicket(r, c > 1 ? Object.assign({}, v, { tickets: c }) : v, n) : mineCard(r, v, n, true, n < 2)); // ⑤ 馬券ふうの券（v2/ticket.js）。c: 券の枚数（1 票目に重ねた追加の券。2026-11-18）
+  /* BPT の追加の券（2026-11-18）: my.extra（券の一覧）・my.bpt（{ bal, left } | null）。1 票目と同じ組み合わせの券は 1 票目の券に「×○枚」、別の組み合わせは小さな行 */
+  const xs = () => (my && my.extra) || [], sameC = (a, b) => !!a && !!b && a.first === b.first && a.second === b.second, onMain = (v) => 1 + xs().filter((x) => sameC(x, v)).length;
+  const on2 = (x) => !!(my && my.vote2) && sameC(x, my.vote2) && !sameC(x, my.vote), onV2 = () => 1 + xs().filter(on2).length; // 2 票目と同じ組み合わせの追加の券は 2 票目の券に「×○枚」（2026-11-18）
+  function xRows(r, done) { // 1 票目と別の組み合わせの追加の券（組み合わせごとに ×○枚）。done: 結果の画面（当たり・はずれ）
+    const g = {}; xs().forEach((x) => { if (sameC(x, my.vote) || on2(x)) return; (g[x.combo] = g[x.combo] || []).push(x); });
+    const ks = Object.keys(g); if (!ks.length) return '';
+    return '<div class="vlist xlist">' + ks.map((k) => { const l = g[k], x = l[0], o = exOdds(r, x.first, x.second), w = done && !!(x.result && x.result.win);
+      return '<div class="vr' + (w ? ' w' : '') + '"><span class="vk">' + esc(TX.bptTag) + '</span>' + arrowNum(x.first, x.second) + '<b class="vm">' + esc(fill(TX.bptN, { n: l.length })) + (done ? ' ' + esc(w ? TX.hitMark : TX.missMark) : o ? ' <small>' + esc(TX.ifWin) + ' ' + ptT(payFor(o) * l.length) + '</small>' : '') + '</b></div>'; }).join('') + '</div>';
+  }
+  const bptBtn = () => (my && my.bpt && my.bpt.left > 0 && !my.lost ? '<button class="btn ghost bptbtn" data-act="bptAdd">' + esc(fill(TX.bptHead, { n: my.bpt.left })) + '<small>' + esc(fill(TX.bptLeft, { b: amt(my.bpt.bal) })) + '</small></button>' : '');
+  /* 確認の画面で足せる枚数: 投票済みなら my.bpt.left、まだなら BPT の残り ÷ 100（4 枚まで・テストのレースは 0） */
+  let bptSt = null, bptAt = 0;
+  function loadBpt() { if (!C || !C.bpt || Date.now() - bptAt < 20000) return; bptAt = Date.now(); C.bpt().then((x) => { const k = JSON.stringify(x); if (k !== JSON.stringify(bptSt)) { bptSt = x; if (screen === 'confirm') draw(); } }).catch(() => {}); }
+  function bptLeftFor(d, r) { // 1 レースの残りの枚数（1 票目・2 票目・追加の券を合わせて 5 枚まで。2026-11-18）
+    if (!d || !r || r.test) return 0;
+    if (d.n === 2) { if (!my || !my.vote || my.raceId !== d.raceId || !my.bpt) return 0; return my.vote2 ? my.bpt.left : Math.max(0, Math.min(my.bpt.left, 3 - (my.vote.xn || 0))); } // 新しい 2 票目は自分で 1 枚使う
+    if (my && my.vote && my.raceId === d.raceId && my.vote.bill === bill2(d.bill)) return my.bpt ? my.bpt.left : 0;
+    return bptSt && bptSt.bal >= 100 ? Math.min(4, Math.floor(bptSt.bal / 100)) : 0;
+  }
   const bonusBox = () => '<div class="bonusbox"><b>' + esc(TX.bonusHead) + '</b><span>' + esc(TX.bonusSub) + '</span><button class="btn" data-act="bonus">' + esc(TX.bonusBtn) + '</button></div>';
   let ownerChanged = false; // 匿名ログインの uid が変わった（client-firestore.js の onUser）
   R.voted = () => {
@@ -380,11 +409,12 @@
     const clock = '<div class="clock"><div class="k">' + esc(TX.closeIn) + '</div><div class="v">' + cd(r.closeAt) + '</div></div>';
     const btns = lost ? '<div class="note" role="status">' + esc(TX.ownerChanged) + '</div>' + watchBtn(r) : v2 ? '<div class="redo2"><button class="btn ghost" data-act="redo">' + esc(TX.redo1) + '</button><button class="btn ghost" data-act="redo2">' + esc(TX.redo2) + '</button></div>' + watchBtn(r)
       : '<div class="btnrow"><button class="btn ghost" data-act="redo">' + esc(TX.redo) + '</button>' + watchBtn(r) + '</div>';
+    const xb = stageOf(r) === 'vote' ? bptBtn() : '', xr = xRows(r); // BPT の追加の券（2026-11-18）: 足すボタン・別の組み合わせの券の行
     if (v2) return '<div class="scr voted two">' + testTag(r) + bigTag(r) + '<div class="vhead"><h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' + clock + '</div>' +
-      '<div class="fx" data-scrollarea data-long>' + tk(r, v, 1) + tk(r, v2, 2) + todayRow() + stampCard() + '</div>' + btns + '</div>';
+      '<div class="fx" data-scrollarea data-long>' + tk(r, v, 1, onMain(v)) + xr + tk(r, v2, 2, onV2()) + xb + todayRow() + stampCard() + '</div>' + btns + '</div>';
     return '<div class="scr voted">' + testTag(r) + bigTag(r) + '<h1 class="done-h"><i aria-hidden="true">✓</i>' + esc(TX.voted) + '</h1>' +
-      tk(r, v, 0) + (can ? bonusBox() : sCan ? stampUseBox(my.stamp.cost) : '') + clock +
-      '<div class="fx" data-scrollarea>' + todayRow() + stampCard() + '</div>' + /* 本日のレース（10-27）: 時計の下・「選び直す」の上 */ btns + '</div>';
+      tk(r, v, 0, onMain(v)) + (can ? bonusBox() : sCan ? stampUseBox(my.stamp.cost) : xb) + clock +
+      '<div class="fx" data-scrollarea>' + xr + (can || sCan ? xb : '') + todayRow() + stampCard() + '</div>' + /* 本日のレース（10-27）: 時計の下・「選び直す」の上 */ btns + '</div>';
   };
 
   /* 「レースを見る」（2026-10-29 オーナー「投票終わった端末のみレースを観測できるように」）: このスマホに票があるレースだけ、投票済み・レース中・結果の画面に出す。
@@ -443,7 +473,8 @@
   /* ⑥ レース中: 自分の予想だけ（初参加ボーナスの 2 票目もあれば 2 枚） */
   R.race = () => {
     const v = my && my.vote, v2 = my && my.vote2, r = my && my.race; if (!v || !r) return R.boot();
-    return '<div class="scr racing' + (v2 ? ' two' : ' mid') + '">' + testTag(r) + bigTag(r) + (v2 ? '<div class="fx" data-scrollarea data-long>' + tk(r, v, 1) + tk(r, v2, 2) + '</div>' : tk(r, v, 0)) + watchBtn(r) + '</div>'; // 2 枚は券の欄の中だけ動く（2026-11-18）
+    const xr = xRows(r); // BPT の追加の券（2026-11-18）
+    return '<div class="scr racing' + (v2 ? ' two' : ' mid') + '">' + testTag(r) + bigTag(r) + (v2 || xr ? '<div class="fx" data-scrollarea data-long>' + tk(r, v, v2 ? 1 : 0, onMain(v)) + xr + (v2 ? tk(r, v2, 2, onV2()) : '') + '</div>' : tk(r, v, 0, onMain(v))) + watchBtn(r) + '</div>'; // 2 枚は券の欄の中だけ動く（2026-11-18）
   };
 
   /* 脱落（2026-11-04）: 「3番 ○○ は落馬のため競走中止」／「3番 ○○ は競走除外（ゲートに入れませんでした）」。無ければ空 */
@@ -458,15 +489,20 @@
     if (!res) return R.race();
     const nextBtn = (ghost) => { const c = st && st.current, vote = c && c.id !== my.raceId && stageOf(c) === 'vote'; return '<button class="btn' + (ghost ? ' ghost' : '') + '" data-act="dismiss">' + esc(vote ? TX.toNextVote : TX.toNext) + '</button>'; };
     const resLine = '<div class="resline">' + pickCard(r, res.first, res.second, false) + '</div>';
-    if (res.refunded) return '<div class="scr result mid">' + testTag(r) + bigTag(r) + '<div class="miss"><h1 class="t">' + esc(TX.voided) + '</h1></div>' + nextLine() + todayRow() + nextBtn(false) + '</div>';
-    const v2 = my.vote2, all = [v].concat(v2 ? [v2] : []), wins = all.filter((x) => x.result && x.result.win);
-    /* 初参加ボーナスの 2 票: 票ごとに「1票目 3→5 当たり」「2票目 2→4 はずれ」（1 票だけのときは今までどおり） */
-    const perVote = v2 ? '<div class="vlist">' + all.map((x) => { const w = !!(x.result && x.result.win); return '<div class="vr' + (w ? ' w' : '') + '"><span class="vk">' + esc(x.n === 2 ? TX.vote2 : TX.vote1) + '</span>' + arrowNum(x.first, x.second) + '<b class="vm">' + esc(w ? TX.hitMark : TX.missMark) + '</b></div>'; }).join('') + '</div>' : '';
-    const sg = stampGotLine(all, res) + incLine(r, res);
+    /* 返還した追加の券（2026-11-20。券に bptBack の印＝BPT を戻した。上限のための返還・取り消したレース）: 「BPT の券○枚は返還（○ BPT を戻しました）」の 1 行。券の絵・当たりはずれの一覧には入れない */
+    const backs = xs().filter((x) => x.bptBack === true), lx = xs().filter((x) => x.bptBack !== true), backGot = backs.reduce((a, x) => { const g = Number(x.bptBackGot); return a + (x.bptBackGot != null && isFinite(g) && g >= 0 ? Math.min(100, g) : 100); }, 0) /* 2026-11-21 H8: 実際に戻った額（券ごとの bptBackGot。持ち上限 3,000 で減る。無い古い券は 100） */, backLine = backs.length ? '<p class="incline bptback" role="status">' + esc(fill(backGot < backs.length * 100 ? TX.bptBackCut : TX.bptBack, { n: backs.length, b: amt(backGot) })) + '</p>' : '';
+    if (res.refunded) return '<div class="scr result mid">' + testTag(r) + bigTag(r) + '<div class="miss"><h1 class="t">' + esc(TX.voided) + '</h1></div>' + backLine + nextLine() + todayRow() + nextBtn(false) + '</div>';
+    const v2 = my.vote2, all = [v].concat(v2 ? [v2] : [], lx), wins = all.filter((x) => x.result && x.result.win); // 追加の券（2026-11-18）も 1 枚ずつ数える
+    /* 券の束（2026-11-18）: 1 票目＋同じ組み合わせの追加の券／2 票目／別の組み合わせの追加の券（組み合わせごと）。券は束ごとに 1 枚の絵に「×○枚」 */
+    const bundles = (list) => { const g = []; list.forEach((x) => { const key = x.n === 2 || (x.bpt && on2(x)) ? '2' : x.bpt && !sameC(x, v) ? 'x' + x.combo : '1', b = g.find((y) => y.key === key); if (b) b.list.push(x); else g.push({ key, list: [x] }); }); return g; };
+    const tkOf = (b) => { const x = b.list[0], n = b.list.length, rs = x.result ? Object.assign({}, x.result, { amount: b.list.reduce((a, y) => a + (Number(y.result && y.result.amount) || 0), 0) }) : x.result; return BetTicket(r, n > 1 ? Object.assign({}, x, { tickets: n }) : x, v2 || lx.length ? (b.key === '2' ? 2 : 1) : 0, rs); };
+    /* 初参加ボーナスの 2 票・追加の券: 束ごとに「1票目 3→5 当たり」「2票目 2→4 はずれ」（1 票だけのときは今までどおり） */
+    const perVote = v2 || lx.length ? '<div class="vlist">' + bundles(all).map((b) => { const x = b.list[0], w = !!(x.result && x.result.win); return '<div class="vr' + (w ? ' w' : '') + '"><span class="vk">' + esc(b.key === '2' ? TX.vote2 : b.key === '1' ? TX.vote1 : TX.bptTag) + '</span>' + arrowNum(x.first, x.second) + '<b class="vm">' + (b.list.length > 1 ? esc(fill(TX.bptN, { n: b.list.length })) + ' ' : '') + esc(w ? TX.hitMark : TX.missMark) + '</b></div>'; }).join('') + '</div>' : '';
+    const sg = stampGotLine(all.filter((x) => !x.bpt), res) + incLine(r, res) + backLine; // 追加の券にはスタンプは付かない（v2/core.js の stampsForRace。2026-11-18）。返還の 1 行も欄の中（1 画面の作法のまま）
     if (!wins.length) {
       /* 2026-11-18 1 画面: 「はずれ」と結果を 1 行・券とスタンプと本日のレースは欄の中だけ動く（.fx）・次のレースの時刻とボタンはいちばん下 */
       return '<div class="scr result lose">' + testTag(r) + bigTag(r) + '<div class="lhead"><div class="miss"><h1 class="t">' + esc(TX.lose) + '</h1></div>' + resLine + '</div>' +
-        '<div class="fx" data-scrollarea>' + sg + (window.BetTicket ? all.map((x) => BetTicket(r, x, v2 ? x.n : 0, x.result)).join('') : v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + todayRow() + '</div>' +
+        '<div class="fx" data-scrollarea>' + sg + (window.BetTicket ? bundles(all).map(tkOf).join('') : v2 ? perVote : '<div class="mine sm"><p class="mk">' + esc(TX.yourPick) + ' ' + arrowNum(v.first, v.second) + '</p></div>') + todayRow() + '</div>' +
         nextLine() + '<div class="btnrow">' + watchBtn(r) + nextBtn(false) + '</div></div>'; // はずれの券（ticket.js）
     }
     /* 受け取りは 1 つのスライドで（2 票とも当たりなら 2 票分をまとめて。スタッフの操作は 1 回。2026-10-24 決め） */
@@ -475,7 +511,7 @@
     let pay;
     if (test) pay = '<div class="note" role="status"><b>' + esc(TX.testNoPay) + '</b></div>';
     else if (ps.some((p) => !p)) pay = '<div class="note" role="status">' + esc(TX.loading) + '</div>';
-    else if (unpaid.length) { const lb = unpaid.length >= 2 ? TX.slideAll : TX.slide; pay = '<div class="payop"><p class="ops">' + esc(TX.staffOps) + '</p><div class="slider" id="slider" role="slider" aria-label="' + esc(lb) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fillbar"></div><span class="lbl">' + esc(lb) + ' ›››</span><div class="knob" aria-hidden="true">›</div></div><p class="err" id="err" role="alert"></p></div>'; } // 「スタッフが操作します」はスライドのすぐ上
+    else if (unpaid.length) { const lb = unpaid.length >= 2 ? fill(TX.slideAll, { n: unpaid.length }) : TX.slide; pay = '<div class="payop"><p class="ops">' + esc(TX.staffOps) + '</p><div class="slider" id="slider" role="slider" aria-label="' + esc(lb) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fillbar"></div><span class="lbl">' + esc(lb) + ' ›››</span><div class="knob" aria-hidden="true">›</div></div><p class="err" id="err" role="alert"></p></div>'; } // 「スタッフが操作します」はスライドのすぐ上
     else if (ps.every((p) => p.status === 'paid')) { const at = Math.max.apply(null, ps.map((p) => p.paidAt || 0)); pay = '<div class="stamp" role="status"><b>' + esc(TX.paid) + '</b>' + (at ? '<small>' + hhmm(at) + '</small>' : '') + '</div>'; }
     else if (ps.some((p) => p.status === 'void')) pay = '<div class="note red" role="status"><b>' + esc(TX.voided) + '</b></div>';
     else pay = '<div class="note red" role="status"><b>' + esc(TX.expired) + '</b></div>';
@@ -483,12 +519,12 @@
     return '<div class="scr result win">' + testTag(r) + bigTag(r) + '<div class="hit"><h1 class="t">' + esc(TX.win) + '</h1><div class="combo">' + esc(comboText(r, wr.first, wr.second, wr.odds)) + '</div>' +
       '<div class="k">' + esc(TX.amount) + '</div><div class="a">' + bigAmt(total, 'n') + '</div>' + (wins.length >= 2 ? '<div class="x2">' + esc(fill(TX.times, { a: ptT(wr.amount), n: wins.length })) + '</div>' : '') + '</div>' + perVote +
       '<div class="billbig"><span>' + esc(TX.billHead) + '</span><b>' + esc(v.bill) + '</b><small data-fit="13">' + esc(v.nick) + '</small></div>' + pay +
-      '<div class="fx" data-scrollarea>' + sg + (window.BetTicket ? wins.map((x) => BetTicket(r, x, v2 ? x.n : 0, x.result)).join('') : '') + /* 的中の判子つきの券（ticket.js） */ todayRow() + '</div>' +
+      '<div class="fx" data-scrollarea>' + sg + (window.BetTicket ? bundles(wins).map(tkOf).join('') : '') + /* 的中の判子つきの券（ticket.js） */ todayRow() + '</div>' +
       (unpaid.length && !test ? '<div class="btnrow">' + watchBtn(r) + '</div><p class="keeptill">' + esc(TX.keepTill) + '</p>' : '<div class="btnrow">' + watchBtn(r) + nextBtn(true) + '</div>') + '</div>';
   };
 
   /* ================= 描画 ================= */
-  function go(name) { if (screen !== name) { window.scrollTo(0, 0); const m = $('main'); if (m) m.scrollTop = 0; } screen = name; draw(); }
+  function go(name) { if (name === 'confirm') loadBpt(); if (screen !== name) { window.scrollTo(0, 0); const m = $('main'); if (m) m.scrollTop = 0; } screen = name; draw(); }
   let dragging = false, drawLater = false, drawn = ''; // drawn: 前に描いた画面（画面が変わったときだけふわっと出す。描き直しのたびに出し直すとちらつく）
   function draw() {
     if (dragging) { drawLater = true; return; } // スライドを動かしている途中は描き直さない
@@ -515,12 +551,15 @@
      「入らない」＝画面の中身がはみ出す、または中だけ動く欄（.fx）がはみ出す（もともと長い一覧＝人気順の 30 通り・2 枚の券 [data-long] は数えない） */
   function fitLevel() {
     const app = $('app'), m = $('main'); if (!app || !m || !m.firstElementChild) return;
-    const over = () => m.scrollHeight > m.clientHeight + 1 || Array.prototype.some.call(m.querySelectorAll('.fx:not([data-long])'), (f) => f.scrollHeight > f.clientHeight + 1);
-    const before = app.className;
+    const over = () => m.scrollHeight > m.clientHeight || Array.prototype.some.call(m.querySelectorAll('.fx:not([data-long])'), (f) => f.scrollHeight > f.clientHeight + 1);
+    const before = app.className; m.firstElementChild.style.removeProperty('gap'); // 前の大きさで足した間隔（spread）を外してから測る（2026-11-18: 小さい画面から広げたとき、狭い間隔のまま測って詰め足りなかった）
     app.classList.remove('os-t', 'os-s', 'os-xs');
-    for (const c of ['os-t', 'os-s', 'os-xs']) { if (!over()) break; app.classList.add(c); } // 軽い順: 上の帯を 1 行 → 詰める → さらに詰める
+    const LV = ['os-t', 'os-s', 'os-xs']; let i = 0;
+    for (; i < LV.length; i++) { if (!over()) break; app.classList.add(LV[i]); } // 軽い順: 上の帯を 1 行 → 詰める → さらに詰める
     if (app.className !== before) fitText(m);
     spread(m);
+    while (over() && i < LV.length) { m.firstElementChild.style.removeProperty('gap'); app.classList.add(LV[i++]); fitText(m); spread(m); } // 2026-11-18: 間隔を足したあと・字の大きさを直したあとにはみ出したら、もう 1 段詰める
+    if (over()) m.firstElementChild.style.removeProperty('gap');
   }
   /* 縦の間隔（b220 オーナー「画面の縦いっぱいに自然な間隔で」）: 余った高さの 7 割を、かたまりの間の間隔に足す（前の間隔の 3 倍・40px まで）。残りは上下に（中身は真ん中寄り・ボタンは下） */
   function spread(m) {
@@ -580,8 +619,8 @@
     if (busy || !my) return; busy = true; el.classList.add('busy'); const lb = el.querySelector('.lbl'); if (lb) lb.textContent = TX.saving;
     try {
       // 当たった票の、まだ受け取っていない当たりを全部（初参加ボーナスで 2 票とも当たりなら 2 つ。1 回のスライドで）
-      const todo = [my.vote, my.vote2].filter((x) => x && x.result && x.result.win && x.result.payout && x.result.payout.status === 'unpaid');
-      for (const x of todo) { const d = await C.claimSelf(x.vid, my.key); if (d && d.vote) { if (d.vote.n === 2) my.vote2 = d.vote; else my.vote = d.vote; } }
+      const todo = [my.vote, my.vote2].concat(xs()).filter((x) => x && x.result && x.result.win && x.result.payout && x.result.payout.status === 'unpaid'); // 追加の券の当たりも（2026-11-18）
+      for (const x of todo) { const d = await C.claimSelf(x.vid, my.key); if (d && d.vote) { if (d.vote.bpt) my.extra = xs().map((y) => (y.vid === d.vote.vid ? d.vote : y)); else if (d.vote.n === 2) my.vote2 = d.vote; else my.vote = d.vote; } }
       busy = false; unpaidList = unpaidList.filter((x) => x.vid !== my.vid); draw();
     } catch (e) {
       busy = false;
@@ -630,7 +669,7 @@
     if (f) {
       if (!my || my.vid !== f.vid) { my = { raceId: f.raceId, vid: f.vid, key: f.key, vote: null, vote2: null, bonus: false, stamp: null, race: f.race || null, kind: f.kind }; loadMine(); resubscribe(); }
       else { my.kind = f.kind; if (f.race) my.race = Object.assign({}, my.race || {}, f.race, { result: (my.race && my.race.result) || f.race.result || null }); }
-      if (f.kind === 'cur' && draft && (draft.redo || draft.n === 2) && draft.raceId === f.raceId && ['pick', 'confirm'].indexOf(screen) >= 0) return drawTop(); // 選び直し・2 票目をえらんでいる途中
+      if (f.kind === 'cur' && draft && (draft.redo || draft.n === 2 || draft.x) && draft.raceId === f.raceId && ['pick', 'confirm'].indexOf(screen) >= 0) return drawTop(); // 選び直し・2 票目をえらんでいる途中
       const want = f.kind === 'cur' ? 'voted' : f.kind === 'live' ? 'race' : (my.vote && my.vote.result) || (my.race && my.race.status === 'done') ? 'result' : 'race';
       if (screen === want && sigOf() === lastSig) return drawTop();
       go(want); lastSig = sigOf(); return;
@@ -649,7 +688,7 @@
     go('wait'); lastSig = sigOf();
   }
   let lastSig = '';
-  function sigOf() { const v = my && my.vote, v2 = my && my.vote2, r = my && my.race, p = v && v.result && v.result.payout, p2 = v2 && v2.result && v2.result.payout; return [my && my.vid, my && my.lost ? 'lost' : '', v && v.combo, v && v.updatedAt, v2 && v2.combo, v2 && v2.updatedAt, my && my.bonus, my && my.stamp ? my.stamp.can + ':' + my.stamp.bal : '', stampSt ? stampSt.bal : '', r && r.status, v && v.result && v.result.combo, p && p.status, p2 && p2.status, (st && st.current && st.current.id) || '', (st && st.watch && st.watch.id) || '' /* 他店だけのレースが始まった・終わった（2026-10-26） */, unpaidList.length,
+  function sigOf() { const v = my && my.vote, v2 = my && my.vote2, r = my && my.race, p = v && v.result && v.result.payout, p2 = v2 && v2.result && v2.result.payout; return [my && my.vid, my && my.lost ? 'lost' : '', v && v.combo, v && v.updatedAt, v2 && v2.combo, v2 && v2.updatedAt, my && my.bonus, my && my.stamp ? my.stamp.can + ':' + my.stamp.bal : '', xs().map((x) => x.combo + (x.result ? (x.result.win ? 'w' : 'l') + (x.result.payout ? x.result.payout.status : '') : '')).join(), my && my.bpt ? my.bpt.left + ':' + my.bpt.bal : '', stampSt ? stampSt.bal : '', r && r.status, v && v.result && v.result.combo, p && p.status, p2 && p2.status, (st && st.current && st.current.id) || '', (st && st.watch && st.watch.id) || '' /* 他店だけのレースが始まった・終わった（2026-10-26） */, unpaidList.length,
     st && Array.isArray(st.today) ? st.today.map((x) => x.at).join() + '|' + st.today.filter((x) => x.at <= now()).length : '' /* 本日のレースの時刻が変わった・済みが増えた（2026-10-27。時刻表を直したときも待ち画面を描き直す） */].join('|'); }
 
   /* 自分の票を読む（myVote → { vote, vote2, bonus, race }）。無い（番号を空けられた・ほかのスマホ）なら覚えを消す */
@@ -660,7 +699,7 @@
     const m = my;
     loading = C.myVote(m.vid, m.key).then((d) => {
       if (my !== m) return;
-      my.vote = d.vote; my.vote2 = d.vote2 || null; my.bonus = !!d.bonus; my.stamp = d.stamp || null; if (d.race) my.race = d.race; online = up(); route();
+      my.vote = d.vote; my.vote2 = d.vote2 || null; my.bonus = !!d.bonus; my.stamp = d.stamp || null; my.extra = d.extra || []; my.bpt = d.bpt || null; if (d.race) my.race = d.race; online = up(); route();
     }).catch((e) => {
       if (my !== m) return;
       if (e && (e.status === 404 || e.code === 'no_vote')) { if (ownerChanged && m.vote) { m.lost = true; return route(); } return gone(m); } // ログインが変わって自分の票として読めない: 覚えていた票を出したまま（番号を空けられたのとは別）
@@ -690,7 +729,7 @@
       if (skip.has(raceId) || scanDone.has(raceId)) continue;
       const m = MV.get(raceId); if (!m) continue;
       try {
-        const d = await C.myVote(m.vid, m.key), all = [d.vote, d.vote2].filter(Boolean); // 初参加ボーナスの 2 票目の当たりも足す
+        const d = await C.myVote(m.vid, m.key), all = [d.vote, d.vote2].concat(d.extra || []).filter(Boolean); // 初参加ボーナスの 2 票目・追加の券（2026-11-18）の当たりも足す
         const un = all.filter((x) => x.result && x.result.win && !x.result.test && x.result.payout && x.result.payout.status === 'unpaid');
         if (un.length) out.push({ raceId, vid: m.vid, key: m.key, bill: d.vote.bill, amount: un.reduce((a, x) => a + (Number(x.result.amount) || 0), 0), at: d.race && d.race.at });
         else if (all.length && all.every((x) => x.result && (!x.result.win || x.result.test || x.result.refunded || (x.result.payout && x.result.payout.status !== 'unpaid')))) scanDone.add(raceId);
@@ -748,6 +787,13 @@
       draft = { raceId: my.raceId, bill: v.bill, nick: v.nick, first: null, second: null, redo: false, n: 2, err: null };
       return go('pick');
     }
+    if (a === 'bptAdd') { // BPT の追加の券をえらぶ（2026-11-18。同じ組み合わせでもよい）
+      const v = my && my.vote; if (!v || !(my.bpt && my.bpt.left > 0)) return;
+      draft = { raceId: my.raceId, bill: v.bill, nick: v.nick, first: null, second: null, redo: false, x: true, xn: 1, err: null };
+      return go('pick');
+    }
+    if (a === 'bptInc' || a === 'bptDec') { if (!draft) return; const f = draft.x ? 'xn' : 'bptN'; draft[f] = Math.max(0, (draft[f] || (draft.x ? 1 : 0)) + (a === 'bptInc' ? 1 : -1)); return draw(); }
+    if (a === 'vote' && draft && draft.x) { const d = draft; return addExtra(d, true); }
     if (a === 'vote') {
       if (!draft) return;
       return submitVote(draft); // 同じ予想を送っている途中なら何もしない（submitVote の中）
@@ -797,7 +843,7 @@
     try {
       const x = await Promise.race([C.myVote(vid, key), nap(6000).then(() => null)]); if (!x) return null;
       const v = A.n === 2 ? x.vote2 : x.vote;
-      if (v && v.first === A.first && v.second === A.second && v.nick === A.nick) return { vote: x.vote, vote2: x.vote2 || null, bonus: !!x.bonus, stamp: x.stamp || null, key: key === 'uid' ? 'uid' : key, race: x.race || null };
+      if (v && v.first === A.first && v.second === A.second && v.nick === A.nick) return { vote: x.vote, vote2: x.vote2 || null, bonus: !!x.bonus, stamp: x.stamp || null, extra: x.extra || [], bpt: x.bpt || null, key: key === 'uid' ? 'uid' : key, race: x.race || null };
     } catch (e) { /* 読めない（無い・通信）→ 送り直す */ }
     return null;
   }
@@ -850,15 +896,32 @@
     if (now() >= closeAtOf(d)) { d.waitResend = false; return voteFailed(d, { code: 'closed', status: 409 }); }
     if (force || Date.now() - resendAt >= RESEND_EVERY_MS) submitVote(d);
   }
+  /* BPT の追加の券を送る（2026-11-18）。BPT を使うので自動では送り直さない（届いたか分からないときは自分の票を読み直して確かめる） */
+  async function addExtra(d, fromConfirm) {
+    if (!my || !my.vote || d.busyX) return; d.busyX = true; const want = d.xn, before = xs().length, v = my.vote, m = my;
+    if (fromConfirm) setSend(d, null, TX.bptAdding, '', true); else toast(TX.bptAdding, false, 3000);
+    let okN = 0;
+    try { const r = await C.vote({ raceId: m.raceId, bill: v.bill, nick: v.nick, first: d.first, second: d.second, extra: want, key: m.key }); if (my === m && r && r.vote) { my.vote = r.vote; my.vote2 = r.vote2 || null; my.extra = r.extra || []; my.bpt = r.bpt || null; } okN = want; }
+    catch (e) {
+      /* 2026-11-20（不具合一覧 B の疑い）: 届いたか分からないとき（通信の失敗）に加えて、2 枚以上を足す途中で断られたとき（本番は 1 枚ずつ書くので、締切をまたぐと先の分だけ入っている）も、
+         自分の票を読み直して、増えた枚数を数える（以前は「追加できませんでした」と出て、入った券と使った BPT が分からなかった）。1 枚だけ断られたときは何も入っていないので読まない */
+      if (my === m && (!e || !e.status || want > 1)) { await loadMine(true); if (my === m) okN = Math.max(0, Math.min(want, xs().length - before)); }
+    }
+    d.busyX = false; bptAt = 0; lastSig = '';
+    if (draft === d) draft = null;
+    toast(okN >= want ? fill(TX.bptDone, { n: okN }) : okN ? fill(TX.bptPart, { n: okN, m: want - okN }) : TX.bptNo, !okN, 4000);
+    route();
+  }
   function voted(d, r, I) {
     /* 届いた。けれど、その間に「戻る」で選び直している（予想の表・ちがう予想の確認）なら画面はそのまま（票は覚える。続きは選び直しとして送る）。2026-10-28 */
     const rechoosing = draft === d && I && (screen === 'pick' || (screen === 'confirm' && !sameArgs(argsOf(d), I.args)));
     busy = false; notice = ''; if (d && d.nick) saveNick(d.nick); if (!rechoosing && draft === d) draft = null;
     const raceId = r.vote.raceId; if (MV && !MV.get(raceId)) MV.set(raceId, r.vote.vid, r.key);
-    my = { raceId, vid: r.vote.vid, key: r.key, vote: r.vote, vote2: r.vote2 || null, bonus: !!r.bonus, stamp: r.stamp || null, race: r.race || (st && st.current) || null, kind: 'cur' }; resubscribe();
+    my = { raceId, vid: r.vote.vid, key: r.key, vote: r.vote, vote2: r.vote2 || null, bonus: !!r.bonus, stamp: r.stamp || null, extra: r.extra || [], bpt: r.bpt || null, race: r.race || (st && st.current) || null, kind: 'cur' }; resubscribe();
     online = up(); lastSig = '';
     if (rechoosing) { d.redo = true; d.done = false; d.sendLabel = d.sendMsg = ''; d.sendDis = false; return drawTop(); }
     route();
+    if (d && d.bptN > 0) addExtra({ first: d.first, second: d.second, xn: d.bptN }); // 確認の画面で BPT の券も足していた（2026-11-18）: 1 票目が入ってから足す
     loadStamps(); // スタンプラリー: 投票した・スタンプで 2 票目を入れた
     autoWatch(); // 投票できたら、自動で「レースを見る」（このレースで初めてのときだけ）
   }
@@ -906,7 +969,7 @@
       state(s) { gotState(s); },
       vote(d) {
         if (!my || !d) return;
-        if (d.vote && d.vote.vid === my.vid) { my.vote = d.vote; my.vote2 = d.vote2 || null; my.bonus = !!d.bonus; my.stamp = d.stamp || null; if (d.vote.result && my.race && my.race.status !== 'done') loadMine(true); else route(); if (d.vote.result) setTimeout(scanUnpaid, 500); return; }
+        if (d.vote && d.vote.vid === my.vid) { my.vote = d.vote; my.vote2 = d.vote2 || null; my.bonus = !!d.bonus; my.stamp = d.stamp || null; my.extra = d.extra || []; my.bpt = d.bpt || null; if (d.vote.result && my.race && my.race.status !== 'done') loadMine(true); else route(); if (d.vote.result) setTimeout(scanUnpaid, 500); return; }
         if (!d.vote && d.released && (!d.vid || d.vid === my.vid)) gone(my);
       },
     }, my ? { vid: my.vid, key: my.key } : undefined);
