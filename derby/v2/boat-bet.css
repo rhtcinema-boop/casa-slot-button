@@ -1,0 +1,247 @@
+/* casa BOAT のスマホの投票（2026-11-19）: v2/bet.css（競馬のスマホの土台・1 画面の決まり）の上に重ねる。
+   色: 競馬（金）と見分けられるよう水色系。券（舟券）は本物の並び（ref/boat/research/26_舟券と投票画面.md）。地の色・地紋は公式の決まりが見つからなかったので、無地の白い紙にした。
+   艇の色は公式どおり 1 白・2 黒・3 赤・4 青・5 黄・6 緑（数字は 1 と 5 が黒字・ほかは白字）。 */
+body.boat {
+  --gold: #8fdcff; --gold2: #2f8fc4; --cream: #d8f3ff; --bg: #071425; --bg2: #0f2a46; --card: #0d2238; --card2: #13304d; --line: #27486b; --btn2: #102a44;
+}
+body.boat #app { background: radial-gradient(ellipse at 50% 18%, #12385c, var(--bg) 70%) fixed; }
+.boatcrest { font-family: var(--display); font-size: 22px; line-height: 32px; letter-spacing: .04em; color: #fff; }
+.boatcrest b { font-weight: 900; }
+.boatcrest span { font-weight: 900; color: var(--gold); font-style: italic; letter-spacing: .08em; }
+body.boat .btn { background: linear-gradient(180deg, #d9f4ff, #4fb0e2); color: #06233a; box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--gold2), 0 8px 24px rgba(120, 210, 255, .18); }
+body.boat .btn.ghost { background: var(--btn2); color: var(--btn2ink); box-shadow: none; border: 1px solid var(--line); }
+body.boat .btn small { display: block; font-size: 12px; font-weight: 700; opacity: .8; }
+.hy { color: var(--dim); font-weight: 700; margin: 0 2px; }
+.dim { color: var(--dim); }
+
+/* 予想 */
+.phead, .vhead { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.phead h1, .vhead h1 { margin: 0; font-size: 21px; text-align: left; }
+.cd { font-size: 14px; color: var(--dim); white-space: nowrap; } .cd b { color: #fff; font-size: 18px; font-variant-numeric: tabular-nums; }
+.sel { flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); min-height: 50px; font-size: 14px; }
+.sel.dim { justify-content: center; color: var(--dim); }
+.sel .so { margin-left: 6px; color: var(--dim); } .sel .so b { color: #fff; font-size: 20px; }
+.sel .sp { margin-left: auto; color: var(--dim); } .sel .sp b { color: var(--gold); font-size: 18px; }
+.cart { flex: 0 1 auto; gap: 4px !important; padding: 6px 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.ci { display: flex; align-items: center; gap: 6px; font-size: 14px; min-height: 30px; }
+.ci .co { margin-left: 6px; color: var(--dim); } .ci .ca { margin-left: auto; font-weight: 700; color: var(--cream); }
+.ci .cx { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--btn2); color: var(--dim); font-size: 16px; }
+.bptl { flex: none; margin: 0; font-size: 13px; color: var(--dim); text-align: center; } .bptl b { color: var(--cream); }
+.nkin { width: 100%; height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: #fff; font-size: 22px; text-align: center; }
+
+/* 確認（公式のネット投票の「投票内容の確認」の表） */
+.ctab { flex: 0 1 auto; border-radius: 12px; border: 1px solid var(--line); background: var(--card); padding: 0 !important; margin: 0 !important; }
+.ctab table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ctab th { position: sticky; top: 0; background: #183a5c; color: var(--cream); font-weight: 700; font-size: 12px; padding: 7px 6px; text-align: left; }
+.ctab td { padding: 7px 6px; border-top: 1px solid var(--line); white-space: nowrap; }
+.ctab .n { text-align: right; } .ctab .kb { display: flex; align-items: center; gap: 3px; }
+.csum { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); font-size: 14px; }
+.csum > div { display: flex; align-items: baseline; gap: 6px; } .csum span { color: var(--dim); min-width: 92px; } .csum b { font-size: 20px; } .csum em { font-style: normal; color: var(--gold); margin-left: 6px; }
+
+/* 投票結果・舟券（本物の券の並び: 左＝場名・発売所の帯・レース・日付／中央＝縦書きの式別／右＝組番・選手名・金額／下＝合計・通し番号・バーコード） */
+.thx { flex: none; margin: -6px 0 0; text-align: left; font-size: 14px; color: var(--cream); }
+.fune { flex: 0 1 auto; min-height: 0; display: grid; grid-template-columns: 92px 30px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; background: #fbfbf7; color: #151515; border-radius: 6px; box-shadow: 0 6px 22px rgba(0, 0, 0, .35); overflow: hidden; font-family: var(--body); }
+.fune .fl { grid-row: 1; padding: 10px 6px 8px 10px; display: flex; flex-direction: column; gap: 6px; border-right: 1px dashed #bbb; }
+.fune .brand { font-size: 13px; font-weight: 700; letter-spacing: .02em; } .fune .brand b { font-weight: 900; font-style: italic; }
+.fune .shop { background: #151515; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 4px; text-align: center; border-radius: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fune .rno b { display: block; font-size: 22px; font-weight: 900; font-style: italic; line-height: 1; } .fune .rno small { font-size: 11px; }
+.fune .dt { font-size: 10px; color: #444; }
+.fune .fm { grid-row: 1; display: flex; align-items: center; justify-content: center; border-right: 1px solid #222; }
+.fune .fm span { writing-mode: vertical-rl; text-orientation: upright; font-size: 15px; font-weight: 900; letter-spacing: .2em; border: 1.5px solid #151515; padding: 6px 2px; }
+.fune .fr { grid-row: 1; padding: 6px 10px !important; margin: 0 !important; gap: 8px !important; min-height: 0; }
+.fune .tk { display: grid; grid-template-columns: auto 1fr; grid-template-areas: "k a" "n n"; align-items: center; gap: 2px 8px; padding-bottom: 6px; border-bottom: 1px dotted #ccc; }
+.fune .tk:last-child { border-bottom: 0; padding-bottom: 0; }
+.fune .kumi { grid-area: k; display: flex; align-items: center; gap: 3px; }
+.fune .ar { font-size: 12px; color: #151515; }
+.fune .kumi em { font-style: normal; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 3px; margin-left: 4px; }
+.fune .fr em.fr { background: #e7f4ff; color: #0b4f7a; border: 1px solid #8cc6ea; }
+.fune .ht { background: #c0392b; color: #fff; }
+.fune .tk.hit { background: #fff4d6; }
+.fune .nm { grid-area: n; font-size: 11px; line-height: 1.35; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fune .am { grid-area: a; justify-self: end; font-size: 16px; font-weight: 900; letter-spacing: .02em; font-variant-numeric: tabular-nums; } .fune .am small { font-size: 10px; margin-left: 2px; }
+.fune .fb { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-top: 1px solid #222; font-size: 12px; }
+.fune .sum { font-weight: 900; font-variant-numeric: tabular-nums; } .fune .sum small { font-size: 9px; margin-left: 1px; } .fune .sum em { font-style: normal; font-weight: 400; font-size: 10px; }
+.fune .sn { font-size: 10px; color: #555; font-variant-numeric: tabular-nums; }
+.fune .bc { margin-left: auto; display: flex; height: 18px; align-items: stretch; } .fune .bc i { display: block; background: #151515; }
+.fune.small .fr { max-height: 120px; }
+
+/* 結果 */
+.hitmsg { flex: none; margin: 0; text-align: center; font-size: 17px; font-weight: 900; color: #ffe08a; line-height: 1.5; }
+.gain { flex: none; text-align: center; font-size: 22px; color: #ffe08a; } .gain b { font-size: 46px; font-weight: 900; } .gain small { font-size: 16px; margin-left: 4px; }
+.resl { flex: none; display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; padding: 8px 10px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); font-size: 14px; }
+.resl .po { margin-left: 8px; } .resl .po b { font-size: 20px; color: var(--gold); } .resl .pn { color: var(--dim); }
+.scr.b-result.lose .lead { color: var(--dim); }
+
+/* 1 画面の詰め（bet.css の .os-t → .os-s → .os-xs と同じ順） */
+.os-s .sel { min-height: 44px; padding: 6px 10px; }
+.os-s .fune .fl { padding: 8px 4px 6px 8px; gap: 4px; } .os-s .fune { grid-template-columns: 84px 26px minmax(0, 1fr); }
+.os-xs .fune .nm { display: none; }
+.os-xs .gain b { font-size: 38px; }
+
+/* 画面ごと（クラス名は競馬の bet.css と重ならない b- から） */
+.scr.b-pick { gap: 10px; }
+.scr.b-confirm, .scr.b-voted, .scr.b-result { gap: 12px; }
+.scr.b-voted > .sub { flex: none; margin-top: -4px; }
+.os-t body.boat .race span:first-child:not(:only-child), body.boat .os-t .race span:first-child:not(:only-child) { display: none; } /* 詰めるときは上の帯の「締切の時刻」を省く（画面の中に締切までの時間がある） */
+/* 券がつぶれないように（結果の画面の小さい券も）: 左の欄が入る高さは残し、組番の一覧だけ中で動く */
+.fune { min-height: 150px; }
+.fune.small { min-height: 132px; }
+.fune.small .fl { gap: 3px; padding-top: 8px; } .fune.small .dt { display: none; } .fune.small .rno b { font-size: 18px; }
+.bnote { flex: none; margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); font-size: 13px; color: var(--dim); text-align: center; line-height: 1.6; }
+.bnote b { color: var(--cream); font-size: 17px; }
+.os-s .ctab td { padding: 5px 6px; } .os-s .csum { padding: 8px 10px; } .os-s .csum b { font-size: 18px; }
+.os-s .gain b { font-size: 40px; } .os-s .hitmsg { font-size: 16px; }
+.fune .brand { white-space: nowrap; font-size: 12px; }
+.fune .tk { grid-template-columns: auto minmax(0, 1fr); }
+.fune .am { white-space: nowrap; font-size: 15px; }
+.fune .kumi em { margin-left: 3px; padding: 1px 3px; }
+/* 枚数（BPT の券。上限なし＝持っている BPT まで）・返還（2026-11-19） */
+.qty { flex: none; display: flex; align-items: center; gap: 8px; justify-content: center; font-size: 14px; color: var(--dim); }
+.qty b { font-size: 22px; color: #fff; min-width: 2.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.qty .qb { width: 40px; height: 36px; border-radius: 9px; border: 1px solid var(--line); background: var(--btn2); color: #fff; font-size: 20px; font-weight: 900; }
+.qty .qb.w { width: 52px; font-size: 15px; }
+.fune .bk { background: #6b7590; color: #fff; }
+.incl { flex: none; margin: 0; display: flex; align-items: center; gap: 6px; justify-content: center; flex-wrap: wrap; font-size: 13px; color: #ffb3a6; }
+.os-s .qty .qb { height: 32px; }
+/* 画面の中身の送りの棒は出さない（2026-11-20）: 1 画面に収める作りで、棒の出るブラウザ（パソコン）では 1px 未満のはみ出しでも棒が出て幅が狭くなり、字が折れて本当にはみ出していた。
+   スマホは棒が幅を取らないので見た目は変わらない（指では今までどおり動く） */
+body.boat main { scrollbar-width: none; } body.boat main::-webkit-scrollbar { display: none; }
+/* 舟券の行（2026-11-20）: 「無料」「的中」「返還」の印が金額（◆◆◆100）に重なって読めなかった（前からの崩れ。券の一覧は中で動く欄なので崩れの試験に掛からなかった）。
+   金額の幅を先に取り、組番の横に入らない印は組番の下の行へ折る */
+.fune .tk { grid-template-columns: minmax(min-content, 1fr) auto; }
+.fune .kumi { flex-wrap: wrap; row-gap: 3px; min-width: 0; }
+.fune .kn { flex: none; display: inline-flex; align-items: center; gap: 3px; } /* 組番（1▶4）は折らない。折るのは印だけ */
+.fune .kn + em { margin-left: 0; }
+.os-s .fune .am { font-size: 14px; }
+/* 結果の画面を小さい画面（SE）でも 1 画面に（2026-11-20）: 当たり＋フライング・転覆の返還の知らせが重なると、いちばん詰めても入らなかった（艇番だけ 1 行に落ちて 3 行になっていた）。
+   知らせは艇番を字と同じ行に流す。いちばん詰めるときは「おめでとうございます」を 1 行に・下の枠は残りの数字だけ（競馬に使える案内はすぐ下のボタンに書いてある） */
+.incl { display: block; text-align: center; line-height: 1.55; } .incl .waku { display: inline-flex; vertical-align: middle; margin-right: 4px; }
+.os-xs .incl { font-size: 12px; }
+.os-xs .b-result .hitmsg { font-size: 14px; } .os-xs .b-result .hitmsg br { display: none; }
+.os-xs .b-result .bnote .bn2 { display: none; }
+.bnote small { font-size: 12px; margin-left: 4px; white-space: nowrap; }
+/* 当たりの額の下の「（上限 3,000 BPT）」（2026-11-20: BPT は 3,000 まで。上限で止まったときだけ） */
+.gain em { display: block; margin-top: -4px; font-style: normal; font-size: 14px; font-weight: 700; color: var(--cream); white-space: nowrap; }
+.os-xs .gain em { margin-top: -6px; font-size: 12px; } /* いちばん詰めるとき（SE）は額と同じ行に（1 画面に収める） */
+/* 上限のための返還・払い戻しなし（2026-11-20。事故の知らせの赤とは分けて、ふつうの知らせの色） */
+.incl.capl { color: var(--cream); } .incl.capl b { color: var(--gold); font-size: 15px; white-space: nowrap; }
+
+/* ---------- 2026-11-19 作り直し: 競馬のスマホ（bet.css の .waitbox・.bt の表・.pickdock）と同じ作り ---------- */
+body.boat .top { display: flex; align-items: center; gap: 10px; padding: calc(var(--sat) + 8px) 16px 8px; text-align: left; }
+body.boat .top .crest { flex: none; padding: 0; } body.boat .boatcrest { font-size: 22px; line-height: 30px; }
+body.boat .top .store { flex: 1 1 auto; min-width: 0; font-size: 14px; }
+body.boat .top .race { flex: none; margin: 0; flex-wrap: nowrap; }
+body.boat .top .race span { font-size: 14px; padding: 5px 14px; } body.boat .top .race span b { font-size: 17px; }
+.os-t body.boat .race span:first-child:not(:only-child), body.boat .os-t .race span:first-child:not(:only-child) { display: inline; }
+.waitbox .wt small { font-size: 20px; color: var(--dim); margin-left: 6px; font-weight: 700; }
+.waitbox.hot { border-color: #2f8fc4; box-shadow: 0 0 0 1px #2f8fc4 inset, 0 0 24px rgba(79, 176, 226, .25); }
+.waitbox .clock .k { font-size: 13px; color: var(--dim); } .waitbox .clock .v { font-family: var(--display); font-size: 44px; font-weight: 900; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.bptcard { flex: none; padding: 14px 18px; border-radius: 18px; background: linear-gradient(180deg, #123659, #0b2440); border: 1.5px solid #2f8fc4; }
+.bptcard .bh { display: flex; align-items: baseline; justify-content: space-between; } .bptcard .bh span { font-size: 15px; font-weight: 700; color: var(--gold); } .bptcard .bh b { font-family: var(--display); font-size: 34px; font-weight: 900; color: #fff; }
+.bptcard .bh b::after { content: " BPT"; font-size: 15px; color: var(--dim); }
+.bptcard p { margin: 4px 0 0; font-size: 12.5px; color: var(--dim); line-height: 1.55; }
+.howcard { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+.howcard .hw { display: flex; gap: 10px; align-items: flex-start; } .howcard .hw b { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--gold); color: #06233a; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; }
+.howcard .hw span { font-size: 12.5px; color: var(--dim); line-height: 1.5; } .howcard .hw em { display: block; font-style: normal; font-size: 15px; font-weight: 900; color: #fff; }
+.qrnote b { display: block; font-size: 18px; color: #fff; margin-bottom: 4px; }
+.pkh2 { flex: none; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; } .pkh2 h1 { margin: 0; font-size: 21px; text-align: left; } .pkh2 .bpts { font-size: 13px; color: var(--dim); } .pkh2 .bpts b { color: var(--cream); font-size: 16px; }
+.cartl { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; -webkit-overflow-scrolling: touch; }
+.cartl .cc { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 34px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2); color: #fff; font: inherit; }
+.cartl .cc i { font-style: normal; color: var(--gold); font-weight: 900; } .cartl .cc small { font-size: 12px; color: var(--cream); margin-left: 3px; } .cartl .cc em { font-style: normal; color: var(--dim); margin-left: 4px; }
+.pickdock .qty { margin: 8px 0 2px; }
+.pickdock .btn { margin-top: 8px; } .pickdock .btnrow .btn { margin-top: 8px; }
+/* 初めての案内（競馬の「あそびかた」と同じ並び） */
+.b-intro { gap: 12px; } .introh { text-align: center; } .introh b { font-family: var(--display); font-size: 30px; font-weight: 900; } .introh b i { color: var(--gold); }
+.introh h1 { margin: 6px 0 0; color: #fff; font-size: 23px; } .introh .sub { margin-top: 2px; }
+.istep { display: flex; gap: 12px; padding: 14px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); } .istep > b { flex: none; width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(180deg, var(--cream), var(--gold2)); color: #06233a; font-size: 20px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; }
+.istep h2 { margin: 0 0 4px; font-size: 17px; color: #fff; text-align: left; letter-spacing: 0; } .istep p { margin: 0; font-size: 13.5px; color: var(--dim); line-height: 1.6; }
+.os-s .bptcard p, .os-s .howcard .hw span { font-size: 11.5px; } .os-xs .howcard { display: none; } .os-xs .istep p { font-size: 12px; } .os-s .istep { padding: 10px 12px; }
+.b-pick .pickdock .pdsel { flex-wrap: nowrap; } .b-pick .pickdock .pdw { white-space: nowrap; font-size: 13px; color: var(--dim); } .b-pick .pickdock .pdw b { font-size: 18px; color: var(--gold); }
+/* 2026-11-20 崩れの見直し（tests/layout-check.js で 0 件に） */
+.waitbox .wk, .waitbox .wt, .waitbox .clock, .waitbox .wv:not([data-wrap]) { white-space: nowrap; }
+.waitbox .wr { min-width: 0; } .waitbox .wv:not([data-wrap]) { font-size: 15px; }
+.fune { grid-template-columns: 108px 30px minmax(0, 1fr); }
+.fune .fl { padding: 10px 6px 8px 9px; min-width: 0; } .fune .fl > * { white-space: nowrap; }
+.fune .brand { font-size: 11.5px; } .fune .rno b { font-size: 21px; } .fune .dt { font-size: 10px; }
+.os-s .fune { grid-template-columns: 104px 26px minmax(0, 1fr); }
+.fune .kumi, .fune .am, .fune .sum, .fune .sn { white-space: nowrap; }
+.btn, .bth span, .pk, .pdsel, .pdw, .pdo, .qty, .cc, .chip, .top .race span { white-space: nowrap; }
+/* 待ちの枠は縦に積む（見出し → 大きな時刻 → 「投票は ○ から」とカウントダウンの 1 行）。字が重ならない・はみ出さない（2026-11-20） */
+body.boat .waitbox { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: 18px 14px; }
+body.boat .waitbox .wk, body.boat .waitbox .wt { margin: 0; }
+body.boat .waitbox .wr { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 8px; flex-wrap: nowrap; }
+body.boat .waitbox .wv { margin: 0; }
+body.boat .waitbox .clock { display: flex; align-items: baseline; gap: 6px; padding: 0; }
+body.boat .waitbox .clock .v { font-size: 34px; }
+body.boat .os-s .waitbox .wt, body.boat .waitbox .wt { font-size: 60px; }
+/* 上の帯: ロゴ・店の名前・残りの時間が「…」で切れないように（SE でも） */
+body.boat .boatcrest { font-size: 19px; } body.boat .top { gap: 8px; padding-left: 14px; padding-right: 14px; }
+body.boat .top .store { overflow: visible; text-overflow: clip; font-size: 13px; } body.boat .top .race span { padding: 4px 10px; font-size: 13px; } body.boat .top .race span b { font-size: 16px; }
+/* 初めての人への説明（4 枚をめくる。競馬の v2/intro.css と同じ絵の作り・言い方。2026-11-20） */
+.b-intro { gap: 14px; }
+.b-intro .icard { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 18px 20px; border-radius: 20px; background: var(--card); border: 1px solid var(--line); text-align: center; }
+.b-intro .ino { position: absolute; left: -2px; top: -10px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(180deg, var(--cream), var(--gold2)); color: #06233a; font-weight: 900; font-size: 17px; }
+.b-intro .ipic svg { width: 150px; height: 128px; display: block; overflow: visible; }
+.b-intro .ipic .b1 { fill: #8fdcff; } .b-intro .ipic .b2 { fill: #2f8fc4; } .b-intro .ipic .cr { fill: #d8f3ff; } .b-intro .ipic .pp { fill: #fdfcf5; } .b-intro .ipic .ink { fill: #f5f3ef; } .b-intro .ipic .bg { fill: #0b2440; } .b-intro .ipic .ln { fill: #27486b; opacity: .6; }
+.b-intro .icard h2 { margin: 0; font-size: 20px; font-weight: 900; color: #fff; letter-spacing: 0; }
+.b-intro .icard p { margin: 0; font-size: 15px; line-height: 1.65; color: var(--dim); word-break: auto-phrase; text-wrap: pretty; }
+.b-intro .idots { flex: none; display: flex; justify-content: center; gap: 8px; } .b-intro .idots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); } .b-intro .idots i.on { background: var(--gold); }
+.os-s .b-intro .ipic svg { width: 120px; height: 102px; } .os-s .b-intro .icard { padding: 16px 14px; gap: 8px; } .os-xs .b-intro .ipic svg { width: 96px; height: 82px; }
+/* いちばん詰めるとき（SE）: 案内の文を少し小さく（2026-11-20「BPT は 3,000 まで」で 3 枚目の文が 1 行増えた分） */
+.os-xs .b-intro .icard p { font-size: 14px; line-height: 1.55; } .os-xs .b-intro .icard { gap: 6px; }
+.howb { flex: none; align-self: center; width: auto !important; min-height: 40px !important; padding: 6px 20px !important; font-size: 14px !important; }
+.btn.tokeiba { flex: none; display: flex; align-items: center; justify-content: center; text-decoration: none; min-height: 50px; font-size: 16px; background: linear-gradient(180deg, #ffe9a8, #c9a03e); color: #1a1408; }
+.os-s .btn.tokeiba { min-height: 44px; } .os-s .scr.b-result .nextr { display: none; } /* 詰めるときは「次のボートレース」を省く（上の帯に出ている） */
+.os-xs .b-noqr .bptcard { display: none; } /* いちばん詰めるときは「あなたの BPT」を省いて「あそびかた」を残す */
+/* ---------- 2026-11-21 2 回目の直し ---------- */
+/* H3 待ちの画面: 投票開始まで 10 分以上・1 時間以上（2:10:00）でも横にはみ出さない（時刻の欄を折り返す） */
+body.boat .waitbox .wr { flex-wrap: wrap; row-gap: 2px; max-width: 100%; }
+body.boat .waitbox .clock { flex-wrap: wrap; justify-content: center; min-width: 0; }
+body.boat .waitbox .clock .v { white-space: nowrap; }
+/* H4 前のレースの知らせ（ボタン付き。押せるように）と、待ちの画面の「前の結果」「あそびかた」の並び */
+#toast.act { pointer-events: auto; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+#toast .tbtn { flex: none; min-height: 36px; padding: 4px 14px; border-radius: 10px; border: 1px solid var(--gold2); background: transparent; color: var(--cream); font: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.btnrow.howr { flex: none; justify-content: center; gap: 10px; } .btnrow.howr .howb { flex: none; }
+.scr.b-prev > .btn.ghost:last-child { flex: none; min-height: 44px; }
+/* H7 当たれば ○ BPT（上限で減る・増えない）: SE でも切れない */
+.b-pick .pickdock .pdsel { min-width: 0; } .b-pick .pickdock .pdw { min-width: 0; flex-shrink: 1; }
+.b-pick .pickdock .pdw em { font-style: normal; font-size: 11px; } .b-pick .pickdock .pdw.capw { color: var(--cream); }
+.os-s .b-pick .pickdock .pdw b { font-size: 16px; }
+/* H7 上限で 1 BPT も増えなかった当たり */
+.gain.zero em { margin-top: 0; font-size: 16px; white-space: normal; word-break: auto-phrase; }
+/* 当たれば ○ BPT は 2 段（上に小さく「当たれば」・下に額）。上限のときは「上限まで」。SE でも切れない（2026-11-21 H7） */
+.b-pick .pickdock .pdw { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.b-pick .pickdock .pdw small { font-size: 11px; color: var(--dim); } .b-pick .pickdock .pdw.capw small { color: var(--cream); }
+/* 結果画面の小さい券（SE など幅の狭いとき）: 右の券の欄が横に切れて送りの棒が出ていた（2 回目の疑い）→ 左の欄を細く・額の字を少し小さく・横には動かさない */
+.fune.small, .os-s .fune.small { grid-template-columns: 80px 24px minmax(0, 1fr); }
+.fune.small .fl { padding-left: 7px; padding-right: 4px; } .fune.small .brand { font-size: 10.5px; } .fune.small .rno b { font-size: 16px; }
+.fune.small .fm span { font-size: 13px; padding: 4px 1px; }
+.fune.small .fr { overflow-x: hidden; padding: 6px 8px !important; } .fune.small .am { font-size: 13px; } .fune.small .am small { font-size: 9px; }
+/* ---------- 2026-11-21 3 回目 L3: 横向き（高さ 500px まで）の予想の画面 ----------
+   縦に積むと、えらんだ券の帯・倍率・枚数・ボタンで高さを使い切り、艇の表が 0〜2 行しか見えず選べなかった（SE 横 667×320・844×340）。
+   横向きは 2 列: 左＝艇の表（入らない分は中で動く）、右＝見出し・えらんだ券・倍率と枚数・ボタン。表の行は低く（選手の説明は 1 行） */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.boat main:has(> .scr.b-pick) { max-width: 960px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); } /* 横は幅を広く使う（ふだんは 520px まで） */
+  .scr.b-pick > .pickdock .pdc .waku { width: 32px; height: 32px; font-size: 18px; }
+  .scr.b-pick > .pickdock .pdw { font-size: 12px; } .scr.b-pick > .pickdock .pdw b { font-size: 16px; }
+  .scr.b-pick { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); column-gap: 12px; row-gap: 6px; }
+  .scr.b-pick > * { grid-column: 2; margin-top: 0; min-width: 0; }
+  .scr.b-pick > .pkbody { grid-column: 1; grid-row: 1 / -1; align-self: stretch; min-height: 0; scrollbar-width: none; }
+  .scr.b-pick > .pkbody::-webkit-scrollbar, .scr.b-pick .cartl::-webkit-scrollbar { display: none; }
+  .scr.b-pick > .pkh2 { grid-row: 1; flex-wrap: nowrap; }
+  .scr.b-pick > .pkh2 h1 { font-size: 18px; white-space: nowrap; }
+  .scr.b-pick > .pkh2 .bpts { white-space: nowrap; }
+  .scr.b-pick .cartl { scrollbar-width: none; }
+  .scr.b-pick > .pickdock { grid-row: 4; align-self: end; margin: 0; padding: 0; border-top: 0; background: none; gap: 4px; }
+  .scr.b-pick > .pickdock .btn { margin-top: 4px; min-height: 44px; padding: 6px; font-size: 15px; }
+  .scr.b-pick > .pickdock .qty { margin: 0; gap: 6px; } .scr.b-pick > .pickdock .qty .qb { height: 32px; }
+  .scr.b-pick > .pickdock .pdh { margin: 2px 0; font-size: 14px; }
+  .scr.b-pick > .pickdock .pdsel { gap: 6px; } .scr.b-pick > .pickdock .pdo b { font-size: 22px; }
+  .b-pick .bth { min-height: 26px; }
+  .b-pick .btr { min-height: 38px; padding-top: 2px; padding-bottom: 2px; }
+  .b-pick .pk { height: 33px; font-size: 14px; } .b-pick .pk.k2.od b { font-size: 15px; }
+  .b-pick .btr .waku.lg { width: 28px; height: 28px; font-size: 16px; }
+  .b-pick .btr .bn { gap: 0; } .b-pick .btr .bn b { font-size: 13.5px; line-height: 1.2; }
+  .b-pick .btr .bn small { font-size: 10.5px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .b-pick .bth, .b-pick .btr { grid-template-columns: 28px minmax(0, 1fr) 52px 62px; column-gap: 6px; padding: 0 8px; }
+}
