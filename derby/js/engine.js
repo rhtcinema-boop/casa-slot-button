@@ -151,8 +151,12 @@
   /* 1 回走らせる。dt 刻みで各馬を進め、ゴール時刻を返す。
      boost(i, t) を渡すとニンジンなどの加速倍率を足せる（本番用）。
      stepCb(t, pos) を渡すと毎ステップ位置を受け取れる（本番の絵用）。 */
+  /* 競艇（2026-11-17 テスト版）: race.kind === 'boat' のレースは js/boat-model.js の走り方で走らせる（倍率の試走・種探し・再現はこのファイルの仕組みをそのまま使う）。
+     kind の無いレース（競馬）は今までとまったく同じ */
+  const boatModel = () => { try { return (typeof self !== 'undefined' && self.BoatModel) || (typeof globalThis !== 'undefined' && globalThis.BoatModel) || (typeof module === 'object' && module.exports && typeof require === 'function' ? require('./boat-model.js') : null); } catch (e) { return null; } };
   function createRun(race, r, opt) {
     opt = opt || {};
+    if (race && race.kind === 'boat') { const B = boatModel(); if (B) return B.createRun(race, r, opt); }
     const n = race.horses.length, sigma = noiseSigma(race);
     const base = race.horses.map((h) => baseSpeed(h, race));
     const pos = new Array(n).fill(0), noise = new Array(n).fill(0), finish = new Array(n).fill(0), speed = new Array(n).fill(0);
@@ -229,6 +233,15 @@
      EX_PRIOR 回ぶん混ぜてならす（0 回の組み合わせも 999 倍に張り付かない）。倍率 = 払い戻し率 ÷ 確率（0.1 刻みに切り捨て、1.0〜999.9）。
      exactaProb は合計 1（結果の決め方の抽選の重み）。キーは '1着の添字-2着の添字'（ekey。例 '2-4'） */
   const EX_PRIOR = 150, EX_MIN = 1.0, EX_MAX = 999.9;
+  /* 2026-11-18 オーナー「最初の倍率は人気の順のまま全体を 5〜20 倍に縮める」（ref/boat/投票ルール_2026-11-18.md）:
+     0.85 ÷ 確率 の倍率（1 倍台〜数百倍）を、対数の上で一番低いもの → EX_SHOW_LO 倍・一番高いもの → EX_SHOW_HI 倍へまっすぐ写す（人気の順は変わらない。0.1 倍に丸めて同じ数になることはある）。
+     30 通りが全部同じ確率なら 10 倍。締切のあとの ±10% のずらし（v2/outcome.js）は今までどおりこの倍率から。exactaProb（自然な起きやすさ・抽選の重み）は変えない */
+  const EX_SHOW_LO = 5.0, EX_SHOW_HI = 20.0;
+  function squeezeOdds(raw) {
+    const ks = Object.keys(raw), L = ks.map((k) => Math.log(Math.max(1e-9, raw[k]))), lo = Math.min.apply(null, L), hi = Math.max.apply(null, L), out = {};
+    ks.forEach((k, i) => { const u = hi - lo > 1e-9 ? (L[i] - lo) / (hi - lo) : 0.5; out[k] = clamp(Math.round(EX_SHOW_LO * Math.pow(EX_SHOW_HI / EX_SHOW_LO, u) * 10) / 10, EX_SHOW_LO, EX_SHOW_HI); });
+    return out;
+  }
   function ekey(a, b) { return a + '-' + b; }
   function calcOdds(race, r, sims) {
     sims = sims || SIMS;
@@ -250,7 +263,8 @@
     const pw = win.map((w) => (w + 1) / (sims + n)), exactaProb = {}, exacta = {};
     let tot = 0;
     for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) { if (a === b) continue; const prior = pw[a] * pw[b] / Math.max(1e-9, 1 - pw[a]); const p = ((ex[ekey(a, b)] || 0) + EX_PRIOR * prior) / (sims + EX_PRIOR); exactaProb[ekey(a, b)] = p; tot += p; }
-    Object.keys(exactaProb).forEach((k) => { exactaProb[k] /= tot; exacta[k] = clamp(Math.floor(rate / exactaProb[k] * 10) / 10, EX_MIN, EX_MAX); });
+    const raw = {}; Object.keys(exactaProb).forEach((k) => { exactaProb[k] /= tot; raw[k] = rate / exactaProb[k]; });
+    Object.assign(exacta, squeezeOdds(raw)); // 5〜20 倍に縮める（2026-11-18。以前は 0.85 ÷ 確率 を 1.0〜999.9 倍）
     // 展開予想: 序盤・中盤・終盤の平均順位（小さいほど前）
     const tenkai = rankSum.map((arr) => arr.map((s) => s / 300));
     return { tansho, umaren, winProb: win.map((w) => w / sims), tenkai, exacta, exactaProb };
@@ -326,12 +340,14 @@
      いちばん近い時刻の選び方: スタート 5 秒後〜（吸収を終えてゴールの 0.3 秒前まで）の中で「近さ（m）＋ゴールまでの秒数 × 0.05」が最小。
      決めた着順にならなかったとき（まれ）は以前の入れ替え。返り値 { P: 馬ごとの位置, V: 馬ごとの速さ, finish, swaps: [{ a, b, t, gapM, blend }] } または null */
   const BLEND_MIN = 1.5; // 入れ替えのつなぎの最短の秒数
-  function forceOrder(rec, order, dist) {
+  /* swapFrom（秒。省くと 5 ＝ 今までと同じ）: これより前では入れ替えない。競艇だけが使う（boat/race-boat.js の Race.planJob: 1 周 1 マークより前に入れ替えると
+     艇の進路が作れないレースがあるので、マークを回り終えてから入れ替える走りに作り直す。2026-11-20）。競馬は渡さないので今までとまったく同じ */
+  function forceOrder(rec, order, dist, swapFrom) {
     const n = rec.n, K = rec.frames.length, dt = FIXED_DT, P = [], V = [], fin = rec.finish.slice(), swaps = [];
     for (let i = 0; i < n; i++) { P.push(new Float64Array(K)); V.push(new Float64Array(K)); for (let k = 0; k < K; k++) { P[i][k] = rec.frames[k][i]; V[i][k] = rec.speeds[k][i]; } }
     const cur = rec.order.slice();
     function tailSwap(a, b) { // a（後ろ）を b（前）より先にゴールさせる
-      const first = Math.min(fin[a], fin[b]), kEnd = Math.min(K - 1, Math.floor((first - 0.4) / dt)), kStart = Math.floor(5 / dt);
+      const first = Math.min(fin[a], fin[b]), kEnd = Math.min(K - 1, Math.floor((first - 0.4) / dt)), kStart = Math.floor((swapFrom > 5 ? swapFrom : 5) / dt);
       let best = -1, bestCost = Infinity, bestW = 0;
       for (let k = kStart; k <= kEnd; k++) {
         const gapM = Math.abs(P[b][k] - P[a][k]) * dist, W = Math.max(BLEND_MIN, gapM / 1.2);
@@ -367,7 +383,7 @@
     let natural = true, forced = null;
     if (opt.order && opt.order.length === n && opt.order.some((h, k) => h !== rec.order[k])) {
       natural = false;
-      forced = opt.legacy ? null : forceOrder(rec, opt.order, race.dist || 1000);
+      forced = opt.legacy ? null : forceOrder(rec, opt.order, race.dist || 1000, opt.swapFrom);
       if (!forced) opt.order.forEach((h, k) => { map[h] = rec.order[k]; }); // 以前の入れ替え（最初から全部）
     }
     const finishT = forced ? forced.finish.slice() : map.map((src) => rec.finish[src]), last = rec.frames.length - 1;
@@ -398,6 +414,6 @@
     return run;
   }
 
-  return { FIXED_DT, TUNE, MODEL2, OUT_T, incidentOf, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET,
+  return { FIXED_DT, TUNE, MODEL2, OUT_T, incidentOf, rng, hashSeed, recordRun, replayOrder, replayRun, PAYOUT_RATE, MAX_BET, EX_SHOW_LO, EX_SHOW_HI, squeezeOdds,
  BALLS_MAX, TYPES, CONDS, POOL, COATS, ROULETTE, makeRace, simulate, createRun, calcOdds, qkey, ekey, forceOrder, EX_MIN, EX_MAX, oddsColor, totalBet, payout, carrotCount, spinFood, betHorses, ballsEarned, spinRoulette, profile, baseSpeed };
 });
