@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#071425">
+<meta name="format-detection" content="telephone=no">
+<meta name="robots" content="noindex">
+<meta name="description" content="casa BOAT の投票ページ（お店のテレビの QR から開きます）">
+<title>casa BOAT 投票</title>
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../icon-derby-180.png">
+<link rel="stylesheet" href="bet.css?v=v4v">
+<link rel="stylesheet" href="boat-bet.css?v=b3"><!-- 版の印: 公開のたびに下のスクリプトの V と同じ印に上げる（2026-11-21） -->
+<script>/* 1 画面の高さ（v2/bet.html と同じ）: 見える高さを --appH に。iOS 26 の Safari（ホーム画面に追加ではない）は下の浮いたバーの分を --sbar として空ける。確かめ用: window.__sbarForce = true */
+(function () {
+  var d = document.documentElement;
+  function f() {
+    var h = window.innerHeight; if (!(h > 0)) return;
+    d.style.setProperty('--appH', h + 'px');
+    var ua = navigator.userAgent || '', ios = /iP(hone|od|ad)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    var saf = ios && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|Line\/|FBAN|FBAV|Instagram/.test(ua);
+    var sa = navigator.standalone === true; try { sa = sa || window.matchMedia('(display-mode: standalone)').matches; } catch (e) { /* noop */ }
+    var v = /Version\/(\d+)/.exec(ua), bar = 0;
+    if (window.__sbarForce || (saf && !sa && v && Number(v[1]) >= 26)) {
+      var land = window.innerWidth > h, sw = screen.width || 0, sh = screen.height || 0, H = land ? Math.min(sw, sh) : Math.max(sw, sh);
+      var tall = H >= 800, cover = tall ? 82 : 60, status = tall ? 59 : 20;
+      bar = Math.max(0, cover - Math.max(0, H - h - status));
+    }
+    d.style.setProperty('--sbar', bar + 'px'); d.classList.toggle('sbar', bar > 0);
+  }
+  f(); window.__casaVH = f; window.addEventListener('resize', f); window.addEventListener('orientationchange', function () { setTimeout(f, 300); });
+})();</script>
+<script src="config.js?v=v4p"></script>
+<script>(function () { var f = false; try { f = localStorage.getItem('casa.derby.font') === '1'; } catch (e) { f = false; }
+  if (f) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap'; l.id = 'webfont'; document.head.appendChild(l); } })();</script>
+</head>
+<body class="boat">
+<div id="app" class="booting">
+  <header class="top">
+    <div class="crest boatcrest"><b>casa</b> <span>BOAT</span></div>
+    <div class="store off" id="store"><i></i><span id="storeText">接続中…</span></div>
+    <div class="race" id="raceChip"></div>
+  </header>
+  <div class="net hidden" id="net" role="alert">通信が切れています</div>
+  <main id="main"><div class="scr mid splash"><p class="lead" id="bootMsg" role="status">読み込み中…</p></div></main>
+  <div class="toast hidden" id="toast" role="status"></div>
+</div>
+<script>/* 画面のスクリプト（2026-11-21: 競馬の v2/bet.html と同じく、版の印は 1 か所）。公開のたびに V（ボートのファイル）を上げる。
+   DV は競馬と共通のファイル（core.js・client.js）の印で、v2/bet.html の V と同じにする。実行は入れた順（async=false） */
+(function () {
+  var V = '?v=b3', DV = '?v=v4q28', h = document.head;
+  function sc(u) { var s = document.createElement('script'); s.src = u; s.async = false; h.appendChild(s); }
+  sc('core.js' + DV); sc('boat-core.js' + V); sc('client.js' + DV); sc('boat-bet.js' + V);
+})();</script>
+<noscript><p style="color:#fff;text-align:center;padding:24px">JavaScript をオンにしてください</p></noscript>
+</body>
+</html>
