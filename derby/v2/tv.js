@@ -480,6 +480,7 @@
     TV.mode = m; TV.log.push([Math.round(now()), m]); if (TV.log.length > 50) TV.log.shift();
     if (Sfx.scene) Sfx.scene(m === 'live'); // 音はレースの場面だけ（上の説明）
     if (m === 'live' && AUTO_SOUND && !audioOn) unlockAudio(); // 店のテレビ: 音が止められていたら、レースに入るときにもう一度鳴らし直す
+    if ((m === 'open' || m === 'live') && raceView && raceView.boatHold === true) { raceView.boatHold = false; raceView.offWas = true; } // 競馬の投票・本番に入るときは、casa BOAT の「描かない」を必ず外す（念のため。ふつうは v2/tv-boat.js が先に外す。2026-11-20）
     ['m-wait', 'm-hl', 'm-open', 'm-live', 'm-result'].forEach((c) => stageEl.classList.toggle(c, c === 'm-' + m));
     { const b = (m === 'open' || m === 'live') && isBig(view); stageEl.classList.toggle('bigrace', b); if (b) $('v2bigBanN').textContent = bigName(view); } // ビッグレース（2026-11-11 試作）
     if (m !== 'wait') { delete stageEl.dataset.wp; TV.wp.page = ''; }
@@ -489,6 +490,7 @@
   // 時刻からいまの場面を決める（4 回/秒）。レースの再生（playRace）・ハイライトは自分で続きを進める
   function decide() {
     if (!S) return;
+    if (raceView.boatHold === true && !(window.BOATTV && BOATTV.active)) boatHold(false); // 念のため: casa BOAT の画面が出ていないのに「描かない」が残っていたら外す（2026-11-20）
     const t = now();
     const races = Object.keys(cache).map((k) => cache[k]).filter((r) => r && r.closeAt && (!r.storeId || r.storeId === STORE));
     // 1) 走っているレース（締切〜結果発表）。ハイライト中なら止めて切り替える
@@ -698,6 +700,7 @@
     $('v2stV').textContent = x.vote; $('v2stW').textContent = x.win; $('v2stN').textContent = x.near; $('v2stC').textContent = x.cost; $('v2stC2').textContent = x.cost;
   }
   function showWait(t) {
+    if (raceView.boatHold === true) return; // casa BOAT の画面の間（2026-11-20 D1）: 待ち時間の映像（パドックの作り直し・リプレイ）を始めない。ボートが終わったら続きから
     if (TV.hl) return; // リプレイ中（終わったら自分で戻る）
     const N = nextRaceOf(), NI = nextInfo(), P = prevRace();
     const soon = NI && NI.openAt && NI.openAt - t < 45000; // 投票の始まりがもうすぐならパドックのまま
@@ -730,6 +733,16 @@
   }
   // ---------- 前のレースのリプレイ（ゴール前 9 秒から。リプレイ・勝ち馬のアップまで） ----------
   function stopHighlight() { const h = TV.hl; if (!h) return; TV.hl = null; h.abort(); }
+  /* casa BOAT の画面を出す・しまう（v2/tv-boat.js が呼ぶ。2026-11-20 D1）: 出している間は競馬の 3D を一切描かない。
+     待機（パドック）は js/race3d.js の startIdle が boatHold を見て描かない。リプレイ（m-hl）は走り・再生・勝ち馬のアップのループごと止める（ボートが終わったら待ち時間の次の枠から。映像は showWait が作り直す）。
+     競馬のレース（投票・本番）はボートより先（ボートの側が引っ込む）なので、ここでは止めない */
+  function boatHold(on) {
+    if (!on) { raceView.boatHold = false; raceView.offWas = true; return; }
+    if (TV.playing || TV.mode === 'live' || TV.mode === 'open') return; // 競馬の投票・本番の間は止めない（映像を描き続ける）
+    raceView.boatHold = true;
+    if (TV.hl) { stopHighlight(); view = null; }
+    if (raceView.phase !== 'idle' && raceView.stopRun) raceView.stopRun();
+  }
   // 映像の「1着 3番 → 2着 5番 12.4倍」の帯（js/race3d.js の comboBar）と右の列（Race3D.Exacta）に渡す 2 連単の倍率
   function exactaView(R) {
     const XA = window.Race3D && Race3D.Exacta, rs = R.result || null;
@@ -1384,7 +1397,8 @@
     v2: true, store: STORE, raceView, Engine, cloud: C, tv: TV, watch: WATCH, // watch: 見るだけ（v2/watch.js が使う）
     upd: UPD, updCheck: (force) => autoUpdate(force), updSafe,
     health: HM, // テレビの調子（2026-10-29。tests/v2-tvhealth.test.js・tools/smooth-bench.js） // 自動アップデート（tests/v2-tv-update.test.js）
-    get hold() { return TV.hold || null; }, unpaidOf, // 受け取り待ち（2026-11-17。v2/announce.js・tests/v4-tv-unpaid.plan.js）
+    boatHold, // casa BOAT の画面の間は競馬の 3D を描かない（2026-11-20 D1。v2/tv-boat.js）
+    get hold() { return window.BOATTV && BOATTV.active ? null : TV.hold || null; }, unpaidOf, // casa BOAT の画面の間は受け取り待ちの声を出さない（2026-11-19。v2/tv-boat.js） // 受け取り待ち（2026-11-17。v2/announce.js・tests/v4-tv-unpaid.plan.js）
     get race() { return view; }, get phase() { return TV.mode; }, get state() { return S; }, now, hhmm, canVote, nextInfo, renderToday, // hhmm・canVote: 25 時表記と投票できる店（2026-10-26。tests/v4-tv.plan.js）。renderToday: 本日のレースの帯（2026-10-27）
     get cues() { return TV.cues || null; }, cueOverride: CUE_Q, // 確定演出: いま映像に渡しているもの（tests/v2-tv.plan.js）と ?cues= の上書き
     // 結果画面の 5 分の流れの確認用: resultAt(秒) で「結果画面が出てから 秒」の場面にする（表示の時計だけ進める。閉じる時刻は本物のまま）。resultAt(null) で戻す
