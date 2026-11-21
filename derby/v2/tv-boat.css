@@ -1,0 +1,155 @@
+/* 店のテレビの casa BOAT（2026-11-19。v2/tv-boat.js）: 競馬のテレビ（1600×900 の #stage）の上に重ねる。色は競馬（金）と見分けられる水色系。艇の色は公式どおり */
+#boatOv { position: absolute; inset: 0; z-index: 60; background: radial-gradient(ellipse at 50% -10%, #3d9bd6 0%, #1a5f99 38%, #0b2f55 75%, #071b33 100%); color: #fff; font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif; overflow: hidden; }
+#boatOv[hidden] { display: none; }
+/* 場面の板は 1 つだけ見せる（2026-11-20: この決まりが抜けて、取り消しの知らせが次のレースの画面に重なっていた） */
+#boatOv section[hidden] { display: none !important; }
+/* 字は折らない（折るのは <br> の所だけ）。決まった大きさ 1600×900 で組み、枠に合わせて全体を縮める（v2/tv.js・デモの tv.html） */
+#boatOv, #boatOv * { white-space: nowrap; }
+.bo-waku { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 7px; font-style: normal; font-weight: 900; font-size: 28px; border: 2px solid rgba(0, 0, 0, .5); flex: none; }
+.bo-waku.sm { width: 34px; height: 34px; font-size: 21px; border-radius: 5px; }
+.bo-waku.lg { width: 128px; height: 128px; font-size: 96px; border-radius: 14px; border-width: 3px; }
+/* 映像（1000×480 を 1.6 倍＝1600×768。上の帯の下） */
+.bo-film { position: absolute; left: 0; right: 0; top: 66px; bottom: 0; background: #000; }
+.bo-fit { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; transform-origin: 0 0; transform: scale(1.6); }
+.bo-fit canvas { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; display: block; }
+.bo-card { position: absolute; inset: 0; background: rgba(5, 10, 20, .9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 40px; }
+.bo-card[hidden] { display: none; }
+.bo-card h2 { margin: 0 0 8px; font-size: 28px; font-weight: 900; } .bo-card h2 small { font-size: 15px; color: #ffd966; margin-left: 12px; }
+.bo-card .bo-tbl { font-size: 15px; } .bo-card .bo-tbl .nm { font-size: 17px; } .bo-card .bo-tbl td { padding: 4px 8px; } .bo-card .bo-tbl th { font-size: 11px; } .bo-card .bo-waku { width: 26px; height: 26px; font-size: 17px; } .bo-card .bo-tbl .ps { font-size: 13px; }
+.bo-closed { margin: 10px 0 0; font-size: 18px; color: #ffb3a6; font-weight: 700; }
+/* 結果（2 分） */
+.bo-res { position: absolute; left: 0; right: 0; top: 66px; bottom: 0; padding: 30px 48px; display: grid; grid-template-columns: minmax(0, 1fr) 560px; grid-template-rows: auto auto auto 1fr auto auto; gap: 18px 40px; }
+.bo-kakutei { grid-column: 1; display: flex; align-items: center; gap: 22px; }
+.bo-k { font-size: 44px; font-weight: 900; color: #fff; background: #c0392b; padding: 6px 18px; border-radius: 10px; }
+.bo-ar { font-size: 64px; color: #9fb6d6; }
+.bo-nm { font-size: 30px; font-weight: 900; line-height: 1.4; } .bo-nm small { font-size: 22px; color: #ffe08a; font-weight: 700; }
+.bo-pay { grid-column: 1; display: flex; align-items: baseline; gap: 18px; padding: 18px 26px; background: rgba(15, 42, 70, .85); border: 2px solid #2f8fc4; border-radius: 16px; font-size: 28px; color: #cfe3ff; }
+.bo-pay b { font-size: 58px; color: #fff; font-weight: 900; font-variant-numeric: tabular-nums; } .bo-pay b.y { color: #ffe08a; } .bo-pay small { font-size: 24px; } .bo-pay .od { margin-left: auto; font-size: 30px; }
+.bo-wins { grid-column: 2; grid-row: 1 / 7; background: rgba(4, 12, 24, .7); border: 1px solid #27486b; border-radius: 16px; padding: 16px 22px; overflow: hidden; }
+.bo-wins h3 { margin: 0 0 10px; font-size: 30px; color: #ffe08a; }
+.bo-wins ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.bo-wins li { display: flex; align-items: baseline; gap: 12px; font-size: 26px; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, .05); }
+.bo-wins li.me { background: rgba(255, 224, 138, .16); }
+.bo-wins .nk { font-weight: 900; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bo-wins .st { font-size: 18px; color: #9fb6d6; } .bo-wins b { font-size: 26px; color: #ffe08a; } .bo-wins b small { font-size: 16px; margin-left: 2px; }
+.bo-none { font-size: 26px; color: #9fb6d6; }
+.bo-wins .cp { flex: none; font-style: normal; font-size: 15px; font-weight: 900; color: #0b2f55; background: #ffe08a; border-radius: 5px; padding: 1px 6px; align-self: center; } /* BPT の持ち上限 3,000 で止まった人の印（2026-11-20） */
+.bo-next { grid-column: 1; align-self: end; margin: 0; font-size: 26px; color: #cfe3ff; }
+.bo-void { position: absolute; inset: 66px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.bo-void h2 { font-size: 56px; margin: 0 0 16px; } .bo-void p { font-size: 30px; color: #cfe3ff; }
+.bo-order { grid-column: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 18px; align-content: start; }
+.bo-order h3 { grid-column: 1 / -1; margin: 4px 0 0; font-size: 22px; color: #9fb6d6; }
+.bo-order .or { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 700; } .bo-order .rk { width: 52px; color: #9fb6d6; font-size: 20px; } .bo-order .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bo-note { grid-column: 1; margin: 0; font-size: 22px; color: #ffe08a; }
+.bo-inc { grid-column: 1; display: flex; align-items: center; gap: 14px; font-size: 24px; color: #ffb3a6; } .bo-inc b { font-size: 30px; color: #fff; background: #8a2a20; padding: 2px 12px; border-radius: 8px; }
+/* 結果の知らせの段（2026-11-20）: 事故の艇・上限のため BPT の券は返還・上限のため払い戻しなしを 1 行ずつ */
+.bo-notes { grid-column: 1; display: flex; flex-direction: column; gap: 8px; } .bo-inc.cap b { background: #6a4a12; }
+.bo-pay b.np { font-size: 46px; }
+/* フライング・転覆の艇は着順に数えない: 着の欄に本物と同じ記号「Ｆ」「転」（2026-11-20。ref/boat/research/27_返還のルール.md） */
+.bo-order .or.out .rk { color: #fff; background: #8a2a20; border-radius: 6px; text-align: center; font-size: 22px; font-weight: 900; line-height: 1.5; } .bo-order .or.out .nm { color: #ffb3a6; }
+/* 発表がまだ届いていない間（2026-11-20）: 「結果を確認中」だけを真ん中に */
+.bo-res.is-pend { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.bo-pend { text-align: center; } .bo-pend h2 { font-size: 56px; margin: 0 0 16px; } .bo-pend p { font-size: 30px; color: #cfe3ff; margin: 0; }
+
+/* ---------- 2026-11-19 作り直し: 競馬のテレビ（v2/tv.css の待ち時間・投票受付中）と同じ作り。色は水色系 ---------- */
+.bo-top { position: absolute; left: 30px; right: 30px; top: 12px; height: 56px; display: flex; align-items: center; gap: 12px; z-index: 3; }
+.bo-pill { display: inline-flex; align-items: center; height: 52px; padding: 0 22px; border-radius: 16px; font-size: 30px; font-weight: 900; white-space: nowrap; background: #fff8ea; color: #0b2f55; border: 3px solid #0b2f55; }
+.bo-pill.st { background: #0d2a47; color: #fff; border-color: #fff; letter-spacing: .04em; } .bo-pill.st.on { background: #1f7fd6; }
+.bo-pill.tm { border-radius: 999px; }
+.bo-pill.pr { background: #e24a2b; color: #fff; border-color: #fff; border-radius: 999px; font-size: 26px; }
+.bo-pill.ct { margin-left: auto; background: #ffe08a; border-color: #0b2f55; border-radius: 999px; font-size: 22px; } .bo-pill.ct b { font-size: 38px; margin: 0 6px; font-variant-numeric: tabular-nums; }
+.bo-pill.ct[hidden] { display: none; }
+.bo-top .bo-logo { margin-left: auto; font-size: 38px; font-weight: 900; color: #fff; font-style: normal; text-shadow: 0 3px 0 #0b2f55; letter-spacing: .02em; } .bo-top .bo-logo i { color: #ffe08a; font-style: italic; }
+.bo-pill.ct:not([hidden]) + .bo-logo { margin-left: 0; }
+.bo-pill.sn { height: 40px; font-size: 20px; background: rgba(255, 255, 255, .25); color: #fff; border: 0; padding: 0 16px; }
+.bo-panel { position: absolute; border-radius: 26px; border: 6px solid #0b2f55; box-shadow: 0 6px 0 rgba(0, 0, 0, .25); overflow: hidden; box-sizing: border-box; }
+.bo-panel h3 { margin: 0; font-size: 30px; font-weight: 900; color: #0b2f55; } .bo-panel h3 small { font-size: 20px; background: #0b2f55; color: #fff; border-radius: 8px; padding: 2px 10px; margin-left: 8px; vertical-align: 3px; }
+.bo-vote { position: absolute; inset: 0; }
+/* 映像の枠（1000×480 を枠に合わせて縮める） */
+.bo-vid { background: #000; }
+.bo-vfit { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; transform-origin: 0 0; }
+.bo-vfit canvas { position: absolute; left: 0; top: 0; width: 1000px; height: 480px; display: block; }
+.bo-tag { position: absolute; left: 16px; top: 14px; z-index: 2; background: rgba(5, 20, 40, .85); color: #fff; font-size: 24px; font-weight: 900; padding: 6px 16px; border-radius: 10px; border: 2px solid #8fdcff; }
+.bo-st { position: absolute; inset: 0; z-index: 2; background: rgba(5, 20, 40, .94); padding: 18px 40px; color: #fff; display: flex; flex-direction: column; justify-content: center; gap: 4px; } /* 2026-11-20: 映像の字幕と重ならないよう、映像の枠を全部覆う板にした */
+.bo-st[hidden] { display: none; }
+.bo-st h4 { margin: 0 0 6px; font-size: 30px; color: #ffe08a; text-align: center; } .bo-st .sth, .bo-st .str { width: 420px; align-self: center; } .bo-st .sth { display: grid; grid-template-columns: 90px 70px 1fr; font-size: 18px; color: #9fb6d6; }
+.bo-st .str { display: grid; grid-template-columns: 90px 70px 1fr; align-items: center; font-size: 30px; font-weight: 900; } .bo-st .str .c { color: #9fb6d6; font-size: 22px; } .bo-st .str b { font-variant-numeric: tabular-nums; }
+.bo-st p { margin: 8px 0 0; font-size: 16px; color: #9fb6d6; text-align: center; }
+/* 出走表（競馬の出馬表と同じ: クリーム地・行ごとに枠の色の線） */
+.bo-card2 { background: #fff8ea; padding: 14px 18px; }
+.bo-ct { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.bo-ct .hd, .bo-ct .rw { display: grid; grid-template-columns: 8px 52px minmax(0, 1fr) 54px 110px 90px 128px; align-items: center; column-gap: 8px; }
+.bo-ct .hd { font-size: 18px; color: #4a6a8c; font-weight: 700; } .bo-ct .hd span:nth-child(2) { grid-column: 3; }
+.bo-ct .rw { background: #fff; border-radius: 10px; height: 52px; color: #0b2f55; }
+.bo-ct .bar { height: 40px; border-radius: 4px; } .bo-ct .bo-waku { width: 44px; height: 44px; font-size: 28px; }
+.bo-ct .nm { font-size: 30px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bo-ct .cl { font-size: 22px; font-weight: 900; color: #1f5f99; } .bo-ct .ty { font-size: 20px; font-weight: 900; background: #d9efff; border-radius: 6px; text-align: center; padding: 2px 0; }
+.bo-ct .cn { display: flex; flex-direction: column; align-items: center; line-height: 1; } .bo-ct .cn b { font-size: 26px; } .bo-ct .cn small { font-size: 13px; color: #4a6a8c; }
+.bo-ct .ps { display: flex; gap: 3px; } .bo-ct .ps i { width: 38px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 26px; font-weight: 900; border-radius: 6px; background: #e6edf4; color: #0b2f55; }
+.bo-ct .ps i.p1 { background: #f2b800; color: #fff; } .bo-ct .ps i.p2 { background: #9aa9b6; color: #fff; } .bo-ct .ps i.p3 { background: #c77c3c; color: #fff; }
+/* カウントダウン（紺・大きな黄色の数字） */
+.bo-cd { background: linear-gradient(180deg, #13305a, #0b1f3d); color: #fff; padding: 24px 30px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.bo-cd .k { font-size: 30px; font-weight: 900; color: #cfe3ff; } .bo-cd .cd { font-size: 150px; line-height: 1; font-weight: 900; color: #ffd84a; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.bo-cd .h { font-size: 28px; font-weight: 900; color: #cfe3ff; line-height: 1.35; margin-top: 10px; }
+.bo-cd.last .cd { color: #ff7a59; animation: boBlink 1s steps(2) infinite; } @keyframes boBlink { 50% { opacity: .55; } }
+/* 人気の組番（クリーム地に紺の札） */
+.bo-popp { background: #fff8ea; padding: 18px 22px; } .bo-popp #boPop { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.bo-popp .pr { display: flex; align-items: center; gap: 10px; height: 84px; background: linear-gradient(180deg, #13305a, #0b1f3d); border-radius: 14px; padding: 0 18px; color: #fff; }
+.bo-popp .rk { width: 38px; height: 38px; border-radius: 50%; background: #ffd84a; color: #0b2f55; font-weight: 900; font-size: 24px; display: inline-flex; align-items: center; justify-content: center; }
+.bo-popp .ar { font-size: 18px; color: #cfe3ff; } .bo-popp .od { margin-left: auto; font-size: 36px; font-weight: 900; color: #ffd84a; font-variant-numeric: tabular-nums; } .bo-popp .od small { font-size: 20px; }
+/* QR（白地・水色の太枠） */
+.bo-qrp { background: #fff; border-color: #1f7fd6; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 0 14px; }
+.bo-qrp h3 { width: 100%; background: #1f7fd6; color: #fff; text-align: center; padding: 10px 0; font-size: 28px; }
+.bo-qrp .bo-qr { width: 300px; height: 300px; background: #fff; box-shadow: none; display: grid; place-items: center; color: #333; font-size: 20px; text-align: center; }
+.bo-qrp .bo-qr svg { width: 290px; height: 290px; display: block; }
+.bo-qrp .bo-qrc { margin: 0; font-size: 24px; font-weight: 900; color: #1f7fd6; text-align: center; }
+/* 投票受付中の並び（1600×900。競馬の投票受付中と同じ） */
+.is-vote .bo-vid { left: 30px; top: 84px; width: 820px; height: 400px; }
+.is-vote .bo-vfit { transform: scale(.808); } /* (820−12)/1000 */
+.is-vote .bo-card2 { left: 866px; top: 84px; width: 704px; height: 400px; }
+.is-vote .bo-cd { left: 30px; top: 500px; width: 340px; height: 370px; }
+.is-vote .bo-popp { left: 386px; top: 500px; width: 812px; height: 370px; }
+.is-vote .bo-qrp { left: 1214px; top: 500px; width: 356px; height: 370px; }
+.is-vote .bo-qrp .bo-qr { width: 250px; height: 250px; } .is-vote .bo-qrp .bo-qr svg { width: 240px; height: 240px; } .is-vote .bo-qrp h3 { font-size: 24px; padding: 8px 0; }
+/* 投票待ちの並び（競馬の待ち時間: 大きな映像＋下の紺の帯＋右の QR） */
+.is-wait .bo-vid { left: 30px; top: 84px; width: 1150px; height: 560px; }
+.is-wait .bo-vfit { transform: scale(1.138); } /* (1150−12)/1000 */
+.is-wait .bo-card2, .is-wait .bo-popp { display: none; }
+.is-wait .bo-cd { left: 30px; top: 660px; width: 1150px; height: 210px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; align-items: center; padding: 14px 36px; }
+.is-wait .bo-cd .l { display: flex; flex-direction: column; min-width: 0; } .is-wait .bo-cd .l .k { font-size: 26px; }
+.is-wait .bo-cd .big { font-size: 118px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; } .is-wait .bo-cd .u { font-size: 30px; font-weight: 900; margin-left: 10px; }
+.is-wait .bo-cd .lt { display: flex; align-items: baseline; }
+.is-wait .bo-cd .r { display: flex; flex-direction: column; align-items: flex-end; border-left: 2px solid rgba(255, 255, 255, .2); padding-left: 24px; } .is-wait .bo-cd .k2 { font-size: 30px; font-weight: 900; } .is-wait .bo-cd .k3 { font-size: 22px; color: #cfe3ff; }
+.is-wait .bo-cd .cd { font-size: 96px; color: #ff8a65; }
+.is-wait .bo-qrp { left: 1196px; top: 84px; width: 374px; height: 786px; justify-content: space-between; }
+.is-wait .bo-qrp h3 { font-size: 34px; line-height: 1.3; padding: 18px 0; }
+.is-wait .bo-qrp .bo-qrc { font-size: 30px; }
+/* 本番の映像・結果・取り消し（上の札の列の下） */
+.bo-film, .bo-res { top: 78px; } .bo-void { inset: 78px 0 0; }
+.bo-film .bo-fit { transform: scale(1.6); }
+.bo-card2 { padding: 10px 16px; } .bo-card2 h3 { font-size: 26px; }
+.bo-ct { margin-top: 2px; gap: 4px; } .bo-ct .hd { font-size: 15px; } .bo-ct .rw { height: 47px; } .bo-ct .bar { height: 36px; } .bo-ct .bo-waku { width: 40px; height: 40px; font-size: 26px; }
+.bo-ct .nm { font-size: 28px; } .bo-ct .ps i { width: 34px; height: 36px; font-size: 23px; } .bo-ct .cn b { font-size: 22px; }
+.bo-tag { left: auto; right: 16px; top: auto; bottom: 64px; font-size: 20px; }
+.bo-tag[hidden] { display: none; }
+.is-vote .bo-cd { padding: 22px 22px; } .is-vote .bo-cd .cd { font-size: 108px; } .is-vote .bo-cd .k { font-size: 28px; } .is-vote .bo-cd .h { font-size: 26px; }
+.bo-st { padding: 10px 30px; gap: 1px; } .bo-st h4 { font-size: 26px; margin: 0 0 2px; } .bo-st .sth { font-size: 15px; } .bo-st .str { font-size: 25px; line-height: 1.3; } .bo-st .str .c { font-size: 19px; } .bo-st .bo-waku.sm { width: 30px; height: 30px; font-size: 19px; } .bo-st p { margin: 4px 0 0; font-size: 14px; }
+.is-wait .bo-st { padding: 24px 40px; gap: 6px; } .is-wait .bo-st .str { font-size: 32px; }
+.is-vote .bo-cd .cd { font-size: 100px; }
+/* 遊び方の画面（映像の枠を覆う板。字幕と重ならない） */
+.bo-how { position: absolute; inset: 0; z-index: 3; background: linear-gradient(180deg, #fff8ea, #fdf0d6); color: #0b2f55; padding: 18px 34px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+.bo-how[hidden] { display: none; }
+.bo-how h4 { margin: 0 0 4px; font-size: 34px; font-weight: 900; color: #1f7fd6; text-align: center; }
+.bo-how .hw { display: flex; align-items: center; gap: 16px; background: #fff; border-radius: 14px; padding: 8px 16px; border: 3px solid #0b2f55; }
+.bo-how .hw > b { flex: none; width: 46px; height: 46px; border-radius: 50%; background: #1f7fd6; color: #fff; font-size: 28px; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; }
+.bo-how .hw em { display: block; font-style: normal; font-size: 30px; font-weight: 900; } .bo-how .hw small { display: block; font-size: 19px; color: #4a6a8c; font-weight: 700; }
+.bo-how .big { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 4px 0 10px; }
+.bo-how .big .c { font-size: 74px; font-weight: 900; color: #1f7fd6; } .bo-how .big .c small { font-size: 30px; margin-left: 6px; } .bo-how .big .ar { font-size: 40px; color: #c9a03e; } .bo-how .big .t { font-size: 54px; font-weight: 900; background: #0b2f55; color: #ffe08a; padding: 4px 22px; border-radius: 14px; }
+.bo-how .l { margin: 0; text-align: center; font-size: 28px; font-weight: 900; }
+.bo-how.h1 { gap: 6px; } .bo-how.h1 .big { margin: 2px 0 6px; } /* 2 枚目は 3 行（5 枚まで・3,000 まで・月曜にリセット。2026-11-20）: 行の間を少し詰める */
+.is-wait .bo-how.h1 { gap: 10px; }
+.is-wait .bo-how { padding: 30px 60px; gap: 16px; } .is-wait .bo-how h4 { font-size: 44px; } .is-wait .bo-how .hw em { font-size: 38px; } .is-wait .bo-how .hw small { font-size: 24px; } .is-wait .bo-how .hw { padding: 12px 22px; } .is-wait .bo-how .big .c { font-size: 100px; } .is-wait .bo-how .big .t { font-size: 70px; } .is-wait .bo-how .l { font-size: 34px; }
+/* 2026-11-21 I4: 映像の絵は「いまの場面の映像の準備ができているときだけ」見せる（v2/tv-boat.js の setReady。前のレースの最後の絵を展示の枠・本番の枠に残さない） */
+#boatOv:not(.bo-ready) #boGl, #boatOv:not(.bo-ready) #boHud { visibility: hidden; }
+/* 2026-11-21 I3: 映像の準備が発走に間に合わないテレビの「まもなく発走・スタートまで あと m:ss」 */
+.bo-closed.soon { color: #ffe08a; font-variant-numeric: tabular-nums; }
