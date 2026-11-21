@@ -17,7 +17,7 @@
   'use strict';
 
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // casa SLOT と同じ版（compat）
-  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev', stamps: 'derbyStamps' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
+  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', bpt: 'derbyBpt', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev', stamps: 'derbyStamps' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
   const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
@@ -217,6 +217,13 @@
           else await signInAnon();
         } else mode = auth.currentUser.email && auth.currentUser.email === cfg.tvEmail ? 'tv' : auth.currentUser.email ? 'master' : 'anon';
         try { await auth.currentUser.getIdToken(); } catch (e) { /* noop */ }
+        /* 2026-11-21 深夜（M2 オーナー決定）: 新しい決まりではテレビ用のメールアカウントに特別な権限が無い（許可したテレビだけが進行役・予備）。
+           テレビ用アカウントで裏の設定が読めない（＝新しい決まり）と分かったら、匿名ログインに切り替えて名乗る（管理画面に出る→「許可する」→「進行役にする」か「予備にする」で動く）。
+           今の本番の決まりでは読めるので今までどおり。読めない理由が電波（unavailable など）のときは切り替えない */
+        if (mode === 'tv' && role === 'tv') {
+          let denied = false; try { await doc(COL.config, 'secret').get(); } catch (e) { denied = !!(e && e.code === 'permission-denied'); }
+          if (denied) { try { await auth.signOut(); } catch (e) { /* noop */ } await signInAnon(); mode = 'anon'; logD && logD([now(), 'tv account not approved → anon']); }
+        }
         /* 時刻合わせ: スマホは待たない（2026-10-28。書いて読み戻す 2 往復ぶん画面が遅れていた）。合うまでは端末の時計。投票は合ってから（vote の clockP） */
         watchUser();
         clockP = syncClock(role === 'tv' ? 3 : 1).catch(() => {});
@@ -309,7 +316,7 @@
 
     /* ---------- 読み込み（キャッシュつき） ---------- */
     let storesCache = null, storesAt = 0, pubCache = null, pubAt = 0;
-    const live = { races: null, subs: 0, votes: {}, payouts: {}, watch2: {} }; // 見張りで届いた写し（state・myVote は読み取りなしで答える）。watch2: 2 票目も見張っている 1 票目の vid
+    const live = { races: null, subs: 0, votes: {}, payouts: {}, watch2: {}, xs: {} }; // xs: 見張っている追加の券の写しを返す関数（1 票目の vid → () => [券]。2026-11-18） // 見張りで届いた写し（state・myVote は読み取りなしで答える）。watch2: 2 票目も見張っている 1 票目の vid
     async function getStores(force) {
       if (!force && storesCache && (local() - storesAt < 30000 || live.subs > 0)) return storesCache; // 見張り中は変わったときに届くので読み直さない
       const q = await db.collection(COL.stores).get();
@@ -445,7 +452,7 @@
       return Promise.all([bonusDevUsed(day), bonusDocP[key].p.catch(() => null)]).catch(() => {});
     }
     async function bonusCan(v1, r, v2) {
-      if (!v1 || v2 || !r || !Core.votingOpen(r, now())) return false;
+      if (!v1 || v2 || !r || !Core.votingOpen(r, now()) || !Core.secondOk(v1)) return false; // secondOk: 追加の券が 4 枚なら 2 票目は入れない（合計 5 枚まで。2026-11-18）
       if (bonusMemo[v1.vid] !== undefined) return bonusMemo[v1.vid];
       const dev = await myDevice(); let ok = false;
       if (dev !== 'err' && Core.bonusDeviceOk(dev, r.id)) {
@@ -467,7 +474,7 @@
     async function stampCan(v1, r, v2, bonus) {
       const S = await stampConf(); if (!S || !v1 || !r) return null;
       const d = await myStampDoc(); if (!d) return null; const bal = Core.stampBalance(d);
-      return { cost: S.cost, bal, can: !v2 && !bonus && !v1.test && !r.test && Core.votingOpen(r, now()) && bal >= S.cost };
+      return { cost: S.cost, bal, can: !v2 && !bonus && Core.secondOk(v1) && !v1.test && !r.test && Core.votingOpen(r, now()) && bal >= S.cost };
     }
     /* 発表のときに、そのレースの本物の票の持ち主へスタンプを付ける（進行役）。同じレースは h の印で 2 回付けない。返り値: 付けた端末の数 */
     async function awardStamps(race, tuning) {
@@ -486,9 +493,28 @@
     }
     async function readVote(vid) { if (live.votes[vid]) return live.votes[vid]; try { return data(await doc(COL.votes, vid).get()); } catch (e) { return null; } }
     // スマホに返す票の組: { vote（1 票目）, vote2（2 票目 | null）, bonus（いま 2 票目を入れられる）, stamp（スタンプラリー: { cost, bal, can } | null）, r（レース） }
-    async function pairOf(v1, v2, rHint) { // rHint: 手元にあるそのレース（投票の直後。読み直さない）
+    /* BPT（ボートレースポイント。2026-11-18。v2/core.js の「BPT と追加の券」）: この端末の derbyBpt/<uid>（自分のだけ読める）。
+       読むのは投票の時間に 1 票目があるときだけ（60 秒は手元の写し。使ったら写しを直す）。まだ無い ＝ 0（{}）・読めない（決まりを入れ替える前）＝ null */
+    let bptCache = null, bptAt = 0, bptP = null;
+    async function myBpt(force) {
+      if (!force && bptCache && local() - bptAt < 60000) return bptCache;
+      if (!bptP) bptP = (async () => { let d; try { d = data(await doc(COL.bpt, uid()).get()) || {}; } catch (e) { d = null; } bptP = null; bptCache = d; bptAt = local(); return d; })();
+      return bptP;
+    }
+    const bptNote = (d) => { bptCache = d || null; bptAt = d ? local() : 0; }; // casa BOAT（v2/boat-firestore.js）が自分で書いたあとの中身を写しに入れる（null ＝ 次は読み直す。2026-11-20）
+    async function bpt() { await ready(); const d = await myBpt(true); return d ? { bal: Core.bptBalance(d, now()), earned: Number(d.earned) || 0, spent: Number(d.spent) || 0, cost: Core.BPT_PER_TICKET } : null; }
+    // いま追加の券を入れられるか: { bal, cost, have（もう足した枚数）, left（あと何枚） } | null（投票の時間でない・テスト・読めない）
+    async function bptCan(v1, r, v2) { // v2: 2 票目（あれば合計 5 枚までの残りが 1 枚へる。2026-11-18）
+      if (!v1 || v1.test || !r || r.test || !Core.votingOpen(r, now())) return null;
+      const d = await myBpt(); if (!d) return null; const bal = Core.bptBalance(d, now()); // 週が変わったら 0（毎週月曜朝 5 時のリセット。2026-11-18）
+      return { bal, cost: Core.BPT_PER_TICKET, have: Core.extraCount(v1), left: Core.extraLeft(v1, r, bal, now(), !!v2) };
+    }
+    // 追加の券（1 票目の xn 枚。~b1〜）: xs が無ければ読む（xn が 0 なら読まない）
+    async function extrasFor(v1, xs) { if (xs) return xs.filter(Boolean); const n = Core.extraCount(v1), out = []; for (let k = 1; k <= n; k++) { const x = await readVote(Core.extraVid(v1.vid, k)); if (x && x.owner === uid()) out.push(x); } return out; }
+    async function pairOf(v1, v2, rHint, xs) { // rHint: 手元にあるそのレース（投票の直後。読み直さない）。xs: 追加の券（見張っていればその写し）
       const b1 = await voteBundle(v1, rHint), b2 = v2 ? await voteBundle(v2, rHint) : null, bonus = await bonusCan(v1, b1.r, v2);
-      return { vote: Core.voteView(v1, b1.r, b1.p), vote2: v2 ? Core.voteView(v2, b2.r, b2.p) : null, bonus, stamp: await stampCan(v1, b1.r, v2, bonus), r: b1.r };
+      const ex = await extrasFor(v1, xs), xv = []; for (const x of ex) { const bx = await voteBundle(x, rHint); xv.push(Core.voteView(x, bx.r, bx.p)); }
+      return { vote: Core.voteView(v1, b1.r, b1.p), vote2: v2 ? Core.voteView(v2, b2.r, b2.p) : null, bonus, stamp: await stampCan(v1, b1.r, v2, bonus), extra: xv, bpt: await bptCan(v1, b1.r, v2), r: b1.r };
     }
     async function vote(o) {
       await ready(); o = o || {};
@@ -505,6 +531,29 @@
       const ow = Core.voteWindow(r).openAt;
       if (t < ow) throw E(409, 'not_open', '投票はまだ始まっていません（' + Core.fmtTime(ow) + ' から）', { raceId: r.id, openAt: ow, at: r.at });
       const raceOut = () => Core.publicRace(r, { role: 'phone', store: sid, storeSettings: st.settings, openId: r.id });
+      if (o.extra != null) { // 追加の券（2026-11-18）: BPT 100 で 1 枚（同じ組み合わせに o.extra 枚重ねる）。1 枚ずつ「券を作る・1 票目の xn を 1 増やす・BPT の spent を 100 増やす」を 1 回の書き込みで（置き場の決まりが 3 つを確かめる）
+        const vid1 = Core.voteId(r.id, sid, c.bill), ref1 = doc(COL.votes, vid1);
+        let v1 = null; try { v1 = live.votes[vid1] || data(await ref1.get()); } catch (e) { if (!(e && e.code === 'permission-denied')) throw mapErr(e); }
+        if (!v1 || v1.owner !== uid()) throw E(409, 'bill_taken', 'この会計番号はもう投票に使われています。スタッフに伝えてください', { bill: c.bill });
+        const v2x = await readVote(vid1 + '~2'), want = Math.floor(Number(o.extra)), w = await myBpt(true), left = w ? Core.extraLeft(v1, r, Core.bptBalance(w, now()), now(), !!(v2x && v2x.owner === uid())) : 0;
+        if (!(want >= 1) || want > left) throw E(409, 'no_bpt', 'BPT が足りないか、このレースでは券を足せません', { left });
+        try {
+          for (let i = 0; i < want; i++) {
+            const k = Core.extraCount(v1) + 1, xv = Core.extraVid(vid1, k), t2 = now();
+            const x = { vid: xv, raceId: r.id, storeId: sid, bill: v1.bill, nick: v1.nick, first: c.first, second: c.second, owner: uid(), votedAt: t2, updatedAt: t2, test: false, bpt: true, k };
+            const b = db.batch(); b.set(doc(COL.votes, xv), x); b.update(ref1, { xn: k }); b.update(doc(COL.bpt, uid()), { spent: FieldValue.increment(Core.BPT_PER_TICKET), use: xv });
+            await b.commit();
+            v1 = Object.assign({}, v1, { xn: k }); if (live.votes[vid1]) live.votes[vid1].xn = k;
+            if (bptCache) bptCache = Object.assign({}, bptCache, { spent: (Number(bptCache.spent) || 0) + Core.BPT_PER_TICKET });
+          }
+        } catch (e) {
+          if (e && e.status) throw e;
+          if (e && e.code === 'permission-denied') { bptCache = null; const r2 = data(await doc(COL.races, r.id).get().catch(() => null)); if (r2 && r2.status === 'upcoming' && now() < r2.closeAt) throw E(409, 'no_bpt', 'BPT が足りないか、このレースでは券を足せません'); throw E(409, 'closed', '締め切りました', { openId: openId() }); }
+          throw mapErr(e);
+        }
+        const pr = await pairOf(v1, v2x && v2x.owner === uid() ? v2x : null, r);
+        return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, extra: pr.extra, bpt: pr.bpt, key: 'uid', race: raceOut() };
+      }
       if (Number(o.n) === 2) { // 初参加ボーナスの 2 票目（初めて・選び直し）
         const vid1 = Core.voteId(r.id, sid, c.bill), vid2 = vid1 + '~2', ref2 = doc(COL.votes, vid2);
         let v1 = null; try { v1 = live.votes[vid1] || data(await doc(COL.votes, vid1).get()); } catch (e) { if (!(e && e.code === 'permission-denied')) throw mapErr(e); }
@@ -538,7 +587,7 @@
         }
         if (live.votes[vid2]) live.votes[vid2] = v2;
         const pr = await pairOf(v1, v2);
-        return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, key: 'uid', race: raceOut() };
+        return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, extra: pr.extra, bpt: pr.bpt, key: 'uid', race: raceOut() };
       }
       const vid = Core.voteId(r.id, sid, c.bill), ref = doc(COL.votes, vid);
       const patch = { nick: c.nick, first: c.first, second: c.second, updatedAt: t };
@@ -582,8 +631,8 @@
       }
       if (live.votes[vid]) live.votes[vid] = v; // 見張り中の写しだけ直す（見張っていない票は写しを持たない＝決める係の書いた当たりの印を見落とさない）
       if (!mine && !v.test && !devSame) await touchDevice(r, sid, t); // 端末のリスト（本物のレースの 1 票目だけ。同じ書き込みで書けなかったときだけ）
-      const pr = await pairOf(v, mine ? await readVote(vid + '~2') : null, r); // 新しい 1 票目に 2 票目は無い（番号を空けると両方消える）
-      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, key: 'uid', race: raceOut() };
+      const pr = await pairOf(v, mine ? await readVote(vid + '~2') : null, r, mine ? undefined : []); // 新しい 1 票目に 2 票目・追加の券は無い（番号を空けると全部消える）
+      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, extra: pr.extra, bpt: pr.bpt, key: 'uid', race: raceOut() };
     }
     async function voteBundle(v, rHint) {
       const r = rHint && rHint.id === v.raceId && rHint.status === 'upcoming' ? rHint : await raceFor(v.raceId);
@@ -599,8 +648,9 @@
       if (!v) { try { v = data(await doc(COL.votes, base).get()); } catch (e) { v = null; } }
       if (!v || v.owner !== uid()) throw E(404, 'no_vote', '票が見つかりません（番号を空けられたか、別のスマホの票です）');
       const v2 = live.watch2[base] ? live.votes[base + '~2'] || null : await readVote(base + '~2'); // 見張っていれば写しが正しい（読まない）
-      const pr = await pairOf(v, v2 && v2.owner === uid() ? v2 : null);
-      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, race: Core.publicRace(pr.r, { role: 'phone', store: v.storeId }) };
+      const xs = live.watch2[base] && live.xs[base] ? live.xs[base]() : undefined; // 見張っていれば追加の券の写しが正しい（読まない）
+      const pr = await pairOf(v, v2 && v2.owner === uid() ? v2 : null, undefined, xs);
+      return { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, extra: pr.extra, bpt: pr.bpt, race: Core.publicRace(pr.r, { role: 'phone', store: v.storeId }) };
     }
     // 受け取りの確かめ（取引の中。スタッフ・お客さんのスライド共通）
     function claimCheck(s, rr, names) {
@@ -693,6 +743,15 @@
       try {
         const v1 = data(await ref.get()), v2 = data(await ref2.get()), v = v1 || v2; // 初参加ボーナスの 2 票目も一緒に消す（使った印 derbyBonus は残る）
         if (!v) return { ok: true, released: false, vid, raceId: r.id, bill };
+        /* 追加の券（2026-11-18）: 1 枚ずつ「券を消す・持ち主の BPT の spent を 100 減らす（refund ＝ その券の id）」を 1 回の書き込みで（置き場の決まりが確かめる）。1 票目より先に消す */
+        for (let k = Core.extraCount(v1); k >= 1; k--) {
+          const xr = doc(COL.votes, Core.extraVid(vid, k)), x = data(await xr.get()); if (!x) continue;
+          const wantBack = !!(x.owner && !x.test && x.bptBack !== true);
+          const drop = (withBack) => { const bx = db.batch(); bx.delete(xr); if (withBack) bx.update(doc(COL.bpt, x.owner), { spent: FieldValue.increment(-Core.BPT_PER_TICKET), refund: x.vid }); return bx.commit(); };
+          /* 持てる BPT の上限 3,000（2026-11-20 夜）: 戻すと残りが 3,000 を超える・もう戻す分が無い（週が変わった）ときは、置き場の決まりが BPT の戻しを断る。
+             そのときは券だけ消す（番号を空けるのは止めない。スタッフはお客さんの BPT を読めないので、断られてから券だけ消す） */
+          try { await drop(wantBack); } catch (e) { if (!(wantBack && e && e.code === 'permission-denied')) throw e; await drop(false); }
+        }
         const b = db.batch(); if (v1) b.delete(ref); if (v2) b.delete(ref2);
         const SR = v2 && v2.stamp === true && v2.owner ? Core.stampOf(await getPublic()) : null;
         if (SR && SR.on) b.update(doc(COL.stamps, v2.owner), { spent: FieldValue.increment(-SR.cost), refund: vid + '~2' }); // スタンプラリー: スタンプで入れた 2 票目が消える → 使った数を戻す（2026-11-02。オフにしたあとは戻さない）
@@ -749,6 +808,8 @@
       secretAt = local(); secretCache = { tuning: Core.tuningOf((s && s.tuning) || {}), /* 以前のデータ（shiftWidth だけ）も読める */ timetable: (s && s.timetable) || { rules: [] }, salt: (s && s.salt) || 'nosalt' };
       return secretCache;
     }
+    // 管理画面で許可したテレビ（2026-11-21 G1。derbyConfig/secret の tvOk）: { <uid>: { store, at } }。読めなければ {}（＝どのテレビも自動では予備にしない）
+    async function tvOkMap() { try { const s = data(await doc(COL.config, 'secret').get()) || {}; return s.tvOk && typeof s.tvOk === 'object' ? s.tvOk : {}; } catch (e) { return {}; } }
     /* 店ごとの「いまの状態」: その店に見えるレース（30 分前より後・まだ終わっていないもの）を、スマホに見せてよい項目だけで。
        結果（result）と当たった人（winners）は発表後（done）だけ。目標額・決定の中身は入れない。中身が変わったときだけ書く */
     const LIVE_KEYS = ['id', 'storeId', 'storeIds', 'at', 'openAt', 'voteSec', 'closeAt', 'runAt', 'revealAt', 'endAt', 'status', 'dist', 'weather', 'surface', 'horses', 'tune', 'odds', 'exacta', 'tenkai', 'refunded', 'refundedAt', 'day', 'gateSec', 'postSec', 'resultSec', 'test', 'photo', 'photo2', 'big', 'bigName']; /* big・bigName: ビッグレース（2026-11-11） */ /* storeIds: 投票できる店（null ＝ 全店。2026-10-26。スマホが canVote を見るのに要る） */
@@ -821,6 +882,25 @@
       if (d.decision.manyBills) logD([now(), 'many_bills ' + raceId + ' ' + d.decision.manyBills.map((x) => x.dev + ':' + x.bills).join(',')]); // 1 台で番号が多いスマホ（2026-10-27。決め方に数えない。記録は derbyRaceSecrets の decision と当たりの flag）
       const exp = Core.expireAtFor(Math.max(r.at, d.revealAt), sc.tuning.dayStartHour);
       const mine = (x) => !!x && x.status === 'closing' && x.closingKey === key;
+      /* 上限のため返還する追加の券（2026-11-20。Core.decideRace の bptBack）: 当たりを書く前に、券に bptBack の印を付けて BPT を戻す。
+         取引の中で印を確かめるので、決め直し（止まって復帰）でも 2 回は戻さない。印の付いた券は決め方に数えない（Core.decideRace）。進行役のテレビは 3 枚ずつ（決まりの中の読み取りの上限） */
+      if (d.bptBack && d.bptBack.length) {
+        const BK = cap(100, 3);
+        for (let i = 0; i < d.bptBack.length; i += BK) {
+          const part = d.bptBack.slice(i, i + BK);
+          const okb = await db.runTransaction(async (tx) => {
+            const rc = data(await tx.get(ref)); if (!mine(rc)) return false;
+            const vs = []; for (const x of part) vs.push(data(await tx.get(doc(COL.votes, x.vid))));
+            const need = {}; vs.forEach((v) => { if (v && v.bptBack !== true && v.owner) need[v.owner] = (need[v.owner] || 0) + 1; });
+            const owners = Object.keys(need), bds = []; for (const o of owners) bds.push(data(await tx.get(doc(COL.bpt, o))));
+            const split = {}; owners.forEach((o, j) => { const ns = bds[j] ? Core.bptBackSpent(bds[j], need[o], rc && rc.at, now()) : 0; if (bds[j]) tx.update(doc(COL.bpt, o), { spent: ns }); split[o] = Core.bptBackSplit(bds[j] ? (Number(bds[j].spent) || 0) - ns : 0, need[o]); }); // 残りが 3,000 を超えるところまでは戻さない（Core.BPT_MAX）・週が違えば戻さない
+            part.forEach((x, j) => { const v = vs[j]; if (v && v.bptBack !== true) tx.update(doc(COL.votes, x.vid), { bptBack: true, bptBackGot: (split[v.owner] || []).shift() || 0 }); }); // bptBackGot: その券で実際に戻った額（2026-11-21 J6）
+            return true;
+          });
+          if (!okb) return null;
+        }
+        logD([now(), 'bpt back (cap) ' + raceId + ' tickets=' + d.bptBack.length]);
+      }
       const list = d.payouts.map((p) => ({ p, pid: Core.pidFor(Outcome, sc.salt, raceId, p.vid, 'win') }));
       const CH = cap(CHUNK, 6); // 進行役のテレビは 1 回 15 件まで（当たり 1 件 = 2 件の書き込み＋確かめ）
       for (let i = 0; i < list.length; i += CH) { // 同じ id なので何度書いても同じ
@@ -836,7 +916,7 @@
         if (!okp) return null;
       }
       // 集計に使う本物の票（テストを除く）: 店ごとの数と会計番号（発表のときに集計へ足す。票を読み直さない）
-      const real = votes.filter((v) => !v.test && !r.test), byStore = {}, bills = {};
+      const real = votes.filter((v) => !v.test && !r.test && !Core.isExtra(v)), byStore = {}, bills = {}; // 追加の券（2026-11-18）は票の数（参加）に入れない
       real.forEach((v) => { byStore[v.storeId] = (byStore[v.storeId] || 0) + 1; bills[v.storeId + ':' + v.bill] = true; });
       const decision = Object.assign({}, d.decision, { winnerList: d.winners, real: { total: real.length, byStore, bills } });
       const fin = await db.runTransaction(async (tx) => {
@@ -930,6 +1010,8 @@
       if (r.status === 'closing') throw E(409, 'busy', 'いま結果を決めているところです。少し待ってからもう一度');
       const t = now(), day = r.day, payIds = (await db.collection(COL.payouts).where('raceId', '==', raceId).get()).docs.map((d) => d.id);
       const SR = Core.stampOf(await getPublic()), stampV2 = SR.on ? (await db.collection(COL.votes).where('raceId', '==', raceId).get()).docs.map((d) => d.data()).filter((v) => v && v.stamp === true && v.n === 2 && v.owner) : []; // スタンプラリー（2026-11-03）: 取り消すレースのスタンプの 2 票目 → 使った数を戻す（下の取引で）
+      /* 追加の券（2026-11-18）: 取り消すレースの追加の券で使った BPT を戻す（下の取引で。券に bptBack: true の印＝2 回戻さない） */
+      const bptPlan = Core.bptBackPlan((await db.collection(COL.votes).where('raceId', '==', raceId).where('bpt', '==', true).get()).docs.map((d) => d.data())), bptOwners = Object.keys(bptPlan);
       const got = await db.runTransaction(async (tx) => {
         const rr = data(await tx.get(ref));
         if (!rr) throw E(404, 'no_race', 'レースが見つかりません');
@@ -937,6 +1019,8 @@
         if (!['decided', 'done'].includes(rr.status)) throw E(409, 'busy', 'いま結果を決めているところです。少し待ってからもう一度');
         const pays = []; for (const id of payIds) { const p = data(await tx.get(doc(COL.payouts, id))); if (p) pays.push(p); }
         const stampDocs = []; for (const v of stampV2) stampDocs.push([v, data(await tx.get(doc(COL.stamps, v.owner)))]); // 読むのは書く前に（Firestore の取引の決まり）
+        const bptDocs = []; for (const o of bptOwners) bptDocs.push([o, data(await tx.get(doc(COL.bpt, o)))]);
+        const backVids = []; for (const o of bptOwners) for (const vid of bptPlan[o].vids) { const xv = data(await tx.get(doc(COL.votes, vid))); if (xv && xv.bptBack !== true) backVids.push(vid); }
         const pl = Core.voidPlan(pays), wd = rr.status === 'done';
         const inc = { date: day, [rr.big ? 'committedBig' : 'committed']: FieldValue.increment(-pl.voided), byStore: {} }; /* ビッグレースは committedBig から戻す（2026-11-11） */
         if (wd && !rr.test) { inc.paid = FieldValue.increment(-pl.voided); const by = {}; pl.voids.forEach((p) => { by[p.storeId] = (by[p.storeId] || 0) + p.amount; }); Object.keys(by).forEach((s) => { inc.byStore[s] = { paid: FieldValue.increment(-by[s]) }; }); }
@@ -945,6 +1029,8 @@
         tx.set(doc(COL.secrets, raceId), { decision: { paid: pl.kept.reduce((a, p) => a + p.amount, 0), refunded: true } }, { merge: true });
         pl.voids.forEach((p) => tx.update(doc(COL.payouts, p.pid), { status: 'void', voidAt: t }));
         stampDocs.forEach(([v, sd]) => { if (sd && (Number(sd.spent) || 0) >= SR.cost && sd.refund !== v.vid) tx.update(doc(COL.stamps, v.owner), { spent: FieldValue.increment(-SR.cost), refund: v.vid }); }); // スタンプの 2 票目のぶんを戻す（無い・足りない・もう戻した人は何もしない。2026-11-03）
+        const backGot = {}; bptDocs.forEach(([o, bd]) => { const vids = bptPlan[o].vids.filter((x) => backVids.indexOf(x) >= 0), n = vids.length; if (!n) return; const ns = bd ? Core.bptBackSpent(bd, n, rr.at, t) : 0; if (bd) tx.update(doc(COL.bpt, o), { spent: ns }); const sp = Core.bptBackSplit(bd ? (Number(bd.spent) || 0) - ns : 0, n); vids.forEach((vid, i) => { backGot[vid] = sp[i]; }); }); // 追加の券の BPT を戻す（2026-11-18）。残りが 3,000 を超えるところまでは戻さない（2026-11-20 夜）
+        backVids.forEach((vid) => tx.update(doc(COL.votes, vid), { bptBack: true, bptBackGot: backGot[vid] || 0 })); // bptBackGot: 実際に戻った額（2026-11-21 J6）
         return { pl, wd };
       });
       if (!got.wd) await revealRace(raceId, true); else { const fresh = data(await ref.get()); if (fresh) await publishWith(fresh); }
@@ -1088,7 +1174,7 @@
     async function deciderTick0(seq) {
       const live0 = () => { if (seq != null && seq !== decider.tickSeq) { const e = new Error('stale tick'); e.code = 'stale'; throw e; } };
       if (typeof setTimeout !== 'undefined' && opts.deciderAuto !== false) { ensureRaceWatch(); ensureTestWatch(); }
-      if (!(await heartbeat())) { Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); return { leader: false }; }
+      if (!(await heartbeat())) { if (boat) boat.stop(); Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); return { leader: false }; }
       live0();
       const sc = await secretConfig(), races = await getRaces(), t = now(), did = [];
       live0();
@@ -1097,6 +1183,7 @@
       live0(); (await tvAuto(races)).forEach((x) => did.push(x)); // 投票が始まったら店のテレビを DERBY に（v4）
       live0(); (await processTestReqs(sc, races)).forEach((x) => did.push(x)); // この店だけテストレース（2026-10-19）
       live0(); const made = await materialize(sc, races); if (made) did.push('create ' + made);
+      if (boat && role === 'tv') { live0(); try { (await boat.tick(sc, races)).forEach((x) => did.push(x)); } catch (e) { if (e && e.code === 'stale') throw e; noteErr(e, 'boat'); } } // casa BOAT（2026-11-19。v2/boat-firestore.js）: 同じ見回りで作る・決める・発表する（競馬の見回りは止めない）
       live0();
       watchParticipants(races);
       watchUnpaid(live.races || races); // 受け取りがまだの人（2026-11-17）
@@ -1226,6 +1313,7 @@
         /* v4: 投票は 60 秒（Core.testStages）。発走の 60 秒前から投票（startIn が 120 なら 60 秒待ってから） */
         const sg = Core.testStages(sec, sc.tuning); sec = sg.startIn;
         if (Core.testRaceBusy(races, sid, t, sec, sc.tuning, sc.timetable.rules || [])) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy ' + sid); continue; }
+        if (boat) { const sp = Core.testRaceSpan(t, sec, sc.tuning); let hit = null; try { hit = await boat.testBusy(sp[0], sp[1]); } catch (e) { hit = null; } if (hit) { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test busy(boat) ' + sid); continue; } } // casa BOAT（全店同時）と被る時間には作らない（2026-11-20）
         const r = await writeRace({ id, at: t + sec * 1000, payout: Core.TEST_RACE.payout, scope: 'all', storeId: sid, test: true }, sc, sg); // 管理画面の「テストのレースを作る」と同じ形（その店だけ）＋ test。2 段は押した時刻から（Core.testStages。2026-10-19 その 2）
         await ref.set({ raceId: r.id, raceAt: r.at, doneAt: t }, { merge: true });
         did.push('test ' + r.id);
@@ -1273,6 +1361,11 @@
       const pubT = await getPublic();
       const runIn = Core.testStages(sec, pubT).startIn; // 実際の発走まで（投票 60 秒）
       if (Core.testRaceBusy(await getRaces(true), store, now(), runIn, pubT, [])) throw E(409, 'busy', 'いまはテストのレースを作れません（投票中・レース中か、もうすぐ次のレースです）');
+      /* casa BOAT と被る時間（2026-11-20）: ボートの「いまの状態」の 1 件（boatLive/all）だけ読んで、いまのレース・次のレースと重なるなら断る。
+         読めない（ボートの決まりを入れる前）ときは見ない。進行役も作る前にもう一度、時刻表まで見て確かめる（processTestReqs） */
+      { const bl = await doc('boatLive', 'all').get().then(data).catch(() => null);
+        if (bl) { const sp = Core.testRaceSpan(now(), runIn, pubT), hit = (a, b) => a < sp[1] && sp[0] < b, c = bl.race, n = bl.next;
+          if ((c && c.status !== 'void' && c.refunded !== true && hit(c.openAt, c.endAt)) || (n && hit(n.openAt, n.at + 6 * 60000))) throw E(409, 'busy', 'いまはテストのレースを作れません（ボートレースの時間です）'); } }
       const write = async () => {
         const b = db.batch();
         b.set(doc(COL.testReq, store), { at: FieldValue.serverTimestamp(), by: uid(), startIn: sec });
@@ -1338,7 +1431,7 @@
       loop();
       clearInterval(decider.wdTimer); decider.wdTimer = setInterval(() => { watchdog().catch((e) => noteErr(e, 'watchdog')); }, 10000); // 見張り番は見回りとは別のタイマー
     }
-    function stopDecider() { decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); }
+    function stopDecider() { if (typeof boat !== 'undefined' && boat) boat.stop(); decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); }
 
     /* ---------- テレビの手元の写し（2026-10-29 電波の悪い店） ----------
        テレビは、見張りで届いたレース（このテレビに見えるもの・2 時間前から 12 件まで）・店舗・公開の設定・時刻表・参加人数と、もう読めた本物の結果（seed）を
@@ -1444,10 +1537,22 @@
         if (o.vid) { // スマホ: 自分の票の組（1 票目と初参加ボーナスの 2 票目。消えた＝番号を空けられたら vote: null・released: true）と、発表のあとの当たり
           const vid1 = Core.baseVid(o.vid), vid2 = vid1 + '~2';
           let lastKey = '', v1L = null, v2L = null, got1 = false, got2 = false; const payW = {};
+          /* 追加の券（2026-11-18）: 1 票目の xn が増えたら ~b1〜 を 1 枚ずつ見張る（当たりの印 payoutId も届く）。xn が 0 なら何も見張らない＝読み取りは増えない */
+          const xW = {}, xL = {}, xGot = {};
+          const xsNow = () => { const n = Core.extraCount(v1L), o = []; for (let k = 1; k <= n; k++) if (xL[k] && xL[k].owner === uid()) o.push(xL[k]); return o; };
+          const watchExtras = () => {
+            const n = Core.extraCount(v1L);
+            for (let k = 1; k <= n; k++) {
+              if (xW[k]) continue; const id = Core.extraVid(vid1, k);
+              xW[k] = doc(COL.votes, id).onSnapshot((s) => { const v = data(s); xL[k] = v; xGot[k] = true; if (v) live.votes[id] = v; else delete live.votes[id]; pushVote(); watchPayout(v); }, () => { xGot[k] = true; pushVote(); });
+            }
+          };
+          live.xs[vid1] = xsNow;
           const pushVote = async () => {
             if (!got1 || !got2) return; // 2 つとも最初の値が届いてから
             if (!v1L) { const k = 'released'; if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote({ vote: null, released: true, vid: vid1 }); } return; }
-            const pr = await pairOf(v1L, v2L), view = { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp }, k = JSON.stringify(view);
+            for (let k = 1; k <= Core.extraCount(v1L); k++) if (!xGot[k]) return; // 追加の券も最初の値が届いてから
+            const pr = await pairOf(v1L, v2L, undefined, xsNow()), view = { vote: pr.vote, vote2: pr.vote2, bonus: pr.bonus, stamp: pr.stamp, extra: pr.extra, bpt: pr.bpt }, k = JSON.stringify(view);
             if (k !== lastKey) { lastKey = k; if (handlers.vote) handlers.vote(view); }
           };
           const watchPayout = (v) => {
@@ -1457,17 +1562,18 @@
             payW[pidW] = doc(COL.payouts, pidW).onSnapshot((ps) => { const pd = data(ps); if (pd) live.payouts[pidW] = pd; pushVote(); }, () => { delete payW[pidW]; });
           };
           live.watch2[vid1] = true;
-          unsubs.push(() => { delete live.votes[vid1]; delete live.votes[vid2]; delete live.watch2[vid1]; Object.keys(payW).forEach((k) => payW[k]()); });
+          unsubs.push(() => { delete live.votes[vid1]; delete live.votes[vid2]; delete live.watch2[vid1]; delete live.xs[vid1]; Object.keys(payW).forEach((k) => payW[k]()); Object.keys(xW).forEach((k) => { xW[k](); delete live.votes[Core.extraVid(vid1, k)]; }); });
           const onVote = (which) => (s) => {
             const v = data(s), id = which === 1 ? vid1 : vid2;
             if (which === 1) { v1L = v; got1 = true; } else { v2L = v && v.owner === uid() ? v : null; got2 = true; }
             if (v) live.votes[id] = v; else delete live.votes[id];
             if (which === 1 && !v) delete bonusMemo[vid1]; // 番号を空けられた（もう一度投票したらボーナスを確かめ直す）
+            if (which === 1 && v) watchExtras();
             pushVote(); watchPayout(v);
           };
           unsubs.push(doc(COL.votes, vid1).onSnapshot(onVote(1), fail));
           unsubs.push(doc(COL.votes, vid2).onSnapshot(onVote(2), () => { got2 = true; v2L = null; pushVote(); })); // 古いルール（2 票目が読めない）でも 1 票目は届く
-          raceHooks.push(() => { if (v1L) { const r = races.find((x) => x.id === v1L.raceId); if (r && r.status === 'done') { pushVote(); watchPayout(v1L); watchPayout(v2L); } } });
+          raceHooks.push(() => { if (v1L) { const r = races.find((x) => x.id === v1L.raceId); if (r && r.status === 'done') { pushVote(); watchPayout(v1L); watchPayout(v2L); xsNow().forEach(watchPayout); } } });
         }
         if (role === 'staff' && (handlers.payout || handlers.wins)) { // スタッフ: 今日の当たり一覧（発表済み）を見張る。新しい当たり・受け取り（スタッフ・お客さんのスライドのどちらでも）が届く
           const seen = {}; let un = null, dayT = null;
@@ -1543,6 +1649,7 @@
           /* ビッグレースの名前（2026-11-11 オーナー「日付ごとに名前」）: 送ってきたときだけ入れ替える（送らない呼び方は今の名前のまま）。きのうより前の日は捨てる。
              merge の set は入れ子の項目を足すだけ（消した日が残る）ので、名前は update の 'timetable.bigNames' で丸ごと書き換える（同じ取引の set のあと＝文書はある） */
           const bigNames = Core.saveBigNames(bigNamesIn !== undefined ? bigNamesIn : sc0.timetable.bigNames, now(), sc0.tuning);
+          if (boat) await boat.checkDerbyRules(rules, sc0.tuning); // casa BOAT と被る時刻は保存しない（2026-11-19。全店共通で判定）
           const tb = db.batch(); tb.set(doc(COL.config, 'secret'), { timetable: { rules } }, { merge: true }); tb.update(doc(COL.config, 'secret'), { 'timetable.bigNames': bigNames }); tb.set(doc(COL.schedule, 'public'), Core.publicSchedule(rules, sc0.tuning, now(), bigNames)); await tb.commit(); /* derbySchedule/public: 時刻だけの公開の時刻表（casa SLOT のテレビが読む）。ビッグレースの印と名前も（2026-11-11） */
           const sched = Core.scheduleAround(now(), rules), keep = new Map(sched.map((e) => [e.id, e]));
           for (const r of await getRaces()) {
@@ -1575,15 +1682,38 @@
         /* 進行役のテレビ（2026-10-19）: 名乗っているテレビ（7 日以内に連絡）・いまの進行役・いま進めているテレビ（決める係の鍵） */
         tvs: wrap(async () => {
           /* 2026-10-28: 予備（derbyDeciders の role 'backup'）も。一覧は 7 日以内に連絡のあったテレビ（予備にしたテレビは 14 日まで）。fireTvs: 「全店の Fire TV を予備にする」の候補（14 日以内の Fire TV） */
-          const [q, dq, lk] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get(), doc(COL.lock, 'decider').get()]);
-          const all = q.docs.map((d) => { const x = d.data(); return { id: d.id, store: x.store, kind: x.kind, at: msOf(x.at), code: x.code, ask: Number(x.ask) || 0, h: x.h && typeof x.h === 'object' ? x.h : null }; }).sort((a, b) => b.at - a.at);
+          const [q, dq, lk, okm] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get(), doc(COL.lock, 'decider').get(), tvOkMap()]);
+          const all = q.docs.map((d) => { const x = d.data(); return { id: d.id, store: x.store, kind: x.kind, at: msOf(x.at), code: x.code, ask: Number(x.ask) || 0, h: x.h && typeof x.h === 'object' ? x.h : null, ok: !!okm[d.id] /* 2026-11-21 管理画面で許可したテレビ */ }; }).sort((a, b) => b.at - a.at);
+          /* 2026-11-21 深夜（M1）: 許可ずみ（tvOk にある）なのに印 ok の無い進行役・予備の書類（印を足す前に作ったもの）は、ここで ok を付ける（新しい決まりでも働くように）。許可の無いものはそのまま＝新しい決まりでは働かない */
+          try { const fix = dq.docs.filter((d) => okm[d.id] && (d.data() || {}).ok !== true); if (fix.length) { const fb = db.batch(); fix.forEach((d) => fb.update(doc(COL.deciders, d.id), { ok: true })); await fb.commit(); } } catch (e) { /* 次に開いたとき */ }
           const ds = dq.docs.map((d) => Object.assign({ id: d.id }, d.data())), bset = new Set(ds.filter((d) => d.role === 'backup').map((d) => d.id));
           const tvs = all.filter((x) => now() - x.at < 7 * 86400000 || bset.has(x.id) || ds.some((d) => d.id === x.id));
           const dd = ds.filter((d) => d.role !== 'backup').sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null, l = data(lk);
           const backups = ds.filter((d) => d.role === 'backup').map((d) => ({ id: d.id, store: d.store || null, at: d.setAt || d.at || null, seen: (all.find((x) => x.id === d.id) || {}).at || null }));
-          return { tvs, decider: dd ? { id: dd.id, store: dd.store || null, at: dd.at || null, seen: (all.find((x) => x.id === dd.id) || {}).at || null } : null, backups, fireTvs: all.filter((x) => x.kind === 'casatv').map((x) => x.id),
+          backups.forEach((b) => { b.ok = !!okm[b.id]; });
+          return { tvs, approvals: true, decider: dd ? { id: dd.id, store: dd.store || null, at: dd.at || null, seen: (all.find((x) => x.id === dd.id) || {}).at || null, ok: !!okm[dd.id] } : null, backups, fireTvs: all.filter((x) => x.kind === 'casatv' && okm[x.id]).map((x) => x.id) /* 許可したテレビだけ（2026-11-21） */,
             lock: l && l.until > now() ? { store: l.store || null, kind: l.kind || 'account', role: l.role || null, uid: l.uid || null, at: l.at || null } : null,
             lockInfo: l ? { store: l.store || null, kind: l.kind || 'account', role: l.role || null, uid: l.uid || null, at: l.at || null, until: l.until || 0, lastTickAt: l.lastTickAt || null, lastErr: l.lastErr || null, lastErrAt: l.lastErrAt || null } : null, now: now() };
+        }),
+        /* テレビの許可（2026-11-21 G1 オーナー決定）: 進行役・予備・QR の合言葉読み・裏の設定読みは、ここで手で「許可する」を押したテレビだけ。
+           許可の印は derbyConfig/secret の tvOk（{ <uid>: { store, at } }。マスターだけが書ける）。今の本番の決まりのままでも書ける（裏の設定はマスターが書ける）。
+           on=false（許可を外す）: 印を消し、そのテレビの進行役・予備（derbyDeciders）と QR の印（boatTvs）も外す */
+        tvApprove: wrap(async (id, on) => {
+          if (!/^[A-Za-z0-9_-]{1,128}$/.test(String(id || ''))) throw E(400, 'bad_tv', 'テレビの指定がちがいます');
+          if (on) {
+            const tv = data(await doc(COL.tvs, id).get()); if (!tv) throw E(404, 'no_tv', 'テレビが見つかりません');
+            /* 2026-11-21 深夜（M1）: 新しい決まりでは、進行役・予備の書類は印 ok == true のものだけが働く。もう進行役・予備の書類があれば同じ書き込みで ok を付ける（古い決まりのころに作った書類も、許可すれば働く） */
+            const b = db.batch(); b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true });
+            if ((await doc(COL.deciders, id).get()).exists) b.update(doc(COL.deciders, id), { ok: true });
+            await b.commit(); secretCache = null;
+            return { ok: true, id, approved: true };
+          }
+          /* 2026-11-21 深夜（M1）: 許可を外すときは、同じ書き込みでそのテレビの進行役・予備（derbyDeciders）と QR の印（boatTvs）も消す（新しい決まりは tvOff と一緒でないと許可を外せない＝権限が残らない）。
+             ボートの決まりを入れる前（boatTvs を消せない）は boatTvs を除いてもう一度 */
+          const off = (withBoat) => { const b = db.batch(); b.update(doc(COL.config, 'secret'), { ['tvOk.' + id]: FieldValue.delete(), tvOff: id }); b.delete(doc(COL.deciders, id)); if (withBoat) b.delete(doc('boatTvs', id)); return b.commit(); };
+          try { await off(true); } catch (e) { if (!(e && e.code === 'permission-denied')) throw e; await off(false); }
+          secretCache = null;
+          return { ok: true, id, approved: false };
         }),
         // 「進行役にする」を押した: そのテレビに数字を出してもらう（on=false で消す）。答えはそのテレビの数字（管理画面の確認に出す）
         tvAsk: wrap(async (id, on) => {
@@ -1600,9 +1730,9 @@
           if (id && !tv) throw E(404, 'no_tv', 'テレビが見つかりません');
           const b = db.batch(), keep = new Set();
           dq.docs.forEach((d) => { const x = d.data() || {}; if (d.id === id) return; if (x.role === 'backup') keep.add(d.id); else b.delete(doc(COL.deciders, d.id)); });
-          if (id) { b.set(doc(COL.deciders, id), { role: 'primary', store: tv.store || null, setAt: now(), at: now() }); b.update(doc(COL.tvs, id), { ask: FieldValue.delete() }); }
+          if (id) { b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true }); /* 数字を確かめて進行役にした＝許可（2026-11-21） */ b.set(doc(COL.deciders, id), { role: 'primary', store: tv.store || null, setAt: now(), at: now(), ok: true /* 許可ずみの印（2026-11-21 深夜 M1） */ }); b.update(doc(COL.tvs, id), { ask: FieldValue.delete() }); }
           if (l && l.kind === 'paired' && l.uid !== id && !keep.has(l.uid)) b.delete(doc(COL.lock, 'decider'));
-          await b.commit();
+          await b.commit(); if (id) secretCache = null;
           return { ok: true, decider: id ? { id, store: tv.store || null, at: now() } : null };
         }),
         // 予備にする（on）・予備をやめる（2026-10-28）。進行役のテレビは予備にしない（先に別のテレビを進行役に）
@@ -1612,21 +1742,25 @@
           if (cur && cur.role !== 'backup') throw E(409, 'is_primary', 'このテレビは進行役です');
           if (!on) { if (cur) await doc(COL.deciders, id).delete(); return { ok: true, id, backup: false }; }
           const tv = data(await doc(COL.tvs, id).get()); if (!tv) throw E(404, 'no_tv', 'テレビが見つかりません');
-          await doc(COL.deciders, id).set({ role: 'backup', store: tv.store || null, setAt: now(), at: now() });
+          const b = db.batch(); b.set(doc(COL.config, 'secret'), { tvOk: { [id]: { store: tv.store || null, at: now() } } }, { merge: true }); /* 手で「予備にする」を押した＝許可（2026-11-21） */ b.set(doc(COL.deciders, id), { role: 'backup', store: tv.store || null, setAt: now(), at: now(), ok: true }); await b.commit(); secretCache = null;
           return { ok: true, id, backup: true };
         }),
         // 全店の Fire TV（14 日以内に連絡）を予備にする。進行役・もう予備のテレビはそのまま → { ok, added: [id] }
         setBackupsAll: wrap(async () => {
-          const [q, dq] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get()]);
+          const [q, dq, okm] = await Promise.all([db.collection(COL.tvs).where('at', '>=', Ts(now() - 14 * 86400000)).get(), db.collection(COL.deciders).get(), tvOkMap()]);
           const have = new Set(dq.docs.map((d) => d.id)), b = db.batch(), added = [];
-          q.docs.forEach((d) => { const x = d.data() || {}; if (x.kind !== 'casatv' || have.has(d.id)) return; b.set(doc(COL.deciders, d.id), { role: 'backup', store: x.store || null, setAt: now(), at: now() }); added.push(d.id); });
+          q.docs.forEach((d) => { const x = d.data() || {}; if (x.kind !== 'casatv' || have.has(d.id) || !okm[d.id]) return; /* 許可したテレビだけ（2026-11-21 G1） */ b.set(doc(COL.deciders, d.id), { role: 'backup', store: x.store || null, setAt: now(), at: now(), ok: true }); added.push(d.id); });
           if (added.length) await b.commit();
+          /* casa BOAT（2026-11-20）: 進行役でも予備でもないテレビ（パソコンのブラウザのテレビなど）は QR の合言葉（boatKeys）を読めず QR を出せなかった。
+             14 日以内に連絡のあったテレビのうち、進行役・予備でないものに印（boatTvs/<uid>）を付ける（マスターだけが書ける。ボートの決まりを入れる前は書けないので何もしない） */
+          try { const bb = db.batch(); let n = 0; q.docs.forEach((d) => { const x = d.data() || {}; if (have.has(d.id) || added.indexOf(d.id) >= 0 || !okm[d.id]) return; bb.set(doc('boatTvs', d.id), { store: x.store || null, kind: x.kind || null, at: now() }); n++; }); if (n) await bb.commit(); } catch (e) { /* 決まりを入れる前 */ }
           return { ok: true, added };
         }),
         health: wrap(async () => deciderHealth(null)),
         preview: wrap(async (date, s) => { const sc = await secretConfig(), ds = date || Core.dateStr(now()); return { date: ds, holiday: Core.holidayName(ds), weekday: Core.weekday(ds), /* holiday: 祝日の名前 | null（模擬クラウドの GET /api/admin/timetable/preview と同じ。2026-10-27） */ races: Core.expandDate(ds, sc.timetable.rules || []).filter((e) => !s || !e.storeId || e.storeId === s) }; }),
         saveTuning: wrap(async (t) => {
-          const sc = await secretConfig(), merged = Core.mergeTuning(sc.tuning, t || {}, now());
+          const sc = await secretConfig(true), merged = Core.mergeTuning(sc.tuning, t || {}, now()); // 読み直す（30 秒おぼえた設定のままだと、直前にほかの端末で変えた時刻表を見逃す。2026-11-20）
+          if (boat) await boat.checkDerbyTuning(sc.tuning, merged, sc.timetable.rules || []); // casa BOAT（2026-11-20）: 競馬がテレビをふさぐ長さ（投票の秒数など）・朝の区切りを変える保存は、ボートと被るなら保存しない
           const b = db.batch(); b.set(doc(COL.config, 'secret'), { tuning: merged }, { merge: true }); b.set(doc(COL.config, 'public'), Core.publicTuning(merged)); b.set(doc(COL.schedule, 'public'), Core.publicSchedule(sc.timetable.rules || [], merged, now(), sc.timetable.bigNames)); /* bigNames（2026-11-11）: 調整の保存で名前が消えないように */ for (const x of Core.revoteRaces(await getRaces(true), merged, now())) b.set(doc(COL.races, x.id), { openAt: x.openAt, openAtTs: Ts(x.openAt), voteSec: x.voteSec }, { merge: true }); /* まだ投票が始まっていないレースも新しい投票の秒数に */ await b.commit(); pubCache = null; secretCache = null;
           await publishLive(await getRaces(true)).catch(() => {});
           return { ok: true, tuning: merged };
@@ -1700,6 +1834,8 @@
         createRace: wrap(async (o) => {
           o = o || {}; const sc = await secretConfig(), t = now(), sid = o.storeId || null;
           const storeIds = sid ? null : Core.cleanStoreIds(o.storeIds, (await getStores(true)).map((s) => s.id)); /* 投票できる店（省くと全店。2026-10-26） */
+          /* 2026-11-21 深夜（K1）: casa BOAT（全店同時）の投票・映像・結果の時間と重なる手動の競馬は作らない（同じ BPT を両方に使う道をふさぐ・テレビの流れが崩れる） */
+          if (boat && BoatC) { const at0 = t + Math.max(0, Number(o.inSec) || 0) * 1000, sp = BoatC.derbySpan(at0, sc.tuning), hit = await boat.derbyBusy(Math.min(t, sp[0]), sp[1]); if (hit) throw E(409, 'boat_busy', 'ボートレース（' + Core.fmtBizTime(hit.at, sc.tuning.dayStartHour) + ' 締切）の投票・映像・結果の時間と重なります。終わってから作ってください'); }
           const r = await writeRace({ id: 'x-' + t.toString(36) + randId('', 4).toLowerCase() + (sid ? '-' + sid : ''), /* 乱数つき: 同じミリ秒に 2 つ作ると前のレースを上書きしていた（RED TEAM） */ at: t + Math.max(0, Number(o.inSec) || 0) * 1000, payout: Math.max(0, Math.floor(Number(o.payout) || 0)), scope: o.scope === 'store' ? 'store' : 'all', storeId: sid, storeIds, test: !!o.test }, sc, Core.manualStages(o, Number(o.inSec) || 0, sc.tuning));
           const secret = data(await doc(COL.secrets, r.id).get());
           return { race: Core.publicRace(r, { role: 'admin', secret }) };
@@ -1717,17 +1853,23 @@
         reload: wrap(async (sid) => { const stores = await getStores(true); let n = 0; for (const s of stores) { if (sid && s.id !== sid) continue; await doc(COL.stores, s.id).update({ reloadSeq: FieldValue.increment(1) }); n++; } return { ok: true, sent: n }; }),
         expire: wrap(async (o) => { o = o || {}; if (o.pid) { const sc = await secretConfig(); return { ok: true, expired: await expirePayouts({ pid: o.pid, today: Core.bizDate(now() + 2 * 86400000, sc.tuning.dayStartHour) }) }; } return { ok: true, expired: await expirePayouts() }; }),
         setPassword: async () => { throw E(400, 'use_console', '管理パスワードは Firebase のコンソール（Authentication）で変えてください'); },
+        ...(boat ? boat.admin(wrap) : {}), // casa BOAT の設定・すぐ始めるレース・取り消し（2026-11-19）
       };
     }
 
+    /* casa BOAT（2026-11-19）: v2/boat-firestore.js を同じログイン・同じ見回りにつなぐ（部品が無いページ＝競馬のスマホでは何もしない） */
+    const BoatFS = env.BoatFS || (typeof self !== 'undefined' && self.DerbyBoatFS) || null, BoatC = env.Boat || (typeof self !== 'undefined' && self.BoatCore) || null, BoatM = env.BoatModel || (typeof self !== 'undefined' && self.BoatModel) || null;
+    const boat = BoatFS && BoatC ? BoatFS.attach({ db, doc, data, now, uid, ready, role, store, Ts, Core, Boat: BoatC, Engine, Outcome, BoatModel: BoatM, E, oddsAsync: env.oddsAsync || null, getStores, auto: opts.deciderAuto !== false && typeof setTimeout !== 'undefined', cap, myBpt, bptNote /* 2026-11-20: 取引を分ける大きさ（競馬と同じ）・自分の BPT の手元の写し（競馬と同じもの） */ }) : null;
     return {
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
       get link() { return linkState ? Object.assign({}, linkState) : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
       state, race, vote, myVote, claimSelf, stamps, // stamps: スタンプラリー（2026-11-02。オフなら null）
+      bpt, // BPT（2026-11-18）: { bal, earned, spent, cost } | null
       staffLogin, release, wins, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
       deciderHealth: (sid) => deciderHealth(sid === undefined ? store : sid), // 進行役のテレビが止まっていないか（2026-10-28）
       admin, subscribe,
+      ...(boat ? boat.api : {}), boat, // casa BOAT（2026-11-19）: boatState・boatWatch・boatRace・boatKey・boatVote・myBoatVote
       // 進行役のテレビ（2026-10-19）: state = { on, code, asking, decider, account }・on(cb) で変わるたびに
       pair: { get state() { return pairState(); }, on: onPair, hello: pairHello, get uid() { return uid(); } },
       // 決める係（テストと確認用）
