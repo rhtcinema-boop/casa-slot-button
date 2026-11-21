@@ -249,7 +249,7 @@
   {
    "path": "index.html",
    "size": 29360,
-   "sha256": "0f2218baf60eeaf7db8fc99ea8445e8210f93af16eb3bb625c73215fa3262b72"
+   "sha256": "8f22b2de8a7de3982ea52af79a8406c180550a8d35599c6e055b7a2552fe5085"
   },
   {
    "path": "js/audio.js",
@@ -273,8 +273,8 @@
   },
   {
    "path": "js/engine.js",
-   "size": 41703,
-   "sha256": "6c89c67f41f01cf357d1b2d6216a0fdce356621d232db32b71955c52276fec32"
+   "size": 41938,
+   "sha256": "51fac656bbb3e151753528f663afcda56ba55271b3e6be067feb06695edb2b11"
   },
   {
    "path": "js/game.js",
