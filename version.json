@@ -1,9 +1,9 @@
 {
- "v": "b221",
+ "v": "b222",
  "files": [
   {
    "path": "index.html",
-   "sha256": "8e314e59e7d1741b1c3e6fb4c4fcd721c10e25225c25460195d703c63049ddb4"
+   "sha256": "5986d52b3ac856bc1ec1b3bc46eff6832e1ddeeb86435a33908199db3edc89ac"
   },
   {
    "path": "manifest.webmanifest",
@@ -295,7 +295,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "0f2218baf60eeaf7db8fc99ea8445e8210f93af16eb3bb625c73215fa3262b72"
+   "sha256": "8f22b2de8a7de3982ea52af79a8406c180550a8d35599c6e055b7a2552fe5085"
   },
   {
    "path": "derby/js/audio.js",
@@ -315,7 +315,7 @@
   },
   {
    "path": "derby/js/engine.js",
-   "sha256": "6c89c67f41f01cf357d1b2d6216a0fdce356621d232db32b71955c52276fec32"
+   "sha256": "51fac656bbb3e151753528f663afcda56ba55271b3e6be067feb06695edb2b11"
   },
   {
    "path": "derby/js/game.js",
