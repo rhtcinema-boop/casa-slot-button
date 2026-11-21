@@ -235,8 +235,9 @@
   const EX_PRIOR = 150, EX_MIN = 1.0, EX_MAX = 999.9;
   /* 2026-11-18 オーナー「最初の倍率は人気の順のまま全体を 5〜20 倍に縮める」（ref/boat/投票ルール_2026-11-18.md）:
      0.85 ÷ 確率 の倍率（1 倍台〜数百倍）を、対数の上で一番低いもの → EX_SHOW_LO 倍・一番高いもの → EX_SHOW_HI 倍へまっすぐ写す（人気の順は変わらない。0.1 倍に丸めて同じ数になることはある）。
-     30 通りが全部同じ確率なら 10 倍。締切のあとの ±10% のずらし（v2/outcome.js）は今までどおりこの倍率から。exactaProb（自然な起きやすさ・抽選の重み）は変えない */
-  const EX_SHOW_LO = 5.0, EX_SHOW_HI = 20.0;
+     30 通りが全部同じ確率なら 10 倍。締切のあとの ±10% のずらし（v2/outcome.js）は今までどおりこの倍率から。exactaProb（自然な起きやすさ・抽選の重み）は変えない
+     2026-11-21 オーナー（b221 で倍率が下がりすぎた）「幅を広げる（5〜40 倍など）」→ 上の端を 20 → 40 倍に（全部同じ確率のときは約 14 倍） */
+  const EX_SHOW_LO = 5.0, EX_SHOW_HI = 40.0;
   function squeezeOdds(raw) {
     const ks = Object.keys(raw), L = ks.map((k) => Math.log(Math.max(1e-9, raw[k]))), lo = Math.min.apply(null, L), hi = Math.max.apply(null, L), out = {};
     ks.forEach((k, i) => { const u = hi - lo > 1e-9 ? (L[i] - lo) / (hi - lo) : 0.5; out[k] = clamp(Math.round(EX_SHOW_LO * Math.pow(EX_SHOW_HI / EX_SHOW_LO, u) * 10) / 10, EX_SHOW_LO, EX_SHOW_HI); });
@@ -264,7 +265,7 @@
     let tot = 0;
     for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) { if (a === b) continue; const prior = pw[a] * pw[b] / Math.max(1e-9, 1 - pw[a]); const p = ((ex[ekey(a, b)] || 0) + EX_PRIOR * prior) / (sims + EX_PRIOR); exactaProb[ekey(a, b)] = p; tot += p; }
     const raw = {}; Object.keys(exactaProb).forEach((k) => { exactaProb[k] /= tot; raw[k] = rate / exactaProb[k]; });
-    Object.assign(exacta, squeezeOdds(raw)); // 5〜20 倍に縮める（2026-11-18。以前は 0.85 ÷ 確率 を 1.0〜999.9 倍）
+    Object.assign(exacta, squeezeOdds(raw)); // 5〜40 倍に縮める（2026-11-18 は 5〜20 倍、2026-11-21 に 5〜40 倍。以前は 0.85 ÷ 確率 を 1.0〜999.9 倍）
     // 展開予想: 序盤・中盤・終盤の平均順位（小さいほど前）
     const tenkai = rankSum.map((arr) => arr.map((s) => s / 300));
     return { tansho, umaren, winProb: win.map((w) => w / sims), tenkai, exacta, exactaProb };
