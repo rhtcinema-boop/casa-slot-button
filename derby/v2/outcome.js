@@ -1,5 +1,7 @@
 /* casa DERBY 結果の決定（サーバーとブラウザの両方で動く。DOM なし）: window.Outcome
    v4（2026-10-21 オーナー決定・仕様書_v4_大改修.md）: 投票は 2 連単だけ（1 着・2 着を順番どおり。6 頭で 30 通り）。1 人 1 票＝100pt。
+   - BPT の追加の券（2026-11-18）: 1 人 1 レース最大 5 枚（無料の券 1 枚＋BPT 100 ごとに 1 枚）。追加の券も 1 枚 ＝ 票 1 つとして votes に入る（v2/core.js の decideRace）。
+     ここは今までどおり「票 1 つ ＝ 100pt の券 1 枚」で数えるので、払い戻し・上限・目標の比べ方は券の枚数どおり（券ごとに 100pt 単位へ切り上げた額 × 枚数）。
    - 当選額 ＝ 100pt × 2 連単の倍率 を 100pt 単位に切り上げ（例 12.4 倍 → 1,240 → 1,300pt）。payFor・PAY_STEP。
      倍率は 0.1 刻みなので、当選額が変わるのは倍率が 1.0 上がるごと（12.1〜13.0 倍はどれも 1,300pt）。
    - 裏の決め方（今までの単勝の決め方を 30 通りに広げたもの）:
@@ -68,16 +70,18 @@
     return { oT, lo, hi };
   }
 
-  // votes: [{ first, second, group? }] → 組み合わせごと・グループごとの票の数
+  // votes: [{ first, second, group?, w? }] → 組み合わせごと・グループごとの票の数
+  // w（2026-11-20。casa BOAT だけが付ける）: その 1 行が何枚分か（1 以上の整数）。券を 1 枚ずつ並べずに「組番ごとの枚数」のまま数えるため。競馬の票には付けない＝今までどおり 1 行 1 枚
   function groupVotes(votes, n, scope) {
     const by = {}, tot = {}, groups = {};
     (votes || []).forEach((v) => {
       const a = Number(v.first), b = Number(v.second);
       if (!(Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 0 && a < n && b < n && a !== b)) return;
       const k = ekey(a, b), g = scope === 'store' ? String(v.group == null ? '_' : v.group) : '_';
+      const w = Number.isSafeInteger(v.w) && v.w > 1 ? v.w : 1;
       groups[g] = 1;
-      const m = (by[k] = by[k] || {}); m[g] = (m[g] || 0) + 1;
-      tot[k] = (tot[k] || 0) + 1;
+      const m = (by[k] = by[k] || {}); m[g] = (m[g] || 0) + w;
+      tot[k] = (tot[k] || 0) + w;
     });
     return { by, tot, groups: Object.keys(groups) };
   }
@@ -131,6 +135,9 @@
     const bw = (v) => Math.min(0.5, Math.max(0, v == null ? 0.2 : Number(v) || 0)), below = bw(input.bandBelow), above = bw(input.bandAbove);
     const useBand = (below > 0 || above > 0) && target > 0, lo = target * (1 - below) - 1e-9, hi = target * (1 + above) + 1e-9;
     const g = groupVotes(input.votes, n, scope), cands = [];
+    /* input.payAt（2026-11-20。casa BOAT だけが渡す）: 組み合わせ k が倍率 oddT のときに「実際に払う額」を返す関数 (k, oddT) → { per, total }。
+       ボートは持てる BPT に上限（3,000）があり、当たっても増えない分は払い出しに数えないため（票の数 × 当選額 にならない）。競馬は渡さない＝今までどおり 票の数 × 当選額 */
+    const payAtFn = typeof input.payAt === 'function' ? input.payAt : null;
     /* 脱落した馬（2026-11-04。input.out ＝ 馬の添字の配列）: その馬が入った組み合わせは選ばない（その馬を選んだ票は外れ）。無ければ今までとまったく同じ */
     const outH = Array.isArray(input.out) ? input.out.map(Number).filter((x) => Number.isInteger(x)) : [];
     const isOut = (k) => { if (!outH.length) return false; const ab = parseKey(k); return !!ab && (outH.indexOf(ab[0]) >= 0 || outH.indexOf(ab[1]) >= 0); };
@@ -149,7 +156,7 @@
       const capOver = (d) => (d >= 1e12 ? 1 : 0);
       const nearer = (cur, t, d) => { if (!cur) return true; const a = capOver(d), b = capOver(cur.d); if (a !== b) return a < b; const x = Math.abs(t - r.oT), y = Math.abs(cur.t - r.oT); return x < y || (x === y && (d < cur.d || (d === cur.d && t < cur.t))); };
       levelsOf(r).forEach((t) => {
-        const pay = payoutAt(g.by[k], t), xt = xAt(k, t), d = objective(pay, target, scope, g.groups, cap, xt);
+        const pay = payAtFn ? payAtFn(k, t) : payoutAt(g.by[k], t), xt = xAt(k, t), d = objective(pay, target, scope, g.groups, cap, xt);
         if (better(best, t, d)) best = { t, d, pay, xt };
         if (!useBand) return;
         if (scope !== 'store') { if (pay.total >= lo && pay.total <= hi && nearer(each, t, d)) each = { t, d, pay, xt }; return; }
