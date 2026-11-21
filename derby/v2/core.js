@@ -474,7 +474,7 @@
   // 1 レースぶんを端末ごとに: { <owner>: 付く数 }（テストのレース・返金・結果なしは空）
   function stampsForRace(race, votes, S) {
     const out = {}, res = race && !race.test && !race.refunded ? stampResult(race.result) : null; if (!res) return out;
-    (votes || []).forEach((v) => { if (!v || !v.owner || v.test) return; const g = stampGain(v, res, S).n; if (g > 0) out[v.owner] = (out[v.owner] || 0) + g; });
+    (votes || []).forEach((v) => { if (!v || !v.owner || v.test || isExtra(v)) return; const g = stampGain(v, res, S).n; if (g > 0) out[v.owner] = (out[v.owner] || 0) + g; });
     return out;
   }
   const stampBalance = (d) => Math.max(0, (Number(d && d.earned) || 0) - (Number(d && d.spent) || 0));
@@ -690,7 +690,11 @@
     if (!/^\d{1,2}$/.test(s) || Number(s) < 1 || Number(s) > 99) throw err(400, 'bad_bill', '会計番号は 2 けた（01〜99）で入れてください');
     return s.padStart(2, '0');
   }
-  function cleanNick(v) { const nick = String(v == null ? '' : v).trim(); if (!nick || Array.from(nick).length > 8) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); return nick; }
+  /* 2026-11-21（H10）: 見えない字・向きを変える印・制御文字を取りのぞく（取りのぞいて空なら通さない） */
+  const NICK_HIDDEN = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8]/g;
+  // 2026-11-21 深夜（L6）: 結合文字（濁点・囲みの印など）と空白だけの名前は断る（スマホの整え方と同じ。見えない制御文字は上で取りのぞくので、それだけの名前は空になって断る）
+  const NICK_VISIBLE = (() => { try { return new RegExp('[^\\s\\p{M}\\u200d]', 'u'); } catch (e) { return /[^\s\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\u3099\u309a\ufe20-\ufe2f\u200d]/; } })();
+  function cleanNick(v) { const nick = String(v == null ? '' : v).replace(NICK_HIDDEN, '').trim(); if (!nick || Array.from(nick).length > 8 || !NICK_VISIBLE.test(nick)) throw err(400, 'bad_nick', 'ニックネームは 1〜8 文字です'); return nick; }
   function cleanPair(b, n) {
     n = n || 6; const num = (v) => (typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v.trim())) ? Number(v) : NaN), a = num(b.first), c = num(b.second);
     if (!Number.isInteger(a) || !Number.isInteger(c) || a < 0 || c < 0 || a >= n || c >= n) throw err(400, 'bad_pick', '1 着と 2 着の馬をえらんでください');
@@ -700,14 +704,62 @@
   function cleanVote(b, n) { b = b || {}; return Object.assign({ bill: cleanBill(b.bill), nick: cleanNick(b.nick) }, cleanPair(b, n)); }
   /* 票の id: レース~店~会計番号。初参加ボーナスの 2 票目（2026-10-24）は後ろに ~2（n = 2） */
   const voteId = (raceId, store, bill, n) => String(raceId) + '~' + String(store) + '~' + String(bill) + (Number(n) === 2 ? '~2' : '');
-  function parseVoteId(vid) { const m = /^(.+)~([a-z0-9_-]{1,32})~(\d{2})(~2)?$/.exec(String(vid || '')); return m ? { raceId: m[1], storeId: m[2], bill: m[3], n: m[4] ? 2 : 1 } : null; }
-  const baseVid = (vid) => String(vid || '').replace(/~2$/, ''); // 2 票目の id → 1 票目の id
+  function parseVoteId(vid) { const m = /^(.+)~([a-z0-9_-]{1,32})~(\d{2})(~2|~b[1-4])?$/.exec(String(vid || '')); return m ? Object.assign({ raceId: m[1], storeId: m[2], bill: m[3], n: m[4] === '~2' ? 2 : 1 }, m[4] && m[4] !== '~2' ? { k: Number(m[4].slice(2)) } : {}) : null; }
+  const baseVid = (vid) => String(vid || '').replace(/~(2|b[1-4])$/, ''); // 2 票目・追加の券の id → 1 票目の id
+  /* ---------- BPT（ボートレースポイント）と追加の券（2026-11-18 オーナー決定。ref/boat/投票ルール_2026-11-18.md） ----------
+     無料の 100pt の券（1 票目）1 枚＋BPT 100 ごとに追加の券 1 枚、合わせて 1 レース最大 5 枚（TICKETS_MAX）。追加の券は同じ組み合わせに重ねてもよい。
+     追加の券は 1 枚 ＝ 1 つの票（derbyVotes/<1 票目の id>~b1〜~b4。bpt: true・k: 何枚目か）。だから結果の決め方・上限・払う額・当たりの一覧は、
+     今までの「票 1 つ ＝ 100pt の券 1 枚」の計算のまま、券の枚数どおりに数える（当選額は券ごとに 100pt × 倍率 を 100pt 単位に切り上げ × 枚数）。
+     1 票目に xn（追加の券の枚数 0〜4）を持たせる（置き場の決まりで 1 枚ずつ・最大 4 枚に止める。スマホは xn が 0 なら追加の券を読まない）。
+     2 票目（初参加ボーナス・スタンプ）には付けない（未決のため。足せない形）。テストのレース・テストの店では使えない。
+     BPT の置き場: derbyBpt/<端末 ID> ＝ { earned（もらった合計）, spent（使った合計）, use（最後に使った券の id）, refund（最後に戻した券の id） }。残り ＝ earned − spent。
+     増やすのは決める係だけ（ボートの結果。v2/boat-core.js）。お客さんのスマホは「使う」（spent を BPT_PER_TICKET 増やす＋同じ書き込みで券を作る）だけ。持てるのは 3,000 まで（BPT_MAX。2026-11-20）・毎週月曜の朝 5 時にリセット。
+     戻す: 取り消したレース（決める係が spent を減らし、券に bptBack: true）・スタッフが番号を空けたとき（券ごとに spent を減らす）。
+     スタンプは追加の券には付かない（stampsForRace。BPT でスタンプを買えないように）。参加人数（countVotes の total）にも数えない（人気の combos には数える） */
+  const BPT_PER_TICKET = 100, TICKETS_MAX = 5, EXTRA_MAX = TICKETS_MAX - 1;
+  const extraVid = (vid1, k) => String(vid1) + '~b' + Number(k);
+  const isExtra = (v) => !!v && (v.bpt === true || /~b[1-4]$/.test(String(v.vid || '')));
+  /* 毎週月曜の朝 5 時（日本時間）に BPT をリセット（2026-11-18 オーナー決定）: 置き場に週の番号 wk（bptWeek）を持ち、いまの週と違えば残りは 0。
+     wk の無い書類は使えない（残り 0。2026-11-20: 印が無いと永久にリセットされないため。BPT を増やす所＝v2/boat-core.js の creditDoc は必ず wk を書く）。
+     t を渡さなければ週は見ない。BPT_WEEK0 ＝ 1970-01-05（月）05:00 日本時間（決まりの下書きも同じ数） */
+  const BPT_WEEK0 = 331200000, BPT_WEEK_MS = 7 * 86400000;
+  const bptWeek = (t) => Math.floor((Number(t) - BPT_WEEK0) / BPT_WEEK_MS);
+  /* 持てる BPT の上限（2026-11-20 夜 オーナー決定「3,000 を絶対に超えて貯められない」。「持ち上限なし」を改めた）: 残り ＝ もらった合計 − 使った合計 は BPT_MAX まで。
+     増やす所（ボートの当たり・返還・取り消しの戻し＝v2/boat-core.js の creditPlan、競馬の追加の券の戻し＝下の bptBackSpent）が書くときに止め、置き場の決まり（bptCapOk）も断る。
+     ここ（残りの計算）でも BPT_MAX で止める（二重の守り） */
+  const BPT_MAX = 3000;
+  const bptBalance = (d, t) => (d && t != null && (d.wk == null || Number(d.wk) !== bptWeek(t)) ? 0 : Math.min(BPT_MAX, Math.max(0, (Number(d && d.earned) || 0) - (Number(d && d.spent) || 0))));
+  /* 競馬の追加の券 n 枚ぶんの BPT を戻したあとの「使った合計」（spent）: 0 より下げない・残りが BPT_MAX を超えるところまでは戻さない
+     （使ってから戻すまでの間にボートの当たりで 3,000 まで増えていたとき。ふつうは起きない＝ボートの発表は競馬の投票の時間と重ならない） */
+  /* 2026-11-21: raceAt・t（どちらもあるとき）: レースの週・BPT の書類の週がいまの週と違えば戻さない（先週の競馬レースを今週取り消しても、今週使った BPT は戻さない） */
+  const bptBackSpent = (d, n, raceAt, t) => {
+    if (raceAt != null && t != null && (bptWeek(raceAt) !== bptWeek(t) || d == null || d.wk == null || Number(d.wk) !== bptWeek(t))) return Number(d && d.spent) || 0;
+    return Math.max(0, (Number(d && d.spent) || 0) - Math.max(0, Number(n) || 0) * BPT_PER_TICKET, (Number(d && d.earned) || 0) - BPT_MAX);
+  };
+  /* 戻した額を券ごとに分ける（2026-11-21 J6）: got ＝ 実際に戻った合計 → 券 1 枚ずつ 100 まで（前から順に）。[券 1 枚目の額, …] */
+  const bptBackSplit = (got, n) => { const out = []; let left = Math.max(0, Number(got) || 0); for (let i = 0; i < n; i++) { const g = Math.min(BPT_PER_TICKET, left); out.push(g); left -= g; } return out; };
+  const extraCount = (v1) => Math.max(0, Math.min(EXTRA_MAX, Math.floor(Number(v1 && v1.xn) || 0)));
+  /* いま追加の券を入れられる枚数（0 ＝ 出さない）。v1: 自分の 1 票目、race: レース、bal: BPT の残り（null ＝ 読めない）、t: いま */
+  /* 2026-11-18 オーナー決定: 2 票目（初参加ボーナス・スタンプ）にも BPT の券を足せる。ただし 1 レースで 1 票目・2 票目・追加の券を合わせて最大 TICKETS_MAX（5）枚。
+     追加の券はどれも 1 票目の xn で数える（~b1〜）。2 票目があれば追加は 3 枚まで。追加の券が 4 枚あれば 2 票目は入れられない（secondOk）。has2: 2 票目がある */
+  const ticketsOf = (v1, has2) => 1 + (has2 ? 1 : 0) + extraCount(v1);
+  const secondOk = (v1) => ticketsOf(v1, false) < TICKETS_MAX;
+  function extraLeft(v1, race, bal, t, has2) {
+    if (!v1 || v1.test || !race || race.test || !votingOpen(race, t) || !(bal >= BPT_PER_TICKET)) return 0;
+    return Math.max(0, Math.min(TICKETS_MAX - ticketsOf(v1, has2), Math.floor(bal / BPT_PER_TICKET)));
+  }
+  /* 取り消したレースで戻す BPT: { <持ち主>: { n: 券の数, vids: [券の id] } }（テストの券・もう戻した券 bptBack は入れない） */
+  function bptBackPlan(votes) {
+    const by = {};
+    (votes || []).forEach((v) => { if (!isExtra(v) || v.test || v.bptBack === true) return; const o = ownerOf(v); if (!o) return; const x = (by[o] = by[o] || { n: 0, vids: [] }); x.n++; x.vids.push(v.vid); });
+    return by;
+  }
   const comboOf = (v) => (v && v.first != null && v.second != null ? v.first + '-' + v.second : null);
   /* 投票した組み合わせの数（参加人数と人気）: { total, byStore, combos, bonus }。
-     total・byStore は人数（初参加ボーナスの 2 票目は数えない）、combos は票の数（2 票目も 1 票）、bonus は 2 票目の数 */
+     total・byStore は人数（初参加ボーナスの 2 票目・追加の券は数えない）、combos は券の数（2 票目・追加の券も 1 枚）、bonus は 2 票目の数、extra は追加の券の数（2026-11-18。無ければ付けない） */
   function countVotes(votes) {
     const p = { total: 0, byStore: {}, combos: {}, bonus: 0 };
-    (votes || []).forEach((v) => { if (!v || v.first == null) return; const k = comboOf(v); p.combos[k] = (p.combos[k] || 0) + 1; if (v.n === 2) { p.bonus++; return; } p.total++; p.byStore[v.storeId] = (p.byStore[v.storeId] || 0) + 1; });
+    (votes || []).forEach((v) => { if (!v || v.first == null) return; const k = comboOf(v); p.combos[k] = (p.combos[k] || 0) + 1; if (isExtra(v)) { p.extra = (p.extra || 0) + 1; return; } if (v.n === 2) { p.bonus++; return; } p.total++; p.byStore[v.storeId] = (p.byStore[v.storeId] || 0) + 1; });
     return p;
   }
   /* ---------- 端末 ID と 初参加ボーナス（2026-10-24 オーナー決定。仕様書_v4_大改修.md の最後） ----------
@@ -734,8 +786,9 @@
   function voteView(v, race, payout) {
     if (!v) return null;
     const out = { vid: v.vid, raceId: v.raceId, storeId: v.storeId, bill: v.bill, nick: v.nick, first: v.first, second: v.second, combo: comboOf(v), votedAt: v.votedAt || null, updatedAt: v.updatedAt || null, test: !!v.test, n: v.n === 2 ? 2 : 1, stamp: v.stamp === true, result: null }; // stamp: スタンプで入れた 2 票目（2026-11-02）
+    if (isExtra(v)) { out.bpt = true; out.k = Number(v.k) || (parseVoteId(v.vid) || {}).k || 0; if (v.bptBack === true) { out.bptBack = true; out.bptBackGot = v.bptBackGot != null ? Math.max(0, Math.min(BPT_PER_TICKET, Number(v.bptBackGot) || 0)) : BPT_PER_TICKET; } /* bptBackGot: その券で実際に戻った額（2026-11-21。上限 3,000 で減る） */ /* 返還（BPT を戻した券。取り消したレース・上限のための返還 2026-11-20） */ } else if (v.n !== 2) out.xn = extraCount(v); // 追加の券（2026-11-18）: bpt・k（何枚目）。1 票目は xn（追加の券の枚数）
     if (race && race.status === 'done' && race.result) {
-      const R = race.result, combo = R.combo || (R.order ? R.order[0] + '-' + R.order[1] : null), win = combo === out.combo && !race.refunded;
+      const R = race.result, combo = R.combo || (R.order ? R.order[0] + '-' + R.order[1] : null), win = combo === out.combo && !race.refunded && v.bptBack !== true; // bptBack: 返還した追加の券は当たりにしない
       const odds = R.finalExacta && combo ? Number(R.finalExacta[combo]) : null, p = payout && payout.status !== 'void' ? payout : null;
       out.result = { raceId: race.id, combo, first: R.first != null ? R.first : R.winner, second: R.second != null ? R.second : (R.order ? R.order[1] : null), odds, win, refunded: !!race.refunded,
         amount: win ? (p ? p.amount : odds ? payFor(odds) : 0) : 0, test: !!(v.test || race.test),
@@ -746,8 +799,8 @@
   // 1 票の当選額（outcome.js と同じ: 100pt × 倍率 の 100pt 切り上げ）。core.js は Outcome を持たないので写し
   function payFor(odds) { const t = Math.max(10, Math.round(Number(odds) * 10)); return Math.ceil(t * 10 / STAKE - 1e-9) * STAKE; }
   /* 当たりの見せ方（スタッフの「今日の当たり一覧」・管理）。paidVia: 'staff'（スタッフのスマホ）| 'self'（お客さんのスマホのスライド） */
-  const payoutView = (p, storeName, revealed) => ({ pid: p.pid, code: 'derby:pay:' + p.pid, vid: p.vid || null, test: !!p.test, kind: 'win', n: p.n === 2 ? 2 : 1, raceId: p.raceId, raceAt: p.raceAt || null, storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, bill: p.bill, nick: p.nick,
-    first: p.first != null ? p.first : null, second: p.second != null ? p.second : null, combo: p.combo || null, odds: p.odds != null ? p.odds : null, amount: p.amount, status: p.status, createdAt: p.createdAt, paidAt: p.paidAt || null, paidBy: p.paidBy || null, paidVia: p.paidVia || null, expireAt: p.expireAt || null, revealed: !!revealed });
+  const payoutView = (p, storeName, revealed) => Object.assign({ pid: p.pid, code: 'derby:pay:' + p.pid, vid: p.vid || null, test: !!p.test, kind: 'win', n: p.n === 2 ? 2 : 1, raceId: p.raceId, raceAt: p.raceAt || null, storeId: p.storeId, storeName: storeName ? storeName(p.storeId) : p.storeId, bill: p.bill, nick: p.nick,
+    first: p.first != null ? p.first : null, second: p.second != null ? p.second : null, combo: p.combo || null, odds: p.odds != null ? p.odds : null, amount: p.amount, status: p.status, createdAt: p.createdAt, paidAt: p.paidAt || null, paidBy: p.paidBy || null, paidVia: p.paidVia || null, expireAt: p.expireAt || null, revealed: !!revealed }, p.bpt ? { bpt: true } : {}); // bpt: 追加の券の当たり（2026-11-18。スタッフの一覧に「BPT の券」）
   // スタッフの一覧の並び: まだ渡していない（unpaid）を上（新しい順）、渡した（paid）は下（渡した時刻の新しい順）、期限切れ・取り消しは最後
   function sortWins(list) {
     const rank = (p) => (p.status === 'unpaid' ? 0 : p.status === 'paid' ? 1 : 2);
@@ -824,7 +877,7 @@
      付いた数は票と結果から計算し直す（stampsForRace と同じ決まり＝発表で実際に付いた数と同じ）。使った数＝スタンプの 2 票目（stamp: true）× cost */
   const STAMP_LAUNCH = '2026-11-04'; // 本番で始めた日（2026-11-04 06:33）。裏の設定 tuning.stampSince（'YYYY-MM-DD'）があればそちら
   function stampReport(p) {
-    p = p || {}; const T = tuningOf(p.tuning), S = stampOf(T), launch = p.launch || T.stampSince || STAMP_LAUNCH;
+    p = p || {}; if (Array.isArray(p.votes) && p.votes.some(isExtra)) p = Object.assign({}, p, { votes: p.votes.filter((v) => !isExtra(v)) }); /* 追加の券（2026-11-18）は人の数・票の数に入れない */ const T = tuningOf(p.tuning), S = stampOf(T), launch = p.launch || T.stampSince || STAMP_LAUNCH;
     const H = T.dayStartHour, to = p.to || launch, before = Math.max(1, Math.min(31, Math.floor(Number(p.before) || 7)));
     const addD = (d, n) => dateStr(Date.parse(d + 'T00:00:00Z') + n * DAY), from = addD(launch, -before);
     const store = p.store || null, dayOf = (r) => r.day || bizDate(r.at, H);
@@ -865,7 +918,7 @@
     return { launch, from, to, day: p.day || to, store, cost: c, on: S.on, days, before: avg(days.filter((x) => !x.after && active(x))), after: avg(days.filter((x) => x.after && active(x))), people, dist, totals };
   }
   function abuseReport(p) {
-    p = p || {}; const T = tuningOf(p.tuning), N = maxBillsOf(T.maxBillsPerDevice) || 4, from = p.from || '', to = p.to || '\uffff';
+    p = p || {}; if (Array.isArray(p.votes) && p.votes.some(isExtra)) p = Object.assign({}, p, { votes: p.votes.filter((v) => !isExtra(v)) }); /* 追加の券（2026-11-18）は人の数・票の数に入れない */ const T = tuningOf(p.tuning), N = maxBillsOf(T.maxBillsPerDevice) || 4, from = p.from || '', to = p.to || '\uffff';
     const raceDay = {}; (p.races || []).forEach((r) => { if (r && r.id && !r.test) raceDay[r.id] = r.day || bizDate(r.at, T.dayStartHour); });
     const inRange = (d) => !!d && d >= from && d <= to && true;
     const days = {}, cell = (d, s) => { const D = (days[d] = days[d] || {}); return (D[s] = D[s] || { storeId: s, votes: 0, bonus: 0, own: {} }); };
@@ -903,7 +956,7 @@
        読めなかったときは { error: '…' }（決まりを使わずに決める＝レースは止めない。decision.noRepeat.error に残す）。null・省略 ＝ 使わない */
   function decideRace(Engine, Outcome, race, secret, votes, tuning, salt, t, usedToday, recent) {
     const T = tuningOf(tuning);
-    const list = (votes || []).filter((v) => v && v.first != null && v.second != null).sort((a, b) => (a.vid < b.vid ? -1 : 1)); // 順番で結果が変わらないように
+    const list = (votes || []).filter((v) => v && v.first != null && v.second != null && v.bptBack !== true).sort((a, b) => (a.vid < b.vid ? -1 : 1)); // 順番で結果が変わらないように。bptBack: もう BPT を戻した追加の券（2026-11-20。追加の券が無ければ今までと同じ）
     const isT = (v) => !!v.test || !!race.test;
     const real = list.filter((v) => !isT(v)), basis = real.length ? real : list;
     /* 1 台で番号が多いスマホ（2026-10-27）: 本物の票で、同じ持ち主（owner＝uid・模擬クラウドは device）が maxBillsPerDevice 個以上の会計番号を使ったら、その票は
@@ -925,6 +978,20 @@
     /* 参加の多い店（2026-10-31）: 本物の票（多いスマホの票は数えない）で参加がいちばん多い店。テストのレースは使わない */
     const big = T.favorBigStore === true && !race.test ? bigStoreOf(race, real.filter((v) => !isHeavy(v))) : null;
     if (big && big.store) input.favor = big.store;
+    /* BPT の追加の券で払い出しの上限を超えない（2026-11-20 オーナー「競馬の予算は絶対に変えない」）: 追加の券があるレースだけ、先に決め方の中心（chooseCombo）で選ばれる組み合わせを見る。
+       その組み合わせで払う額（本物の券の枚数 × 当選額）が上限（1 レース・1 日の残り）を超えるなら、追加の券を全部「返還」（BPT を戻す・払わない）にして、
+       無料の券だけで今までどおりに決め直す（＝追加の券が無かったときとまったく同じ結果）。返り値に bptBack: [{ vid, owner }]（呼ぶ側が券に bptBack: true を付けて BPT を戻す）。
+       追加の券が 1 枚も無いレースはここを通らない＝今までとまったく同じ */
+    if (cap > 0 && real.some(isExtra)) {
+      const ch0 = Outcome.chooseCombo(input), n0 = ch0.combo == null ? 0 : real.filter((v) => comboOf(v) === ch0.combo).length, would = n0 ? n0 * payFor(ch0.comboOdds) : 0;
+      if (would > cap) {
+        const backs = real.filter(isExtra), out = decideRace(Engine, Outcome, race, secret, (votes || []).filter((v) => !isExtra(v)), tuning, salt, t, usedToday, recent);
+        out.bptBack = backs.map((v) => ({ vid: v.vid, owner: ownerOf(v) }));
+        out.decision.bptBack = { tickets: backs.length, why: 'cap', combo: ch0.combo, would, cap };
+        out.participants = countVotes(list); // 人気の数は投票のときのまま（返還した券も入れる）
+        return out;
+      }
+    }
     const res = Outcome.resolveExacta(Engine, er, input);
     const run = Engine.replayRun(er, res.seed, { order: res.order });
     const cues = cuesFor(Outcome, salt, race.id, res.first, T, (race.horses || []).length || 6);
@@ -950,6 +1017,7 @@
       if (test) return; // テストの当たりは払わない（当たりを作らない）
       const po = { kind: 'win', vid: v.vid, owner: v.owner || null, raceId: race.id, raceAt: race.at, storeId: v.storeId, bill: v.bill, nick: v.nick, first: res.first, second: res.second, combo: res.combo, odds, amount, status: 'unpaid' };
       if (v.n === 2) po.n = 2; // 初参加ボーナスの 2 票目（当たればそれぞれ払う）。undefined は Firestore に書けないので付けるときだけ
+      if (isExtra(v)) po.bpt = true; // 追加の券（2026-11-18）: 券ごとに 1 枚分を払う（同じ人の券は一覧で 1 行にまとまる＝mergeWinners）
       if (isHeavy(v)) { po.flag = 'many_bills'; po.bills = heavy[ownerOf(v)]; } // 1 台で番号が多いスマホの当たり（払うのはふつうどおり。スタッフの一覧には出さない＝管理の「注意」だけ）
       payouts.push(po);
       paid += amount;
@@ -957,6 +1025,7 @@
     mergeWinners(winners); // 同じ人の 2 票（同じ組み合わせ）はテレビでは 1 行（額は 2 票分）
     winners.sort((a, b) => b.amount - a.amount || (a.storeId < b.storeId ? -1 : a.storeId > b.storeId ? 1 : a.bill < b.bill ? -1 : 1));
     decision.paid = paid; decision.paidReal = paid; decision.winners = winners.length; decision.votes = real.length; decision.testVotes = list.length - real.length;
+    const xv = real.filter(isExtra).length; if (xv) decision.extraTickets = xv; // 追加の券の数（2026-11-18。votes は券の数＝追加の券も入る）
     if (extra.length) { // 1 台で番号が多いスマホ（管理のオーナー用・記録）
       decision.manyBills = Object.keys(heavy).sort().map((o) => ({ dev: shortDev(o), bills: heavy[o] })); decision.manyBillVotes = extra.length;
       decision.manyBillPaid = payouts.filter((x) => x.flag === 'many_bills').reduce((a, x) => a + x.amount, 0); decision.maxBills = T.maxBillsPerDevice;
@@ -1058,6 +1127,8 @@
     return [start, end];
   }
   // 新しいテストレースがふさぐ時間: 今〜（発走 sec 秒後 ＋ ゲート ＋ 走り 60 秒 ＋ 結果まで postSec）
+  // テストレースがテレビをふさぐ時間 [始まり, 終わり]（testRaceBusy と同じ式。casa BOAT との被りの確かめ用 2026-11-20）
+  function testRaceSpan(t, startIn, tuning) { const T = tuningOf(tuning), gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec; return [t, t + (testStartIn(startIn) + gate + 60 + T.postSec) * 1000]; }
   function testRaceBusy(races, store, t, startIn, tuning, rules) {
     const T = tuningOf(tuning), sec = testStartIn(startIn);
     const gate = T.scenes && T.scenes.gate === false ? 0 : T.gateSec, end = t + (sec + gate + 60 + T.postSec) * 1000;
@@ -1095,13 +1166,13 @@
   // 決まった id（同じレース・同じ票ならいつも同じ。決める係がやり直しても二重にならない）
   function pidFor(Outcome, salt, raceId, vid, kind) { return 'p' + Outcome.hash(salt, raceId, vid, kind || 'win').toString(36) + Outcome.hash(kind || 'win', vid, raceId, salt).toString(36); }
 
-  return { stampReport, STAMP_LAUNCH, TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
+  return { stampReport, STAMP_LAUNCH, TEST_RACE, testRaceId, testStartIn, testStages, testRaceBusy, testRaceSpan, testTvWait, STAKE, MONEY_PER_TICKET, roundAmount, sumBill, statRow, raceTargetSum, JST, DAY, RUN_LEAD_MS, LATE_CAP_MS, DEFAULT_TUNING, PUBLIC_TUNING_KEYS, LEGACY_TUNING_KEYS, SHIFT_UP_MAX, SHIFT_DOWN_MAX, VOTE_SEC_MIN, VOTE_SEC_MAX,
     err, dateStr, dayStart, weekday, hhmm, fmtTime, fmtBizTime, compact, bizDate, bizDay, expireAtFor,
     isHoliday, holidayName, dayKind, RULE_KINDS, RULE_PRIORITY,
     ruleTimes, ruleSlots, ruleMatches, expandDate, scheduleAround, normalizeRules, cleanBigNames, saveBigNames, bigNameOf, bigPatch, nextBigRace, BIG_NAME_MAX, BIG_LOOK_DAYS, storeIdsOf, cleanStoreIds, notMyStore, publicRules, publicSchedule, revoteRaces, minGapSec, tuningOf, mergeTuning, publicTuning, modeNow, settingsFor, HORSE_LOOKS, HORSE_LOOK_GRACE_MS, horseLookFor,
     HORSE_TYPES, HORSE_COATS, HORSES_MIN, HORSES_MAX, horseName, horseNameErr, cleanHorses, horsesOf, horsePool, FRESH_RACES, recentHorseNames, freshPick,
     tuneOf, engineRace, raceBase, oddsFor, buildRace, visibleTo, canVote, currentRaceFor, openRaceFor, popularCombos, publicRace, stateFor, todayRaces, voteWindow, votingOpen, manualStages,
-    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
+    BILL_RE, cleanBill, cleanNick, cleanPair, cleanVote, voteId, parseVoteId, baseVid, comboOf, countVotes, BPT_PER_TICKET, TICKETS_MAX, EXTRA_MAX, BPT_MAX, bptBackSpent, bptBackSplit, extraVid, isExtra, bptBalance, bptWeek, BPT_WEEK0, extraCount, extraLeft, bptBackPlan, ticketsOf, secondOk, bonusKey, bonusDevKey, bonusDeviceOk, bonusOk, devicePlan, stampOf, stampResult, stampGain, stampsForRace, stampBalance, stampAward, STAMP_HIST, mergeWinners, parseCode, voteView, payFor, payoutView, sortWins,
     effectiveCap, decideRace, ownerOf, shortDev, maxBillsOf, billsByOwner, manyBillOwners, NOREPEAT_MAX, NOREPEAT_DEFAULT, NOREPEAT_LOOKBACK_MS, NOREPEAT_PAGE_EXTRA, NOREPEAT_PAGES, noRepeatOf, recentRaces, recentWinners, bigStoreOf, abuseReport, winnersView, winnersFrom, unpaidByStore, UNPAID_HOLD_MAX_MS, voidPlan, pidFor, tvAutoPlan, deciderStall, deciderStallText, DECIDER_STALE_MS, DECIDER_MISS_MS,
     CUE_KEYS, DEFAULT_CUES, cuesOf, cuesFor, withoutCues, DEFAULT_INCIDENT, SCRATCH_EXTRA_SEC, incidentTuning, incidentFor,
     TV_GAMES, tvGameOf, tvSwitchDoc, TV_QUALITIES, tvQualityOf, TV_STRIP_KEYS, TV_STRIP_A, TV_STRIP_B, tvStripOf, tvStripCode, PW_CHARS, genTvPassword };
