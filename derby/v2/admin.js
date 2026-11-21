@@ -191,8 +191,9 @@
   async function reloadCfg() { cfg = normCfg(await api('config')); }
   function tick() { $('clock').textContent = fmtDay(todayStr()) + ' ' + hms(now()).slice(0, 5); main.querySelectorAll('[data-until]').forEach((el) => { el.textContent = leftTxt(+el.dataset.until - now()); }); }
 
-  const leaveOk = () => !((ttDirty && tab === 'timetable') || (tunDirty && tab === 'tuning') || (hsDirty && tab === 'horses') || (editStore && tab === 'tv')) || confirm('保存していない変更があります。破棄して移動しますか？');
-  window.addEventListener('beforeunload', (e) => { if (ttDirty || tunDirty || hsDirty) { e.preventDefault(); e.returnValue = ''; } });
+  const boatDirty = () => !!(window.AdminBoat && AdminBoat.dirty && AdminBoat.dirty()); // ボートのタブに保存していない編集がある（2026-11-20。v2/admin-boat.js）
+  const leaveOk = () => !((ttDirty && tab === 'timetable') || (tunDirty && tab === 'tuning') || (hsDirty && tab === 'horses') || (editStore && tab === 'tv') || (tab === 'boat' && boatDirty())) || confirm('保存していない変更があります。破棄して移動しますか？');
+  window.addEventListener('beforeunload', (e) => { if (ttDirty || tunDirty || hsDirty || boatDirty()) { e.preventDefault(); e.returnValue = ''; } });
   const markTab = () => document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x.dataset.tab === tab));
   function switchTab(name) {
     if (name === tab) { if (!editStore) { if (tab === 'races') racesData = null; if (tab === 'tv') pairData = null; render(); } return; } // いまのタブを押したら読み直す
@@ -203,6 +204,7 @@
     if (tab === 'races') { memoOn = false; refundOpen = null; } // 勝ち馬の決まり方・レース取消はほかの画面へ移ったら閉じ直す
     editStore = null; connOpen = false; // 畳みは別の画面に移ったら閉じた状態から
     if (name === 'tv') pairData = null; // 進行役のテレビは開くたびに読み直す
+    if (window.AdminBoat && (name === 'boat' || tab === 'boat')) window.AdminBoat.reset(); // ボート: 開くたびに読み直す。離れるとき（上で確かめたあと）は保存していない編集を捨てる
     tab = name; markTab(); window.scrollTo(0, 0);
     render();
     if (name === 'races' && racesData) loadRaces(true); // 今日に戻ったら、前に読んだ一覧を出したまま読み直す（10 秒を待たない）
@@ -211,13 +213,14 @@
 
   function render() {
     clearInterval(racesTimer);
-    main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats' || tab === 'horses' || tab === 'stamps');
+    main.classList.toggle('wide', tab === 'timetable' || tab === 'races' || tab === 'stats' || tab === 'horses' || tab === 'stamps' || tab === 'boat');
     if (tab === 'tv') { main.innerHTML = editStore ? viewStoreEdit() : viewTvPanel() + viewStores(); if (editStore) validateStore(); else if (!pairData && pairOk()) loadPair(); }
     else if (tab === 'timetable') { if (!tt) loadTT(); main.innerHTML = viewTT(); paintTT(); }
     else if (tab === 'races') { if (!raceDate) raceDate = bizToday(); main.innerHTML = viewRaces(); if (!racesData) loadRaces(); /* 2026-11-14 オーナー「いらない仕組みは消そう」: 自動の読み直しはやめた（開いたとき・「最新にする」を押したときだけ読む） */ }
     else if (tab === 'tuning') { main.innerHTML = viewTuning(); validateTuning(); }
     else if (tab === 'horses') { main.innerHTML = viewHorses(); paintHorses(); if (!hsVoice) loadVoiceNames(); } // 声の一覧は開くたびに読み直さない（読めなかったときだけもう一度）
     else if (tab === 'stamps') { if (!sm.to) sm.to = bizToday(); main.innerHTML = viewStamps(); if (!sm.data && !sm.err) loadStamps(); } // スタンプ（2026-11-05）
+    else if (tab === 'boat') { if (window.AdminBoat) window.AdminBoat.render(main, { api, toast }); else main.innerHTML = '<section class="card"><h2>ボート</h2><p class="hint">読み込み中…</p></section>'; } // casa BOAT（2026-11-19。v2/admin-boat.js）
     else if (tab === 'stats') { if (!stFrom) { stTo = bizToday(); stFrom = addDays(stTo, -6); } main.innerHTML = viewStats(); if (!statsData && !statsErr) loadStats(); }
   }
   const keepScroll = (fn) => { const y = window.scrollY; fn(); window.scrollTo(0, y); };
@@ -378,19 +381,22 @@
     const nowLine = d
       ? '<div class="pnow">いま <b>' + esc(dName) + '</b> <small class="' + (d.seen && t - d.seen < STALE ? '' : 'warn') + '">' + (d.seen ? (t - d.seen < STALE ? (t - d.seen < 120000 ? '連絡あり' : agoTxt(t - d.seen) + 'に連絡') : '連絡がありません（' + agoTxt(t - d.seen) + '）') : '連絡がありません') + '</small><button type="button" class="btn xs ghost" data-act="pair-stop">やめる</button></div>'
       : '<div class="pnow">いま <b>なし</b>' + (P.lock && P.lock.kind === 'account' ? ' <small>パスワードのテレビ（' + esc(storeName(P.lock.store)) + '）が進めています</small>' : '') + '</div>';
+    const apv = P.approvals === true; // 2026-11-21（G1）: 許可したテレビだけが進行役・予備・QR の合言葉を使える（Firestore 版）
     const rows = tvs.map((x) => {
       const me = d && d.id === x.id, old = t - x.at >= STALE, isB = bk.has(x.id);
+      const okc = apv ? (x.ok ? '<span class="chip">許可ずみ</span>' : '<span class="chip' + (me || isB ? ' warn' : '') + '">' + (me || isB ? '未許可（確かめて許可してください）' : '未許可') + '</span>') : '';
+      const okb = apv ? (x.ok ? '<button type="button" class="btn sm ghost" data-act="tv-unok" data-id="' + esc(x.id) + '">許可を外す</button>' : '<button type="button" class="btn sm" data-act="tv-ok" data-id="' + esc(x.id) + '">許可する</button>') : '';
       return '<div class="prow' + (me ? ' me' : '') + (isB ? ' bk' : '') + '" data-tv="' + esc(x.id) + '"><span class="nm">' + esc(lab[x.id]) + '<small' + (old ? ' class="old"' : '') + '>' + kindName(x.kind) + '・' + agoTxt(t - x.at) + '</small>' + healthHtml(x) + '</span>' +
-        (isB ? '<span class="chip bkc">予備</span>' : '') +
+        (isB ? '<span class="chip bkc">予備</span>' : '') + okc +
         (me ? '<span class="chip on">進行役</span>' : '<button type="button" class="btn sm ghost" data-act="pair-set" data-id="' + esc(x.id) + '">進行役にする</button>' +
-          (canBk ? '<button type="button" class="btn sm ghost" data-act="bk-set" data-id="' + esc(x.id) + '" data-on="' + (isB ? '0' : '1') + '">' + (isB ? '予備をやめる' : '予備にする') + '</button>' : '')) + '</div>';
+          (canBk && (!apv || x.ok || isB) ? '<button type="button" class="btn sm ghost" data-act="bk-set" data-id="' + esc(x.id) + '" data-on="' + (isB ? '0' : '1') + '">' + (isB ? '予備をやめる' : '予備にする') + '</button>' : '')) + okb + '</div>';
     }).join('');
     /* いま進めているテレビ（鍵）と最後のエラー（2026-10-28） */
     const li = P.lockInfo, liLine = li && (li.lastErr || (li.until && li.until <= t)) ? '<p class="hint plock">' + (li.until && li.until > t ? 'いま進めている: ' + esc(li.uid && lab[li.uid] ? lab[li.uid] : storeName(li.store) + 'のテレビ') + (li.role === 'backup' ? '（予備）' : '') : '最後に進めていた: ' + esc(li.uid && lab[li.uid] ? lab[li.uid] : li.store ? storeName(li.store) + 'のテレビ' : '—') + '（' + agoTxt(t - (li.lastTickAt || li.at || t)) + '）') + (li.lastErr ? '・最後のエラー ' + esc(String(li.lastErr).slice(0, 80)) + (li.lastErrAt ? '（' + hms(li.lastErrAt).slice(0, 5) + '）' : '') : '') + '</p>' : '';
     const liveB = li && li.until > t && li.role === 'backup' ? '<p class="hint plock warn">いまは予備のテレビが進めています（進行役のテレビが戻ると自動で替わります）</p>' : '';
     return '<div class="pair" id="pairBox">' + stallHtml() + head + nowLine + liveB + liLine + (rows ? healthStores(tvs) + '<div class="plist">' + rows + '</div>' : '<div class="hint">テレビがまだありません。DERBY のテレビをつけると、ここに出ます。</div>') +
       (canBk && fireNew ? '<div class="acts l"><button type="button" class="btn sm ghost" data-act="bk-all">全店の Fire TV を予備にする（' + fireNew + ' 台）</button></div>' : '') +
-      '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。' + (canBk ? '予備のテレビは、進行役が止まると 1〜2 分で自動で代わりに進めます。新しくつながった Fire TV は、管理画面を開くと自動で予備に入ります。' : '') + '</p></div>';
+      '<p class="hint" style="margin:6px 0 0">進行役のテレビは DERBY のままにしてください（SLOT だとレースが進みません）。' + (canBk ? '予備のテレビは、進行役が止まると 1〜2 分で自動で代わりに進めます。' + (apv ? '「許可する」を押した Fire TV は、管理画面を開くと自動で予備に入ります（許可していないテレビは何もできません）。' : '新しくつながった Fire TV は、管理画面を開くと自動で予備に入ります。') : '') + '</p></div>';
   }
   /* 進行役のテレビが止まっている知らせ（2026-10-28）: 今日のタブの見出しの下と、テレビのタブの進行役の枠の上。赤い帯 */
   function stallHtml() { const h = healthData; return h && h.stall && h.text ? '<div class="err stallmsg" id="stallMsg" role="alert">' + esc(h.text) + '</div>' : ''; }
@@ -407,7 +413,7 @@
     if (!P || !Array.isArray(P.backups)) return;
     let skip = []; try { skip = JSON.parse(localStorage.getItem(BK_SKIP) || '[]'); } catch (e) { /* noop */ }
     const t = P.now || now(), have = new Set(P.backups.map((x) => x.id).concat(P.decider ? [P.decider.id] : []));
-    const add = (P.tvs || []).filter((x) => x.kind === 'casatv' && t - x.at < 2 * 86400000 && !have.has(x.id) && skip.indexOf(x.id) < 0);
+    const add = (P.tvs || []).filter((x) => x.kind === 'casatv' && (P.approvals !== true || x.ok === true) /* 許可したテレビだけ（2026-11-21 G1） */ && t - x.at < 2 * 86400000 && !have.has(x.id) && skip.indexOf(x.id) < 0);
     if (!add.length) return;
     const lab = tvLabels(P.tvs || []), done = [];
     for (const x of add) { try { await api('setBackup', x.id, true); done.push(lab[x.id] || storeName(x.store) + 'のテレビ'); } catch (e) { /* 次の見回りで */ } }
@@ -448,20 +454,50 @@
     btn.disabled = true;
     let r; try { r = await api('tvAsk', id, true); } catch (e) { btn.disabled = false; toast(errText(e)); return; }
     btn.disabled = false;
-    const code = (r && r.code) || x.code || '----';
+    const code = (r && r.code) || x.code || '----', codeOk = /^[0-9]{4}$/.test(String(code)); // 2026-11-21 深夜: 4 けたの数字が無いときは OK を押せない（確かめずに許可しない）
     const w = document.createElement('div'); w.className = 'onceScrim'; w.id = 'pairAsk';
     w.innerHTML = '<div class="onceCard pairCard" role="dialog" aria-label="進行役の確認"><h3>' + esc(name) + 'を進行役にします</h3>' +
       '<p>' + esc(name) + 'の画面の上に出ている数字が</p><div class="pcode" id="pairCode">' + esc(code) + '</div><p>なら OK を押してください。</p>' +
       '<p class="hint">数字が出ていない・ちがうときは「やめる」。前の進行役は外れます。</p>' +
-      '<div class="acts"><button type="button" class="btn ghost" data-pa="no">やめる</button><button type="button" class="btn" data-pa="ok">OK</button></div></div>';
+      (codeOk ? '' : '<p class="hint err">テレビの 4 けたの数字がまだ届いていません。テレビを読み込み直してから、もう一度押してください。</p>') +
+      '<div class="acts"><button type="button" class="btn ghost" data-pa="no">やめる</button><button type="button" class="btn" data-pa="ok"' + (codeOk ? '' : ' disabled') + '>OK</button></div></div>';
     document.body.appendChild(w);
-    const done = await new Promise((res) => w.addEventListener('click', (e) => { const b = e.target.closest('[data-pa]'); if (b) res(b.dataset.pa === 'ok'); else if (e.target === w) res(false); }));
+    const done = await new Promise((res) => w.addEventListener('click', (e) => { const b = e.target.closest('[data-pa]'); if (b && !b.disabled) res(b.dataset.pa === 'ok' && codeOk); else if (e.target === w) res(false); }));
     w.querySelectorAll('button').forEach((b) => { b.disabled = true; });
     try {
       if (done) { await api('setDecider', id); toast(name + 'を進行役にしました'); }
       else await api('tvAsk', id, false).catch(() => {});
     } catch (e) { toast('失敗しました: ' + errText(e)); }
     finally { w.remove(); pairData = null; loadPair(); }
+  }
+  /* テレビの許可（2026-11-21 G1 オーナー決定）: 「許可する」→ そのテレビに 4 けたの数字を出してもらい、同じなら OK → 許可。
+     許可したテレビだけが進行役・予備・QR の合言葉・裏の設定を使える。名乗っただけ（スマホのなりすましなど）では何も付かない */
+  async function tvOkStart(btn) {
+    const id = btn.dataset.id, x = ((pairData && pairData.tvs) || []).find((y) => y.id === id); if (!x) return;
+    const name = tvLabels(pairData.tvs)[id];
+    btn.disabled = true;
+    let r; try { r = await api('tvAsk', id, true); } catch (e) { btn.disabled = false; toast(errText(e)); return; }
+    btn.disabled = false;
+    const code = (r && r.code) || x.code || '----', codeOk = /^[0-9]{4}$/.test(String(code)); // 2026-11-21 深夜: 4 けたの数字が無いときは OK を押せない（確かめずに許可しない）
+    const w = document.createElement('div'); w.className = 'onceScrim'; w.id = 'tvOkAsk';
+    w.innerHTML = '<div class="onceCard pairCard" role="dialog" aria-label="テレビの許可"><h3>' + esc(name) + 'を許可します</h3>' +
+      '<p>' + esc(name) + '（' + esc(kindName(x.kind)) + '）の画面の上に出ている数字が</p><div class="pcode">' + esc(code) + '</div><p>なら OK を押してください。</p>' +
+      '<p class="hint">お店のテレビでないもの（数字が出ない・ちがう）は許可しないでください。許可したテレビは進行役・予備になれます。</p>' +
+      (codeOk ? '' : '<p class="hint err">テレビの 4 けたの数字がまだ届いていません。テレビを読み込み直してから、もう一度押してください。</p>') +
+      '<div class="acts"><button type="button" class="btn ghost" data-pa="no">やめる</button><button type="button" class="btn" data-pa="ok"' + (codeOk ? '' : ' disabled') + '>OK</button></div></div>';
+    document.body.appendChild(w);
+    const done = await new Promise((res) => w.addEventListener('click', (e) => { const b = e.target.closest('[data-pa]'); if (b && !b.disabled) res(b.dataset.pa === 'ok' && codeOk); else if (e.target === w) res(false); }));
+    w.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    try { if (done) { await api('tvApprove', id, true); toast(name + 'を許可しました'); } }
+    catch (e) { toast('失敗しました: ' + errText(e)); }
+    finally { await api('tvAsk', id, false).catch(() => {}); w.remove(); pairData = null; loadPair(); }
+  }
+  async function tvUnok(btn) {
+    const id = btn.dataset.id, name = tvLabels((pairData && pairData.tvs) || [])[id] || 'テレビ', d = pairData && pairData.decider;
+    if (!confirm(name + 'の許可を外しますか？\n予備・進行役からも外れます。' + (d && d.id === id ? '\nこのテレビはいま進行役です。ほかに進めるテレビがないと、レースが進まなくなります。' : ''))) return;
+    btn.disabled = true;
+    try { await api('tvApprove', id, false); toast(name + 'の許可を外しました'); } catch (e) { toast('失敗しました: ' + errText(e)); }
+    pairData = null; loadPair();
   }
   async function pairStop() {
     const d = pairData && pairData.decider; if (!d) return;
@@ -1278,6 +1314,7 @@
       '<div class="range"><label class="f"><span>何秒後に走り出す</span><input type="number" id="trin" value="120" min="10" max="3600"></label><label class="f"><span>当選額の目標（pt）</span><input type="number" id="trpay" value="3000" min="1" max="' + PAY_MAX + '"></label>' +
       '<label class="f"><span>店舗</span><select id="trstore"><option value="">全店（同時）</option>' + cfg.stores.map((s) => '<option value="' + esc(s.id) + '">' + esc(s.name) + 'だけ</option>').join('') + '</select></label></div>' +
       '<div class="acts"><button class="btn ghost" data-act="test-race">テストレースを作る</button></div></details>' +
+      '<div id="tuBoatErr"></div>' + // casa BOAT（2026-11-20）: この設定にすると競馬がボートと重なる、と断られた理由をここに赤字で出す（saveTuning）
       '<div class="savebar"><div class="msg" id="tumsg"></div><button type="button" class="btn ghost" data-act="tun-revert">元に戻す</button><button type="button" class="btn" data-act="tun-save" id="tusave">保存</button></div>';
   }
   /* 確定演出（店舗には見せない）: 演出ごとに「出す割合」と「当たる割合」を 1 行に。保存は下の「保存」ボタン（変えた演出だけ送る） */
@@ -1368,7 +1405,18 @@
     if (!Object.keys(t).length) { tunDirty = false; toast('変更はありません'); return keepScroll(render); }
     const big = (t.shiftUp != null && t.shiftUp * 100 > BIG_SHIFT) || (t.shiftDown != null && t.shiftDown * 100 > BIG_SHIFT);
     if (big && !confirm('倍率のずらし幅が大きいので、お客さんが見た倍率と確定の倍率が大きく変わります。\n（上げ ' + fmtN(pct(t.shiftUp != null ? t.shiftUp : T0.shiftUp)) + '%・下げ ' + pct(t.shiftDown != null ? t.shiftDown : T0.shiftDown) + '%）\n保存しますか？')) return;
-    await api('saveTuning', t);
+    try { await api('saveTuning', t); }
+    catch (e) {
+      /* casa BOAT（2026-11-20）: 競馬の設定（投票の長さなど）を変えるとボートの時刻と重なるときは保存が断られる（boat_conflict）。
+         その理由を、消えてしまう下の知らせだけでなく、この画面に赤字で残す（入力した値はそのまま。画面は作り直さない） */
+      const box = $('tuBoatErr'), cs = (e && ((e.body && e.body.conflicts) || e.conflicts)) || [];
+      if (box && e && (e.code === 'boat_conflict' || (e.body && e.body.error === 'boat_conflict'))) {
+        box.style.cssText = 'position:sticky;bottom:64px;z-index:2;background:#0b0b0d;border-radius:10px'; // 下の保存の帯のすぐ上に、いつも見える所に出す
+        box.innerHTML = '<div class="err boatcs"><b>保存できませんでした: ' + esc(errText(e)) + '</b>' + (cs.length > 1 ? '<p class="hint">ほかの日も合わせて ' + cs.length + ' 件、同じように重なります</p>' : '') + '<p class="hint">ボートの時刻表（「ボート」タブ）か、この設定を直してから保存してください</p></div>';
+        toast('保存できませんでした（ボートと重なります）'); return;
+      }
+      throw e;
+    }
     await reloadCfg(); tunDirty = false; toast('保存しました（これから作るレースから使われます）'); keepScroll(render);
   }
 
@@ -1835,6 +1883,8 @@
         case 'pair-set': return pairStart(b);
         case 'bk-set': return bkSet(b);
         case 'bk-all': return bkAll(b);
+        case 'tv-ok': return tvOkStart(b);
+        case 'tv-unok': return tvUnok(b);
         case 'pair-stop': return pairStop();
         case 'pair-reload': pairData = null; { const box = $('pairBox'); if (box) box.outerHTML = viewPair(); } return loadPair();
         case 'tvkey-new': if (!confirm('テレビのリンクを作り直します（リンクが漏れたときに使います）。\n今のテレビは、新しいリンクで開き直すまで結果を受け取れなくなります。')) return; await api('tvKey', {}); await reloadCfg(); render(); toast('作り直しました。各店のテレビを新しいリンクで開き直してください'); return;
