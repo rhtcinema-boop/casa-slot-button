@@ -43,8 +43,36 @@
        tvq ＝ テレビの映像の画質（'high' きれい・'low' 軽い）。boatLive/all の q でテレビへ届く（軽いときだけ書く） */
     o.startAt = Number(s.startAt) > 0 && Number.isFinite(Number(s.startAt)) ? Math.round(Number(s.startAt)) : 0;
     o.tvq = s.tvq === 'low' ? 'low' : 'high';
+    /* 2026-11-22 オーナー「競馬と同じみたいな感じの設定画面に」: tvqs ＝ 店ごとの画質（{ 店の id: 'low' | 'high' }。無い店は tvq）。boatLive/all の qs でテレビへ届く。
+       racers ＝ 選手の一覧（管理画面の「選手」。null ＝ 初期の 18 人。cleanRacers の形） */
+    o.tvqs = cleanTvqs(s.tvqs);
+    o.racers = Array.isArray(s.racers) && s.racers.length ? s.racers : null;
     return o;
   }
+  const cleanTvqs = (m) => { const o = {}; if (m && typeof m === 'object') Object.keys(m).slice(0, 60).forEach((k) => { if (/^[\w-]{1,40}$/.test(k) && (m[k] === 'low' || m[k] === 'high')) o[k] = m[k]; }); return o; };
+  /* 選手の一覧（管理画面の「選手」タブ。競馬の馬の一覧 cleanHorses と同じ考え方）: [{ name, yomi, type, cls, st, spd, sta, pow, mae, off? }]。
+     出走（off でない）は 6 人以上・全部で 40 人まで・同じ名前は不可。おかしければ 400 bad_boat（理由つき） */
+  const RACER_TYPES = ['nige', 'senko', 'sashi', 'oikomi'], RACER_CLS = ['A1', 'A2', 'B1', 'B2'], RACERS_MIN = 6, RACERS_MAX = 40;
+  function cleanRacers(list) {
+    if (!Array.isArray(list)) throw err(400, 'bad_boat', '選手の一覧の形がちがいます');
+    if (list.length > RACERS_MAX) throw err(400, 'bad_boat', '選手は ' + RACERS_MAX + ' 人までです');
+    const seen = {}, lv = (v) => { const n = Math.round(Number(v)); return n >= 1 && n <= 5 ? n : 3; };
+    const out = list.map((h, i) => {
+      h = h && typeof h === 'object' ? h : {};
+      const name = String(h.name == null ? '' : h.name).replace(/\s+/g, ' ').trim(), yomi = String(h.yomi == null ? '' : h.yomi).replace(/\s+/g, ' ').trim().slice(0, 24);
+      if (name.length < 2 || name.length > 8 || /[<>&"']/.test(name)) throw err(400, 'bad_boat', (i + 1) + ' 人目: 名前は 2〜8 文字で入れてください');
+      if (seen[name]) throw err(400, 'bad_boat', '同じ名前の選手がいます（' + name + '）'); seen[name] = 1;
+      const st = Number(h.st), mae = Number(h.mae);
+      const o = { name, yomi: /[<>&"']/.test(yomi) ? '' : yomi, type: RACER_TYPES.indexOf(h.type) >= 0 ? h.type : 'sashi', cls: RACER_CLS.indexOf(h.cls) >= 0 ? h.cls : 'B1',
+        st: Number.isFinite(st) ? Math.round(Math.max(0.1, Math.min(0.25, st)) * 100) / 100 : 0.17, spd: lv(h.spd), sta: lv(h.sta), pow: lv(h.pow), mae: Number.isFinite(mae) ? Math.round(Math.max(0, Math.min(0.5, mae)) * 100) / 100 : 0.05 };
+      if (h.off) o.off = true;
+      return o;
+    });
+    if (out.filter((h) => !h.off).length < RACERS_MIN) throw err(400, 'bad_boat', '出走する選手は ' + RACERS_MIN + ' 人以上にしてください');
+    return out;
+  }
+  // レースを作るときに使う選手（出走だけ）。一覧が無い・足りないときは undefined ＝ 初期の 18 人（js/boat-model.js の POOL）
+  function racerPool(cfg) { const L = cfg && Array.isArray(cfg.racers) ? cfg.racers.filter((h) => h && !h.off) : []; return L.length >= RACERS_MIN ? L : undefined; }
   /* 管理画面の保存: b = { rules?, target?, capRace?, capDay?, voteSec?, resultSec? }。ボートはいつも全店同時なので、行の店の指定は消す */
   function mergeConfig(cur, b, storeIds, dayStartHour) {
     const c = configOf(cur); b = b || {};
@@ -55,6 +83,8 @@
     ['capRace', 'capDay'].forEach((k) => { c[k] = Math.max(CAP_MIN, c[k]); });
     if (b.startAt !== undefined) { const v = Number(b.startAt); if (b.startAt !== null && b.startAt !== '' && !(Number.isFinite(v) && v >= 0 && v < 4e12)) throw err(400, 'bad_boat', 'ボートを始める日と時刻を入れ直してください'); c.startAt = v > 0 ? Math.round(v) : 0; }
     if (b.tvq != null) c.tvq = b.tvq === 'low' ? 'low' : 'high';
+    if (b.tvqs !== undefined) c.tvqs = cleanTvqs(b.tvqs);
+    if (b.racers !== undefined) c.racers = b.racers === null || (Array.isArray(b.racers) && !b.racers.length) ? null : cleanRacers(b.racers);
     if (b.incidentOn != null) c.incidentOn = b.incidentOn === true || Number(b.incidentOn) > 0 ? 1 : 0; // フライング・転覆を出す（2026-11-19）
     c.refundFall = 1; // 転覆の券はいつも返還（2026-11-20。送られてきても見ない）
     if (b.rules !== undefined) c.rules = normalizeRules(b.rules, storeIds, dayStartHour, c);
@@ -176,14 +206,14 @@
   /* ---------- レースを作る ----------
      entry: { id, at, payout（その行の目安。0 ＝ 設定の target）, test? }。opt: { odds?（{ exactaProb } を先に計算したもの）, sims? }
      返り値 { race（公開してよい: スマホ・テレビ）, secret（目安・起きやすさ: 決める係だけ） }。race.model は艇の走りを再現するレース（テレビが映像に使う） */
-  function modelOf(Engine, Outcome, BoatModel, salt, id) {
-    const m = BoatModel.makeRace(Engine.rng(Outcome.hash(salt, id, 'boat')));
+  function modelOf(Engine, Outcome, BoatModel, salt, id, pool) { // pool: 選手の一覧（racerPool。無ければ初期の 18 人）
+    const m = BoatModel.makeRace(Engine.rng(Outcome.hash(salt, id, 'boat')), pool);
     m.tune = { payoutRate: 0.85 };
     return m;
   }
   function buildRace(Engine, Outcome, BoatModel, entry, cfg, salt, t, opt) {
     opt = opt || {}; const c = configOf(cfg);
-    const model = modelOf(Engine, Outcome, BoatModel, salt, entry.id);
+    const model = modelOf(Engine, Outcome, BoatModel, salt, entry.id, racerPool(c));
     const prob = opt.odds && opt.odds.exactaProb ? opt.odds.exactaProb : Engine.calcOdds(model, Engine.rng(Outcome.hash(salt, entry.id, 'odds')), opt.sims || c.oddsSims).exactaProb;
     const tm = timesOf(entry.at, c, null), dsh = opt.dayStartHour == null ? 5 : opt.dayStartHour;
     const race = Object.assign({ id: entry.id, kind: 'boat' }, tm, { status: 'upcoming', day: Core.bizDate(entry.at, dsh), createdAt: t, model, exacta: oddsOf(prob), participants: { total: 0, tickets: 0, combos: {} } });
@@ -478,6 +508,6 @@
   function parseHash(h) { const m = /^#?(b[0-9A-Za-z_-]{3,40})\.([A-Za-z0-9]{8})$/.exec(String(h || '')); return m ? { raceId: m[1], code: m[2] } : null; }
 
   return { BPT_MAX, STAKE, N, ALL, DEF, FILM_PRE, FILM_POST, RUN_EST, RUN_MAX, DERBY_GUARD_SEC, COUNT_SEC, ODDS_LO, ODDS_MID, ODDS_HI, CODE_RE, OP_RE, OPS_MAX, PREV_MAX, CAP_MIN, BET_MAX, QUIET_MIN,
-    configOf, mergeConfig, normalizeRules, quietMin, quietAt, quietText, quietSpan, quietSpanMin, cleanOp, newOp, opsOf, deadOf, cleanPrevOps, opState, opLists, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
+    configOf, mergeConfig, cleanRacers, racerPool, RACER_TYPES, RACER_CLS, RACERS_MIN, RACERS_MAX, normalizeRules, quietMin, quietAt, quietText, quietSpan, quietSpanMin, cleanOp, newOp, opsOf, deadOf, cleanPrevOps, opState, opLists, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
     voteId, comboKey, cleanPair, cleanPicks, betsOf, betsBad, betCount, addBets, freeKey, ticketsOn, comboCounts, refundOf, hasBoat, ticketsOf, countVotes, voteView, clampOdds, decide, refundPlan, creditPlan, creditDoc, picksLeft, derbyVoteInfo, derbyVoteDay, newCode, joinURL, parseHash };
 });
