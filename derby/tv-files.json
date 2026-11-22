@@ -363,13 +363,13 @@
   },
   {
    "path": "v2/boat-core.js",
-   "size": 52999,
-   "sha256": "d5807456d4766fa896bbc5a605df1a96d583cc1395e6967755976113d38f56fa"
+   "size": 56413,
+   "sha256": "aa267ce7e417a72702fe477584601e7419ce7d04c36111c31ab720d3c3d298b9"
   },
   {
    "path": "v2/boat-firestore.js",
-   "size": 54705,
-   "sha256": "fb0e5c2196d792c5f13761c6b30c3349cdb2dd3efaaffe9637230566bd49f502"
+   "size": 56593,
+   "sha256": "bcfeecbad4efe4faa9fd9ea8c4543c9ad1c87d84a7ee3d3d631b162de1bf59e6"
   },
   {
    "path": "v2/client-firestore.js",
@@ -378,8 +378,8 @@
   },
   {
    "path": "v2/client.js",
-   "size": 38108,
-   "sha256": "f8f6ebe21be9b95dd2dc1ea91417d0661ccd335d122d2d19c60302c39f15cbc3"
+   "size": 38439,
+   "sha256": "ca4b877eabecfa2830f7c6d224fcde755d6ccc14fef05fd59061f472a5882e54"
   },
   {
    "path": "v2/config.js",
@@ -418,8 +418,8 @@
   },
   {
    "path": "v2/tv-boat.js",
-   "size": 47770,
-   "sha256": "47b5329f76bab3400dcbd7e81e136da133e792dd8dfce51d01a37bdce9250577"
+   "size": 47961,
+   "sha256": "3503ea2d7480f3158e1812fa4ad0d469b4939a0dd3b82798118093944f047770"
   },
   {
    "path": "v2/tv.css",
