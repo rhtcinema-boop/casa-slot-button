@@ -108,7 +108,8 @@
   const pwSet = (p) => { try { localStorage.setItem(PW_KEY, p); } catch (e) { try { pwSet(p); } catch (e2) {} } };
   const pwDel = () => { try { localStorage.removeItem(PW_KEY); } catch (e) {} try { sessionStorage.removeItem(PW_KEY); } catch (e) {} };
   let cfg = null; // { stores, rules, tuning }
-  let tab = 'races'; // 最初に開くのは「今日」
+  const BOAT_ONLY = document.documentElement.classList.contains('boatonly');
+  let tab = BOAT_ONLY ? 'boat' : 'races'; // 最初に開くのは「今日」（ボートだけのときはボート）
   let editStore = null; // 店舗の編集中のコピー（「テレビ」タブの中）
   let tt = null; // 時刻表の編集中のコピー { tpls }
   let ttDirty = false, ttOrig = new Set(); // ttOrig: 読み込んだ時点の「テンプレートid|時刻」（過去の時刻を新しく足したかの判定用）
@@ -150,7 +151,7 @@
 
   /* ---------- ログイン ---------- */
   function viewLogin(msg) {
-    return '<div class="panel" id="login"><h3>ログイン</h3><p class="hint">casa DERBY の管理パスワード</p>' +
+    return '<div class="panel" id="login"><h3>ログイン</h3><p class="hint">' + (BOAT_ONLY ? 'casa DERBY と同じ管理パスワード' : 'casa DERBY の管理パスワード') + '</p>' +
       '<label class="f"><span>パスワード</span><input type="password" id="pw" autocomplete="current-password"></label>' +
       '<div class="err" id="lerr">' + esc(msg || '') + '</div><div class="acts"><button class="btn" id="dologin">ログイン</button></div></div>';
   }
