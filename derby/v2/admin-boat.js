@@ -12,7 +12,7 @@
   // dirty: 保存していない編集がある（読み直しで消さない。2026-11-20 F12）。busy: ボタンの処理の途中（連打を受けない。F14）。seq: 読み込みの通し番号（古い返事であとから上書きしない）
   /* 2026-11-21: loadErr ＝ 読み込みの失敗（読めたら消す。I5: 前は保存の赤字と同じ置き場で「通信できません」が消えなかった）。actErr ＝ 「すぐ始める」「取り消す」が断られた理由（次の操作まで）。
      gen ＝ タブに入った回数（J15: タブを離れて戻ったあと、古い保存・すぐ始める・取り消しの処理が新しい編集・赤字・ボタンに触らない） */
-  const S = { data: null, edit: null, err: '', loadErr: '', actErr: '', conflicts: [], busy: false, dirty: false, seq: 0, gen: 0, on: false, ctx: null, main: null };
+  const S = { bulk: { from: '19:00', to: '23:00', every: '30', pay: '' }, data: null, edit: null, err: '', loadErr: '', actErr: '', conflicts: [], busy: false, dirty: false, seq: 0, gen: 0, on: false, ctx: null, main: null };
   const hm = (ms) => (window.DerbyCore ? DerbyCore.fmtBizTime(ms, 5) : new Date(ms).toTimeString().slice(0, 5));
 
   /* 時刻表の決まり → 編集の行。1 行 ＝ 目安 1 つ。同じ決まりの中に目安のちがうレースがあれば、目安ごとの行に分けて出す
@@ -29,6 +29,20 @@
   }
   // BPT の持ち上限（2026-11-20 オーナー決定「3,000 まで」）。数の置き場は v2/core.js の BPT_MAX（お金の係。設定では変えられない決まり）。読めなければ 3,000
   const holdMax = () => { const v = Number((window.DerbyCore && DerbyCore.BPT_MAX) || (window.BoatCore && BoatCore.BPT_MAX)); return v > 0 ? v : 3000; };
+  /* まとめて作る（2026-11-22 オーナー「何分おきでできるようにしようかな」: 競馬の時刻表と同じ「開始〜終了・何分おき」）。
+     押すと「毎日」の行が 1 つ増え、時刻の欄に並ぶ（日・目安はそのあと行で直せる）。競馬と被る時刻は今までどおり保存のときに赤字で断られる。返事 ＝ { row } か { err } */
+  const bulkMin = (s) => { const m = /^(\d{1,2})[:：]?(\d{2})$/.exec(String(s || '').trim()); return m && +m[2] < 60 ? +m[1] * 60 + +m[2] : NaN; };
+  const bulkHm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  function bulkRow(b) {
+    const f = bulkMin(b.from), t = bulkMin(b.to), ev = Number(b.every), pay = String(b.pay == null ? '' : b.pay).trim();
+    if (isNaN(f) || isNaN(t)) return { err: '開始と終了の時刻を入れてください（例 19:00）' };
+    if (f < 5 * 60 || t >= 29 * 60) return { err: '時刻は 05:00〜28:59 で入れてください（深夜は 24:00〜28:59）' };
+    if (t < f) return { err: '終了は開始より後にしてください（深夜は 24:00〜28:59 と書きます）' };
+    if (!(ev >= 1 && ev <= 180 && Math.floor(ev) === ev)) return { err: '何分おきは 1〜180 の整数で入れてください' };
+    if (pay !== '' && !(/^\d+$/.test(pay) && +pay >= 1)) return { err: '目安は 1 以上の整数で入れてください（空なら初期値）' };
+    const times = []; for (let m = f; m <= t; m += ev) times.push(bulkHm(m));
+    return { row: { id: 'b' + Date.now().toString(36), enabled: true, kind: 'daily', weekdays: [], date: '', times: times.join(', '), payout: pay }, n: times.length };
+  }
   function editToRules(list) {
     return list.map((x, i) => {
       const times = String(x.times || '').replace(/[，、\s]+/g, ',').split(',').map((s) => s.trim()).filter(Boolean);
@@ -80,6 +94,13 @@
       '<p class="hint">ボートはいつも全店同時。時刻 ＝ 投票の締切（映像の始まり）。投票は ' + Math.round(cfg.voteSec / 60 * 10) / 10 + ' 分前から。1 レースはおよそ ' + Math.ceil((cfg.voteSec + 6 + 190 + cfg.resultSec) / 60) + ' 分。競馬と被る時刻（競馬の投票〜結果画面の最初の 2 分）と、朝 5 時の前後（4 時半〜5 時半ごろ）は保存できません。</p>' +
       '<div class="tbl"><table class="tt-rows"><tr class="hd"><th>使う</th><th>日</th><th>時刻（25 時表記）</th><th>1 レースの目安（BPT）</th><th></th></tr>' + rows + '</table></div>' +
       '<p><button class="btn sm" data-act="addrule">行を足す</button></p>' +
+      '<div class="boatbulk"><b>まとめて作る</b>' +
+      '<label><span>開始</span><input type="text" inputmode="numeric" data-b="from" value="' + esc(S.bulk.from) + '" placeholder="19:00"></label><span>〜</span>' +
+      '<label><span>終了</span><input type="text" inputmode="numeric" data-b="to" value="' + esc(S.bulk.to) + '" placeholder="23:00"></label>' +
+      '<label><span>何分おき</span><input type="number" inputmode="numeric" data-b="every" value="' + esc(S.bulk.every) + '" min="1" max="180"></label>' +
+      '<label><span>目安（BPT）</span><input type="number" inputmode="numeric" data-b="pay" value="' + esc(S.bulk.pay) + '" placeholder="' + esc(cfg.target) + '"></label>' +
+      '<button class="btn sm ghost" data-act="bulk"' + dis + '>まとめて作る</button></div>' +
+      '<p class="hint">押すと「毎日」の行が 1 つ増えます（日や目安は行で直せます）。保存するまで時刻表は変わりません</p>' +
       '<h3>払う BPT</h3><div class="flds">' + num('target', '1 レースの目安（初期値）', 'BPT', '行の目安が空のとき（空にはできません）') + num('capRace', '1 レース上限', 'BPT', capHint, CAP) + num('capDay', '1 日上限', 'BPT', capHint, CAP) + '</div>' +
       '<ul class="boatwarn" id="boatWarn">' + warnHtml(e) + '</ul>' +
       '<p class="hint">お客さんが貯められる BPT は ' + amt(holdMax(cfg)) + ' まで（持ち上限。当たりで超える分は ' + amt(holdMax(cfg)) + ' で止まり、消えます。毎週月曜の朝 5 時にリセット）</p>' + // 2026-11-20 オーナー決定
@@ -121,6 +142,7 @@
     main.addEventListener('input', (ev) => {
       if (!S.edit || !ev.target.closest('.boatadm')) return;
       const t = ev.target, tr = t.closest('tr[data-i]');
+      if (t.dataset.b) { S.bulk[t.dataset.b] = t.value; return; } // まとめて作るの欄（時刻表の編集ではないので「保存していない」にはしない）
       if (t.dataset.k) { S.edit.cfg[t.dataset.k] = t.value; S.dirty = true; }
       if (t.dataset.c) { S.edit.cfg[t.dataset.c] = t.checked ? 1 : 0; S.dirty = true; }
       if (tr) { const x = S.edit.rules[Number(tr.dataset.i)]; if (!x) return; S.dirty = true; if (t.dataset.r === 'enabled') x.enabled = t.checked; else if (t.dataset.wd != null) { const k = Number(t.dataset.wd); x.weekdays = t.checked ? x.weekdays.concat([k]) : x.weekdays.filter((w) => Number(w) !== k); } else if (t.dataset.r) x[t.dataset.r] = t.value; }
@@ -140,6 +162,7 @@
       }
       const a = b.dataset.act;
       if (a === 'addrule') { S.edit.rules.push({ id: 'b' + Date.now().toString(36), enabled: true, kind: 'daily', weekdays: [], date: '', times: '', payout: '' }); S.dirty = true; return paint(); }
+      if (a === 'bulk') { const r = bulkRow(S.bulk); if (r.err) { S.ctx.toast(r.err); return; } S.edit.rules.push(r.row); S.dirty = true; S.ctx.toast(r.n + ' レースぶんの行を足しました（保存するまで変わりません）'); return paint(); }
       if (a === 'reload') return run(() => load(true));
       // 「すぐ始める」が断られたら（競馬・ほかのボートと被る・朝 5 時の前後 など）、理由をボタンの下に赤字で残す（次の操作まで。2026-11-21）
       if (a === 'test') return run(async (live) => { try { await S.ctx.api('boatRace', { inSec: 120 }); S.ctx.toast('2 分後に締切のボートレースを作りました'); } catch (e) { S.ctx.toast(errOf(e, '作れませんでした')); if (live()) S.actErr = 'すぐ始めるボートレースは作れませんでした: ' + errOf(e, ''); } if (live()) await load(true); });
@@ -157,7 +180,7 @@
       });
     });
   }
-  { const st = document.createElement('style'); st.textContent = '.boatadm .flds{display:flex;flex-wrap:wrap;gap:10px 22px;margin:6px 0 10px}.boatadm .fld{display:flex;align-items:center;gap:8px}.boatadm .fld span{min-width:9em}.boatadm .fld input{width:120px}.boatadm .tms{width:100%;min-width:200px}.boatadm .pay{width:110px}.boatadm .wds{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}.boatadm .wds label{display:flex;align-items:center;gap:2px}.boatcs{background:rgba(255,80,60,.1);border:1px solid #b44;border-radius:10px;padding:8px 14px;margin:8px 0}.boatcs ul{margin:4px 0 0 18px;padding:0}.boatwarn{margin:0 0 10px 18px;padding:0;color:#e0a030;font-weight:700}.boatwarn:empty{display:none}.boatstuck{color:#e05040;font-weight:700;margin:4px 0}.boatstuck ul{margin:4px 0 0 18px;padding:0}'; document.head.appendChild(st); }
+  { const st = document.createElement('style'); st.textContent = '.boatadm .flds{display:flex;flex-wrap:wrap;gap:10px 22px;margin:6px 0 10px}.boatadm .fld{display:flex;align-items:center;gap:8px}.boatadm .fld span{min-width:9em}.boatadm .fld input{width:120px}.boatadm .tms{width:100%;min-width:200px}.boatbulk{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:10px 0 4px;padding:10px 12px;border:1px dashed var(--line,#2a2a31);border-radius:10px}.boatbulk b{align-self:center}.boatbulk label{display:flex;flex-direction:column;gap:2px;font-size:12px}.boatbulk input{width:96px}.boatbulk>span{align-self:center}.boatadm .pay{width:110px}.boatadm .wds{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}.boatadm .wds label{display:flex;align-items:center;gap:2px}.boatcs{background:rgba(255,80,60,.1);border:1px solid #b44;border-radius:10px;padding:8px 14px;margin:8px 0}.boatcs ul{margin:4px 0 0 18px;padding:0}.boatwarn{margin:0 0 10px 18px;padding:0;color:#e0a030;font-weight:700}.boatwarn:empty{display:none}.boatstuck{color:#e05040;font-weight:700;margin:4px 0}.boatstuck ul{margin:4px 0 0 18px;padding:0}'; document.head.appendChild(st); }
   // render: ボートのタブを出す（v2/admin.js）。reset: タブに入る前・出るときに呼ばれる（読み直す・保存していない編集を捨てる・途中の読み込みの返事は捨てる）。dirty: 保存していない編集があるか
-  window.AdminBoat = { render(main, ctx) { if (!S.on) S.gen++; S.ctx = ctx; S.main = main; S.on = true; bind(main); paint(); if (!S.data) load(); }, reset() { S.on = false; S.gen++; S.seq++; S.data = null; S.edit = null; S.dirty = false; S.busy = false; S.err = ''; S.loadErr = ''; S.actErr = ''; S.conflicts = []; }, dirty: () => !!S.dirty, _rulesToEdit: rulesToEdit, _editToRules: editToRules };
+  window.AdminBoat = { render(main, ctx) { if (!S.on) S.gen++; S.ctx = ctx; S.main = main; S.on = true; bind(main); paint(); if (!S.data) load(); }, reset() { S.on = false; S.gen++; S.seq++; S.data = null; S.edit = null; S.dirty = false; S.busy = false; S.err = ''; S.loadErr = ''; S.actErr = ''; S.conflicts = []; }, dirty: () => !!S.dirty, _rulesToEdit: rulesToEdit, _editToRules: editToRules, _bulkRow: bulkRow };
 })();
