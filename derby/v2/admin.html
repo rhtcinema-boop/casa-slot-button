@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<script>if (/[?&]game=boat(&|$)/.test(location.search)) { document.documentElement.classList.add('boatonly'); document.title = 'casa BOAT 管理'; }</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0B101B">
 <meta name="robots" content="noindex">
@@ -10,10 +11,11 @@
 <link rel="icon" href="../icon-derby-180.png" sizes="180x180" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap"><!-- casa DERBY の文字（2026-10-21 オーナー: ゲーム全体を Noto Sans JP に統一。読めなければ端末の文字のまま） -->
-<link rel="stylesheet" href="admin.css?v=v4a15">
+<link rel="stylesheet" href="admin.css?v=v4a17">
 </head>
 <body>
-<header><h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="98" height="32" alt="casa DERBY" draggable="false"><span>管理</span></h1><span class="sp"></span><small id="clock"></small><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
+<nav class="games" id="games"><a data-g="slot" href="../../master.html">casa SLOT</a><a data-g="derby" href="admin.html">casa DERBY</a><a data-g="boat" href="admin.html?game=boat">casa BOAT</a></nav>
+<header><h1 class="logo-h1"><img src="../art/logo-3d/B/lockup-3d-B-casaWhite.svg" width="98" height="32" alt="casa DERBY" draggable="false"><b class="boat-name">casa BOAT</b><span>管理</span></h1><span class="sp"></span><small id="clock"></small><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
 <nav class="tabs" id="tabs" style="display:none">
   <button data-tab="races" class="on">今日</button><button data-tab="timetable">時刻表</button><button data-tab="tv">テレビ</button><button data-tab="tuning">調整</button><button data-tab="horses">馬</button><button data-tab="stats">集計</button><button data-tab="stamps">スタンプ</button><button data-tab="boat">ボート</button>
 </nav>
@@ -22,7 +24,7 @@
 <script src="tvhealth.js?v=v4h3"></script><!-- テレビの調子（2026-10-29）: テレビのタブの「電波」「なめらかさ」の点数 -->
 <script src="../js/engine.js?v=v4e7"></script><!-- 馬の初期の一覧（Engine.POOL・毛色）。「馬」のタブ（2026-10-30） -->
 <script src="client.js?v=v4q28"></script>
-<script src="admin.js?v=v4a21"></script><!-- v4a21: 2026-11-20 ボートのタブに保存していない編集があるとき、ほかのタブへ移る前に確かめる -->
+<script src="admin.js?v=v4a22"></script><!-- v4a21: 2026-11-20 ボートのタブに保存していない編集があるとき、ほかのタブへ移る前に確かめる -->
 <script src="admin-boat.js?v=b3"></script><!-- casa BOAT（2026-11-19）: 「ボート」タブ -->
 </body>
 </html>
