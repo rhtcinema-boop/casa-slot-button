@@ -201,7 +201,7 @@
   }
   /* 画質（2026-11-22 オーナー「画質を選べるようにしたい」）: 管理画面のボートの設定（boatLive/all の q。'low' ＝ 軽い）。アドレスの ?boatq=low / ?boatq=high があればそちら。
      設定が変わったら、次の映像（スタート展示・本番）を始めるときに作り直す（映像の途中では変えない） */
-  const wantQ = () => (/[?&]boatq=low\b/.test(QS) ? 'low' : /[?&]boatq=high\b/.test(QS) ? 'high' : B.live && B.live.q === 'low' ? 'low' : 'high');
+  const wantQ = () => (/[?&]boatq=low\b/.test(QS) ? 'low' : /[?&]boatq=high\b/.test(QS) ? 'high' : B.live && B.live.qs && (B.live.qs[STORE] === 'low' || B.live.qs[STORE] === 'high') ? B.live.qs[STORE] : B.live && B.live.q === 'low' ? 'low' : 'high'); // qs: 店ごとの画質（管理画面のボートの「テレビ」。2026-11-22）
   function needR() { if (B.R && B.R.quality !== wantQ()) { try { B.R.dispose(); } catch (e) { /* 作り直す */ } B.R = null; B.tj = null; B.film = null; } if (!B.R) makeR(); }
   function makeR() {
     B.R = new BOAT.Race($('boGl'), $('boHud'), { quality: wantQ() });
