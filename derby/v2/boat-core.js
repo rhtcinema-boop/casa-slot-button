@@ -38,6 +38,11 @@
     ['capRace', 'capDay'].forEach((k) => { if (!(o[k] >= CAP_MIN)) o[k] = DEF[k]; }); // 上限が 0・マイナスの設定は初期の上限で読む（上限なしにはしない）
     o.refundFall = 1; // いつも返還
     o.rules = Array.isArray(s.rules) ? s.rules : [];
+    /* 2026-11-22 オーナー「画質を選べるようにしたいのと、ボートの開始日、開始時刻を選べるようにして」:
+       startAt ＝ ボートを始める時刻（ms。0 ＝ 決めていない＝時刻表どおりすぐ）。これより前が締切のレースは作らない・予告もしない（schedule の 3 つ目）。
+       tvq ＝ テレビの映像の画質（'high' きれい・'low' 軽い）。boatLive/all の q でテレビへ届く（軽いときだけ書く） */
+    o.startAt = Number(s.startAt) > 0 && Number.isFinite(Number(s.startAt)) ? Math.round(Number(s.startAt)) : 0;
+    o.tvq = s.tvq === 'low' ? 'low' : 'high';
     return o;
   }
   /* 管理画面の保存: b = { rules?, target?, capRace?, capDay?, voteSec?, resultSec? }。ボートはいつも全店同時なので、行の店の指定は消す */
@@ -48,6 +53,8 @@
     num('target', 0, 1e7, true); num('capRace', CAP_MIN, 1e8, true); num('capDay', CAP_MIN, 1e9, true); num('voteSec', 60, 600, true); num('resultSec', 30, 900, true);
     ['target', 'capRace', 'capDay'].forEach((k) => { c[k] = r100(c[k]); });
     ['capRace', 'capDay'].forEach((k) => { c[k] = Math.max(CAP_MIN, c[k]); });
+    if (b.startAt !== undefined) { const v = Number(b.startAt); if (b.startAt !== null && b.startAt !== '' && !(Number.isFinite(v) && v >= 0 && v < 4e12)) throw err(400, 'bad_boat', 'ボートを始める日と時刻を入れ直してください'); c.startAt = v > 0 ? Math.round(v) : 0; }
+    if (b.tvq != null) c.tvq = b.tvq === 'low' ? 'low' : 'high';
     if (b.incidentOn != null) c.incidentOn = b.incidentOn === true || Number(b.incidentOn) > 0 ? 1 : 0; // フライング・転覆を出す（2026-11-19）
     c.refundFall = 1; // 転覆の券はいつも返還（2026-11-20。送られてきても見ない）
     if (b.rules !== undefined) c.rules = normalizeRules(b.rules, storeIds, dayStartHour, c);
@@ -80,7 +87,7 @@
 
   /* ---------- 時刻表 → レース ---------- */
   const idOf = (e) => 'b' + e.id; // 競馬の id（20261119-2130）と分ける
-  function schedule(t, rules) { return Core.scheduleAround(t, rules || []).map((e) => Object.assign({}, e, { id: idOf(e), storeId: null, storeIds: null, scope: 'all' })); }
+  function schedule(t, rules, startAt) { const s0 = Number(startAt) || 0; return Core.scheduleAround(t, rules || []).filter((e) => e.at >= s0).map((e) => Object.assign({}, e, { id: idOf(e), storeId: null, storeIds: null, scope: 'all' })); } // startAt: ボートを始める時刻（これより前が締切のレースは無いものとする。2026-11-22）
   // 時刻（at ＝ 締切＝映像の始まり）から各時刻。winSec: 走りの長さ（決めたあとに分かる。前は RUN_EST）
   function timesOf(at, cfg, winSec) {
     const c = configOf(cfg), openAt = at - c.voteSec * 1000, closeAt = at, runAt = at + c.leadSec * 1000;
