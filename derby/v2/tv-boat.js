@@ -159,7 +159,7 @@
   async function tjStart(r) {
     const key = 'tj:' + r.id, f = B.full[r.id]; if (!f || !f.model) return false;
     await needFilm(); if (B.want !== key) return false;
-    if (!B.R) makeR();
+    needR();
     const model = Object.assign({}, f.model), seed = Engine.hashSeed('boat-tenji', r.id), run = Engine.replayRun(model, seed);
     let desc = {}; try { desc = BoatModel.describe(model, seed); } catch (e) { desc = {}; }
     if (!(await prep(key, [model, run, { title: 'casa BOAT', sub: 'スタート展示', weather: model.weather2 }, desc], () => putCanvas('vid')))) return false;
@@ -199,8 +199,12 @@
       else if (hi >= HOW.length) { hide($('boSt'), true); hide($('boHow'), true); T.howI = -1; T.seg = 0; R.seek(TJ_SEG[0][0]); }
     }
   }
+  /* 画質（2026-11-22 オーナー「画質を選べるようにしたい」）: 管理画面のボートの設定（boatLive/all の q。'low' ＝ 軽い）。アドレスの ?boatq=low / ?boatq=high があればそちら。
+     設定が変わったら、次の映像（スタート展示・本番）を始めるときに作り直す（映像の途中では変えない） */
+  const wantQ = () => (/[?&]boatq=low\b/.test(QS) ? 'low' : /[?&]boatq=high\b/.test(QS) ? 'high' : B.live && B.live.q === 'low' ? 'low' : 'high');
+  function needR() { if (B.R && B.R.quality !== wantQ()) { try { B.R.dispose(); } catch (e) { /* 作り直す */ } B.R = null; B.tj = null; B.film = null; } if (!B.R) makeR(); }
   function makeR() {
-    B.R = new BOAT.Race($('boGl'), $('boHud'), { quality: /[?&]boatq=low\b/.test(QS) ? 'low' : 'high' });
+    B.R = new BOAT.Race($('boGl'), $('boHud'), { quality: wantQ() });
     try { BOAT.Sound.init(); } catch (e) { /* 音が無くても映像は出す */ }
     B.R.onSay = (keys, line) => { if (B.film) { try { BOAT.Sound.say(line); } catch (e) { /* noop */ } } }; // 実況は本番の映像だけ（スタート展示は音なし）
   }
@@ -224,7 +228,7 @@
     if (r.status !== 'decided' && r.status !== 'done') return false; // 決めるまで（締切の 2 秒ほどあと）は出走表のまま
     const f = await fullRace(r); if (!f || !f.hidden || B.want !== key) return false; // 待ちのあと: 同じレース・同じ場面のままか（取り消し・次のレースに変わっていたらやめる）
     await needFilm(); if (B.want !== key) return false;
-    if (!B.R) makeR();
+    needR();
     const model = Object.assign({}, f.model, { exacta: f.exacta }, f.hidden.incident ? { incident: f.hidden.incident } : {}), run = Engine.replayRun(model, f.hidden.seed, { order: f.hidden.order });
     let desc = {}; try { desc = BoatModel.describe(model, f.hidden.seed, { swaps: run.swaps }); } catch (e) { desc = {}; }
     // 5 番目（映像の係の入口 setRaceAsync）: 発走（大時計の 0 秒＝映像の 100 秒目）の 20 秒前までに終わらなければ、進路の作り直しを切り上げて始める（作り直しになるレースは準備が長い）
@@ -414,6 +418,6 @@
     if (B.C.boatState) { try { const x = await B.C.boatState(); if (!B.live) onLive(x.live); } catch (e) { /* 見張りで届く */ } }
     if (!stopped) raf();
   })();
-  BOATTV.debug = () => ({ tj: B.tj && { id: B.tj.id, seg: B.tj.seg, tt: B.R && B.R.tt }, stage: BOATTV.stage, race: BOATTV.race, film: B.film && { id: B.film.id, tt: B.R && B.R.tt, done: B.R && B.R.done, shot: B.R && B.R.shot }, count: B.count, err: BOATTV.err, qr: BOATTV.qr, parts: B.R && B.R.parts,
+  BOATTV.debug = () => ({ q: B.R ? B.R.quality : null, tj: B.tj && { id: B.tj.id, seg: B.tj.seg, tt: B.R && B.R.tt }, stage: BOATTV.stage, race: BOATTV.race, film: B.film && { id: B.film.id, tt: B.R && B.R.tt, done: B.R && B.R.done, shot: B.R && B.R.shot }, count: B.count, err: BOATTV.err, qr: BOATTV.qr, parts: B.R && B.R.parts,
     want: B.want, prepKey: B.prepKey || '', drops: B.nDrop || 0, rewatch: B.nRewatch || 0, ready: !!ov.__ready, sub: B.R && B.R.info && B.R.info.sub, tries: B.nTry, preps: B.nPrep, skips: B.nSkip, seeks: B.nSeek, kept: { full: Object.keys(B.full), key: Object.keys(B.key), fetchAt: Object.keys(B.fetchAt) }, vq: VQ });
 })();
