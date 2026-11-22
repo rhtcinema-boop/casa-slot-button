@@ -209,7 +209,7 @@
     async function clearStuck(id) { if (!T.fail || !T.fail[id]) return; delete T.fail[id]; try { await doc(COLB.secrets, id).set({ stuck: null }, { merge: true }); } catch (e) { /* noop */ } }
     /* レースを作る。同じ id のレースがもうあれば作らない（2026-11-20: 2 回作ると QR の合言葉・倍率が変わってしまうので、取引の中で「まだ無い」を確かめる）→ 置いてあるレース */
     async function create(e, cfg, sc) {
-      const model = Boat.modelOf(Engine, Outcome, BoatModel, sc.salt, e.id); let odds = null;
+      const model = Boat.modelOf(Engine, Outcome, BoatModel, sc.salt, e.id, Boat.racerPool(cfg)); let odds = null; // 選手の一覧（管理画面の「選手」。2026-11-22）は buildRace と同じものを使う
       if (oddsAsync) { try { odds = await oddsAsync(model, Outcome.hash(sc.salt, e.id, 'odds'), cfg.oddsSims); } catch (x) { odds = null; } } // テレビは Worker で（絵を止めない）
       const built = Boat.buildRace(Engine, Outcome, BoatModel, e, cfg, sc.salt, now(), { odds, dayStartHour: sc.tuning.dayStartHour });
       const r = built.race; let have = null;
@@ -375,7 +375,8 @@
     async function publish(races, cfg, t) {
       const live = Boat.liveOf(races, t);
       if (!live.next && cfg.rules.length) { const e = Boat.schedule(t, cfg.rules, cfg.startAt).find((x) => x.at - cfg.voteSec * 1000 > t && !Boat.quietSpan(x.at, cfg)); if (e) live.next = { id: e.id, at: e.at, openAt: e.at - cfg.voteSec * 1000 }; }
-      if (cfg.tvq === 'low') live.q = 'low'; // テレビの映像の画質（軽いときだけ書く。2026-11-22。v2/tv-boat.js が読む） // まだ作っていない次のレース（時刻表から）
+      if (cfg.tvq === 'low') live.q = 'low'; // テレビの映像の画質（軽いときだけ書く。2026-11-22。v2/tv-boat.js が読む）
+      if (cfg.tvqs && Object.keys(cfg.tvqs).length) live.qs = cfg.tvqs; // 店ごとの画質（管理画面のボートの「テレビ」。その店の指定があれば q より先） // まだ作っていない次のレース（時刻表から）
       const sig = stable(live);
       if (sig === T.liveSig) return false;
       if (!T.liveSig) { // 進行役になって最初の 1 回（2026-11-20）: いま置いてある中身を 1 回読み、同じなら書かない（書くと、見張っているスマホ・テレビの全員がもう 1 回読むことになる）
@@ -453,6 +454,19 @@
         }),
         /* 取り消し: 足した BPT の券を全額戻す（2026-11-18 オーナー決定）。
            2026-11-20: 先にレースを「取り消し」にしてから票を読んで戻す（以前は票を先に読んでいたので、同時に足された券の BPT が戻らなかった）。決めたあとの取り消しは 1 日の使った額の予約も戻す */
+        /* 集計（管理画面のボートの「集計」。2026-11-22）: boatStats(from, to) ＝ 日ごとの「発表したレースの数・払った BPT」（boatStats/<営業日> を 1 日 1 件ずつ読む。62 日まで）。
+           boatDay(day) ＝ その日のレースの一覧（参加・券・払った BPT・結果。開いた日だけ読む） */
+        boatStats: wrap(async (from, to) => {
+          const ok = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')); if (!ok(from) || !ok(to) || from > to) throw E(400, 'bad_range', '期間を入れ直してください');
+          const days = []; for (let d = String(to), k = 0; d >= from && k < 62; k++) { days.push(d); const p = d.split('-').map(Number); d = new Date(Date.UTC(p[0], p[1] - 1, p[2] - 1)).toISOString().slice(0, 10); }
+          const out = await Promise.all(days.map(async (day) => { const st = data(await doc(COLB.stats, day).get()) || {}; return { day, races: Number(st.races) || 0, paid: Number(st.paid) || 0 }; }));
+          return { days: out };
+        }),
+        boatDay: wrap(async (day) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day || ''))) throw E(400, 'bad_range', '日付を入れ直してください');
+          const q = await db.collection(COLB.races).where('day', '==', String(day)).get();
+          return { day: String(day), races: q.docs.map((d) => { const r = strip(Object.assign({ id: d.id }, d.data())); return Object.assign(Boat.lite(r), { participants: r.participants, paid: Number(r.paid) || 0 }); }).sort((a, b) => a.at - b.at) };
+        }),
         boatRefund: wrap(async (raceId) => {
           const id = String(raceId || ''), rref = doc(COLB.races, id);
           await db.runTransaction(async (tx) => {
