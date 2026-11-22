@@ -227,7 +227,7 @@
       if (!cfg.rules.length || T.making) return null;
       const t = now(), horizon = Math.max(cfg.voteSec * 1000 + 120000, ((sc.tuning && sc.tuning.horizonMin) || 15) * 60000), have = new Set(races.map((r) => r.id));
       let ders = null;
-      for (const e of Boat.schedule(t, cfg.rules)) {
+      for (const e of Boat.schedule(t, cfg.rules, cfg.startAt)) {
         if (e.at - t > horizon) break;
         if (e.at <= t + 1000 || have.has(e.id)) continue;
         if (Boat.quietSpan(e.at, cfg, sc.tuning && sc.tuning.dayStartHour)) continue; // 朝 5 時の前後は作らない（時刻表でも断っている。2026-11-20）
@@ -260,7 +260,7 @@
     function lateLimit(r, races, cfg, sc, ders) {
       let lim = r.closeAt + STALE_MS;
       (races || []).forEach((x) => { if (x && x.id !== r.id && x.at > r.at && x.status !== 'void' && x.openAt > r.closeAt) lim = Math.min(lim, x.openAt); });
-      const nx = Boat.schedule(r.at + 1000, cfg.rules).find((e) => e.at > r.at && !(races || []).some((x) => x.id === e.id)); if (nx) lim = Math.min(lim, nx.at - cfg.voteSec * 1000);
+      const nx = Boat.schedule(r.at + 1000, cfg.rules, cfg.startAt).find((e) => e.at > r.at && !(races || []).some((x) => x.id === e.id)); if (nx) lim = Math.min(lim, nx.at - cfg.voteSec * 1000);
       (ders || []).forEach((d) => { const sp = Boat.derbySpan(d, sc.tuning); if (sp[0] > r.closeAt) lim = Math.min(lim, sp[0]); });
       return lim;
     }
@@ -374,7 +374,8 @@
     }
     async function publish(races, cfg, t) {
       const live = Boat.liveOf(races, t);
-      if (!live.next && cfg.rules.length) { const e = Boat.schedule(t, cfg.rules).find((x) => x.at - cfg.voteSec * 1000 > t && !Boat.quietSpan(x.at, cfg)); if (e) live.next = { id: e.id, at: e.at, openAt: e.at - cfg.voteSec * 1000 }; } // まだ作っていない次のレース（時刻表から）
+      if (!live.next && cfg.rules.length) { const e = Boat.schedule(t, cfg.rules, cfg.startAt).find((x) => x.at - cfg.voteSec * 1000 > t && !Boat.quietSpan(x.at, cfg)); if (e) live.next = { id: e.id, at: e.at, openAt: e.at - cfg.voteSec * 1000 }; }
+      if (cfg.tvq === 'low') live.q = 'low'; // テレビの映像の画質（軽いときだけ書く。2026-11-22。v2/tv-boat.js が読む） // まだ作っていない次のレース（時刻表から）
       const sig = stable(live);
       if (sig === T.liveSig) return false;
       if (!T.liveSig) { // 進行役になって最初の 1 回（2026-11-20）: いま置いてある中身を 1 回読み、同じなら書かない（書くと、見張っているスマホ・テレビの全員がもう 1 回読むことになる）
@@ -430,7 +431,7 @@
           const nx = Boat.mergeConfig(cur, b, stores.map((s) => s.id), dr.tuning.dayStartHour), cs = Boat.conflicts(nx.rules, dr.rules, dr.tuning, nx, now(), 14);
           if (cs.length) throw conflictErr(cs);
           await doc(COLB.config, 'boat').set(nx);
-          const keep = new Set(Boat.schedule(now(), nx.rules).map((e) => e.id)), q = await db.collection(COLB.races).where('status', '==', 'upcoming').get();
+          const keep = new Set(Boat.schedule(now(), nx.rules, nx.startAt).map((e) => e.id)), q = await db.collection(COLB.races).where('status', '==', 'upcoming').get();
           for (const d of q.docs) { const r = d.data(); if (!/^b\d/.test(d.id) || keep.has(d.id) || now() >= r.openAt - 5000) continue; const v = await db.collection(COLB.votes).where('raceId', '==', d.id).limit(1).get(); if (!v.empty) continue; const bb = db.batch(); bb.delete(doc(COLB.races, d.id)); bb.delete(doc(COLB.secrets, d.id)); bb.delete(doc(COLB.keys, d.id)); await bb.commit(); }
           return { ok: true, cfg: nx };
         }),
