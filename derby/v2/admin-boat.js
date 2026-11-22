@@ -86,6 +86,12 @@
     if (!picked.length) return { err: '競馬と被らない時刻が見つかりませんでした（' + bulkHm(f) + '〜' + bulkHm(t) + '）' };
     return { row: { id: 'b' + Date.now().toString(36), enabled: true, kind: 'daily', weekdays: [], date: '', times: picked.map(bulkHm).join(', '), payout: pay }, n: picked.length, none };
   }
+  /* ボートを始める日・時刻（2026-11-22 オーナー「ボートの開始日、開始時刻を選べるようにして」）: 設定の startAt（ms。0 ＝ 決めていない）⇔ 画面の日付と時刻（日本の時刻）。
+     日付が空 ＝ 決めていない（時刻表を保存したらすぐ始まる）。時刻が空なら 0:00 */
+  const J9 = 9 * 3600000;
+  const startParts = (ms) => { if (!(Number(ms) > 0)) return { d: '', t: '' }; const s = new Date(Number(ms) + J9).toISOString(); return { d: s.slice(0, 10), t: s.slice(11, 16) }; };
+  const startMs = (d, t) => { const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')), b = /^(\d{1,2}):(\d{2})$/.exec(String(t || '') || '00:00'); return a && b ? Date.UTC(+a[1], +a[2] - 1, +a[3], +b[1], +b[2]) - J9 : 0; };
+  const startText = (ms) => { const p = startParts(ms); return p.d ? Number(p.d.slice(5, 7)) + '月' + Number(p.d.slice(8, 10)) + '日 ' + p.t : ''; };
   function editToRules(list) {
     return list.map((x, i) => {
       const times = String(x.times || '').replace(/[，、\s]+/g, ',').split(',').map((s) => s.trim()).filter(Boolean);
@@ -118,6 +124,7 @@
   function view() {
     const d = S.data, e = S.edit;
     if (!d) return '<section class="card"><h2>ボート</h2><p class="hint">' + (S.loadErr ? esc(S.loadErr) : '読み込み中…') + '</p></section>';
+    if (e.cfg.startDate === undefined) { const sp = startParts(d.cfg.startAt); e.cfg.startDate = sp.d; e.cfg.startTime = sp.t; }
     const cfg = d.cfg, num = (k, lab, unit, hint, attrs) => '<label class="fld"><span>' + lab + '</span><input type="number" inputmode="numeric" data-k="' + k + '" value="' + esc(e.cfg[k]) + '"' + (attrs || '') + '><small>' + unit + '</small>' + (hint ? '<small class="hint"> ' + hint + '</small>' : '') + '</label>';
     const CAP = ' min="100" step="100"', capHint = '100 以上（0 や空にはできません）'; // 上限は必ず入れる（2026-11-20。v2/boat-core.js の CAP_MIN。0 で保存すると断られ、理由が赤字で出る）
     const rows = e.rules.map((x, i) => '<tr data-i="' + i + '"><td><input type="checkbox" data-r="enabled"' + (x.enabled ? ' checked' : '') + '></td>' +
@@ -149,6 +156,10 @@
       '<ul class="boatwarn" id="boatWarn">' + warnHtml(e) + '</ul>' +
       '<p class="hint">お客さんが貯められる BPT は ' + amt(holdMax(cfg)) + ' まで（持ち上限。当たりで超える分は ' + amt(holdMax(cfg)) + ' で止まり、消えます。毎週月曜の朝 5 時にリセット）</p>' + // 2026-11-20 オーナー決定
       '<h3>時間</h3><div class="flds">' + num('voteSec', '投票の長さ', '秒') + num('resultSec', '結果画面の長さ', '秒') + '</div>' +
+      '<h3>ボートを始める日</h3><div class="flds"><label class="fld"><span>始める日</span><input type="date" data-k="startDate" class="sd" value="' + esc(e.cfg.startDate) + '"></label><label class="fld"><span>時刻</span><input type="time" data-k="startTime" class="sd" value="' + esc(e.cfg.startTime) + '"></label></div>' +
+      '<p class="hint">この日・時刻より前は、時刻表にあってもボートを出しません。空なら、時刻表を保存したらすぐ始まります。' + (Number(cfg.startAt) > 0 ? '<b class="boatstart">' + (Number(cfg.startAt) > Date.now() ? ' いまの設定: ' + esc(startText(cfg.startAt)) + ' から始まります' : ' いまの設定: ' + esc(startText(cfg.startAt)) + ' から（もう始まっています）') + '</b>' : '') + '</p>' +
+      '<h3>テレビの映像の画質</h3><div class="flds"><label class="fld"><span>画質</span><select data-k="tvq"><option value="high"' + (e.cfg.tvq !== 'low' ? ' selected' : '') + '>きれい（ふつう）</option><option value="low"' + (e.cfg.tvq === 'low' ? ' selected' : '') + '>軽い（古いテレビ・カクつくとき）</option></select></label></div>' +
+      '<p class="hint">全店のテレビに効きます。変えたあと、次のボートの映像から変わります</p>' +
       '<h3>フライング・転覆</h3><div class="flds"><label class="fld"><input type="checkbox" data-c="incidentOn"' + (Number(e.cfg.incidentOn) > 0 ? ' checked' : '') + '><span>フライング・転覆を出す（本物の率: フライング 1.6%・転覆など 4.6%）</span></label></div>' +
       '<p class="hint">フライング・転覆の艇を含む券は、いつも返還します（BPT の券は BPT を戻します）</p>' + // 2026-11-20 オーナー決定: 「転覆の券も返還」の切り替えは消して、いつも返還
 
@@ -223,7 +234,7 @@
         const bad = checkEdit(S.edit); if (bad) { S.err = bad; return; } // 空の目安・曜日なしは送らない（2026-11-21 I5）
         const sent = JSON.stringify(S.edit), ed = S.edit;
         try {
-          const c = S.edit.cfg, body = { rules: editToRules(S.edit.rules), target: Number(c.target), capRace: Number(c.capRace), capDay: Number(c.capDay), voteSec: Number(c.voteSec), resultSec: Number(c.resultSec), incidentOn: Number(c.incidentOn) > 0 }; // 転覆の返還の切り替え（refundFall）は送らない（いつも返還。2026-11-20）
+          const c = S.edit.cfg, body = { rules: editToRules(S.edit.rules), target: Number(c.target), capRace: Number(c.capRace), capDay: Number(c.capDay), voteSec: Number(c.voteSec), resultSec: Number(c.resultSec), incidentOn: Number(c.incidentOn) > 0, startAt: startMs(c.startDate, c.startTime), tvq: c.tvq === 'low' ? 'low' : 'high' }; // 転覆の返還の切り替え（refundFall）は送らない（いつも返還。2026-11-20）
           await S.ctx.api('saveBoat', body); S.ctx.toast('ボートの時刻表を保存しました');
           if (!live() || S.edit !== ed) return; // 返事を待つ間にタブを離れて戻った: 新しい編集には触らない（J15）
           if (JSON.stringify(S.edit) === sent) S.dirty = false; // 保存の返事を待つ間に打った分は残す
@@ -232,7 +243,7 @@
       });
     });
   }
-  { const st = document.createElement('style'); st.textContent = '.boatadm .flds{display:flex;flex-wrap:wrap;gap:10px 22px;margin:6px 0 10px}.boatadm .fld{display:flex;align-items:center;gap:8px}.boatadm .fld span{min-width:9em}.boatadm .fld input{width:120px}.boatadm .tms{width:100%;min-width:200px}.boatbulk{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:10px 0 4px;padding:10px 12px;border:1px dashed var(--line,#2a2a31);border-radius:10px}.boatbulk b{align-self:center}.boatbulk label{display:flex;flex-direction:column;gap:2px;font-size:12px}.boatbulk input{width:96px}.boatbulk>span{align-self:center}.boatadm .pay{width:110px}.boatadm .wds{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}.boatadm .wds label{display:flex;align-items:center;gap:2px}.boatcs{background:rgba(255,80,60,.1);border:1px solid #b44;border-radius:10px;padding:8px 14px;margin:8px 0}.boatcs ul{margin:4px 0 0 18px;padding:0}.boatwarn{margin:0 0 10px 18px;padding:0;color:#e0a030;font-weight:700}.boatwarn:empty{display:none}.boatstuck{color:#e05040;font-weight:700;margin:4px 0}.boatstuck ul{margin:4px 0 0 18px;padding:0}'; document.head.appendChild(st); }
+  { const st = document.createElement('style'); st.textContent = '.boatadm .flds{display:flex;flex-wrap:wrap;gap:10px 22px;margin:6px 0 10px}.boatadm .fld{display:flex;align-items:center;gap:8px}.boatadm .fld span{min-width:9em}.boatadm .fld input{width:120px}.boatadm .fld input.sd{width:170px}.boatstart{color:var(--gold,#e9c25e)}.boatadm .tms{width:100%;min-width:200px}.boatbulk{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:10px 0 4px;padding:10px 12px;border:1px dashed var(--line,#2a2a31);border-radius:10px}.boatbulk b{align-self:center}.boatbulk label{display:flex;flex-direction:column;gap:2px;font-size:12px}.boatbulk input{width:96px}.boatbulk>span{align-self:center}.boatadm .pay{width:110px}.boatadm .wds{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}.boatadm .wds label{display:flex;align-items:center;gap:2px}.boatcs{background:rgba(255,80,60,.1);border:1px solid #b44;border-radius:10px;padding:8px 14px;margin:8px 0}.boatcs ul{margin:4px 0 0 18px;padding:0}.boatwarn{margin:0 0 10px 18px;padding:0;color:#e0a030;font-weight:700}.boatwarn:empty{display:none}.boatstuck{color:#e05040;font-weight:700;margin:4px 0}.boatstuck ul{margin:4px 0 0 18px;padding:0}'; document.head.appendChild(st); }
   // render: ボートのタブを出す（v2/admin.js）。reset: タブに入る前・出るときに呼ばれる（読み直す・保存していない編集を捨てる・途中の読み込みの返事は捨てる）。dirty: 保存していない編集があるか
   window.AdminBoat = { render(main, ctx) { if (!S.on) S.gen++; S.ctx = ctx; S.main = main; S.on = true; bind(main); paint(); if (!S.data) load(); }, reset() { S.on = false; S.gen++; S.seq++; S.data = null; S.edit = null; S.dirty = false; S.busy = false; S.err = ''; S.loadErr = ''; S.actErr = ''; S.conflicts = []; }, dirty: () => !!S.dirty, _rulesToEdit: rulesToEdit, _editToRules: editToRules, _bulkRow: bulkRow, _autoRow: autoRow };
 })();
