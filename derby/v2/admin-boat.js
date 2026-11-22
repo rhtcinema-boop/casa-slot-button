@@ -43,6 +43,49 @@
     const times = []; for (let m = f; m <= t; m += ev) times.push(bulkHm(m));
     return { row: { id: 'b' + Date.now().toString(36), enabled: true, kind: 'daily', weekdays: [], date: '', times: times.join(', '), payout: pay }, n: times.length };
   }
+  /* おまかせ（2026-11-22 オーナー「ボートは、競馬と被んない時間で、ざっくり 1 時間に 1 回みたいなのを勝手に設定してくれればいい」）:
+     開始〜終了を 1 時間ずつに区切り、それぞれの 1 時間の中で「先 14 日のどの日の競馬（投票〜結果画面の最初の 2 分）とも、今ある行のボートとも重ならない」最初の時刻を 1 つ選ぶ
+     （きりのいい時刻 ＝ 10 分・5 分の刻みを先に見る。空きが無い 1 時間は飛ばす）。最後に保存のときと同じ調べ方（BoatCore.conflicts）でもう一度見て、引っかかった時刻は外す。
+     返事 ＝ { row, n, none: [入らなかった時間帯] } か { err }。計算の部品（core.js・boat-core.js）が無い画面では読み込む */
+  const addScript = (src) => new Promise((ok, ng) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ng(new Error(src + ' を読めませんでした')); document.head.appendChild(s); });
+  const dayShift = (ds, k) => { const q = ds.split('-').map(Number); return new Date(Date.UTC(q[0], q[1] - 1, q[2] + k)).toISOString().slice(0, 10); };
+  async function autoRow(b, e, cfgSaved, api) {
+    const f = bulkMin(b.from), t = bulkMin(b.to), pay = String(b.pay == null ? '' : b.pay).trim();
+    if (isNaN(f) || isNaN(t)) return { err: '開始と終了の時刻を入れてください（例 19:00）' };
+    if (f < 5 * 60 || t >= 29 * 60) return { err: '時刻は 05:00〜28:59 で入れてください（深夜は 24:00〜28:59）' };
+    if (t < f) return { err: '終了は開始より後にしてください（深夜は 24:00〜28:59 と書きます）' };
+    if (pay !== '' && !(/^\d+$/.test(pay) && +pay >= 1)) return { err: '目安は 1 以上の整数で入れてください（空なら初期値）' };
+    if (!window.DerbyCore) await addScript('core.js'); if (!window.BoatCore) await addScript('boat-core.js');
+    const Core = window.DerbyCore, Boat = window.BoatCore, dc = (await api('config')) || {};
+    const dRules = (dc.timetable && dc.timetable.rules) || [], T = Core.tuningOf(dc.tuning || {}), hh = T.dayStartHour, now = Date.now();
+    const cfg = Object.assign({}, cfgSaved, { voteSec: Number(e.cfg.voteSec) || cfgSaved.voteSec, resultSec: Number(e.cfg.resultSec) || cfgSaved.resultSec });
+    const mine = editToRules(e.rules).filter((r) => r.races.length), one = (time) => ({ id: 'auto', enabled: true, kind: 'daily', races: [{ time, payout: 0 }], payout: 0 });
+    // 先 14 日: その日の 0 分の時刻（ms）と、ふさがっている時間（競馬・今ある行のボート）
+    const d0 = Core.bizDate(now, hh), days = [];
+    for (let k = 0; k < 14; k++) {
+      const ds = dayShift(d0, k), base = Core.expandDate(ds, [one('12:00')])[0].at - 720 * 60000, busy = [];
+      [-1, 0, 1].forEach((j) => { const x = dayShift(ds, j); Core.expandDate(x, dRules).forEach((d) => busy.push(Boat.derbySpan(d.at, T))); Core.expandDate(x, mine).forEach((m) => busy.push(Boat.boatSpan(m.at, cfg))); });
+      days.push({ base, busy });
+    }
+    const picked = [], free = (m) => !(Boat.quietSpanMin ? Boat.quietSpanMin(m, hh, cfg) : Boat.quietMin(m, hh)) && days.every((d) => { const s = Boat.boatSpan(d.base + m * 60000, cfg); return !d.busy.some((x) => s[0] < x[1] && x[0] < s[1]) && !picked.some((q) => { const y = Boat.boatSpan(d.base + q * 60000, cfg); return s[0] < y[1] && y[0] < s[1]; }); });
+    const none = [];
+    for (let H = f; H <= t; H += 60) {
+      const c = []; for (let m = H; m <= Math.min(H + 59, t); m++) c.push(m);
+      c.sort((x, y) => (x % 10 ? (x % 5 ? 2 : 1) : 0) - (y % 10 ? (y % 5 ? 2 : 1) : 0) || x - y);
+      const hit = c.find(free); if (hit == null) none.push(bulkHm(H) + '〜'); else picked.push(hit);
+    }
+    // 保存のときと同じ調べ方でもう一度（祝日・先の日付の行など、上で見ていない日の分）。新しく出た被りの時刻は外す
+    const keyOf = (x) => x.date + ' ' + x.boat, base = new Set(Boat.conflicts(mine, dRules, T, cfg, now, 14).map(keyOf));
+    for (let k = 0; k < 30 && picked.length; k++) {
+      const rule = Object.assign(one('12:00'), { races: picked.map((m) => ({ time: bulkHm(m), payout: 0 })) });
+      const bad = new Set(Boat.conflicts(mine.concat([rule]), dRules, T, cfg, now, 14).filter((x) => !base.has(keyOf(x))).map((x) => x.boat));
+      const i = picked.findIndex((m) => bad.has(bulkHm(m))); if (i < 0) break;
+      none.push(bulkHm(picked[i]) + '（先の日の競馬と重なる）'); picked.splice(i, 1);
+    }
+    picked.sort((x, y) => x - y);
+    if (!picked.length) return { err: '競馬と被らない時刻が見つかりませんでした（' + bulkHm(f) + '〜' + bulkHm(t) + '）' };
+    return { row: { id: 'b' + Date.now().toString(36), enabled: true, kind: 'daily', weekdays: [], date: '', times: picked.map(bulkHm).join(', '), payout: pay }, n: picked.length, none };
+  }
   function editToRules(list) {
     return list.map((x, i) => {
       const times = String(x.times || '').replace(/[，、\s]+/g, ',').split(',').map((s) => s.trim()).filter(Boolean);
@@ -99,8 +142,9 @@
       '<label><span>終了</span><input type="text" inputmode="numeric" data-b="to" value="' + esc(S.bulk.to) + '" placeholder="23:00"></label>' +
       '<label><span>何分おき</span><input type="number" inputmode="numeric" data-b="every" value="' + esc(S.bulk.every) + '" min="1" max="180"></label>' +
       '<label><span>目安（BPT）</span><input type="number" inputmode="numeric" data-b="pay" value="' + esc(S.bulk.pay) + '" placeholder="' + esc(cfg.target) + '"></label>' +
-      '<button class="btn sm ghost" data-act="bulk"' + dis + '>まとめて作る</button></div>' +
-      '<p class="hint">押すと「毎日」の行が 1 つ増えます（日や目安は行で直せます）。保存するまで時刻表は変わりません</p>' +
+      '<button class="btn sm ghost" data-act="bulk"' + dis + '>まとめて作る</button>' +
+      '<button class="btn sm" data-act="auto"' + dis + '>おまかせ（1 時間に 1 回）</button></div>' +
+      '<p class="hint">「おまかせ」は、開始〜終了の間で、競馬と被らない時刻を 1 時間に 1 つずつ選びます（何分おき は使いません）。どちらも押すと「毎日」の行が 1 つ増えます（日や目安は行で直せます）。保存するまで時刻表は変わりません</p>' +
       '<h3>払う BPT</h3><div class="flds">' + num('target', '1 レースの目安（初期値）', 'BPT', '行の目安が空のとき（空にはできません）') + num('capRace', '1 レース上限', 'BPT', capHint, CAP) + num('capDay', '1 日上限', 'BPT', capHint, CAP) + '</div>' +
       '<ul class="boatwarn" id="boatWarn">' + warnHtml(e) + '</ul>' +
       '<p class="hint">お客さんが貯められる BPT は ' + amt(holdMax(cfg)) + ' まで（持ち上限。当たりで超える分は ' + amt(holdMax(cfg)) + ' で止まり、消えます。毎週月曜の朝 5 時にリセット）</p>' + // 2026-11-20 オーナー決定
@@ -163,6 +207,14 @@
       const a = b.dataset.act;
       if (a === 'addrule') { S.edit.rules.push({ id: 'b' + Date.now().toString(36), enabled: true, kind: 'daily', weekdays: [], date: '', times: '', payout: '' }); S.dirty = true; return paint(); }
       if (a === 'bulk') { const r = bulkRow(S.bulk); if (r.err) { S.ctx.toast(r.err); return; } S.edit.rules.push(r.row); S.dirty = true; S.ctx.toast(r.n + ' レースぶんの行を足しました（保存するまで変わりません）'); return paint(); }
+      if (a === 'auto') return run(async (live) => {
+        const ed = S.edit; let r = null;
+        try { r = await autoRow(S.bulk, ed, S.data.cfg, S.ctx.api); } catch (e) { r = { err: 'おまかせで作れませんでした: ' + errOf(e, '') }; }
+        if (!live() || S.edit !== ed) return;
+        if (r.err) { S.ctx.toast(r.err); S.actErr = ''; return; }
+        ed.rules.push(r.row); S.dirty = true;
+        S.ctx.toast(r.n + ' レースを選びました' + (r.none.length ? '（入らなかった: ' + r.none.join('・') + '）' : '') + '。保存するまで変わりません');
+      });
       if (a === 'reload') return run(() => load(true));
       // 「すぐ始める」が断られたら（競馬・ほかのボートと被る・朝 5 時の前後 など）、理由をボタンの下に赤字で残す（次の操作まで。2026-11-21）
       if (a === 'test') return run(async (live) => { try { await S.ctx.api('boatRace', { inSec: 120 }); S.ctx.toast('2 分後に締切のボートレースを作りました'); } catch (e) { S.ctx.toast(errOf(e, '作れませんでした')); if (live()) S.actErr = 'すぐ始めるボートレースは作れませんでした: ' + errOf(e, ''); } if (live()) await load(true); });
@@ -182,5 +234,5 @@
   }
   { const st = document.createElement('style'); st.textContent = '.boatadm .flds{display:flex;flex-wrap:wrap;gap:10px 22px;margin:6px 0 10px}.boatadm .fld{display:flex;align-items:center;gap:8px}.boatadm .fld span{min-width:9em}.boatadm .fld input{width:120px}.boatadm .tms{width:100%;min-width:200px}.boatbulk{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:10px 0 4px;padding:10px 12px;border:1px dashed var(--line,#2a2a31);border-radius:10px}.boatbulk b{align-self:center}.boatbulk label{display:flex;flex-direction:column;gap:2px;font-size:12px}.boatbulk input{width:96px}.boatbulk>span{align-self:center}.boatadm .pay{width:110px}.boatadm .wds{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}.boatadm .wds label{display:flex;align-items:center;gap:2px}.boatcs{background:rgba(255,80,60,.1);border:1px solid #b44;border-radius:10px;padding:8px 14px;margin:8px 0}.boatcs ul{margin:4px 0 0 18px;padding:0}.boatwarn{margin:0 0 10px 18px;padding:0;color:#e0a030;font-weight:700}.boatwarn:empty{display:none}.boatstuck{color:#e05040;font-weight:700;margin:4px 0}.boatstuck ul{margin:4px 0 0 18px;padding:0}'; document.head.appendChild(st); }
   // render: ボートのタブを出す（v2/admin.js）。reset: タブに入る前・出るときに呼ばれる（読み直す・保存していない編集を捨てる・途中の読み込みの返事は捨てる）。dirty: 保存していない編集があるか
-  window.AdminBoat = { render(main, ctx) { if (!S.on) S.gen++; S.ctx = ctx; S.main = main; S.on = true; bind(main); paint(); if (!S.data) load(); }, reset() { S.on = false; S.gen++; S.seq++; S.data = null; S.edit = null; S.dirty = false; S.busy = false; S.err = ''; S.loadErr = ''; S.actErr = ''; S.conflicts = []; }, dirty: () => !!S.dirty, _rulesToEdit: rulesToEdit, _editToRules: editToRules, _bulkRow: bulkRow };
+  window.AdminBoat = { render(main, ctx) { if (!S.on) S.gen++; S.ctx = ctx; S.main = main; S.on = true; bind(main); paint(); if (!S.data) load(); }, reset() { S.on = false; S.gen++; S.seq++; S.data = null; S.edit = null; S.dirty = false; S.busy = false; S.err = ''; S.loadErr = ''; S.actErr = ''; S.conflicts = []; }, dirty: () => !!S.dirty, _rulesToEdit: rulesToEdit, _editToRules: editToRules, _bulkRow: bulkRow, _autoRow: autoRow };
 })();
