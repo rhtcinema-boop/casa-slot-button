@@ -252,10 +252,15 @@
     .stat b { font-size: 18px; }
   }
   .pub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: -4px 0 10px 28px; font-size: 13px; color: var(--muted); } .pub select, .pub input[type=date], .pub input[type=time] { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: #0d0d0f; color: var(--text); } .pub select { width: auto; max-width: 160px; } .pub [hidden] { display: none !important; } .pub .pubx { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; } .pub .wd { display: inline-flex; gap: 2px; } .pub .pdr { display: inline-flex; align-items: center; gap: 4px; } .pub .wd label { display: inline-flex; align-items: center; gap: 2px; padding: 2px 5px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; } .pub .wd input { margin: 0; } .pub .tilde { color: var(--muted); }
+  /* いちばん上のゲームのタブ（tools/patch-master-boat.js。casa DERBY の管理画面と同じ見た目） */
+  .games { display: flex; gap: 6px; padding: 8px 12px; background: #06080d; border-bottom: 1px solid #2a2a31; }
+  .games a { flex: 1; max-width: 220px; display: flex; align-items: center; justify-content: center; height: 42px; border-radius: 10px; border: 1px solid #2a2a31; color: #a89f89; font-weight: 900; font-size: 15px; letter-spacing: .04em; text-decoration: none; white-space: nowrap; }
+  .games a.on { background: #e9c25e; border-color: #e9c25e; color: #1a1405; }
 </style>
 </head>
 <body>
-<header><h1>casa SLOT マスター</h1><span class="sp"></span><a class="btn sm ghost" href="derby/v2/admin.html" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none"><span class="wide-only">casa&nbsp;</span>DERBY<span class="wide-only">&nbsp;の</span>&nbsp;管理画面&nbsp;↗</a><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
+<nav class="games" id="games"><a class="on" href="master.html">casa SLOT</a><a href="derby/v2/admin.html">casa DERBY</a><a href="derby/v2/admin.html?game=boat">casa BOAT</a></nav>
+<header><h1>casa SLOT マスター</h1><span class="sp"></span><small id="who"></small><button class="btn sm ghost" id="logout" style="display:none">ログアウト</button></header>
 <nav class="tabs" id="tabs" style="display:none">
   <button data-tab="stores" class="on">お店</button><button data-tab="presets">当たりの設定</button><button data-tab="stats">集計</button>
 </nav>
