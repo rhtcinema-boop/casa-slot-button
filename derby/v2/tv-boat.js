@@ -61,6 +61,24 @@
     '<section id="boRes" class="bo-res" hidden></section>' +
     '<section id="boVoid" class="bo-void" hidden><h2>このボートレースは取り消しました</h2><p>BPT の券に使った BPT は全部戻しました</p></section>';
   if (stage) stage.appendChild(ov);
+  /* 競馬 ⇄ ボートの切り替えの幕（2026-11-23 オーナー「競馬とボートの画面切り替えはスムーズにカッコよく」）: 前はいきなり入れ替わっていた。
+     斜めの帯 3 枚が左から走って画面を覆う → 覆い切った所で中身を入れ替える → 右へ抜ける（行き先のロゴを真ん中に。ボートへ＝水色と紺、競馬へ＝金と黒）。動かすのは transform と opacity だけ（Fire TV でも軽い）。
+     覆い切るまで中身は前のまま（競馬の 3D の止め・音の止めは今までどおりすぐ）。幕が閉まる途中で向きが変わったら、閉まり切った所でそのときの向きに合わせる。BOATTV.stop と ?boatsw=0 は幕なし */
+  const sw = document.createElement('div'); sw.id = 'boatSw'; sw.hidden = true; sw.setAttribute('aria-hidden', 'true');
+  sw.innerHTML = '<i class="sw-a"></i><i class="sw-b"></i><i class="sw-c"></i><b class="sw-logo">casa <em id="boSwNm"></em></b>';
+  if (stage) stage.appendChild(sw);
+  const SW = { ph: 0, t: 0, n: 0 }, SW_IN = 640, SW_HOLD = 320, SW_OUT = 640, NOSW = /[?&]boatsw=0\b/.test(location.search);
+  const swFace = () => { const b = BOATTV.active; sw.classList.toggle('to-boat', b); sw.classList.toggle('to-derby', !b); const e = $('boSwNm'); if (e && e.textContent !== (b ? 'BOAT' : 'DERBY')) e.textContent = b ? 'BOAT' : 'DERBY'; };
+  function swGo(cut) {
+    if (cut || NOSW || !stage) { clearTimeout(SW.t); SW.ph = 0; sw.hidden = true; sw.className = ''; hide(ov, !BOATTV.active); return; }
+    if (SW.ph === 1) return; // 閉まる途中: 閉まり切った所で、そのときの向きに合わせる
+    clearTimeout(SW.t); SW.ph = 1; SW.n++;
+    sw.className = ''; swFace(); sw.hidden = false; void sw.offsetWidth; sw.classList.add('in');
+    SW.t = setTimeout(() => {
+      swFace(); hide(ov, !BOATTV.active); SW.ph = 2;
+      SW.t = setTimeout(() => { sw.classList.remove('in'); sw.classList.add('out'); SW.t = setTimeout(() => { SW.ph = 0; sw.hidden = true; sw.className = ''; }, SW_OUT + 80); }, SW_HOLD);
+    }, SW_IN);
+  }
   const show = (id) => ['boVote', 'boFilm', 'boRes', 'boVoid'].forEach((x) => hide($(x), x !== id));
   const boatsOf = (r) => (r && (r.boats || (Boat() && r.model && Boat().boatsOf(r)))) || [];
   const waku = (b, cls) => '<i class="bo-waku ' + (cls || '') + '" style="background:' + b.color + ';color:' + b.ink + '">' + b.no + '</i>';
@@ -201,10 +219,13 @@
   }
   /* 画質（2026-11-22 オーナー「画質を選べるようにしたい」）: 管理画面のボートの設定（boatLive/all の q。'low' ＝ 軽い）。アドレスの ?boatq=low / ?boatq=high があればそちら。
      設定が変わったら、次の映像（スタート展示・本番）を始めるときに作り直す（映像の途中では変えない） */
-  const wantQ = () => (/[?&]boatq=low\b/.test(QS) ? 'low' : /[?&]boatq=high\b/.test(QS) ? 'high' : B.live && B.live.qs && (B.live.qs[STORE] === 'low' || B.live.qs[STORE] === 'high') ? B.live.qs[STORE] : B.live && B.live.q === 'low' ? 'low' : 'high'); // qs: 店ごとの画質（管理画面のボートの「テレビ」。2026-11-22）
-  function needR() { if (B.R && B.R.quality !== wantQ()) { try { B.R.dispose(); } catch (e) { /* 作り直す */ } B.R = null; B.tj = null; B.film = null; } if (!B.R) makeR(); }
+  /* 2026-11-23 オーナー「ボートの画質 競馬と同じぐらい細かく」: 5 段（'max' きれい優先・'' 標準・'auto' なめらか優先・'lite' さらになめらか・'min' 最もなめらか）。前の値 'high' は標準、'low' は さらになめらか。
+     アドレスは ?boatq=max / std / auto / lite / min（前からの high / low も読む） */
+  const QV = /^(max|std|auto|lite|min|high|low)$/, lvOf = (v) => (v === 'max' || v === 'auto' || v === 'lite' || v === 'min' ? v : v === 'low' ? 'lite' : '');
+  const wantQ = () => { const u = (/[?&]boatq=(\w+)/.exec(QS) || [])[1]; if (u && QV.test(u)) return lvOf(u); const s = B.live && B.live.qs && B.live.qs[STORE]; if (typeof s === 'string' && QV.test(s)) return lvOf(s); return B.live && B.live.q === 'low' ? 'lite' : ''; }; // qs: 店ごとの画質（管理画面のボートの「テレビ」。2026-11-22）
+  function needR() { if (B.R && B.R.level !== wantQ()) { try { B.R.dispose(); } catch (e) { /* 作り直す */ } B.R = null; B.tj = null; B.film = null; } if (!B.R) makeR(); }
   function makeR() {
-    B.R = new BOAT.Race($('boGl'), $('boHud'), { quality: wantQ() });
+    B.R = new BOAT.Race($('boGl'), $('boHud'), { level: wantQ() });
     try { BOAT.Sound.init(); } catch (e) { /* 音が無くても映像は出す */ }
     B.R.onSay = (keys, line) => { if (B.film) { try { BOAT.Sound.say(line); } catch (e) { /* noop */ } } }; // 実況は本番の映像だけ（スタート展示は音なし）
   }
@@ -327,8 +348,8 @@
 
   /* ---------- いまの場面 ---------- */
   function derbyBusy() { const D = window.DERBY; if (!D) return false; const ph = D.phase; return ph === 'live' || ph === 'open' || !!(D.tv && D.tv.playing); } // 競馬が投票中・レース中ならボートは出さない
-  function setActive(on) {
-    if (BOATTV.active === on) return; BOATTV.active = on; hide(ov, !on);
+  function setActive(on, cut) {
+    if (BOATTV.active === on) return; BOATTV.active = on; swGo(cut); // 見た目の入れ替えは幕が覆い切った所で（swGo）
     stage.classList.toggle('m-boat', on);
     // ボートの画面の間は競馬の 3D を一切描かない（待機だけでなくリプレイも止める。v2/tv.js の DERBY.boatHold。2026-11-20 D1）。古い tv.js には印だけ立てる
     const D = window.DERBY; if (D && D.boatHold) D.boatHold(on); else if (D && D.raceView) { D.raceView.boatHold = on; if (!on) D.raceView.offWas = true; }
@@ -394,7 +415,7 @@
   let stopped = false, unwatch = null, timer = 0, rafId = 0, onLive = null, onCount = null;
   function raf() { rafId = 0; timer = 0; if (stopped) return; loop(); if (stopped) return; if (BOATTV.active) rafId = requestAnimationFrame(raf); else timer = setTimeout(raf, 250); }
   // 見張りとくり返しを止める（確かめ・片付け用）。予約ずみのコマも取り消す・準備中（はじめの待ちの途中）に止めたら見張りを始めない（2026-11-21 J14）
-  BOATTV.stop = () => { stopped = true; clearTimeout(timer); if (rafId) cancelAnimationFrame(rafId); rafId = 0; timer = 0; if (unwatch) { try { unwatch(); } catch (e) { /* noop */ } unwatch = null; } B.want = ''; dropOld(); setActive(false); };
+  BOATTV.stop = () => { stopped = true; clearTimeout(timer); if (rafId) cancelAnimationFrame(rafId); rafId = 0; timer = 0; if (unwatch) { try { unwatch(); } catch (e) { /* noop */ } unwatch = null; } B.want = ''; dropOld(); setActive(false, true); swGo(true); };
   // 見張りをつなぎ直して、いまの状態を読み直す（発表が届かないとき）
   function rewatch() {
     if (stopped || !B.C || !onLive) return;
@@ -418,6 +439,6 @@
     if (B.C.boatState) { try { const x = await B.C.boatState(); if (!B.live) onLive(x.live); } catch (e) { /* 見張りで届く */ } }
     if (!stopped) raf();
   })();
-  BOATTV.debug = () => ({ q: B.R ? B.R.quality : null, tj: B.tj && { id: B.tj.id, seg: B.tj.seg, tt: B.R && B.R.tt }, stage: BOATTV.stage, race: BOATTV.race, film: B.film && { id: B.film.id, tt: B.R && B.R.tt, done: B.R && B.R.done, shot: B.R && B.R.shot }, count: B.count, err: BOATTV.err, qr: BOATTV.qr, parts: B.R && B.R.parts,
+  BOATTV.debug = () => ({ q: B.R ? B.R.quality : null, lv: B.R ? B.R.level : null, sw: SW.ph, swN: SW.n, rk: B.R ? B.R.resK(1920) : null, tj: B.tj && { id: B.tj.id, seg: B.tj.seg, tt: B.R && B.R.tt }, stage: BOATTV.stage, race: BOATTV.race, film: B.film && { id: B.film.id, tt: B.R && B.R.tt, done: B.R && B.R.done, shot: B.R && B.R.shot }, count: B.count, err: BOATTV.err, qr: BOATTV.qr, parts: B.R && B.R.parts,
     want: B.want, prepKey: B.prepKey || '', drops: B.nDrop || 0, rewatch: B.nRewatch || 0, ready: !!ov.__ready, sub: B.R && B.R.info && B.R.info.sub, tries: B.nTry, preps: B.nPrep, skips: B.nSkip, seeks: B.nSeek, kept: { full: Object.keys(B.full), key: Object.keys(B.key), fetchAt: Object.keys(B.fetchAt) }, vq: VQ });
 })();
