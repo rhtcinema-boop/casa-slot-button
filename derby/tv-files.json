@@ -223,8 +223,8 @@
   },
   {
    "path": "boat/race-boat.js",
-   "size": 99040,
-   "sha256": "cf1220b6d3a8f25f330c7255da736dfa482fdfa914db83ac143793b2444cd72c"
+   "size": 101749,
+   "sha256": "1748f1f9f0ea123d022bc639673d27be4face1ea30995d4648df08aeb1479ab6"
   },
   {
    "path": "boat/sound.js",
@@ -249,7 +249,7 @@
   {
    "path": "index.html",
    "size": 29360,
-   "sha256": "8f22b2de8a7de3982ea52af79a8406c180550a8d35599c6e055b7a2552fe5085"
+   "sha256": "a78dfa15f946e41c442f2301d4d73440dcd2f92142546b400e47d646dfbc5da0"
   },
   {
    "path": "js/audio.js",
@@ -363,8 +363,8 @@
   },
   {
    "path": "v2/boat-core.js",
-   "size": 56413,
-   "sha256": "aa267ce7e417a72702fe477584601e7419ce7d04c36111c31ab720d3c3d298b9"
+   "size": 56561,
+   "sha256": "021e12b7e0ab0a6cdb6f3f781a5e776912b257aa59030ab56ab988ab24eac2d5"
   },
   {
    "path": "v2/boat-firestore.js",
@@ -413,13 +413,13 @@
   },
   {
    "path": "v2/tv-boat.css",
-   "size": 19749,
-   "sha256": "a24e281442a52dacc88b5ec14e6356ee13e0433a3739769aaecc528e02a7dc7f"
+   "size": 22271,
+   "sha256": "1d77e79428f9b420589ab72deaf1299897b0cfce970c455b00237fe80d0e3233"
   },
   {
    "path": "v2/tv-boat.js",
-   "size": 47961,
-   "sha256": "3503ea2d7480f3158e1812fa4ad0d469b4939a0dd3b82798118093944f047770"
+   "size": 50816,
+   "sha256": "e178c48c50cb3a9716bd3f8112762b74f6839c213885c29025f8046856cfb087"
   },
   {
    "path": "v2/tv.css",
