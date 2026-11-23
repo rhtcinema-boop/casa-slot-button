@@ -8,7 +8,7 @@
    - 倍率は 2〜40 倍・真ん中が 10 倍になるように、自然な起きやすさの順のまま縮める（oddsOf）。締切後の ±10% のずらしは競馬と同じ。
    - 投票できるのは、テレビの QR を読んだ人（QR の合言葉はレースで 1 つ）。位置情報は使わない。
      2026-11-23 オーナー決定: その日の競馬に参加していなくても投票できる（前は「その日に競馬へ会計番号で参加したスマホ」だけ）。競馬の票があるスマホは、票の店をその競馬の店にする（今までどおり）。
-   - いつも全店同時。時刻表の時刻 at ＝ 投票の締切＝映像の始まり。投票は at の voteSec 秒前から（初期 3 分）。締めてから映像（ピット離れ 100 秒＋走り 約 72 秒＋ゴール後 8 秒）、
+   - いつも全店同時。時刻表の時刻 at ＝ 投票の締切＝映像の始まり。投票は at の voteSec 秒前から（初期 3 分）。締めてから映像（ピット離れ 100 秒＋走り 約 72 秒＋ゴール後 28 秒 ＝ リプレイ・1 着と 2 着の大写し・組番の帯。2026-11-23 に 8 → 28 秒）、
      そのあと結果画面 resultSec（初期 2 分）。
    - 競馬と被る時刻は入れられない（全店共通で判定。conflicts）。競馬の「ふさぐ時間」は投票の始まり〜発表（長い場合）＋結果画面の最初の 2 分（DERBY_GUARD_SEC）。
    - 取り消したレースの BPT は全額戻す（refundPlan）。BPT は毎週月曜の朝 5 時にリセット（v2/core.js の bptWeek・bptBalance。週の番号 wk が変わったら残りは 0）。 */
@@ -247,7 +247,19 @@
     const voting = inWin.filter((r) => r.status === 'upcoming' && t >= r.openAt && t < r.closeAt);
     const cur = voting.length ? voting[voting.length - 1] : inWin[0] || null;
     const next = L.find((r) => r.status === 'upcoming' && r.openAt > t && (!cur || r.id !== cur.id)) || null;
-    return { race: lite(cur), next: next ? { id: next.id, at: next.at, openAt: next.openAt } : null };
+    const out = { race: lite(cur), next: next ? { id: next.id, at: next.at, openAt: next.openAt } : null };
+    /* last（2026-11-23 つなぐ: テレビの待ちの画面の「前のレースの結果」）: いまのレースより前の、いちばん新しい発表ずみのレースの軽い形（艇の番号と名前と色・着順・払戻・当たった人 8 人まで）。
+       取り消し・テストのレースは入れない。無ければ項目ごと付けない。古いテレビ・スマホは race と next だけ読む（last があっても困らない）。
+       これが変わるのは「いまのレース」が変わるときと同じ（結果の画面が終わった所）。置き場に書く側（v2/boat-firestore.js の publish）は、last だけの変化では書かない ＝ 書き込みも読み取りも増えない */
+    let lastR = null;
+    L.forEach((r) => { if (r.status === 'done' && r.result && !r.test && r.refunded !== true && (r.revealAt || r.at) <= t && (!cur || r.id !== cur.id)) lastR = r; });
+    if (lastR) {
+      const rs = lastR.result, res = {}; ['first', 'second', 'combo', 'odds', 'pay', 'order', 'incident', 'noPay', 'bptBack'].forEach((k) => { if (rs[k] !== undefined) res[k] = rs[k]; });
+      const part = (o, ks) => { const x = {}; ks.forEach((k) => { if (o && o[k] !== undefined) x[k] = o[k]; }); return x; }; // 無い項目は付けない（置き場は undefined を書けない）
+      out.last = { id: lastR.id, at: lastR.at, boats: (lastR.boats || boatsOf(lastR)).map((b) => part(b, ['no', 'name', 'color', 'ink'])), result: res, people: lastR.people || 0,
+        winners: (lastR.winners || []).slice(0, 8).map((w) => part(w, ['nick', 'storeId', 'storeName', 'amount', 'gain', 'capped'])) };
+    }
+    return out;
   }
   /* このあとのボートレース（2026-11-23 オーナー決定「次は競馬なんだ、次はボートなんだ、が全部分かるように」）: 時刻の早い順に n 件（既定 3）の { id, at, openAt }。
      作ってあるレース（まだ投票が始まっていない物）と、時刻表（cfg.rules）のまだ作っていない分を合わせる。いまのレース（liveOf の race）は入れない。
