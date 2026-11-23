@@ -18,7 +18,7 @@
 })(typeof self !== 'undefined' ? self : this, function (Core) {
   'use strict';
   const STAKE = 100, N = 6;
-  const FILM_PRE = 100, FILM_POST = 8, RUN_EST = 72, RUN_MAX = 90; // 映像の長さ（boat/race-boat.js の PRE_T・POST_T、走り約 72 秒）
+  const FILM_PRE = 100, FILM_POST = 28, RUN_EST = 72, RUN_MAX = 90; /* 2026-11-23: ゴール後は競馬と同じ並び（リプレイ → 1 着 → 2 着 → 組番の帯）で 8 → 28 秒 */ // 映像の長さ（boat/race-boat.js の PRE_T・POST_T、走り約 72 秒）
   const DERBY_GUARD_SEC = 120, DERBY_RUN_MAX = 70, DERBY_SCRATCH_SEC = 14; // 競馬の結果画面の最初の 2 分は守る（2026-11-18）。競馬の走り 1000m 約 57 秒（長めに 70 秒で見る）・競走除外の延長 14 秒
   const COUNT_SEC = 15; // テレビが参加人数を読み直す間隔（2026-11-18 オーナー「ボートでは 15 秒ごと」）
   const DEF = { target: 1000, capRace: 10000, capDay: 50000, voteSec: 180, resultSec: 120, leadSec: 6, bandBelow: 0.2, bandAbove: 0.2, shiftUp: 0.1, shiftDown: 0.1, oddsSims: 1000, incidentOn: 1, refundFall: 1 }; // incidentOn: フライング・転覆を出す（1）。refundFall: いつも 1（2026-11-20 オーナー決定「転覆の券はいつも返還」。切り替えは無い。項目は前の画面のために残すだけ）
