@@ -110,7 +110,14 @@
     for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); let lp = 0; for (let i = 0; i < n; i++) { const t = i / ctx.sampleRate; lp += 0.35 * ((Math.random() * 2 - 1) - lp); d[i] = lp * Math.exp(-t / 0.5) * (t < 0.012 ? t / 0.012 : 1); } }
     return (revBuf = b);
   }
+  /* 途中から鳴らす（2026-11-23。boat/sound.js の cue: 映像の準備が遅れたテレビ・読み込み直したテレビは、ほかの店と同じ位置から入る）: play の when に「もう過ぎた時刻」を渡すと、
+     鳴り終わっている音は作らず（下の gone）、鳴っている途中の音は「いま」から残りの長さだけ、これからの音は時刻どおりに鳴る。
+     音の予約に「過ぎた時刻」は渡さない（読み込み直した直後のテレビは音の時計が 0 秒に近く、頭の時刻がマイナスになって予約が失敗し、何も鳴らなかった。測り: tests/boat-tv-sound.plan.js の D）。
+     ファイル書き出し（OfflineAudioContext。currentTime ＝ 0）では何も飛ばさない・何も変わらない */
+  const gone = (ctx, tEnd) => tEnd < ctx.currentTime;
   function brass(ctx, out, t, dur, midi, vel, I) {
+    const now = ctx.currentTime, joined = t < now;
+    if (joined) { dur -= now - t; t = now; if (dur < 0.06) return; } // 途中から: いまから残りの長さだけ（残りが短すぎる音は鳴らさない）
     const f = hz(midi), end = t + dur, rel = dur < 0.4 ? 0.07 : 0.18;
     const g = ctx.createGain(), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = I.q;
     const c0 = Math.min(I.cmax, f * I.cut[0]), c1 = Math.min(I.cmax * 1.3, f * I.cut[1] * (0.6 + 0.4 * vel)), c2 = Math.min(I.cmax, f * I.cut[2] * (0.6 + 0.4 * vel));
@@ -121,12 +128,14 @@
     lp.connect(g); g.connect(out);
     [-1, 1].forEach((s) => {
       const o = ctx.createOscillator(); o.type = 'sawtooth'; o.detune.value = s * I.det;
-      if (I.scoop) { o.frequency.setValueAtTime(f * Math.pow(2, -I.scoop / 1200), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.06); } else o.frequency.value = f;
+      if (I.scoop && !joined) { o.frequency.setValueAtTime(f * Math.pow(2, -I.scoop / 1200), t); o.frequency.exponentialRampToValueAtTime(f, t + 0.06); } else o.frequency.value = f; // 途中から入る音は、しゃくり上げなし
       if (I.vib && dur > 0.6) { const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 5.3; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * I.vib, t + 0.5); l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(end + rel + 0.1); }
       o.connect(lp); o.start(t); o.stop(end + rel + 0.1);
     });
   }
   function timp(ctx, out, t, midi, vel) {
+    if (gone(ctx, t + 0.05)) return; // 打つ音は頭が大事: 打つ瞬間を過ぎていたら鳴らさない
+    t = Math.max(t, ctx.currentTime);
     const f = hz(midi), o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine';
     o.frequency.setValueAtTime(f * 1.04, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.08);
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.5 * vel, t + 0.006); g.gain.setTargetAtTime(0, t + 0.01, 0.45);
@@ -136,6 +145,8 @@
     o.connect(g); g.connect(out); o.start(t); o.stop(t + 2.5);
   }
   function cym(ctx, out, t, vel, swell) {
+    if (gone(ctx, swell ? t + swell - 0.1 : t + 0.05)) return; // 途中から: 打ったあとのシンバルは鳴らさない（だんだん強くなる方は、山の前なら残りの長さで）
+    { const now = ctx.currentTime; if (t < now) { if (swell) swell -= now - t; t = now; } }
     const n = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), pk = ctx.createBiquadFilter(), g = ctx.createGain(); n.buffer = noise(ctx); n.loop = true;
     hp.type = 'highpass'; hp.frequency.value = 3800; pk.type = 'peaking'; pk.frequency.value = 7500; pk.gain.value = 6; pk.Q.value = 0.8;
     if (swell) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + swell); g.gain.setTargetAtTime(0, t + swell, 0.08); }
@@ -149,8 +160,11 @@
     cv.buffer = reverb(ctx); dry.gain.value = 1; wet.gain.value = 0.32;
     shelf.type = 'lowpass'; shelf.frequency.value = 7000; // 3,500Hz より上は弱く（実測の形）。上の端だけ切る
     // だんだん強く: 頭は終わりの −7dB（gain0 ≒ 0.45）
-    const v = vol == null ? 1 : vol, endT = when + s.end * u;
-    bus.gain.setValueAtTime(v * s.gain0, when); bus.gain.linearRampToValueAtTime(v, Math.max(when + 0.1, endT - (s.end - (s.end * 0.85)) * u)); bus.gain.setValueAtTime(v, endT); bus.gain.linearRampToValueAtTime(0, endT + s.rel);
+    const v = vol == null ? 1 : vol, endT = when + s.end * u, now = ctx.currentTime, upT = Math.max(when + 0.1, endT - (s.end - (s.end * 0.85)) * u);
+    if (when >= now) bus.gain.setValueAtTime(v * s.gain0, when);
+    else bus.gain.setValueAtTime(v * (s.gain0 + (1 - s.gain0) * Math.min(1, (now - when) / (upT - when))), now); // 途中から: その位置の強さから
+    if (upT > now) bus.gain.linearRampToValueAtTime(v, upT);
+    bus.gain.setValueAtTime(v, Math.max(now, endT)); bus.gain.linearRampToValueAtTime(0, Math.max(now, endT) + s.rel);
     bus.connect(shelf); shelf.connect(dry); shelf.connect(cv); cv.connect(wet); dry.connect(dest); wet.connect(dest);
     ['tp', 'hn', 'tb', 'bs'].forEach((k) => (s[k] || []).forEach(([a, d, m, vel]) => { const end = Math.min(a + d, s.end); brass(ctx, bus, when + a * u, (end - a) * u, m, vel, INST[k]); }));
     (s.hits || []).forEach((h) => {
@@ -164,7 +178,8 @@
   // ピットの発走の合図（ブザー 3 回。3 回目で出走。資料 10 2-4。高さと間隔は資料に無い＝仮: 0.6 秒鳴らして 1.0 秒おき）
   function buzzer(ctx, dest, when, vol) {
     for (let k = 0; k < 3; k++) {
-      const t = when + k * 1.0, o = ctx.createOscillator(), o2 = ctx.createOscillator(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+      if (gone(ctx, when + k * 1.0 + 0.08)) continue; // 途中から（2026-11-23）: もう始まっている回は鳴らさない（半端な長さのブザーを出さない）
+      const t = Math.max(when + k * 1.0, ctx.currentTime), o = ctx.createOscillator(), o2 = ctx.createOscillator(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
       o.type = 'square'; o.frequency.value = 220; o2.type = 'square'; o2.frequency.value = 223; bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.9;
       const a = (vol == null ? 1 : vol) * 0.09; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(a, t + 0.01); g.gain.setValueAtTime(a, t + 0.6); g.gain.linearRampToValueAtTime(0, t + 0.62);
       o.connect(bp); o2.connect(bp); bp.connect(g); g.connect(dest); o.start(t); o2.start(t); o.stop(t + 0.7); o2.stop(t + 0.7);
