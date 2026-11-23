@@ -32,6 +32,16 @@
    "sha256": "494120a6a8a5caad18a81df1e2ac459f5b3fc04265839be81bb6d4cdb42a7455"
   },
   {
+   "path": "art/logo-boat/lockup-boat-480.png",
+   "size": 132968,
+   "sha256": "c80b5c880bbffc6f163db1d15ea2304c321bee603c9d355e46f688315f1eeb55"
+  },
+  {
+   "path": "art/logo-boat/lockup-boat.png",
+   "size": 442605,
+   "sha256": "0f3b818e50ffb121ace54020c9fa3d8360688f88cc5297fdd5a73e4a22ca4f78"
+  },
+  {
    "path": "art/sfx/sfx.json",
    "size": 2910,
    "sha256": "ce21ef271438c9c163efa6770a2ea15653d66ac91ca08e6e11840f033c5823e9"
@@ -223,8 +233,8 @@
   },
   {
    "path": "boat/race-boat.js",
-   "size": 101749,
-   "sha256": "1748f1f9f0ea123d022bc639673d27be4face1ea30995d4648df08aeb1479ab6"
+   "size": 102405,
+   "sha256": "3ed379fe205df7ccfcbd410c4b789369521f21dacacc76b4fe992688d4918c91"
   },
   {
    "path": "boat/sound.js",
@@ -249,7 +259,7 @@
   {
    "path": "index.html",
    "size": 29360,
-   "sha256": "a78dfa15f946e41c442f2301d4d73440dcd2f92142546b400e47d646dfbc5da0"
+   "sha256": "e909662aee5c1ca8ca2e1b3cd7c3e3148f599ad08232c17352ca4e8e09a99bda"
   },
   {
    "path": "js/audio.js",
@@ -413,13 +423,13 @@
   },
   {
    "path": "v2/tv-boat.css",
-   "size": 22271,
-   "sha256": "1d77e79428f9b420589ab72deaf1299897b0cfce970c455b00237fe80d0e3233"
+   "size": 22994,
+   "sha256": "98c91c2fd5a45205899ab7c943ec0fe7c1ea1f399671639b2d70eecedc09e51f"
   },
   {
    "path": "v2/tv-boat.js",
-   "size": 50816,
-   "sha256": "e178c48c50cb3a9716bd3f8112762b74f6839c213885c29025f8046856cfb087"
+   "size": 51679,
+   "sha256": "5c4f0eaccbd748825160454a0ca2e3d881f71d0921a4c8c37b3a01efe74bd975"
   },
   {
    "path": "v2/tv.css",
