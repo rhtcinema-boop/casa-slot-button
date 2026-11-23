@@ -1686,3 +1686,11 @@
 .v2res.hold .foot .rest b { color: #ffe14d; font-size: 30px; }
 .v2res.hold .foot .rest .bar i { background: #f2b705; transition: none; }
 .v2res .rhold .hp .nk.w2 { white-space: normal; overflow-wrap: anywhere; word-break: break-all; text-overflow: clip; line-height: 1.05; }
+
+/* ---------- 2026-11-23 casa BOAT とつなぐ（オーナー「次は競馬なんだ、次はボートのレースなんだ、が全部分かるように」。v2/tv.js の boatNexts） ----------
+   「本日のレース」の帯にまぜるボートの時刻（水色の札「ボート」。次に来るのがボートなら「次」の金の枠はそのまま）と、結果の画面の下の帯の「このあと ボート ○:○○」の札。
+   ボートの情報が無いときは、この決まりに当たる部品が 1 つも作られない（今までの画面と同じ） */
+.v2nx .today .rc.bt, .v2res .foot .today .rc.bt { background: rgba(61, 155, 214, .2); box-shadow: inset 0 0 0 2px rgba(127, 208, 255, .7); color: #bfe6ff; padding-left: 6px; }
+.v2nx .today .rc.bt s, .v2res .foot .today .rc.bt s { text-decoration: none; font: 900 18px/1 var(--font-tv); background: #1f7fd6; color: #fff; border-radius: 6px; padding: 4px 7px; }
+.v2nx .today .rc.bt.nx, .v2res .foot .today .rc.bt.nx { box-shadow: inset 0 0 0 2px rgba(255, 225, 77, .8); color: #ffe14d; }
+.v2res .foot .nx i.bt { align-self: center; font: 900 22px/1 var(--font-tv); font-style: normal; background: #1f7fd6; color: #fff; border-radius: 8px; padding: 5px 10px; }
