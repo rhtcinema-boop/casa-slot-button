@@ -603,6 +603,13 @@
   // ---------- 次のレース ----------
   // 次のレース（時計に出す）: いま投票中のレース → 投票の始まりを待っているレース → 時刻表のこの先の 1 つ（まだ作られていなければ時刻だけ）
   /* 2026-10-26: このテレビの時刻表は「見えるレース全部」（他店だけのレースも）。投票中（open・watch）→ そのあとは発走の早い順（next・時刻表の upcoming のいちばん近いもの） */
+  /* casa BOAT とつなぐ（2026-11-23 オーナー「次は競馬なんだ、次はボートのレースなんだ、が全部分かるように」）: ボートのこのあとの時刻は、同じページの v2/tv-boat.js（window.BOATTV.nexts）から読む（読み取りは増えない）。
+     ボートの情報が無い（ボートを始めていない店・古い部品・まだ届いていない）ときは空の並び・boatLinked は false ＝ 下の所は今までと 1 画素も変わらない:
+       ① 待ち時間・結果の画面の「本日のレース」の帯（renderToday）に、ボートの時刻を時刻順にまぜる（水色の札「ボート」）。「次」の印は、競馬とボートを合わせていちばん近い 1 つに
+       ② 結果の画面の下の帯（次のレース）: 次に来るのがボートなら「このあと ボート ○:○○ 締切・投票は ○:○○ から」と受付開始までの残り時間
+       ③ 待ち時間の時計: 残り時間の言い方をボートとそろえる（「投票開始まで あと」→「受付開始まで あと」。ボートの情報が届いている店だけ）＋次に来るのがボートなら小さく「その前に ボートレース ○:○○ 締切」 */
+  function boatNexts() { try { const B = window.BOATTV, L = B && typeof B.nexts === 'function' ? B.nexts(now()) : null; return Array.isArray(L) ? L.filter((x) => x && x.at > 0) : []; } catch (e) { return []; } }
+  const boatLinked = () => { try { return !!(window.BOATTV && BOATTV.linked === true); } catch (e) { return false; } };
   function nextInfo() {
     if (!S) return null;
     const t = now(), O = S.open || watchRace(); if (O) return O;
@@ -620,13 +627,15 @@
     const e = $(id); if (!e) return;
     const L = S && Array.isArray(S.today) ? S.today : null, t = now();
     if (!L) { if (!e.hidden) { e.hidden = true; e.innerHTML = ''; todayKey[id] = ''; } return; }
-    const all = L.map((x) => ({ time: hhmm(x.at), done: x.at <= t })), ni0 = all.findIndex((x) => !x.done);
+    const all = L.map((x) => ({ time: hhmm(x.at), done: x.at <= t, at: x.at }));
+    { const BL = boatNexts(); if (BL.length) { BL.forEach((x) => all.push({ time: hhmm(x.at), done: false, at: x.at, bt: true })); all.sort((a, b) => a.at - b.at); } } // casa BOAT のこのあとの時刻を時刻順にまぜる（2026-11-23。無ければ今までどおり）
+    const ni0 = all.findIndex((x) => !x.done);
     const items = all.slice(0, (ni0 < 0 ? all.length : ni0) + 12), ni = ni0 < 0 ? -1 : ni0; // 次のあとは 12 個まで（1 日に何本もある店。それより先は帯に入らない）
-    const key = items.map((x) => x.time + (x.done ? 'd' : '')).join(',') + '|' + ni + '|' + innerWidth + '|' + TV.mode;
+    const key = items.map((x) => x.time + (x.done ? 'd' : '') + (x.bt ? 'b' : '')).join(',') + '|' + ni + '|' + innerWidth + '|' + TV.mode;
     if (todayKey[id] === key && !e.hidden) return; todayKey[id] = key;
     e.hidden = false;
     if (!items.length) { e.innerHTML = '<span class="tl">本日のレース</span><span class="none">本日のこの店のレースはありません</span>'; return; }
-    const chip = (x, i) => '<span class="rc' + (x.done ? ' done' : i === ni ? ' nx' : '') + '"><b>' + esc(x.time) + '</b>' + (x.done ? '<i>✓</i>' : i === ni ? '<i>次</i>' : '') + '</span>';
+    const chip = (x, i) => '<span class="rc' + (x.bt ? ' bt' : '') + (x.done ? ' done' : i === ni ? ' nx' : '') + '">' + (x.bt ? '<s>ボート</s>' : '') + '<b>' + esc(x.time) + '</b>' + (x.done ? '<i>✓</i>' : i === ni ? '<i>次</i>' : '') + '</span>'; // bt: casa BOAT のレース（水色の札。2026-11-23）
     const draw = (from) => { e.innerHTML = '<span class="tl">本日のレース</span>' + (from ? '<span class="more">…</span>' : '') + items.slice(from).map((x, k) => chip(x, k + from)).join(''); };
     draw(0);
     const keep = ni < 0 ? items.length - 1 : ni; // 次のレース（無ければ最後の 1 つ）は必ず残す
@@ -1062,8 +1071,14 @@
     const wait = now() >= endAt ? unpaidOf(R, now()) : [], hold = wait.length > 0;
     const until = hold ? (N && N.openAt > t ? N.openAt : Infinity) : Math.min(endAt, N && N.openAt > t ? N.openAt : Infinity); // 次のレースの投票が始まったら結果の画面は閉じる（decide と同じ）
     const total = Math.max(1, until - (R.revealAt || until - 300000)), left = Math.max(0, until - t);
-    $('v2resNx').innerHTML = N ? '<small>次のレース</small><b>' + hhmm(N.at) + '</b> 発走' + (openRace() && openRace().id === N.id ? '<em>投票中</em>' : N.openAt ? '<span class="op">投票は ' + hhmm(N.openAt) + ' から</span>' : '') + (canVote(N) ? '' : '<span class="op">（' + esc(storeNames(N.storeIds)) + ' のみ投票）</span>') : '<small>本日のレースは</small>終了しました'; // 他店だけのレース（2026-10-26）はその印
-    $('v2resNxL').textContent = N ? '発走まで' : ''; setFit('v2resNxN', N ? fmtLeft(N.at - t) : '', '.foot');
+    const BN = boatNexts()[0] || null, boatFirst = !!BN && (!N || BN.at < N.at); // 次に来るのが casa BOAT か（2026-11-23 つなぐ。ボートの情報が無ければ false ＝ 今までどおり）
+    if (!boatFirst) $('v2resNx').innerHTML = N ? '<small>次のレース</small><b>' + hhmm(N.at) + '</b> 発走' + (openRace() && openRace().id === N.id ? '<em>投票中</em>' : N.openAt ? '<span class="op">投票は ' + hhmm(N.openAt) + ' から</span>' : '') + (canVote(N) ? '' : '<span class="op">（' + esc(storeNames(N.storeIds)) + ' のみ投票）</span>') : '<small>本日のレースは</small>終了しました'; // 他店だけのレース（2026-10-26）はその印
+    if (!boatFirst) { $('v2resNxL').textContent = N ? '発走まで' : ''; setFit('v2resNxN', N ? fmtLeft(N.at - t) : '', '.foot'); }
+    else { // 次に来るのが casa BOAT: 下の帯は「このあと ボート ○:○○ 締切・投票は ○:○○ から」と、受付開始までの残り時間
+      const op = BN.openAt > t;
+      $('v2resNx').innerHTML = '<small>このあと</small><i class="bt">ボート</i><b>' + hhmm(BN.at) + '</b> 締切' + (op ? '<span class="op">投票は ' + hhmm(BN.openAt) + ' から</span>' : '<em>投票中</em>');
+      $('v2resNxL').textContent = op ? '受付開始まで' : '締切まで'; setFit('v2resNxN', fmtLeft((op ? BN.openAt : BN.at) - t), '.foot');
+    }
     if (hold) { $('v2resRestL').textContent = '受け取り待ち'; $('v2resRestN').textContent = wait.length + '人'; $('v2resBar').style.width = '100%'; }
     else { $('v2resRestL').textContent = 'この画面 あと'; $('v2resRestN').textContent = fmtLeft(left); $('v2resBar').style.width = (100 * left / total).toFixed(1) + '%'; }
     resHold(R, wait); // 受け取りがまだの人の帯と、一覧の印（2026-11-17）
@@ -1246,10 +1261,11 @@
         $('v2nxL').textContent = '次のレース'; $('v2nxAt').textContent = hhmm(N.at); $('v2nxAtU').textContent = '発走';
         $('v2nxOpen').textContent = N.openAt ? '投票は ' + hhmm(N.openAt) + ' から' : '';
         const prep = opened && !N.status && !!N.openAt; // 2026-10-28: 投票の始まりを過ぎたのにレースがまだできていない（時刻表の予定だけ）→ 準備中（自動で始まる）
-        $('v2nxLeftL').textContent = prep ? '準備中です。少しお待ちください' : opened ? '発走まで あと' : '投票開始まで あと';
+        $('v2nxLeftL').textContent = prep ? '準備中です。少しお待ちください' : opened ? '発走まで あと' : boatLinked() ? '受付開始まで あと' : '投票開始まで あと'; // 2026-11-23: casa BOAT の情報が届いている店は、残り時間の言い方をボートとそろえる（「受付開始まで あと」）
         setFit('v2nxLeft', prep ? '' : fmtLeft(target - t), '.v2nx');
         nx.classList.toggle('hot', !opened && target - t < 60000);
-        const nvt = canVote(N) ? '' : '（' + storeNames(N.storeIds) + ' のみ投票）'; if ($('v2nxNv').textContent !== nvt) $('v2nxNv').textContent = nvt; // 次のレースがこの店で投票できないとき（2026-10-26）
+        const BN = boatNexts()[0] || null, btx = BN && BN.at < N.at ? 'その前に ボートレース ' + hhmm(BN.at) + ' 締切' : ''; // 2026-11-23 つなぐ: 次に来るのが casa BOAT なら小さく知らせる（ふだんはボートの待ちの画面に替わるので、出るのは切り替わる前の数秒と、受け取り待ちで競馬の画面を残している間）
+        const nvt = (canVote(N) ? '' : '（' + storeNames(N.storeIds) + ' のみ投票）') + (btx ? (canVote(N) ? '' : '　') + btx : ''); if ($('v2nxNv').textContent !== nvt) $('v2nxNv').textContent = nvt; // 次のレースがこの店で投票できないとき（2026-10-26）
       } else { $('v2nxL').textContent = '本日のレースは'; $('v2nxAt').textContent = '終了しました'; $('v2nxAtU').textContent = ''; $('v2nxOpen').textContent = ''; /* 2026-10-24 文字帳 w0232: 「ご参加ありがとうございました」を消す */ $('v2nxLeftL').textContent = ''; $('v2nxLeft').textContent = ''; $('v2nxNv').textContent = ''; }
       const P = prevRace(); $('v2nx').classList.toggle('prev', m === 'hl' && !!P);
       if (m === 'wait') renderToday('v2nxToday'); // 時計のいちばん下: 本日のレースの時刻（2026-10-27。リプレイ（m-hl）の低い時計には出さない＝tv.css で隠す）
