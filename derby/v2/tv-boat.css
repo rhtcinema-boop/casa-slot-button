@@ -171,3 +171,9 @@
 #boatSw.to-derby .sw-logo { text-shadow: 0 8px 0 #000; } #boatSw.to-derby .sw-logo em { color: #e9c25e; }
 #boatSw.in .sw-logo { opacity: 1; transform: translate3d(0, 0, 0); transition: opacity .26s ease-out .36s, transform .42s cubic-bezier(.2, .8, .2, 1) .36s; }
 #boatSw.out .sw-logo { opacity: 0; transform: translate3d(90px, 0, 0); transition: opacity .2s ease-in, transform .3s ease-in; }
+
+/* casa BOAT のロゴの絵（2026-11-23 オーナー決定: casa BOAT のロゴ（art/logo-boat。競馬の lockup と同じ作りの絵））。上の帯: 高さ 56px。切り替えの幕: 高さ 250px（読めたときだけ字と入れ替える。印は #boatSw の data-lb / data-ld） */
+.bo-top .bo-logo img { display: block; width: 168px; height: 56px; pointer-events: none; }
+#boatSw .sw-logo img { display: none; position: absolute; left: 50%; top: 50%; height: 250px; width: auto; transform: translate(-50%, -50%); pointer-events: none; }
+#boatSw.to-boat[data-lb] .sw-lb, #boatSw.to-derby[data-ld] .sw-ld { display: block; }
+#boatSw.to-boat[data-lb] .sw-tx, #boatSw.to-derby[data-ld] .sw-tx { display: none; }
