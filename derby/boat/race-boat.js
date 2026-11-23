@@ -10,6 +10,8 @@ BOAT.Race = (function () {
   'use strict';
   const T = window.THREE, C = BOAT.Course, M = window.BoatModel;
   const W = 1000, H = 480;
+  /* 2026-11-23 オーナー決定: casa BOAT のロゴ（art/logo-boat。競馬の lockup と同じ作りの絵）。映像の左下に描く（読めるまで・読めないときは前の字のまま） */
+  const LOGO = (() => { try { const src = (document.currentScript && document.currentScript.src) || ''; if (!src) return null; const im = new Image(); im.src = src.replace(/boat\/[^/#?]*([?#].*)?$/, 'art/logo-boat/lockup-boat-480.png'); return im; } catch (e) { return null; } })();
   const PRE_T = 100, POST_T = 8;
   const F_ANNOUNCE = 16.5; // フライングの発表の時刻（字幕・実況の「お知らせいたします」と同じ）。ここまでは、フライングの艇も順位・札にふつうに出す
   const STEP_MAX = 0.1;    // 艇・カメラ・航跡を 1 回に進める長さの上限（秒）。これより長く進める時は細かく分ける
@@ -473,9 +475,11 @@ BOAT.Race = (function () {
       // 下の帯（うすい黒のグラデーション）
       c.globalAlpha = fa; if (!this.hudBand) { this.hudBand = c.createLinearGradient(0, H - 92, 0, H); this.hudBand.addColorStop(0, 'rgba(0,0,0,0)'); this.hudBand.addColorStop(1, 'rgba(0,0,0,.42)'); } c.fillStyle = this.hudBand; c.fillRect(0, H - 92, W, 92);
       // ---- 左下: ロゴとレースの名前 ----
-      { const lx = 14, ly = H - 52; c.fillStyle = '#e9c24a'; c.beginPath(); c.arc(lx + 16, ly, 16, 0, 6.2832); c.fill(); c.strokeStyle = '#a8842a'; c.lineWidth = 1.5; c.stroke();
+      { const lx = 14, ly = H - 52;
+        if (LOGO && LOGO.complete && LOGO.naturalWidth > 0) c.drawImage(LOGO, lx - 2, ly - 23, 126, 42); // ロゴの絵（1857:618 ＝ 126×42）
+        else { c.fillStyle = '#e9c24a'; c.beginPath(); c.arc(lx + 16, ly, 16, 0, 6.2832); c.fill(); c.strokeStyle = '#a8842a'; c.lineWidth = 1.5; c.stroke();
         c.fillStyle = '#5a4210'; c.font = '900 11px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('casa', lx + 16, ly + 0.5, 28);
-        c.save(); c.translate(lx + 38, ly + 1); c.transform(1, 0, -0.18, 1, 0, 0); tvText('BOAT', 0, 0, 24, '#ffffff', 'left'); c.restore();
+        c.save(); c.translate(lx + 38, ly + 1); c.transform(1, 0, -0.18, 1, 0, 0); tvText('BOAT', 0, 0, 24, '#ffffff', 'left'); c.restore(); }
         const sky = { sunny: '晴', cloudy: '曇', rain: '雨' }[race.weather] || '';
         tvText('casa競艇場  ' + (race.distLabel || 1200) + 'm  ' + sky, 18, H - 17, 14, '#eeeeee', 'left', 190); }
       if (!ordV.length) { c.globalAlpha = 1; return; }
