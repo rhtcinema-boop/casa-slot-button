@@ -177,3 +177,156 @@
 #boatSw .sw-logo img { display: none; position: absolute; left: 50%; top: 50%; height: 250px; width: auto; transform: translate(-50%, -50%); pointer-events: none; }
 #boatSw.to-boat[data-lb] .sw-lb, #boatSw.to-derby[data-ld] .sw-ld { display: block; }
 #boatSw.to-boat[data-lb] .sw-tx, #boatSw.to-derby[data-ld] .sw-tx { display: none; }
+
+/* ================= 場面の動き（2026-11-23 オーナー「競馬のモニターアニメーションぐらい綺麗に画面が動くように。今ボートの画面がぶつ切り」） =================
+   競馬のテレビ（v2/tv.css）と同じ考え方: 板は横・下からすべって入り（.6 秒・最後がゆっくり）、出るときは反対へすべって消える。映像の枠は大きさが変わるときに広がる・縮む。節目は大きな字（「締切ました」）。
+   作り: 入るとき ＝ 板が出た瞬間（hidden が外れた・中身を入れ替えた）に下の animation が走る（v2/tv-boat.js は何もしない）。消えるとき ＝ tv-boat.js の hideF が印 .bo-bye を付け、.52 秒あとに hidden にする。
+   動かすのは transform と opacity だけ（Fire TV Stick でも軽い）。from だけの keyframes ＝「その形から、ふだんの形へ」。?boatfx=0（印 .bo-nofx）で全部なし（前と同じ、すぐ入れ替え） */
+#boatOv { --bo-e: cubic-bezier(.16, 1, .3, 1); }
+@keyframes boFade { from { opacity: 0; } }
+@keyframes boUp { from { opacity: 0; transform: translate3d(0, 46px, 0); } }
+@keyframes boUp2 { from { opacity: 0; transform: translate3d(0, 46px, 0); } }
+@keyframes boUpS { from { opacity: 0; transform: translate3d(0, 16px, 0); } }
+@keyframes boRight { from { opacity: 0; transform: translate3d(60px, 0, 0); } }
+@keyframes boRight2 { from { opacity: 0; transform: translate3d(60px, 0, 0); } }
+@keyframes boLeft { from { opacity: 0; transform: translate3d(-36px, 0, 0); } }
+@keyframes boZoom { from { opacity: 0; transform: scale(.94); } }
+@keyframes boZoom2 { from { opacity: 0; transform: scale(.9); } }
+@keyframes boPop { 0% { opacity: 0; transform: scale(.4); } 60% { opacity: 1; transform: scale(1.1); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes boStamp { 0% { opacity: 0; transform: scale(2.4) rotate(-10deg); } 60% { opacity: 1; transform: scale(.92) rotate(-2deg); } 100% { opacity: 1; transform: scale(1) rotate(0deg); } }
+@keyframes boOut { to { opacity: 0; } }
+@keyframes boOutDown { to { opacity: 0; transform: translate3d(0, 50px, 0); } }
+@keyframes boOutRight { to { opacity: 0; transform: translate3d(60px, 0, 0); } }
+@keyframes boOutUp { to { opacity: 0; transform: translate3d(0, -14px, 0); } }
+
+/* ---- 投票待ち・投票受付中: 板が順に入る（映像の枠 → 出走表は右から → 下の 3 枚は下から） ---- */
+.bo-vote .bo-panel { animation: boUp .6s var(--bo-e) both; }
+.bo-vote .bo-vid { animation-name: boZoom; }
+.bo-vote .bo-card2 { animation-name: boRight; animation-delay: .08s; }
+.bo-vote .bo-cd { animation-delay: .14s; }
+.bo-vote .bo-popp { animation-delay: .2s; }
+.bo-vote .bo-qrp { animation-delay: .26s; }
+.is-wait .bo-cd { animation-delay: .12s; }
+.is-wait .bo-qrp { animation-name: boRight; animation-delay: .18s; }
+/* 切り替えの幕（#boatSw）が抜けていくのに合わせて入る（幕が覆っている間に終わってしまわないよう、少し待たせる。印 .bo-swin は tv-boat.js の swGo） */
+#boatOv.bo-swin .bo-vote .bo-vid { animation-delay: .4s; }
+#boatOv.bo-swin .bo-vote .bo-card2 { animation-delay: .48s; }
+#boatOv.bo-swin .bo-vote .bo-cd { animation-delay: .54s; }
+#boatOv.bo-swin .bo-vote .bo-popp { animation-delay: .6s; }
+#boatOv.bo-swin .bo-vote .bo-qrp { animation-delay: .66s; }
+/* 投票待ち → 投票受付中（同じ板のまま並びが変わる。印 data-sw="open"）: 映像の枠は大きい形（1150×560）から小さい形（820×400）へ縮み、出走表・人気の組番が入ってくる */
+.is-vote[data-sw="open"] .bo-vid { animation: boVidOpen .75s var(--bo-e) both; transform-origin: 0 0; }
+@keyframes boVidOpen { from { transform: scale(1.4024, 1.4); } }
+.is-vote[data-sw="open"] .bo-card2 { animation-name: boRight2; animation-delay: .06s; }
+.is-vote[data-sw="open"] .bo-cd { animation-name: boUp2; animation-delay: 0s; } /* 投票待ちの下の帯・右の QR は同じ部品が新しい場所へ移る: 空く間を短くするため、待たせずに入れる */
+.is-vote[data-sw="open"] .bo-popp { animation-name: boUp2; animation-delay: .1s; }
+.is-vote[data-sw="open"] .bo-qrp { animation-name: boZoom2; animation-delay: .04s; }
+/* 消えるとき: 出走表は右へ・下の板は下へ（競馬の .side・.v2info と同じ向き）。映像の枠はすぐ消す（そこから映像の黒い板が広がる） */
+#boatOv .bo-vote.bo-bye { pointer-events: none; }
+#boatOv .bo-vote.bo-bye .bo-panel { animation: boOutDown .42s ease-in both; }
+#boatOv .bo-vote.bo-bye .bo-vid { animation-name: boOut; animation-duration: .2s; }
+#boatOv .bo-vote.bo-bye .bo-card2 { animation-name: boOutRight; }
+#boatOv .is-wait.bo-bye .bo-qrp { animation-name: boOutRight; }
+/* 映像の絵は、準備ができた所でふわっと出す（前はいきなり出ていた） */
+#boatOv.bo-ready #boGl, #boatOv.bo-ready #boHud { animation: boFade .5s ease-out both; }
+#boQr svg { animation: boFade .45s ease-out both; }
+
+/* ---- 板の中身の交代（映像の枠の中）: 展示の ST の札 → 遊び方 1 → 遊び方 2 → 映像に戻る ---- */
+.bo-st:not([hidden]) { animation: boFade .4s ease-out both; }
+.bo-st h4 { animation: boUpS .45s var(--bo-e) .08s both; }
+.bo-st .sth { animation: boFade .3s .14s both; }
+.bo-st .str { animation: boLeft .4s var(--bo-e) both; }
+.bo-st .str:nth-child(3) { animation-delay: .16s; } .bo-st .str:nth-child(4) { animation-delay: .22s; } .bo-st .str:nth-child(5) { animation-delay: .28s; }
+.bo-st .str:nth-child(6) { animation-delay: .34s; } .bo-st .str:nth-child(7) { animation-delay: .4s; } .bo-st .str:nth-child(8) { animation-delay: .46s; }
+.bo-st p { animation: boFade .4s .62s both; }
+#boatOv .bo-st.bo-bye { animation: boOut .4s ease-in both; }
+.bo-how:not([hidden]) { animation: boRise .55s var(--bo-e) both; } /* 遊び方の板は下からせり上がる */
+@keyframes boRise { from { transform: translate3d(0, 101%, 0); } }
+.bo-how > * { animation: boUpS .45s var(--bo-e) both; } /* 中身は 1 行ずつ（2 枚目に替わるときも、入れ替えた行が順に出る） */
+.bo-how > :nth-child(1) { animation-delay: .12s; } .bo-how > :nth-child(2) { animation-delay: .2s; } .bo-how > :nth-child(3) { animation-delay: .28s; } .bo-how > :nth-child(4) { animation-delay: .36s; } .bo-how > :nth-child(5) { animation-delay: .44s; }
+#boatOv .bo-how.bo-bye { animation: boOut .45s ease-in both; }
+
+/* ---- 締切: 投票の画面の映像の枠から、黒い板が画面いっぱいに広がる（競馬の「映像が大きくなる」と同じ見え方）→ 大きな「締切ました」→ 出走表が 1 行ずつ ---- */
+.bo-film { background: none; }
+.bo-film::before { content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: #000; transform-origin: 0 0; }
+.bo-film:not([hidden]) { animation: boFade .45s ease-out both; }
+.bo-film[data-from="vote"]:not([hidden]), .bo-film[data-from="wait"]:not([hidden]) { animation: none; }
+.bo-film[data-from="vote"]::before { animation: boGrowV .7s var(--bo-e) both; }
+.bo-film[data-from="wait"]::before { animation: boGrowW .7s var(--bo-e) both; }
+@keyframes boGrowV { from { transform: translate3d(30px, 6px, 0) scale(.5125, .4866); } } /* 投票受付中の映像の枠 820×400（画面の 30,84）→ 1600×822 */
+@keyframes boGrowW { from { transform: translate3d(30px, 6px, 0) scale(.7188, .6813); } } /* 投票待ちの映像の枠 1150×560 → 1600×822 */
+#boatOv .bo-film.bo-bye { animation: boOut .5s ease-in both; }
+.bo-card:not([hidden]) { animation: boFade .5s ease-out both; }
+.bo-film[data-from="vote"] .bo-card, .bo-film[data-from="wait"] .bo-card { animation-delay: .2s; }
+.bo-card h2 { animation: boUpS .5s var(--bo-e) .15s both; }
+.bo-card .bo-ct .hd { animation: boFade .4s .2s both; }
+.bo-card .bo-ct .rw { animation: boLeft .45s var(--bo-e) .25s both; }
+.bo-card .bo-ct .rw:nth-child(3) { animation-delay: .31s; } .bo-card .bo-ct .rw:nth-child(4) { animation-delay: .37s; } .bo-card .bo-ct .rw:nth-child(5) { animation-delay: .43s; }
+.bo-card .bo-ct .rw:nth-child(6) { animation-delay: .49s; } .bo-card .bo-ct .rw:nth-child(7) { animation-delay: .55s; }
+.bo-card .bo-closed { animation: boFade .4s .75s both; }
+/* 大きな「締切ました」が出ている間（印 .ban）は、出走表を待たせる */
+.bo-film.ban .bo-card h2 { animation-delay: 1.25s; } .bo-film.ban .bo-card .bo-ct .hd { animation-delay: 1.3s; }
+.bo-film.ban .bo-card .bo-ct .rw { animation-delay: 1.38s; }
+.bo-film.ban .bo-card .bo-ct .rw:nth-child(3) { animation-delay: 1.44s; } .bo-film.ban .bo-card .bo-ct .rw:nth-child(4) { animation-delay: 1.5s; } .bo-film.ban .bo-card .bo-ct .rw:nth-child(5) { animation-delay: 1.56s; }
+.bo-film.ban .bo-card .bo-ct .rw:nth-child(6) { animation-delay: 1.62s; } .bo-film.ban .bo-card .bo-ct .rw:nth-child(7) { animation-delay: 1.68s; }
+.bo-film.ban .bo-card .bo-closed { animation-delay: 1.9s; }
+/* 発走（映像の始まり）: 出走表の板がふわっと消えて、ピット離れの絵が出る */
+#boatOv .bo-card.bo-bye { animation: boCardOut .5s ease-in both; }
+@keyframes boCardOut { to { opacity: 0; transform: scale(1.03); } }
+/* 締切の瞬間の大きな字（競馬の .v2closed「締切ました」と同じ見せ方。締切から 2.5 秒以内に入ったテレビだけ。印 .go は tv-boat.js） */
+.bo-shime { position: absolute; z-index: 4; left: 0; right: 0; top: 340px; text-align: center; font-size: 132px; font-weight: 900; line-height: 1; letter-spacing: .04em; color: #fff; -webkit-text-stroke: 8px #c62828; paint-order: stroke fill; text-shadow: 0 9px 0 #7f1010, 0 0 44px rgba(0, 0, 0, .55); opacity: 0; pointer-events: none; }
+.bo-shime.go { animation: boShime 1.7s var(--bo-e) both; }
+@keyframes boShime { 0% { opacity: 0; transform: scale(1.7); } 14% { opacity: 1; transform: scale(1); } 72% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(.96); } }
+
+/* ---- 結果: 映像が消えて、確定の札（判子のように）→ 1着 → 2着 → 名前 → 払戻（額がはずむ）→ 的中の人が 1 人ずつ → 着順 の順に出る（印 .bo-fx ＝ そのレースで最初に出すときだけ） ---- */
+.bo-res:not([hidden]) { animation: boFade .45s ease-out both; }
+#boatOv .bo-res.bo-bye { animation: boOutUp .42s ease-in both; }
+.bo-res.bo-fx .bo-k { animation: boStamp .5s cubic-bezier(.2, .9, .3, 1.2) .2s both; }
+.bo-res.bo-fx .bo-kakutei > .bo-waku:nth-child(2) { animation: boPop .5s var(--bo-e) .55s both; }
+.bo-res.bo-fx .bo-ar { animation: boFade .25s .8s both; }
+.bo-res.bo-fx .bo-kakutei > .bo-waku:nth-child(4) { animation: boPop .5s var(--bo-e) .9s both; }
+.bo-res.bo-fx .bo-nm { animation: boLeft .45s var(--bo-e) 1.15s both; }
+.bo-res.bo-fx .bo-pay { animation: boUp .5s var(--bo-e) 1.4s both; }
+.bo-res.bo-fx .bo-pay b.y { animation: boPayHi .7s ease-out 1.9s both; }
+@keyframes boPayHi { 0% { transform: scale(1); } 30% { transform: scale(1.18); } 100% { transform: scale(1); } }
+.bo-res.bo-fx .bo-wins { animation: boRight .5s var(--bo-e) 1.5s both; }
+.bo-res.bo-fx .bo-wins li, .bo-res.bo-fx .bo-none { animation: boRight .4s var(--bo-e) 1.75s both; }
+.bo-res.bo-fx .bo-wins li:nth-child(2) { animation-delay: 1.82s; } .bo-res.bo-fx .bo-wins li:nth-child(3) { animation-delay: 1.89s; } .bo-res.bo-fx .bo-wins li:nth-child(4) { animation-delay: 1.96s; }
+.bo-res.bo-fx .bo-wins li:nth-child(5) { animation-delay: 2.03s; } .bo-res.bo-fx .bo-wins li:nth-child(6) { animation-delay: 2.1s; } .bo-res.bo-fx .bo-wins li:nth-child(7) { animation-delay: 2.17s; }
+.bo-res.bo-fx .bo-wins li:nth-child(8) { animation-delay: 2.24s; } .bo-res.bo-fx .bo-wins li:nth-child(9) { animation-delay: 2.31s; } .bo-res.bo-fx .bo-wins li:nth-child(10) { animation-delay: 2.38s; }
+.bo-res.bo-fx .bo-wins li:nth-child(11) { animation-delay: 2.45s; } .bo-res.bo-fx .bo-wins li:nth-child(12) { animation-delay: 2.52s; }
+.bo-res.bo-fx .bo-notes { animation: boFade .4s 1.95s both; }
+.bo-res.bo-fx .bo-order h3 { animation: boFade .3s 2s both; }
+.bo-res.bo-fx .bo-order .or { animation: boUpS .35s var(--bo-e) 2.05s both; }
+.bo-res.bo-fx .bo-order .or:nth-child(3) { animation-delay: 2.1s; } .bo-res.bo-fx .bo-order .or:nth-child(4) { animation-delay: 2.15s; } .bo-res.bo-fx .bo-order .or:nth-child(5) { animation-delay: 2.2s; }
+.bo-res.bo-fx .bo-order .or:nth-child(6) { animation-delay: 2.25s; } .bo-res.bo-fx .bo-order .or:nth-child(7) { animation-delay: 2.3s; } .bo-res.bo-fx .bo-order .or:nth-child(8) { animation-delay: 2.35s; }
+.bo-res.bo-fx .bo-note { animation: boFade .4s 2.45s both; }
+.bo-res.bo-fx .bo-next { animation: boFade .4s 2.55s both; }
+.bo-res.is-pend .bo-pend { animation: boZoom .5s var(--bo-e) both; }
+/* 取り消しの知らせ */
+.bo-void:not([hidden]) { animation: boFade .45s ease-out both; }
+.bo-void h2 { animation: boUpS .5s var(--bo-e) .12s both; } .bo-void p { animation: boUpS .5s var(--bo-e) .24s both; }
+#boatOv .bo-void.bo-bye { animation: boOut .4s ease-in both; }
+
+/* ---- 上の札・カウントダウン（節目の見せ方） ---- */
+/* 場面の札: 字が変わるたびに 1 回はずむ（印 .pop / .pop2 を交互に。tv-boat.js の pill）。締切 30 秒前からは赤（競馬の「まもなく締切」と同じ色。赤の重ねを opacity で出し入れして、ゆっくり明滅） */
+.bo-pill.st { position: relative; z-index: 0; overflow: hidden; transform-origin: 0 50%; } /* はずむときは左端を止めて右へ（上の帯の左端からはみ出さない） */
+.bo-pill.st::after { content: ""; position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: -1; background: #d32f2f; opacity: 0; transition: opacity .45s; }
+.bo-pill.st.hot::after { opacity: 1; animation: boHotBg 1s ease-in-out .45s infinite; }
+@keyframes boHotBg { 50% { opacity: .5; } }
+.bo-pill.st.pop { animation: boPillPop .5s var(--bo-e); } .bo-pill.st.pop2 { animation: boPillPop2 .5s var(--bo-e); }
+@keyframes boPillPop { 0% { transform: scale(.86); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
+@keyframes boPillPop2 { 0% { transform: scale(.86); } 55% { transform: scale(1.05); } 100% { transform: scale(1); } }
+/* 参加人数の札: 出るときにふわっと・人数が変わるたび（15 秒ごとに届く）数字がはずむ（数字は変わったときだけ書き直す） */
+.bo-pill.ct:not([hidden]) { animation: boZoom .45s var(--bo-e) both; }
+.bo-pill.ct b { display: inline-block; animation: boBump .5s var(--bo-e) both; }
+@keyframes boBump { from { transform: scale(1.28); } }
+/* 「無料で 1 票」の札は、投票できない場面（締切のあと〜映像）では消しておく */
+.bo-pill.pr { transition: opacity .4s; } .bo-pill.pr.off { opacity: 0; }
+/* 締切 30 秒前からのカウントダウン: 1 秒ごとに数字が小さめ・薄めから元の大きさへ入る（数字は毎秒描き直すので、そのたびに走る。前は点滅だけ）。大きくはしない（字の形が太い端末でも、枠からはみ出さない・上の字に重ならない） */
+.bo-cd.last .cd { animation: boTick .9s var(--bo-e) both; transform-origin: 0 60%; }
+@keyframes boTick { from { opacity: .55; transform: scale(.9); } }
+/* 人気の組番の並び替えは tv-boat.js（popFlip）が、前の場所から新しい場所へ動かす */
+
+/* 動きなし（?boatfx=0。確かめ・比べる用） */
+#boatOv.bo-nofx, #boatOv.bo-nofx *, #boatOv.bo-nofx *::before, #boatOv.bo-nofx *::after { animation: none !important; transition: none !important; }
