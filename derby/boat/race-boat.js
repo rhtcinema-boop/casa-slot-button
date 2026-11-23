@@ -35,6 +35,53 @@ BOAT.Race = (function () {
   // カメラの位置（04 ⑦ 7-2。K1 ＝スタート線の上のスタンドの屋根、K2 ＝ 1 マーク寄りの高所、K3 ＝ 2 マーク寄りの高所、K4 ＝バックの横）
   const KZ = (x) => C.shoreZ(x) + 2.5; // 屋根の前の端は水ぎわの 4m 奥（会場の部品）。その 1.5m 前に置く＝屋根が映らない（オーナー 2026-11-17「建物の屋根が映らないようにして」）
   const K1 = [-5, 26, KZ(-5)], K2 = [110, 26, KZ(110)], K3 = [-110, 26, KZ(-110)], K4 = [0, 10, 62];
+  /* K5 ＝ 1 マークの奥の水ぎわの望遠（04 ⑦ 7-2 の K5 (226, 3, 28)。場所と高さは資料のまま）。2026-11-23 から 2 周 1 マーク（m1-B）で使う:
+     K2（資料 7-5 の m1-B の場所）は艇が真下を通るので、先頭 3 艇を入れると画角が 70° を超える（20 レースで測って 平均 21.6°・最大 71.5°・先頭の艇が画面の高さの 3.7% まで小さくなる＝遠すぎる）。
+     K5 からは向かってくる列を正面ぎみに見るので 平均 6.8°・最大 21.1°・9.4%。本物は最終周の 1 マークを「水ぎわの超望遠 1 台」で追い続ける（7-1 の 18 番）が、その望遠が K5 と同じ場所かは資料で確かめられていない（未確認） */
+  const K5 = [C.X_MAX - 2, 3, 28];
+  /* ---------- カメラの写し方の道具（2026-11-23 オーナー「基本的には頭の 3 艇が常に見えるような画角にしてほしい」「今 完全にボートが見えない画角がある」） ----------
+     画面の座標は「真ん中が 0・右の端が +1・上の端が +1」（左の端 −1・下の端 −1）。カメラの決まりは three.js と同じ（上が y・向ける先を画面の真ん中に見る）。ここは足し算と割り算だけ（絵の部品を使わない）。
+     camAim : 映したい艇の集まりを、画面の決めた窓（win ＝ [左, 右, 下, 上]）に入れる「向ける先」と「画角」を返す。lo〜hi は縦の画角（度）の範囲
+     camNeed: いまの向ける先のままで、艇が安全な範囲（Z ＝ 端の余白と、左上・右上の字の札の角）に入る、いちばんせまい縦の画角（度）
+     測る道具は tests/boat-camera.plan.js（カットごとに「先頭 3 艇がそろう・艇が 1 つも映らない・先頭が映らない」コマを数える） */
+  const ASP = W / H;
+  function camAxes(p, L) { // カメラ p から L を見る時の、前・右・上の向きと、L までの距離
+    let fx = L[0] - p[0], fy = L[1] - p[1], fz = L[2] - p[2]; const fl = Math.hypot(fx, fy, fz) || 1; fx /= fl; fy /= fl; fz /= fl;
+    const rl = Math.hypot(fx, fz) || 1, rx = -fz / rl, rz = fx / rl;
+    return { f: [fx, fy, fz], r: [rx, 0, rz], u: [-rz * fy, rz * fx - rx * fz, rx * fy], d: fl };
+  }
+  function camTan(p, A, q) { // 点 q が画面の真ん中から横・縦にどれだけ離れて見えるか（傾き）。カメラの後ろ・近すぎる点は null
+    const vx = q[0] - p[0], vy = q[1] - p[1], vz = q[2] - p[2], zc = vx * A.f[0] + vy * A.f[1] + vz * A.f[2]; if (zc < 1) return null;
+    return [(vx * A.r[0] + vz * A.r[2]) / zc, (vx * A.u[0] + vy * A.u[1] + vz * A.u[2]) / zc];
+  }
+  function camPts(b) { // 艇 1 つを点にする: 舳先と艫（艇の長さ 2.9m に少し足す）・選手の頭
+    if (b.yaw == null) return [[b.x, b.y || 0, b.z]];
+    const hx = Math.cos(b.yaw) * 1.6, hz = -Math.sin(b.yaw) * 1.6; return [[b.x + hx, 0.2, b.z + hz], [b.x - hx, 0.2, b.z - hz], [b.x, 1.2, b.z]];
+  }
+  function camAim(p, pts, win, lo, hi) {
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; pts.forEach((b) => { x0 = Math.min(x0, b.x); x1 = Math.max(x1, b.x); z0 = Math.min(z0, b.z); z1 = Math.max(z1, b.z); });
+    let L = [(x0 + x1) / 2, 0.5, (z0 + z1) / 2], T = Math.tan(hi * Math.PI / 360); const T0 = Math.tan(lo * Math.PI / 360), T1 = T, wx = (win[0] + win[1]) / 2, wy = (win[2] + win[3]) / 2;
+    for (let pass = 0; pass < 3; pass++) { // 向きを変えると見え方も少し変わるので、3 回くり返して合わせる
+      const A = camAxes(p, L); let a0 = 1e9, a1 = -1e9, b0 = 1e9, b1 = -1e9, bad = false;
+      pts.forEach((b) => camPts(b).forEach((q) => { const t = camTan(p, A, q); if (!t) { bad = true; return; } if (t[0] < a0) a0 = t[0]; if (t[0] > a1) a1 = t[0]; if (t[1] < b0) b0 = t[1]; if (t[1] > b1) b1 = t[1]; }));
+      if (bad || a0 > a1) break;
+      T = clamp(Math.max((a1 - a0) / (ASP * (win[1] - win[0])), (b1 - b0) / (win[3] - win[2])), T0, T1);
+      const sx = (a0 + a1) / 2 - wx * T * ASP, sy = (b0 + b1) / 2 - wy * T, D = A.d;
+      L = [p[0] + (A.f[0] + A.r[0] * sx + A.u[0] * sy) * D, p[1] + (A.f[1] + A.u[1] * sy) * D, p[2] + (A.f[2] + A.r[2] * sx + A.u[2] * sy) * D];
+    }
+    return { look: L, fov: 2 * Math.atan(T) * 180 / Math.PI };
+  }
+  function camNeed(p, L, pts, Z) {
+    const A = camAxes(p, L); let T = 0;
+    pts.forEach((b) => camPts(b).forEach((q) => { const t = camTan(p, A, q); if (!t) { T = 9; return; }
+      const ax = Math.abs(t[0]) / ASP; let n = Math.max(ax / Z.x, t[1] > 0 ? t[1] / Z.top : -t[1] / Z.bot);
+      const c = t[0] < 0 ? Z.cl : Z.cr; if (c && t[1] > 0) n = Math.max(n, Math.min(ax / c[0], c[1] > 0 ? t[1] / c[1] : 1e9)); // 字の札の角: 札より内側か、札より下ならよい
+      if (n > T) T = n; }));
+    return 2 * Math.atan(T) * 180 / Math.PI;
+  }
+  /* 安全な範囲: 左右 5%・上 13%（レース名の帯の下）・下 18%（字幕と順位の丸の上）を除く。字の札の角は [これより内側ならよい横の位置, これより下ならよい縦の位置]:
+     左上の順位（x14〜220・y12〜118）・右上の TIME と周回（x810〜986・y10〜82）・オッズの札（x709〜953・y96〜182）・小窓（x602〜977・y58〜234）。drawHud・drawRaceHud の場所と合わせる */
+  const Z_RANK = [0.54, 0.49], Z_TIME = [0.6, 0.64], Z_ODDS = [0.4, 0.22], Z_PIP = [0.19, 0], CAM_HARD = 75;
 
   /* ---------- 無い部品の代わり（部品が壊れていても止まらないように） ---------- */
   const Stub = {
@@ -271,13 +318,18 @@ BOAT.Race = (function () {
     /* ---------- カットの時刻表を先に作る（04 ⑦ 7-5 の「始まる条件」を 0.1 秒きざみで調べる。途中から見ても同じカットになる） ---------- */
     timeline() {
       const G = this.G, cuts = (this.plan && this.plan.cuts) || [-27, -22.5], list = [];
+      /* 2026-11-23（艇が映らないコマを無くす）: ピットの 2 つのカットは、艇が画面から出る前に切り替える（時刻だけで切ると、出るのが早いレースで水面だけが映った）。
+         pitMoved ＝ いちばん動いた艇がピットから何 m 出たか（本物は 3〜4m 出た所で切る。04 ⑦ 7-1 の 0 番）、pitNear ＝ ピットの正面のカメラ（列の前 60m）まで、いちばん近い艇があと何 m か */
+      const s0 = this.stateAt(-PRE_T), PT = this.PIT || { x: C.PIT.x, z: C.PIT.z, out: { x: 1, z: 0 } }, pox = PT.out ? PT.out.x : 1, poz = PT.out ? PT.out.z : 0;
+      const pitMoved = (s) => { let m = 0; s.S.forEach((b, i) => { m = Math.max(m, Math.hypot(b.x - s0.S[i].x, b.z - s0.S[i].z)); }); return m; };
+      const pitNear = (s) => { let d = 1e9; s.S.forEach((b) => { if (b.on) d = Math.min(d, (PT.x + pox * 60 - b.x) * pox + (PT.z + poz * 60 - b.z) * poz); }); return d; };
       // レース前は進路の計画のカット（艇の位置が飛ぶ時刻）に合わせる: ピット → 待機行動（高い所 → 浮き越しの低い所）→ 助走
       const steps = [
         /* レース前（100 秒・カットで飛ばさない）。場面は進路の計画の plan.segments: pit −100〜−93（−99.4 に合図）／buoy −93〜−79／back −79〜−43／turn2 −43〜−24／wait −24〜−12.5／runup −12.5〜0。
            カメラは本物の中継の作り（04 ⑦ 7-1・7-2）: ピットの 6 人 → 正面から出てくる 6 艇 → スタンドの高い所からの引き（待機行動）と、ときどき選手の寄り → −14.6 から屋根のカメラで助走 */
         { id: 'pit', when: () => true },
-        { id: 'pit-front', when: (s) => s.t >= -97.6 },
-        { id: 'wait-high', when: (s) => s.t >= -93 },
+        { id: 'pit-front', when: (s) => s.t >= -97.6 || pitMoved(s) >= 4 },
+        { id: 'wait-high', when: (s) => s.t >= -93 || pitNear(s) <= 26 },
         // 待機行動はスタンドの高い所の 1 台で長く追う（オーナー 2026-11-17「カメラの切り替えが多い」。選手の寄りは入れない）
         { id: 'approach', when: (s) => s.t >= -14.6 },
         { id: 'm1-A', when: (s) => s.t >= 1.5 && (s.last.x >= 30 || s.t >= 2.4) },
@@ -310,8 +362,7 @@ BOAT.Race = (function () {
     /* ---------- カメラ（04 ⑦ 7-5。位置はカットの間ずっと固定。向ける先と画角だけ動く） ---------- */
     direct(dt) {
       const tt = this.tt, s = this.state, sh = this.shotAt(tt), e = tt - sh.t, G = this.G, P = this.PIT, g = P.gap, ox = P.out ? P.out.x : 1, oz = P.out ? P.out.z : 0;
-      const mid = (a, b) => ({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 });
-      /* 画角を「映したい艇の集まりが、画面の幅の frac を占める」ように決める（04 ⑦ の実測は、画角そのものより「集団が幅の何 %・艇 1 つが幅の何 %」で書いてある）。
+      /* 助走〜1 周 1 マーク（approach・m1-A）の画角の決め方（ピット離れ・待機行動と、1 マークを出たあとのカットは上の camAim）。画角を「映したい艇の集まりが、画面の幅の frac を占める」ように決める（04 ⑦ の実測は、画角そのものより「集団が幅の何 %・艇 1 つが幅の何 %」で書いてある）。
          p: カメラの位置、L: 向ける先、pts: 映したい艇、frac: 幅に占める割合、lo〜hi: 実測の画角の範囲（縦の画角・度）。艇の長さ 2.9m ぶんの余白を足す */
       const fit = (p, L, pts, frac, lo, hi) => {
         const fx = L[0] - p[0], fz = L[2] - p[2], fl = Math.hypot(fx, fz) || 1, rx = -fz / fl, rz = fx / fl; let a0 = 1e9, a1 = -1e9;
@@ -322,54 +373,96 @@ BOAT.Race = (function () {
         v = Math.max(v, 2 * dv / 0.6 * 180 / Math.PI); return clamp(v, lo, hi);
       };
       const everyB = s.S.filter((b) => b.on); // 映っている艇ぜんぶ（フライング・転覆の艇も）
-      const top = (k) => s.ord.slice(0, k).map((i) => s.S[i]), allB = s.ord.map((i) => s.S[i]);
       const ctr = (pts) => { let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; pts.forEach((b) => { x0 = Math.min(x0, b.x); x1 = Math.max(x1, b.x); z0 = Math.min(z0, b.z); z1 = Math.max(z1, b.z); }); return [(x0 + x1) / 2, 0, (z0 + z1) / 2]; }; // 集まりの真ん中（順位が入れ替わっても跳ねない）
-      let pos, look, fov;
+      /* 2026-11-23 オーナー「基本的には頭の 3 艇が常に見えるような画角に」: 1 マークを出てからゴールまでのカットは、どれも「先頭 3 艇（B3）」を画面の窓に入れる（camAim）。
+         F ＝ そのカットの向ける先と画角、must ＝ 画面から出してはいけない艇（下の「足りなければすぐ引く」で守る）。
+         grp(1) ＝ 先頭 3 艇と、その後ろの近い艇（3 番手の 6m 後ろまでは全部入れ、24m 後ろで入れなくなる。間はなめらか＝艇が出入りしても向きが跳ねない）。grp(0) ＝ 先頭 3 艇だけ（寄り。B3 ＝ lead3） */
+      const L3 = this.lead3(s), B3 = L3.pts;
+      const grp = (soft) => { if (!(soft > 0) || L3.idx.length < 3) return B3; const V = s.ordV || s.ord, a = s.S[V[2]], pts = B3.slice(); for (let k = 3; k < V.length; k++) { const b = s.S[V[k]], w = (1 - sm((a.vis - b.vis - 6) / 18)) * soft; if (w >= 0.999) pts.push(b); else if (w > 0.001) pts.push({ x: lerp(a.x, b.x, w), z: lerp(a.z, b.z, w), yaw: b.yaw }); } return pts; }; // soft（0〜1）: 後ろの近い艇をどれだけ入れるか。寄り ↔ 引きの変わり目は 0〜1 をなめらかに動かす（向ける先が跳ねない）
+      const wn = (fx, y0, y1) => [-fx, fx, y0 == null ? -0.5 : y0, y1 == null ? 0.56 : y1]; // 窓: 集まりが画面の幅の fx を占める。上下は字の札と字幕の間
+      const pipOn = tt >= G - 4.3 && sh.id === 'finish', oddsOn = (sh.id === 'back-B' || sh.id === 'side-123') && tt >= 22, hudOn = tt >= 2.1 && tt < G + 5;
+      const zn = { x: 0.9, top: 0.74, bot: 0.64, cl: hudOn ? Z_RANK : null, cr: pipOn ? Z_PIP : oddsOn ? Z_ODDS : hudOn ? Z_TIME : null };
+      let pos, look, fov, F = null, must = null;
       switch (sh.id) {
         case 'pit': pos = [P.x + ox * 6 + P.dirX * (5 * g + 7), 2.2, P.z + oz * 6 + P.dirZ * (5 * g + 7)]; look = [P.x + ox * 1 + P.dirX * 2 * g, 1.0, P.z + oz * 1 + P.dirZ * 2 * g]; fov = 19.8; break;
-        case 'pit-front': { const on = s.S.filter((b) => b.on); pos = [P.x + ox * 60 + P.dirX * 2.5 * g, 9, P.z + oz * 60 + P.dirZ * 2.5 * g]; look = ctr(on); look[1] = 1.0; fov = fit(pos, look, on, 0.4, 6, 11.7); break; } // 正面から出てくる 6 艇（集団が幅の 30 → 45%）
+        case 'pit-front': { const on = s.S.filter((b) => b.on); pos = [P.x + ox * 60 + P.dirX * 2.5 * g, 9, P.z + oz * 60 + P.dirZ * 2.5 * g]; F = camAim(pos, on, wn(0.42, -0.5, 0.5), 6, 26); must = on; break; } // 正面から出てくる 6 艇（集団が幅の 30 → 45%）。2026-11-23: 近づいて広がっても 6 艇が入るように画角の上限を 11.7 → 26 に（切り替えは艇がカメラの 26m 手前に来た時。timeline）
         case 'wait-close': { const b = s.S[sh.ev.boat >= 0 ? sh.ev.boat : this.entry[0]]; pos = [C.X_MIN + 6, 3, 30]; look = [b.x, 0.9, b.z]; fov = fit(pos, look, [b], 0.3, 1.0, 5); break; } // 待機中の選手の寄り（低い位置の望遠）
-        case 'wait-split': case 'wait-high': { const on = s.S.filter((b) => b.on); pos = K3; look = ctr(on); { let nb = on[0], nd = 1e9; on.forEach((b) => { const d = Math.hypot(b.x - pos[0], b.z - pos[2]); if (d < nd) { nd = d; nb = b; } }); if (nb) { look[0] = lerp(look[0], nb.x, 0.35); look[2] = lerp(look[2], nb.z, 0.35); } } /* 手前の艇が名前の列に隠れないよう、少し手前を見る */ fov = fit(pos, look, on, 0.7, 4, 34); break; } // 内 3 艇と外 3 艇が大きく離れる（80m 以上）ので、全部入る画角まで引く
+        case 'wait-split': case 'wait-high': { const on = s.S.filter((b) => b.on); pos = K3; F = camAim(pos, on, wn(0.72, -0.46, 0.5), 4, 40); break; } // 内 3 艇と外 3 艇が大きく離れる（80m 以上）ので、全部入る画角まで引く。2026-11-23: 向ける先を「6 艇が画面の窓に入る向き」に（前は 6 艇の真ん中と手前の艇の間を見ていて、助走に入る前の 3 秒、手前の艇が画面の右下の角から出るレースがあった）
         case 'wait-low': { const sl = this.entry.slice(0, 3).map((i) => s.S[i]); pos = [C.X_MIN + 6, 3, 30]; look = ctr(sl); look[1] = 0.9; fov = fit(pos, look, sl, 0.55, 1.5, 8); break; } // 舳先を向けて待つ内 3 艇
         case 'approach': { const on = s.S.filter((b) => b.on); pos = K1; look = ctr(on); look[2] = lerp(look[2], 27, 0.5); fov = fit(pos, look, on, tt > -2 ? 0.5 : 0.6, 7, 60); break; } // 助走（スタートの瞬間は真下を通るので余白を広く）: 6 艇が幅の 6 割（本物は固定の画角で、前半は艇がとても小さい。オーナー「まだ遠い場面がある」）
         case 'm1-A': pos = K2; look = ctr(everyB); fov = fit(pos, look, everyB, 0.72, 6, 60); break; // スタートから 1 マークを回りきるまでは、全部の艇が常に映る（オーナー 2026-11-17） // 向かってくる 6 艇が幅の 80〜90% → 1 マークは艇 1 つが幅の 7〜8%
-        case 'back-A': { pos = K4; look = ctr(allB); look[1] = 0.5; fov = fit(pos, look, allB, lerp(0.55, 0.7, sm(e / 6)), 4, 14.7); break; } // 集団が幅の 55 → 82%
-        case 'm2-A': { const t4 = top(4); pos = K3; look = ctr(t4); fov = sh.ev.mark != null && tt >= sh.ev.mark && tt < sh.ev.mark + 1.5 ? fit(pos, look, top(3), 0.55, 5, 10) : fit(pos, look, t4, 0.65, 5, 15.2); break; } // 先頭がマークの真横の 1.5 秒は寄る（艇 1 つが幅の 14%）
-        case 'home-wide': { const t4 = top(4); pos = K1; look = ctr(t4); fov = fit(pos, look, t4, 0.6, 6, 17.2); break; }
-        case 'lead-front': pos = [sh.ev.lx + 150, 2.5, sh.ev.lz]; look = [s.lead.x, 0.8, s.lead.z]; fov = 1.2; break;
-        case 'home-in': pos = K1; look = ctr(allB); fov = fit(pos, look, allB, 0.68, 6, 21.4); break; // 列が幅の 80%
+        /* ---- ここから下（1 マークを出たあと）は、先頭 3 艇を入れるのが基本（例外は 3 つ: lead-front の 1.8 秒＝先頭の正面の大写し／finish のゴールの 2 秒前から＝ゴールの線の見下ろし／winner ＝勝者の大写し。例外でも先頭は映す）。
+           スタートから 1 マークを回りきるまで（上の approach・m1-A）は「6 艇が常に全部映る」（オーナー 2026-11-17）のままで、変えていない。2026-11-23 に直した所（前の作りと、艇が外れていた理由）:
+           back-A   … 全艇の真ん中を見て画角の上限 14.7°。列が伸びると先頭と最後尾が両端から出た → 先頭 3 艇と近い艇を入れる。上限 40°
+           home-in  … 同じ（上限 21.4°）。先頭がカメラの前を通る終わりの 2 秒、先頭が出た
+           lead-front … 先頭の正面の大写し（画角 1.2°・1.8 秒）は本物の中継の絵（04 ⑦ 7-1 の 11 番）なので、形は変えない＝例外。先頭が画面から出ないことだけ守る（前は終わりの 0.2 秒、先頭が出るレースがあった）
+           m1-B     … 3 秒目から 2・3 番手だけを見ていた（先頭が 15m 以上離れると 1 マークでも 2〜4 番手）→ 先頭が 10 秒近く映らなかった。1 マークの奥の水ぎわ（K5）から先頭 3 艇に寄る
+           side-123 … バックの横（K4）から画角 1.9° の大写しで 1 着 → 2 着へ首をふる。追いが遅れて水面だけになった → 2 マーク寄りの高い所（K3）から、向かってくる先頭 3 艇
+                        （横の K4 のままだと、3 艇が離れたレースで画角 30°・艇が画面の高さの 6% まで小さくなる。K3 からは 13°・12%）
+           m2-B     … 先頭だけ（4.8〜6.7°）→ 2 番手だけ（9.7°）→ 先頭 3 艇。side-123 と同じカメラ（K3）なので、切り替えずにそのまま続ける
+           finish   … ゴールの見せ方（屋根 K1 から寄る → ゴールの 2 秒前から線へ向ける → 線の見下ろしで止める・右上の小窓）はオーナーが OK した形なので、場所・向き・時刻は変えない。直したのは 3 つ（下の finish の所） */
+        case 'back-A': { pos = K4; F = camAim(pos, grp(1), wn(lerp(0.55, 0.7, sm(e / 6))), 4, 40); must = B3; break; } // 集団が幅の 55 → 70%
+        case 'm2-A': { const kn = sh.ev.mark != null ? sm((tt - sh.ev.mark) / 0.6) * (1 - sm((tt - sh.ev.mark - 1.5) / 0.6)) : 0; pos = K3; F = camAim(pos, grp(1 - kn), wn(lerp(0.65, 0.6, kn)), 5, 40); must = B3; break; } // 先頭がマークの真横の 1.5 秒は先頭 3 艇だけに寄る（寄る・戻すは 0.6 秒かけて）
+        case 'home-wide': { pos = K1; F = camAim(pos, grp(1), wn(0.6), 6, 40); must = B3; break; }
+        case 'lead-front': { // 先頭の正面の大写し（例外: 先頭だけ）。見るのは順位の表示の 1 位（前は走りの計算の 1 位で、表示の 1 位と違う艇を映すことがあった）。2 番手が 2.5m 以内に並んでいる時は 2 艇の間を見て、2 艇とも入るまで引く（先頭が入れ替わっても向きが跳ねない）
+          const V = s.ordV || s.ord, a = s.S[V[0]] || s.lead, b = s.S[V[1]], w = b ? 1 - sm((a.vis - b.vis - 2 * ORD_H - 0.5) / 5.5) : 0;
+          pos = [sh.ev.lx + 150, 2.5, sh.ev.lz]; look = [b ? lerp(a.x, b.x, w / 2) : a.x, 0.8, b ? lerp(a.z, b.z, w / 2) : a.z]; fov = 1.2; must = w > 0.001 ? [a, { x: lerp(a.x, b.x, w), z: lerp(a.z, b.z, w), yaw: b.yaw }] : [a]; break; }
+        case 'home-in': { pos = K1; F = camAim(pos, grp(1), wn(0.68), 6, 50); must = B3; break; } // 奥から来る列。先頭がカメラの前に来る終わりは広くなる
         case 'm1-B': {
-          pos = K2; const far = Math.hypot(s.lead.x - s.second.x, s.lead.z - s.second.z) > 15, m23 = mid(s.second, s.third);
-          if (sh.ev.pass != null && tt >= sh.ev.pass) { const pts = far ? s.ord.slice(1, 4).map((i) => s.S[i]) : top(4); look = ctr(pts); fov = fit(pos, look, pts, 0.62, 6, 18); }
-          else if (e > 3) { look = [m23.x, 0, m23.z]; fov = fit(pos, look, [s.second, s.third], 0.4, 3.5, 8); } else { look = ctr(allB); fov = fit(pos, look, allB, 0.68, 5, 12); }
+          pos = K5; const k1 = sm((e - 3) / 1), kq = sh.ev.pass != null ? sm((tt - sh.ev.pass) / 0.8) : 0, kc = k1 * (1 - kq); // kc: 3 秒目から 1 マークまでは先頭 3 艇だけに寄る（2 番手争いも先頭も入る）。先頭が 1 マークに入ったら（kq）、後ろの近い艇も入れて少し引く
+          F = camAim(pos, grp(1 - kc), wn(lerp(lerp(0.66, 0.7, k1), 0.64, kq)), lerp(lerp(4, 3.5, k1), 5, kq), 40); must = B3;
           break;
         }
-        case 'back-B': { const t3 = top(3); pos = K4; look = ctr(t3); look[1] = 0.5; fov = fit(pos, look, t3, 0.6, 4, 14.7); break; }
-        case 'side-123': { const a = s.lead, b = s.second, k = sm((e - 2.3) / 0.5); pos = K4; look = [lerp(a.x, b.x, k), 0.8, lerp(a.z, b.z, k)]; fov = 1.9; break; }
-        case 'm2-B': pos = K3; if (sh.ev.out != null && tt >= sh.ev.out) { look = [s.second.x, 0, s.second.z]; fov = 9.7; } else { look = [s.lead.x, 0, s.lead.z]; fov = sh.ev.mark != null && tt >= sh.ev.mark ? 6.7 : 4.8; } break;
+        case 'back-B': { pos = K4; F = camAim(pos, B3, wn(0.6, -0.5, 0.18), 4, 40); must = B3; break; }      // 右上にオッズの札が出るので、艇は札の下の段に置く
+        case 'side-123': { pos = K3; F = camAim(pos, B3, [-0.86, 0.36, -0.5, 0.56], 4.8, 40); must = B3; break; } // バックを 2 マークへ向かってくる先頭 3 艇。右上のオッズの札の左に置く
+        case 'm2-B': { const kx = sm(e / 1.2); pos = K3; F = camAim(pos, grp(sh.ev.out != null ? sm((tt - sh.ev.out) / 0.8) : 0), [lerp(-0.86, -0.68, kx), lerp(0.36, 0.68, kx), -0.5, 0.56], 4.8, 40); must = B3; break; } // side-123 の続き（オッズの札が消えるので、艇を真ん中へ戻す）。先頭がマークを出たら、後ろの近い艇も入れる
         case 'finish': {
-          pos = K1;
-          if (e < 1.2) { const t3 = top(3); look = ctr(t3); fov = fit(pos, look, t3, 0.6, 6, 17.2); }
-          else if (tt < G - 2) { look = [s.lead.x, 0, s.lead.z]; fov = 3.8; }
-          else { const k = sm((tt - (G - 2)) / 1.6); look = [lerp(s.lead.x, 0, k), 0, lerp(s.lead.z, 24, k)]; fov = lerp(3.8, 17, k); if (k >= 1) { look = [0, 0, 24]; fov = 17; } }
+          /* 元の形: 屋根（K1）から 2 マークの出口の引き → 寄る（3.8°）→ ゴールの 2 秒前から 1.6 秒かけて向ける先をゴールの線 (0,0,24) へ・画角 17° → 線の見下ろしで止める（G+5 まで向きは動かさない）。小窓は G−4.3 から右上。
+             2026-11-23 に直した 3 つ（場所・向き・時刻・小窓は元のまま）:
+             ① 寄るのは「先頭だけ」でなく先頭 3 艇（屋根からは奥から来る列を縦に見るので、3 艇を入れても画角は 4〜16°。小窓の下に艇が入らないよう、小窓が出る 1.3 秒前から艇を画面の左へ寄せる）
+             ② 線へ向ける 2 秒の間、先頭を画面から出さない（前は画角の追いが遅れて、ゴールの直前の 1.4 秒が水面だけになった）。この 2 秒は 2・3 番手が外れる＝例外（屋根は線に近く、3 艇を入れると画角が 80° を超える）
+             ③ 線の見下ろしの画角を、線へ来る艇が画面に入る所まで引く（17° 〜 いちばん引いて 40° 前後。線の 34m 手前までの艇は必ず入れ、60m より遠い艇のためには引かない＝艇が小さくなりすぎない。間はなめらか。
+               前は 17° のままで、艇と艇の間が 1.2 秒より空くと水面だけになった。本物の中継のゴールの画角は 28°。04 ⑦ 7-2）。それでも後ろの艇が 2 秒近く離れている間は、線の絵に艇が無い（右上の小窓に 1 着）＝元の形のまま */
+          pos = K1; const kp = sm((tt - (G - 5.6)) / 1.3), kl = sm((tt - (G - 2)) / 1.6), LINE = [0, 0, 24];
+          F = camAim(pos, grp(1), [lerp(-0.66, -0.86, kp), lerp(0.66, 0.12, kp), -0.5, 0.56], 3.8, 40); must = B3;
+          if (kl > 0) { // wide ＝ 線の見下ろしの画角。線へ来る艇（ホーム側で、線の 3m 先まで）ごとに、線までの距離で入れ方を決める
+            let wide = 17; s.S.forEach((b) => { if (!(b.on && !b.out && b.z > 0 && b.x < 3)) return; const w = 1 - sm((-b.x - 34) / 26); if (w > 0.001) wide = Math.max(wide, lerp(17, Math.min(40, camNeed(pos, LINE, [b], zn)), w)); });
+            F = { look: [lerp(F.look[0], LINE[0], kl), lerp(F.look[1], LINE[1], kl), lerp(F.look[2], LINE[2], kl)], fov: lerp(F.fov, wide, kl) };
+            must = tt < G && B3.length ? [B3[0]] : null; } // 線へ向ける間は、先頭を画面から出さない。ゴールのあとは向きも画角も「線の見下ろし」のまま（艇を追って引き直さない）
           break;
         }
-        default: { const w = s.S[this.finalOrder[0]]; pos = K4; look = [w.x, 1.0, w.z]; fov = lerp(1.9, 1.0, sm(e / 3)); }
+        default: { const w = s.S[this.finalOrder[0]]; pos = K4; look = [w.x, 1.0, w.z]; fov = lerp(1.9, 1.0, sm(e / 3)); must = [w]; zn.bot = 0.5; } // 勝者の大写し（下に名札が出るので、艇は名札の上）
       }
-      const Q = this.cam, cut = !Q || Q.id !== sh.id || Q.t0 !== sh.t || dt <= 0;
+      if (F) { look = F.look; fov = F.fov; }
+      const Q = this.cam;
+      if (Q && dt > 0 && sh.id === 'm2-B' && Q.id === 'side-123') { Q.id = sh.id; Q.t0 = sh.t; } // 最終ターンは、その前のカット（side-123）と同じカメラ（K3）の続き: 切り替えずに、そのまま追う（2026-11-23）
+      const cut = !Q || Q.id !== sh.id || Q.t0 !== sh.t || dt <= 0;
       if (cut) this.cam = { id: sh.id, t0: sh.t, look: look.slice(), raw: look.slice(), vel: [0, 0, 0], fov, fovT: fov };
       else { // ゆっくり追うが、置いていかれないよう「狙いの動く速さ」ぶん先を見る（全速の艇は 1 秒に 22m 進むので、遅れると画面から出てしまう）
-        const TAU = 0.7, k = 1 - Math.exp(-dt / TAU), kf = 1 - Math.exp(-dt / 1.6), kv = 1 - Math.exp(-dt / 0.35);
-        for (let a = 0; a < 3; a++) { const vel = clamp((look[a] - Q.raw[a]) / dt, -40, 40); Q.vel[a] += (vel - Q.vel[a]) * kv; Q.raw[a] = look[a]; Q.look[a] += (look[a] + Q.vel[a] * TAU - Q.look[a]) * k; } if (Math.abs(fov - Q.fovT) > Q.fovT * 0.04) Q.fovT = fov; Q.fov += (Q.fovT - Q.fov) * kf; }
+        const TAU = 0.7, k = 1 - Math.exp(-dt / TAU), kf = 1 - Math.exp(-dt / 1.6), kv = 1 - Math.exp(-dt / 0.35), kw = 1 - Math.exp(-dt / 0.6); // kw: 先頭 3 艇を入れるカット（F）で引く時は速く（寄るのは今までどおりゆっくり）。艇がカメラの下を通る時に、引きが遅れて急に引き直すのを防ぐ
+        for (let a = 0; a < 3; a++) { const vel = clamp((look[a] - Q.raw[a]) / dt, -40, 40); Q.vel[a] += (vel - Q.vel[a]) * kv; Q.raw[a] = look[a]; Q.look[a] += (look[a] + Q.vel[a] * TAU - Q.look[a]) * k; } if (Math.abs(fov - Q.fovT) > Q.fovT * 0.04) Q.fovT = fov; Q.fov += (Q.fovT - Q.fov) * (F && Q.fovT > Q.fov ? kw : kf); }
       // スタートの 3 秒前〜1 マークを回りきるまでは、全部の艇が常に映る: いま向いている先のままで全艇が入る画角を出し、足りなければ待たずにすぐ引く（寄るのはゆっくり）
       if (sh.id === 'm1-A' || (sh.id === 'approach' && tt > -3)) { const need = fit(pos, this.cam.look, everyB, 0.86, 6, 75); if (need > this.cam.fov) { this.cam.fov = need; this.cam.fovT = Math.max(this.cam.fovT, need); } }
+      /* 2026-11-23: 画面から出してはいけない艇（must ＝ 先頭 3 艇 など）が安全な範囲から出そうなら、待たずに引く（寄るのはゆっくり）。追いの遅れ・順位の入れ替わり・艇が外れた時（フライングの発表・転覆）でも外さない。
+         カットの頭と時刻を飛ばした時はその場で合わせ、流している間は急に跳ねないよう 0.1 秒のなめらかさで引く（艇が動いて少しずつ足りなくなる分は、その場で足す） */
+      if (must && must.length) { const Qn = this.cam, need = Math.min(CAM_HARD, camNeed(pos, Qn.look, must, zn));
+        if (need > Qn.fov) { const d = need - Qn.fov; Qn.fov += cut ? d : Math.min(d, Math.max(d * (1 - Math.exp(-dt / 0.1)), Qn.fov * 1.5 * dt)); if (need > Qn.fovT) Qn.fovT = need; } }
       const cam = this.camera, Z = this.cam;
       cam.position.set(pos[0], pos[1], pos[2]); cam.fov = Z.fov; cam.updateProjectionMatrix(); cam.lookAt(Z.look[0], Z.look[1], Z.look[2]);
       this.shot = sh.id; this.cutNow = cut;
       this.marksOn = sh.id === 'approach';
-      // 小窓（G−4.3〜G+5）: 先頭の正面ドアップ（04 ⑦ 7-3）
-      this.pip = tt >= G - 4.3 && tt < G + 5 && sh.id === 'finish';
+      // 小窓（G−4.3〜G+5）: 先頭の正面ドアップ（04 ⑦ 7-3）。2026-11-23: 終わりは「勝者の大写しに切り替わるまで」（切り替えは 0.1 秒きざみなので、前は切り替えの直前に最大 0.1 秒、小窓だけ先に消えて線の絵だけになった）
+      this.pip = pipOn;
       if (this.pip) { const w = s.S[this.finalOrder[0]], c2 = this.cam2, hx = Math.cos(w.yaw), hz = -Math.sin(w.yaw); c2.position.set(w.x + hx * 120, 2.5, w.z + hz * 120); c2.lookAt(w.x, 0.8, w.z); }
+    }
+    /* カメラが必ず映す「先頭 3 艇」（2026-11-23）: 画面で見える順（ordV ＝ 左上の順位の表示の元）の上から 3 つと、3 番手と並んでいる艇。
+       順位の表示（shownOrder）は並んだ艇を 1m 前に出るまで入れ替えないので、3 番手の 2.5m 後ろまでの艇は全部入れる（表示の 1〜3 位はこの中に必ず入る）。
+       そこから 8m 後ろまでは「3 番手の場所との間の点」としてなめらかに外す（艇が 3 番手に上がる・下がる時に、画角が跳ねない）。外れた艇（フライングの発表のあと・転覆のあと）は入らない。
+       時刻とレースの中身だけで決まる（流し方・コマ数に左右されない ＝ どのテレビでも同じ）。返り値は { idx: 上から 3 つの艇の番号, pts: 映す点 } */
+    lead3(s) {
+      const V = s.ordV || s.ord, idx = V.slice(0, 3), pts = idx.map((i) => s.S[i]);
+      if (V.length > 3 && !this.run.finish[V[2]]) { const a = s.S[V[2]]; for (let k = 3; k < V.length; k++) { const b = s.S[V[k]], w = 1 - sm((a.vis - b.vis - 2 * ORD_H - 0.5) / 5.5); if (w >= 0.999) pts.push(b); else if (w > 0.001) pts.push({ x: lerp(a.x, b.x, w), z: lerp(a.z, b.z, w), yaw: b.yaw }); } }
+      return { idx, pts };
     }
     /* 順位の表示に使う並び: 画面で見える前後（state.ordV）を元に、いま出している並びの隣どうしを「後ろの艇が ORD_H m より前に出た時」だけ入れ替える。
        ゴールした艇は着順のまま先頭へ。止めている時・時刻が飛んだ時・艇の顔ぶれが変わった時（フライングの発表・転覆）は、その時の並びに合わせ直す */
