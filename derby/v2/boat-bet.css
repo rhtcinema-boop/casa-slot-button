@@ -245,3 +245,10 @@ body.boat .waitbox .clock .v { white-space: nowrap; }
   .b-pick .btr .bn small { font-size: 10.5px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .b-pick .bth, .b-pick .btr { grid-template-columns: 28px minmax(0, 1fr) 52px 62px; column-gap: 6px; padding: 0 8px; }
 }
+
+/* casa BOAT のロゴの絵（2026-11-23 オーナー決定: casa BOAT のロゴ（art/logo-boat。競馬の lockup と同じ作りの絵））。頭: 高さ 32px（1 画面の組みでは 28px）。読み込み中: 競馬と同じ幅。あそびかたの頭: 高さ 48px。縦横の比は 1857:618 */
+body.boat .top .boatcrest { line-height: 0; }
+body.boat .top .boatcrest img { display: block; width: 96px; height: 32px; pointer-events: none; -webkit-user-drag: none; }
+body.boat .os-t .boatcrest img, body.boat.os-t .boatcrest img { width: 84px; height: 28px; }
+body.boat .splash .logo-h1 img { aspect-ratio: 1857 / 618; }
+.introh img { display: block; margin: 0 auto; width: 144px; height: 48px; pointer-events: none; }
