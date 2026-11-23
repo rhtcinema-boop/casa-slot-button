@@ -49,7 +49,7 @@
     o.racers = Array.isArray(s.racers) && s.racers.length ? s.racers : null;
     return o;
   }
-  const cleanTvqs = (m) => { const o = {}; if (m && typeof m === 'object') Object.keys(m).slice(0, 60).forEach((k) => { if (/^[\w-]{1,40}$/.test(k) && (m[k] === 'low' || m[k] === 'high')) o[k] = m[k]; }); return o; };
+  const cleanTvqs = (m) => { const o = {}; if (m && typeof m === 'object') Object.keys(m).slice(0, 60).forEach((k) => { if (/^[\w-]{1,40}$/.test(k) && /^(max|std|auto|lite|min|high|low)$/.test(String(m[k]))) o[k] = m[k]; /* 2026-11-23: 5 段（max・std・auto・lite・min）。前の値 high（＝std）・low（＝lite）もそのまま通す */ }); return o; };
   /* 選手の一覧（管理画面の「選手」タブ。競馬の馬の一覧 cleanHorses と同じ考え方）: [{ name, yomi, type, cls, st, spd, sta, pow, mae, off? }]。
      出走（off でない）は 6 人以上・全部で 40 人まで・同じ名前は不可。おかしければ 400 bad_boat（理由つき） */
   const RACER_TYPES = ['nige', 'senko', 'sashi', 'oikomi'], RACER_CLS = ['A1', 'A2', 'B1', 'B2'], RACERS_MIN = 6, RACERS_MAX = 40;
