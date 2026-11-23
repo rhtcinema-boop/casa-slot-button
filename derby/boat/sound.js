@@ -22,7 +22,12 @@ BOAT.Sound = (function () {
   let ctx = null, master = null, voiceBus = null, engBus = null, duckG = null, fxBus = null, crowdBus = null;
   let vbuf = null, vidx = null, voff = 0, names = [], warned = {};
   let eng = [], water = null, spray = null, slap = null, crowd = null, clap = null;
-  let R = null, raceRef = null, lastTT = null, flags = {}, voiceUntil = 0, vsrc = [], lastFrame = 0, cardPrev = 0, gen = 0, stopped = false;
+  let R = null, raceRef = null, lastTT = null, flags = {}, voiceUntil = 0, vsrc = [], lastFrame = 0, gen = 0, stopped = false;
+  /* 2026-11-23 オーナー「音の途切れ方・レース終わってるのに音が流れてたり・ファンファーレの音なってなかったり」の直し:
+     cueS … 合図の音（ブザー・ファンファーレ）を 1 レースに 1 回だけ鳴らすための印（下の cue）。K … 場面の終わりの絞り（1 ＝ ふつう・0 ＝ 無音。下の frame）。
+     stopT … 止めている途中（絞り終わったら中の音を片付ける予約）。stat … 確かめ用の数（debug） */
+  let cueS = { key: null, buz: 0, fan: 0, off: null }, K = 1, Kv = 1, stopT = 0, resumeAt = 0;
+  const stat = { stops: 0, resumes: 0, cuts: 0, trims: 0, skips: 0 }, TAIL = 0.8, TAIL_V = 0.35, BUZ_FROM = -2.6, FAN_PRE = 0.3, FAN_END = 3.3;
 
   function init() {
     if (MUTE || ctx) return;
@@ -98,19 +103,15 @@ BOAT.Sound = (function () {
   function frame(race, st) {
     if (!ctx) return;
     lastFrame = performance.now(); R = race; st = st || {};
-    if (stopped) { stopped = false; if (crowd) crowdTo(1, 0.3); } // stop で消した歓声を戻す
+    wakeUp();
+    if (stopped) reopen(); // stop で閉じた出口・消した歓声を戻す
     const now = ctx.currentTime, tt = race.tt, V = race.vis || [], cam = race.camera, PIT_T = BOAT.Race.PIT_T;
     if (race.race !== raceRef) { raceRef = race.race; flags = {}; lastTT = null; stopVoice(); if (crowd) crowdTo(1, 0.3); eng.forEach((e) => { e.f = 118 * (1 + e.pit); e.on = false; }); }
-    const card = st.state === 'card';
+    const card = st.state === 'card', over = st.state === 'result';
     const dt = lastTT == null ? 0 : clamp(tt - lastTT, 0, 0.2), jumped = lastTT != null && (tt < lastTT - 0.01 || tt - lastTT > 1);
-    // ブザー（出走表の終わりに 3 回。3 回目の終わりでピットアウト）
-    if (card) {
-      const len = st.cardLen || 6, at = len - 2.6;
-      if (BUZ && !flags.buz && cardPrev < at && (st.cardT || 0) >= at) { flags.buz = 1; BOAT.Fanfare.buzzer(ctx, fxBus, now + 0.02, LVL.buzzer); }
-      cardPrev = st.cardT || 0;
-    } else cardPrev = 0;
-    // ファンファーレ（ピットアウトと同時。桐生・大村・丸亀の形）。途中から始めた（seek）ときは鳴らさない
-    if (!card && !flags.fan && lastTT != null && !jumped && lastTT <= PIT_T + 0.3 && tt >= PIT_T) { flags.fan = 1; BOAT.Fanfare.play(ctx, fxBus, now - (tt - PIT_T), FAN, LVL.fan); if (crowd) { crowdTo(2.2, 0.4); later(() => crowdTo(1, 2), 9000); } }
+    // 合図の音（出走表の終わりにブザー 3 回 → ピットアウトと同時にファンファーレ。桐生・大村・丸亀の形）: 「ピット離れから何秒か」で決める（下の cue）。出走表の間は残り時間から、映像の間は映像の時刻から。
+    // 映像の時刻を飛ばしたコマ・止めた絵（確かめ用のページの seek）では鳴らし始めない
+    cue(st.key != null ? st.key : race.race, card ? -Math.max(0, (st.cardLen || 6) - (st.cardT || 0)) : tt - PIT_T, card || (lastTT != null && !jumped && tt > lastTT));
     if (!card && lastTT != null && !jumped && crowd) { // ビッグレースの歓声
       const G = race.G || 999, cross = (x) => lastTT < x && tt >= x;
       if (cross(0)) { crowdTo(2.4, 0.3); later(() => crowdTo(1.2, 3), 4000); }
@@ -119,10 +120,16 @@ BOAT.Sound = (function () {
       if (cross(G + 5.3)) BOAT.Fanfare.play(ctx, fxBus, now + 0.05, 'W', LVL.fan * 0.8);
     }
     lastTT = tt;
+    /* 場面の終わりの消え方（2026-11-23）: 映像の終わり（ゴール後 8 秒 ＝ race.endT）の 0.8 秒前から、声・エンジン・合図の音・客席を映像の時刻に合わせて絞り、映像が終わる所で無音にする
+       （前は結果の画面に替わっても実況の残りとエンジンが鳴り続けた。確かめ: tests/boat-tv-sound.plan.js）。結果（state 'result'）の間は鳴らさない */
+    const endT = race.endT, hasEnd = typeof endT === 'number' && isFinite(endT), k = over ? 0 : (hasEnd ? clamp((endT - tt) / TAIL, 0, 1) : 1), kv = over ? 0 : (hasEnd ? clamp((endT - tt) / TAIL_V, 0, 1) : 1); // 声は言い切らせたいので、終わりの 0.35 秒だけ絞る（say が、入り切らない行を先に短くする）
+    if (k !== K || kv !== Kv) { K = k; Kv = kv; voiceBus.gain.setTargetAtTime(LVL.voice * kv, now, 0.03); fxBus.gain.setTargetAtTime(k, now, 0.04); }
+    if (k < 1 && !flags.tail) { flags.tail = 1; gen++; if (crowdBus) crowdBus.gain.setTargetAtTime(0, now, 0.2); if (clap) clap.gain.setTargetAtTime(0, now, 0.2); } // 客席（ビッグレース）も絞る。あとから音量を戻す予約（later）は無効に
+    else if (k >= 1 && flags.tail) { flags.tail = 0; if (crowd) crowdTo(1, 0.3); } // 映像を巻き戻した（確かめ用のページ）
     // エンジン
     const talking = now < voiceUntil;
     duckG.gain.setTargetAtTime(talking ? LVL.duck : 1, now, talking ? 0.12 : 0.35);
-    engBus.gain.setTargetAtTime(1, now, 0.2);
+    engBus.gain.setTargetAtTime(k, now, k < 1 ? 0.05 : 0.2);
     const cx = cam ? cam.position.x : 0, cy = cam ? cam.position.y : 20, cz = cam ? cam.position.z : 80;
     let wSum = 0, sSum = 0, spSum = 0;
     for (let i = 0; i < eng.length; i++) {
@@ -153,7 +160,12 @@ BOAT.Sound = (function () {
     slap.lg.gain.setTargetAtTime(0.25 * clamp(spSum / 3, 0, 1), now, 0.3); slap.l.frequency.setTargetAtTime(2.6 + 1.2 * clamp(spSum / 4, 0, 1), now, 0.5);
   }
   /* ---------- 実況の声 ---------- */
-  function stopVoice() { if (!ctx) return; const t = ctx.currentTime; vsrc.forEach((s) => { try { s.g.gain.setTargetAtTime(0, t, 0.02); s.s.stop(t + 0.1); } catch (e) { } }); vsrc = []; voiceUntil = 0; }
+  // 鳴っている声・これから鳴る声を止める。fade（秒。省くと 0.08）かけて消す。0 ならその場で切る（出口をもう絞り終えたあとの片付け用）
+  function stopVoice(fade) {
+    if (!ctx) return; const t = ctx.currentTime, f = fade == null ? 0.08 : Math.max(0, fade);
+    vsrc.forEach((s) => { try { if (f > 0) { s.g.gain.cancelScheduledValues(t); s.g.gain.setTargetAtTime(0, t, f / 4); s.s.stop(t + f + 0.02); } else s.s.stop(t); } catch (e) { } });
+    vsrc = []; voiceUntil = 0;
+  }
   function clipOf(key, tier) { const c = vidx.clips; return c[tier + key] || c[(tier === 2 ? 1 : tier === 0 ? 1 : 2) + key] || c[(tier === 2 ? 0 : tier === 0 ? 2 : 0) + key] || null; }
   // line: 台本の 1 行 { t, d, s }
   function say(line) {
@@ -167,7 +179,17 @@ BOAT.Sound = (function () {
     if (nxt) { const avail = nxt.t - line.t - 0.1; if (dur > avail && avail > 0.5) rate = clamp(dur / avail, 1, 1.12); }
     // 前の声がまだ続いている: 1 秒以内に終わるなら待つ、それより長ければ切って次へ
     let t0 = now + 0.03;
-    if (voiceUntil > now) { if (voiceUntil - now < 1.0) t0 = voiceUntil + 0.06; else stopVoice(); }
+    if (voiceUntil > now) { if (voiceUntil - now < 1.0) t0 = voiceUntil + 0.06; else { stopVoice(0.22); stat.cuts++; t0 = now + 0.2; } } // 切るときは 0.2 秒かけて消してから次の行へ（2026-11-23: 前は 0.02 秒で切れて「ブツッ」と聞こえた）
+    /* 映像の終わり（結果の画面に替わる所）までに言い切れない行（2026-11-23: 2 着のゴールが遅いレースで「着順確定。1着…2着…。2連単 1-2」の終わりが結果の画面に 1.5 秒ほどかぶっていた）:
+       少し速く言えば入るなら速く（1.12 倍まで）。それでも入らなければ後ろの文から落とす（最初の文は残す）。0.4 秒も無ければ言わない */
+    if (R && typeof R.endT === 'number' && isFinite(R.endT) && typeof R.tt === 'number') {
+      const room = (R.endT - TAIL_V - R.tt) - (t0 - now);
+      if (room < 0.4) { stat.skips++; return; }
+      if (dur / rate > room && dur / room <= 1.12) rate = dur / room;
+      let cut = false;
+      while (dur / rate > room) { let k = -1; for (let i = seq.length - 1; i > 0; i--) if (seq[i].pause != null && seq[i].pause >= 0.18) { k = i; break; } if (k < 1) break; seq.length = k; dur = seq.reduce((a, x) => a + (x.pause != null ? x.pause : x.c[1] - 0.015), 0); rate = Math.max(rate, Math.min(1.12, dur / room)); cut = true; }
+      if (cut) stat.trims++;
+    }
     if (/^お知らせいたします/.test(line.s)) { BOAT.Fanfare.chime(ctx, fxBus, t0, LVL.chime); t0 += 1.9; }
     let t = t0;
     seq.forEach((x) => {
@@ -183,14 +205,70 @@ BOAT.Sound = (function () {
   /* 音を全部止める（2026-11-20 直し）: 前は声とエンジンだけで、ファンファーレ・ブザー・チャイム・歓声・拍手は鳴り続けた（映像の途中の取り消し・競馬に戻る時に残る）。
      ファンファーレなどは「これから鳴る音」まで先に予約してあるので、それらがつながっている出口（fxBus）ごと 0.1 秒で絞って外し、次の音のために新しい出口を作る。
      歓声・拍手は音量を 0 に（あとで音量を戻す予約は gen で無効にする）。次に frame が呼ばれたら、歓声は元の大きさへ戻る。ふだんのレース（stop を呼ばない間）の鳴り方は変わらない */
-  function stop() {
-    stopVoice(); if (!ctx) return;
-    const t = ctx.currentTime; gen++; stopped = true;
-    if (engBus) engBus.gain.setTargetAtTime(0, t, 0.2);
-    if (fxBus) { const old = fxBus; try { old.gain.cancelScheduledValues(t); old.gain.setTargetAtTime(0, t, 0.03); } catch (e) { } setTimeout(() => { try { old.disconnect(); } catch (e) { } }, 300); fxBus = ctx.createGain(); fxBus.gain.value = 1; fxBus.connect(master); }
-    if (crowdBus) crowdBus.gain.setTargetAtTime(0, t, 0.1);
-    if (clap) clap.gain.setTargetAtTime(0, t, 0.1);
+  /* 2026-11-23 止め方の直し（オーナー「音の途切れ方」）: 前は声を 0.02 秒・合図の音を 0.03 秒で切っていて「ブツッ」と聞こえた（測り: 映像の途中の取り消しで声が 0.00 秒で消えていた）。
+     → 声・エンジン・合図の音・客席の出口を、fade 秒（省くと 0.5）かけて同じ形でなめらかに絞る（fade の 9 割で 1/100 の大きさ）。絞り終わったら中の音を片付ける（hardStop）。
+     fade が 0 のとき・音の部品が止まっているときは、その場で片付ける。次に frame / cue が呼ばれたら出口を開け直す（reopen） */
+  function stop(fade) {
+    if (!ctx) return;
+    stat.stops++; gen++;
+    const f = fade == null ? 0.5 : Math.max(0, Number(fade) || 0), t = ctx.currentTime;
+    if (stopped) { if (f <= 0.02 && stopT) hardStop(); return; } // もう止めている（絞っている途中に「すぐ」と言われたら、その場で片付ける）
+    stopped = true;
+    if (f <= 0.02 || ctx.state !== 'running') { hardStop(); return; }
+    [voiceBus, engBus, fxBus, crowdBus, clap].forEach((g) => { if (!g) return; try { const p = g.gain; p.cancelScheduledValues(t); p.setValueAtTime(p.value, t); p.setTargetAtTime(0, t, f / 5); } catch (e) { } });
+    stopT = setTimeout(hardStop, f * 1000 + 60);
+  }
+  // 中の音を片付ける: 声の元を止める・これから鳴る予約ずみの合図の音（ファンファーレ・ブザー・チャイム）を出口ごと外して新しい出口を作る・エンジンと客席は 0 のまま（次の frame が戻す）
+  function hardStop() {
+    clearTimeout(stopT); stopT = 0; if (!ctx) return;
+    const t = ctx.currentTime;
+    stopVoice(0);
+    [engBus, crowdBus, clap].forEach((g) => { if (!g) return; try { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(0, t); } catch (e) { } });
+    if (fxBus) { const old = fxBus; try { old.gain.cancelScheduledValues(t); old.gain.setValueAtTime(0, t); } catch (e) { } setTimeout(() => { try { old.disconnect(); } catch (e) { } }, 300); fxBus = ctx.createGain(); fxBus.gain.value = 1; fxBus.connect(master); }
+    try { voiceBus.gain.cancelScheduledValues(t); voiceBus.gain.setValueAtTime(0, t); voiceBus.gain.setValueAtTime(LVL.voice, t + 0.05); } catch (e) { } // 声の元はもう止めた。出口は少し置いてから開ける
+    K = 1; Kv = 1;
+  }
+  // stop のあと、また鳴らす所で出口を開け直す（絞っている途中なら先に片付ける）
+  function reopen() { if (stopT) hardStop(); stopped = false; K = 1; Kv = 1; if (crowd) crowdTo(1, 0.3); }
+  /* 音の部品（AudioContext）が止まっているとき（ブラウザが人の操作まで止める・途中で止められた）は、鳴らす場面に入るたびに動かし直す（競馬のテレビの unlockAudio と同じ考え方。1 秒に 1 回まで）。
+     Fire TV のアプリは触らなくても動く。ふつうのブラウザで断られたら、次に押されたとき（init の wake）に動く */
+  function wakeUp() {
+    if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    const p = performance.now(); if (p - resumeAt < 1000) return; resumeAt = p; stat.resumes++;
+    try { const q = ctx.resume(); if (q && q.catch) q.catch(() => { }); } catch (e) { /* noop */ }
+  }
+  /* 合図の音（ブザー 3 回・ファンファーレ）を「ピット離れ（映像の始まり）から何秒か」（sp。前はマイナス）だけで決めて鳴らす（2026-11-23 オーナー「ファンファーレの音なってなかったり」）。
+     前は「映像のコマが −100 秒をまたいだ瞬間」にだけ鳴らしていたので、映像の準備が発走に間に合わないテレビ・途中で読み込み直したテレビ・音の部品が止まっていたテレビでは一度も鳴らなかった
+     （測り: 準備を 3.6 秒おくらせると合図の音は −120dB のまま。tests/boat-tv-sound.plan.js の C・D・E）。
+     ・ブザー: ピット離れの 2.6・1.6・0.6 秒前に 0.6 秒ずつ。途中から入ったら、まだ始まっていない回だけ
+     ・ファンファーレ: ピット離れと同時（0.3 秒前から予約して時刻ぴったりに）。途中から入ったら、ほかの店のテレビと同じ位置から（0.3 秒かけて入る。頭からは鳴らし直さない＝店ごとにずれない・あとの実況にかぶらない）。
+       終わりの和音（残り約 3 秒）より後から入るときは鳴らさない（競馬のテレビが「発走の 3 秒前を過ぎたら鳴らさない」のと同じ考え方。v2/tv.js の playRace）
+     1 レース（key）に 1 回だけ。flow === false（止めた絵）と、音の部品が動いていない間は鳴らし始めない（動いたときに、その時刻の位置から入る）。
+     店のテレビ（v2/tv-boat.js）は、映像の準備を待たずにサーバーの時刻でここを呼ぶ */
+  function cue(key, sp, flow) {
+    if (!ctx || !(typeof sp === 'number') || !isFinite(sp)) return;
+    if (key !== cueS.key) cueS = { key, buz: 0, fan: 0, off: null };
+    if ((cueS.buz || !BUZ) && cueS.fan) return;
+    const join = BOAT.Fanfare.length(FAN) - FAN_END; // ここまでなら途中から入る
+    if (sp < BUZ_FROM - 0.1 || sp > join) return;
+    wakeUp();
+    if (flow === false || ctx.state !== 'running') return;
+    if (stopped) reopen();
+    const now = ctx.currentTime;
+    if (BUZ && !cueS.buz && sp < -0.55) { cueS.buz = 1; BOAT.Fanfare.buzzer(ctx, fxBus, now - (sp - BUZ_FROM), LVL.buzzer); } // もう過ぎた回は buzzer が飛ばす
+    if (!cueS.fan && sp >= -FAN_PRE) {
+      cueS.fan = 1; const late = sp > 0.25; cueS.off = late ? Math.round(sp * 100) / 100 : 0;
+      let dest = fxBus; if (late) { const g = ctx.createGain(); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(1, now + 0.3); g.connect(fxBus); dest = g; }
+      BOAT.Fanfare.play(ctx, dest, late ? now - sp : now + Math.max(0.02, -sp), FAN, LVL.fan);
+      if (crowd) { crowdTo(2.2, 0.4); later(() => crowdTo(1, 2), 9000); }
+    }
+  }
+  // 確かめ用（tests/boat-tv-sound.plan.js）: いまの状態・出口ごとの音量・鳴っている声の数・合図の音の印・数えたもの
+  function debug() {
+    const now = ctx ? ctx.currentTime : 0, g = (n) => (n ? Math.round(n.gain.value * 1000) / 1000 : null);
+    return { state: ctx ? ctx.state : 'none', mute: MUTE, stopped, fading: !!stopT, k: K, kv: Kv, voices: vsrc.length, voiceLeft: Math.round(Math.max(0, voiceUntil - now) * 100) / 100,
+      cue: { key: typeof cueS.key === 'string' ? cueS.key : cueS.key ? 'race' : null, buz: cueS.buz, fan: cueS.fan, off: cueS.off }, gain: { voice: g(voiceBus), eng: g(engBus), duck: g(duckG), fx: g(fxBus), crowd: g(crowdBus) }, stat: Object.assign({}, stat), voice: !!vbuf };
   }
   const later = (fn, ms) => { const g0 = gen; setTimeout(() => { if (g0 === gen) fn(); }, ms); }; // stop のあとは実行しない予約
-  return { init, say: sayCompat, frame, stop, get _fx() { return fxBus; }, get _crowd() { return crowdBus; }, get _clap() { return clap; }, update() { }, get on() { return !!ctx && ctx.state === 'running'; }, get ready() { return !!vbuf; }, get voff() { return voff; }, MUTE, BIG, FAN, LVL };
+  return { init, say: sayCompat, frame, stop, cue, debug, get _fx() { return fxBus; }, get _crowd() { return crowdBus; }, get _clap() { return clap; }, get _bus() { return { ctx, master, voice: voiceBus, eng: engBus, duck: duckG, fx: fxBus, crowd: crowdBus }; }, update() { }, get on() { return !!ctx && ctx.state === 'running'; }, get ready() { return !!vbuf; }, get voff() { return voff; }, MUTE, BIG, FAN, LVL };
 })();
