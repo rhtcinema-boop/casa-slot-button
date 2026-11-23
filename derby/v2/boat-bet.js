@@ -30,7 +30,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP');
   /* BPT は 3,000 を超えて貯められない（2026-11-20 オーナー決定。当たりで超える分は 3,000 で止まり、消える）。数は決まりごと（v2/core.js の BPT_MAX）と同じ */
-  const BPT_CAP = Number(Core && Core.BPT_MAX) || 3000; // v2/core.js の BPT_MAX
+  const BPT_CAP = Number(Core && Core.BPT_MAX) || 3000; // v2/core.js の BPT_MAX。2026-11-23 オーナー決定: この数字は裏の設定なので画面には出さない（計算だけに使う。止まったときは「上限のため」とだけ書く）
   const NKEY = 'casa.derby.nick', VKEY = 'casa.derby.vote.', KKEY = 'casa.boat.key.', MKEY = 'casa.boat.mine', CKEY = 'casa.boat.cart', SKEY = 'casa.boat.stores';
   const ss = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* 覚えられない端末はこのページの間だけ */ } } };
   const ls = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* noop */ } } };
@@ -213,14 +213,15 @@
   function scr(cls, html) { return '<div class="scr ' + cls + '">' + html + '</div>'; }
   function bptCard() {
     if (!S.bpt) return '';
-    return '<div class="bptcard"><div class="bh"><span>あなたの BPT</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります（' + amt(BPT_CAP) + ' BPT まで）。競馬の「追加の券」に 1 枚 100 BPT で使えます（毎週月曜の朝 5 時にリセット）</p></div>';
+    return '<div class="bptcard"><div class="bh"><span>あなたの BPT</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります。競馬の「追加の券」に 1 枚 100 BPT で使えます（毎週月曜の朝 5 時にリセット）</p></div>';
   }
   function howCard() {
-    return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>今日の競馬に参加したスマホなら、ボートも無料で 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で券を何枚でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし・' + amt(BPT_CAP) + ' BPT まで）</span></div></div>';
+    return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>今日の競馬に参加したスマホなら、ボートも無料で 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で券を何枚でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし）</span></div></div>';
   }
+  const LOGO_BIG = '<h1 class="logo-h1"><img src="../art/logo-boat/lockup-boat.png" width="280" height="93" alt="casa BOAT" draggable="false"></h1>'; // 2026-11-23 オーナー決定: casa BOAT のロゴ（art/logo-boat。競馬の lockup と同じ作りの絵）。読み込み中の画面（競馬の R.boot と同じ扱い）
   const bootMsg = () => '<p class="lead" role="status" data-wrap>' + (S.slow && !S.gotLive ? '通信に時間がかかっています。自動でつなぎ直しています' : '読み込み中…') + '</p>';
-  function vBoot() { return scr('mid splash', bootMsg()); } // まだ「いまの状態」が届いていない
-  function vLoad() { return scr('mid splash', '<p class="lead" role="status">読み込み中…</p>'); } // このレースで投票した印があるスマホ: 自分の票が届くまで（届く前に予想の画面に決めない。B1）
+  function vBoot() { return scr('mid splash', LOGO_BIG + bootMsg()); } // まだ「いまの状態」が届いていない
+  function vLoad() { return scr('mid splash', LOGO_BIG + '<p class="lead" role="status">読み込み中…</p>'); } // このレースで投票した印があるスマホ: 自分の票が届くまで（届く前に予想の画面に決めない。B1）
   const howBtn0 = '<button class="btn ghost howb" data-act="howto">あそびかた</button>';
   const howRow = () => S.prev && S.prev.race && S.prev.race.result ? '<div class="btnrow howr"><button class="btn ghost howb" data-act="prevres">前の結果</button>' + howBtn0 + '</div>' : howBtn0; // 前のレースの結果を見る入口（H4）
   /* 残りの時間は data-cd（その時刻）の付いた所だけ毎秒書き換える（画面全体は作り直さない。2026-11-20: 毎秒の作り直しで、押している途中のボタンが効かないことがあった） */
@@ -257,14 +258,14 @@
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><ellipse cx="46" cy="66" rx="30" ry="6" class="ln"/><g transform="translate(46 36)"><circle r="28" class="b2"/><circle r="23" class="b1"/><circle r="17" class="cr"/><text y="5" text-anchor="middle" font-size="13" font-weight="900" fill="#06233a" font-family="inherit">FREE</text></g></svg>' },
     { h: '1着と2着を、順番に当てる', p: '6 艇から、1着と2着になる艇を順番に選びます（2連単）。',
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><rect x="2" y="12" width="88" height="54" rx="5" class="pp"/><rect x="2" y="12" width="8" height="54" rx="2" class="b1"/><text x="18" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">1着</text><text x="60" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">2着</text><rect x="18" y="32" width="24" height="24" rx="3" fill="#f4f4f4" stroke="#14203a"/><text x="30" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#111" font-family="inherit">1</text><path d="M46 44 h8 m-3 -4 l4 4 l-4 4" fill="none" stroke="#14203a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="60" y="32" width="24" height="24" rx="3" fill="#d6332b"/><text x="72" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#fff" font-family="inherit">3</text></svg>' },
-    { h: '当たりは BPT', p: '当たると 100 BPT × 倍率の BPT がこのスマホに入ります（貯められるのは ' + amt(BPT_CAP) + ' BPT まで）。受け取りの手続きはいりません。',
+    { h: '当たりは BPT', p: '当たると 100 BPT × 倍率の BPT がこのスマホに入ります。受け取りの手続きはいりません。',
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><rect x="8" y="6" width="34" height="66" rx="6" class="ink"/><rect x="11" y="11" width="28" height="56" rx="3" class="bg"/><text x="25" y="44" text-anchor="middle" font-size="9" font-weight="900" fill="#8fdcff" font-family="inherit">+BPT</text><path d="M48 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#8fdcff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><g transform="translate(74 40)"><circle r="15" class="b2"/><circle r="12" class="b1"/><text y="4" text-anchor="middle" font-size="9" font-weight="900" fill="#06233a" font-family="inherit">BPT</text></g></svg>' },
     { h: 'BPT で競馬の券を足せる', p: '100 BPT で競馬の券を 1 枚足せます（1 レース 合わせて 5 枚まで）。BPT は毎週月曜の朝 5 時にリセット。',
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><g transform="translate(18 40)"><circle r="15" class="b2"/><circle r="12" class="b1"/><text y="4" text-anchor="middle" font-size="9" font-weight="900" fill="#06233a" font-family="inherit">BPT</text></g><path d="M37 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#ffd773" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="54" y="20" width="34" height="40" rx="4" class="pp"/><rect x="54" y="20" width="34" height="9" rx="3" fill="#c9a03e"/><text x="71" y="45" text-anchor="middle" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">競馬</text><text x="71" y="55" text-anchor="middle" font-size="7" font-weight="900" fill="#14203a" font-family="inherit">追加の券</text></svg>' },
   ];
   function vIntro() {
     const k = Math.max(0, Math.min(INTRO.length - 1, S.introPage || 0)), c = INTRO[k], last = k === INTRO.length - 1;
-    return scr('b-intro', '<div class="introh"><b>casa <i>BOAT</i></b><h1>casa BOAT のあそびかた</h1><p class="sub">' + (k + 1) + ' / ' + INTRO.length + '</p></div>' +
+    return scr('b-intro', '<div class="introh"><img src="../art/logo-boat/lockup-boat-480.png" width="144" height="48" alt="casa BOAT" draggable="false"><h1>casa BOAT のあそびかた</h1><p class="sub">' + (k + 1) + ' / ' + INTRO.length + '</p></div>' +
       '<div class="icard"><div class="ipic">' + c.pic + '</div><h2>' + esc(c.h) + '</h2><p data-wrap>' + esc(c.p) + '</p></div>' +
       '<div class="idots">' + INTRO.map((_, i) => '<i class="' + (i === k ? 'on' : '') + '"></i>').join('') + '</div>' +
       '<div class="btnrow">' + (k > 0 ? '<button class="btn ghost" data-act="introPrev">もどる</button>' : '') + '<button class="btn" data-act="' + (last ? 'intro' : 'introNext') + '">' + (last ? (S.introAgain ? 'とじる' : 'はじめる') : '次へ') + '</button></div>' +
@@ -280,7 +281,7 @@
       const o = odds(k), q = Math.max(1, Math.min(S.qty || 1, Math.max(1, bl))), n = change || needFree ? 1 : q;
       /* 当たれば増える BPT は 3,000 までの空きで（2026-11-21 H7）: 空き ＝ 3,000 −（この券まで買ったあとの残り）。空きが足りないときは「上限」と分かる文 */
       const pay = payOf(k) * n, room = S.bpt ? Math.max(0, BPT_CAP - Math.max(0, bptRest() - (change || needFree ? 0 : n * 100))) : pay, gw = Math.min(pay, room);
-      const pdw = !S.bpt || gw >= pay ? '<small>当たれば</small><span><b>' + amt(pay) + '</b> BPT</span>' : gw > 0 ? '<small>当たれば（上限まで）</small><span><b>' + amt(gw) + '</b> BPT</span>' : '<small>上限 ' + amt(BPT_CAP) + ' BPT</small><span>増えません</span>';
+      const pdw = !S.bpt || gw >= pay ? '<small>当たれば</small><span><b>' + amt(pay) + '</b> BPT</span>' : gw > 0 ? '<small>当たれば（上限まで）</small><span><b>' + amt(gw) + '</b> BPT</span>' : '<small>BPT が上限</small><span>増えません</span>';
       const sel = '<div class="pdsel"><span class="pdc">' + waku(S.f, '') + '<i>→</i>' + waku(S.s, '') + '</span><span class="pdo"><b>' + o + '</b>倍</span><span class="pdw' + (gw < pay ? ' capw' : '') + '">' + pdw + '</span></div>';
       const qty = change || needFree || bl < 2 ? '' : '<div class="qty"><span>枚数</span><button class="qb" data-act="qm" aria-label="へらす">−</button><b>' + q + '</b><small>枚</small><button class="qb" data-act="qp" aria-label="ふやす">＋</button><button class="qb w" data-act="q10">+10</button></div>';
       const main = change ? '<button class="btn" data-act="change"' + (S.busy || S.pend ? ' disabled' : '') + '>' + (S.busy ? '送信中…' : S.pend ? '確かめ中…' : 'この組番に変える') + '</button>' : needFree ? '<button class="btn" data-act="add">この組番を無料券に</button>' : '<button class="btn" data-act="add"' + (bl > 0 ? '' : ' disabled') + '>' + (bl > 0 ? 'BPT ' + amt(q * 100) + ' で追加' : S.bpt ? 'BPT が足りません' : 'BPT を確かめています…') + '</button>';
@@ -339,11 +340,11 @@
     const cp = won ? capInfo(v, r, x) : null; // 上限（3,000 BPT）で止まった: 実際に増えた分と「上限 3,000 BPT」を出す
     /* 2026-11-21 H7: 上限で 1 BPT も増えなかったときは「おめでとう ＋0」と出さず「的中しましたが、上限 3,000 BPT のため BPT は増えません」。読み直す前で上限に届くかもしれないときは額を「…」 */
     const zero = !!(cp && cp.capped && cp.real === 0);
-    const gainH = zero ? '<p class="hitmsg">的中しました</p><div class="gain zero"><em>上限 ' + amt(BPT_CAP) + ' BPT のため BPT は増えません</em></div>'
-      : '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x.won)) + '</b><small>BPT</small>' + (cp && cp.capped ? '<em>上限 ' + amt(BPT_CAP) + ' BPT で止まりました</em>' : '') + '</div>';
+    const gainH = zero ? '<p class="hitmsg">的中しました</p><div class="gain zero"><em>BPT が上限に達しているため増えません</em></div>'
+      : '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x.won)) + '</b><small>BPT</small>' + (cp && cp.capped ? '<em>上限で止まりました</em>' : '') + '</div>';
     if (won) return scr('b-result win', gainH + resLine(res) + incLine + capLine + fune(v, { cls: 'small' }) +
-      '<p class="bnote">BPT 残り <b>' + (fresh ? amt(S.bpt.bal) : '…') + '</b><small>（持てるのは ' + amt(BPT_CAP) + ' BPT まで）</small><span class="bn2"><br>この BPT で競馬の券を足せます（100 BPT で 1 枚）</span></p><a class="btn tokeiba" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ（BPT で券を足す）</a>' + next);
-    const lead = !v ? '' : x && x.hit > 0 && res.noPay === true ? '的中（上限のため払い戻しなし）' : bk && bk.n && !(bk.bpt > 0) && v.won != null ? '返還（上限 ' + amt(BPT_CAP) + ' BPT のため BPT は増えません）' : bk && bk.n ? '返還 ＋' + amt(bk.bpt) + ' BPT' + (fresh ? '（BPT 残り ' + amt(S.bpt.bal) + '）' : '') : bk && bk.free && !v.n ? '無料券は返還（はずれではありません）' : '今回ははずれ';
+      '<p class="bnote">BPT 残り <b>' + (fresh ? amt(S.bpt.bal) : '…') + '</b><span class="bn2"><br>この BPT で競馬の券を足せます（100 BPT で 1 枚）</span></p><a class="btn tokeiba" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ（BPT で券を足す）</a>' + next);
+    const lead = !v ? '' : x && x.hit > 0 && res.noPay === true ? '的中（上限のため払い戻しなし）' : bk && bk.n && !(bk.bpt > 0) && v.won != null ? '返還（BPT が上限に達しているため増えません）' : bk && bk.n ? '返還 ＋' + amt(bk.bpt) + ' BPT' + (fresh ? '（BPT 残り ' + amt(S.bpt.bal) + '）' : '') : bk && bk.free && !v.n ? '無料券は返還（はずれではありません）' : '今回ははずれ';
     return scr('b-result lose', '<h1>結果</h1>' + resLine(res) + incLine + capLine + (v ? fune(v, { cls: 'small' }) + '<p class="lead">' + lead + '</p>' : '') + next);
   }
   /* 取り消し（2026-11-21: 戻る BPT も 3,000 まで。実際に戻った額を出す。お金の係が票に書く額があればそれ、無ければ枚数 × 100） */
@@ -355,8 +356,8 @@
   function vVoid() {
     // 実際に戻った額は票の voidBack.bpt（ref/boat/opId_の使い方.md。戻し終わる前は無い）
     const v = myVote(), n = v ? Number(v.n) || 0 : 0, real = v && v.voidBack ? numOf(Number(v.voidBack.bpt)) : null;
-    const msg = !n ? 'BPT の券はありませんでした。' : real == null ? 'BPT の券に使った BPT を戻します（持てるのは ' + amt(BPT_CAP) + ' BPT まで）。' : real >= n * 100 && !v.voidBack.cut ? 'BPT の券に使った ' + amt(real) + ' BPT を戻しました。' : '戻した BPT は ' + amt(real) + ' BPT です（持てるのは ' + amt(BPT_CAP) + ' BPT まで）。';
-    return scr('mid b-void', '<h1>このレースは取り消しました</h1><div class="note">' + (v ? msg : 'BPT の券に使った BPT は戻しました（持てるのは ' + amt(BPT_CAP) + ' BPT まで）。') + '</div>');
+    const msg = !n ? 'BPT の券はありませんでした。' : real == null ? 'BPT の券に使った BPT を戻します。' : real >= n * 100 && !v.voidBack.cut ? 'BPT の券に使った ' + amt(real) + ' BPT を戻しました。' : '戻した BPT は ' + amt(real) + ' BPT です（BPT が上限に達したため）。';
+    return scr('mid b-void', '<h1>このレースは取り消しました</h1><div class="note">' + (v ? msg : 'BPT の券に使った BPT は戻しました。') + '</div>');
   }
 
   /* ---------- いまの画面を決める ---------- */
@@ -518,7 +519,7 @@
   function prevLine(race, v) {
     if (race.status === 'void' || race.refunded === true) return '前のレースは取り消し' + (v && v.n > 0 ? '（BPT を戻しました）' : '');
     const x = resOf(v, race); if (!x) return '';
-    if (x.won > 0) { const cp = capInfo(v, race, x); return cp && cp.capped && cp.real === 0 ? '前のレース: 的中（上限 ' + amt(BPT_CAP) + ' BPT のため増えません）' : '前のレース: 的中 ＋' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x.won)) + ' BPT'; }
+    if (x.won > 0) { const cp = capInfo(v, race, x); return cp && cp.capped && cp.real === 0 ? '前のレース: 的中（BPT が上限に達しているため増えません）' : '前のレース: 的中 ＋' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x.won)) + ' BPT'; }
     if (x.hit > 0 && race.result && race.result.noPay === true) return '前のレース: 的中（上限のため払い戻しなし）';
     return '前のレース: ' + (x.back && x.back.bpt > 0 ? '返還 ＋' + amt(x.back.bpt) + ' BPT' : x.back && x.back.n ? '返還' : 'はずれ');
   }
