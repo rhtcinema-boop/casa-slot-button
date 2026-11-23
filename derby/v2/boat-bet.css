@@ -269,3 +269,58 @@ body.boat .tk-amt .pt { font-size: .5em; margin-left: .15em; }
 .scr.b-result .btks { flex: 1 1 auto; min-height: 118px; gap: 12px; }
 .os-s .scr.b-result .btks { min-height: 104px; } .os-xs .scr.b-result .btks { min-height: 92px; }
 body.boat .tkt { text-align: left; } /* ボートの画面は字が中央寄せなので、券の中は競馬の券と同じ左寄せに戻す（店名・選手名の位置） */
+
+/* ---------- 2026-11-23 競馬とつなぐ（オーナー「次は競馬なんだ、次はボートなんだ、が全部分かるように」。v2/boat-bet.js の keibaLine・aftLine・nextB・testTag） ----------
+   「次の競馬 17:00（投票は 16:57 から）」＋［競馬の投票へ］は 1 行の帯（競馬の色＝金）。「このあと」は小さな 1 行（ボート＝水色・競馬＝金）。
+   入らない画面だけ詰める（説明から先に削る。入口のボタンと次の競馬の時刻は残す）: .os-s で帯を低く・待ちの画面の QR の案内を省く → .os-xs で BPT の説明を省く */
+.kline { flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 7px 7px 14px; border-radius: 14px; background: var(--card); border: 1px solid #8a6d2c; color: #fff; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.kline .kl { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2px; text-align: left; line-height: 1.25; }
+.kline .kt { font-size: 14px; font-weight: 700; color: #ffd773; white-space: nowrap; }
+.kline .kt b { margin-left: 2px; font-family: var(--display); font-size: 24px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; }
+.kline small { font-size: 12.5px; color: var(--dim); white-space: nowrap; }
+.kline .kb { flex: none; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border-radius: 12px; background: linear-gradient(180deg, #d9f4ff, #4fb0e2); color: #06233a; font-size: 15px; font-weight: 900; white-space: nowrap; } /* ボタンの色はこのページのほかのボタン（当たりの画面の「競馬の投票へ」）と同じ。競馬の印は枠と見出しの金 */
+.kline.solo { justify-content: center; padding: 0; border: 0; background: none; } .kline.solo .kb { padding: 0 26px; }
+/* 当たりの画面の金のボタン: 下に小さく「次の競馬 17:00（投票は 16:57 から）」（ボタンの高さは変えない） */
+.btn.tokeiba { flex-direction: column; line-height: 1.25; }
+.btn.tokeiba:has(.kn) { padding-top: 5px; padding-bottom: 5px; }
+body.boat .btn.tokeiba .kn { font-size: 12px; font-weight: 700; opacity: .9; white-space: nowrap; } .btn.tokeiba .kn b { font-size: 14px; font-weight: 900; }
+.aft { flex: none; margin: 0; display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 2px 6px; font-size: 13px; font-weight: 700; color: var(--dim); line-height: 1.7; }
+.aft .ak { margin-right: 4px; color: var(--cream); letter-spacing: .08em; }
+.aft .ai { white-space: nowrap; } .aft .ai b { display: inline-block; margin-right: 1px; font-family: var(--display); font-size: 17px; line-height: 1.15; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; }
+.aft .ai.b { color: #8fdcff; } .aft .ai.k { color: #ffd773; } .aft i { font-style: normal; }
+/* 次のボートレースの行の「受付開始まで あと ○:○○」。3 行を真ん中にそろえる（詰めるときも横に並べない＝行がずれて見えた） */
+body.boat .nextr, body.boat .os-s .nextr { display: block; }
+.nextr .nc { display: block; margin-top: 2px; font-size: 14px; font-weight: 700; color: var(--cream); white-space: nowrap; } .nextr .nc b { margin-left: 4px; font-size: 20px; color: #fff; font-variant-numeric: tabular-nums; }
+/* テストレースの札（競馬のスマホと同じ札）: 予想・投票済みは見出しの行の中に小さく（高さを増やさない） */
+.pkh2 .testtag, .vhead .testtag { flex: none; align-self: center; padding: 1px 10px; font-size: 12px; letter-spacing: .04em; white-space: nowrap; }
+.pkh2:has(.testtag) { flex-wrap: wrap; }
+.os-s .kline { padding: 5px 5px 5px 12px; border-radius: 12px; } .os-s .kline .kb { min-height: 40px; padding: 0 12px; font-size: 14px; } .os-s .kline .kt b { font-size: 21px; }
+.os-s .kline.solo { padding: 0; }
+.os-s .b-wait > .sub { display: none; } /* 詰めるときは「投票が始まったら QR を」を省く（投票が始まると大きく出る） */
+.os-s .testtag { padding: 2px 12px; font-size: 12px; }
+.os-xs .b-wait:not(:has(.howcard)) .bptcard p { display: none; } /* いちばん詰めるとき（SE でテストレースの札も出るときなど）: 「あなたの BPT」は数字だけ。レースの無い時間の画面（あそびかたの 3 行つき）は、3 行を省けば入るので説明は残す */
+
+/* ---------- 2026-11-23 スマホでレースを見る（v2/boat-bet.js の watchBtn → v2/boat-watch.html） ----------
+   レース中の画面のいちばん下に「▶ レースを見る」（競馬のスマホと同じボタン）。ボタンは縮めない（舟券の欄のほうが縮み、票が多いときは欄の中だけ動く）。
+   入らない画面は小さい字「テレビと同じ画面」を省く（bet.css の .os-s .watchbtn small）。横向きは下の「結果の前の舟券」の 2 列（左に舟券・右に見出しとボタン） */
+.scr.b-race > .watchbtn { flex: none; }
+@media (max-width: 340px) { body.boat .top .race span { padding: 4px 8px; font-size: 12px; } body.boat .top .race span b { font-size: 15px; } } /* 幅 320px のスマホ: 上の帯の「受付開始まで あと 0:58」（2026-11-23 言い方をそろえて長くなった）が店名に重ならないよう、札を少し小さく */
+
+/* ---------- 2026-11-23 結果の前の舟券（オーナー決定「ボートを全部青い紙に」。v2/boat-bet.js の papers → paper。投票後・レース中・結果を待っている画面） ----------
+   紙は結果の画面と同じ（上の body.boat .tkt）。券の欄（.btks.pre）は残りの高さを使い、1 枚目の券はいつもまるごと見える大きさに（高さが足りない画面は幅を縮める。紙の割合 574:360）。
+   2 枚目からは欄の中だけ動く（競馬の投票済みの 2 枚目と同じ）。横向き（高さ 500px まで）は 2 列: 左に舟券・右に見出し・説明・ボタン */
+.btks.pre { flex: 1 1 0; min-height: 150px; container-type: size; gap: 12px; }
+.btks.pre .mine.tk .tkt { width: min(100%, calc((100cqh - 26px) * 1.594)); margin: 0 auto; }
+.os-s .btks.pre .mine.tk .tkt { width: min(100%, calc((100cqh - 22px) * 1.594)); }
+@media (orientation: landscape) and (max-height: 500px) {
+  body.boat main:has(> .scr.b-voted), body.boat main:has(> .scr.b-race) { max-width: 960px; padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); } /* 予想の画面と同じく横は幅を広く使う */
+  .scr.b-voted, .scr.b-race { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto auto auto minmax(0, 1fr); column-gap: 18px; row-gap: 8px; }
+  .scr.b-voted > *, .scr.b-race > * { grid-column: 2; min-width: 0; margin-top: 0; }
+  .scr.b-voted > .btks, .scr.b-race > .btks { grid-column: 1; grid-row: 1 / -1; min-height: 0; }
+  .scr.b-voted > .vhead, .scr.b-race > .testtag { grid-row: 2; }
+  .scr.b-voted > .thx, .scr.b-race > h1 { grid-row: 3; }
+  .scr.b-voted > .sub, .scr.b-race > .sub { grid-row: 4; }
+  .scr.b-voted > .btnrow, .scr.b-race > .watchbtn { grid-row: 5; }
+  .scr.b-race > .testtag { justify-self: center; }
+  .scr.b-voted > .thx { margin: 0; }
+}
