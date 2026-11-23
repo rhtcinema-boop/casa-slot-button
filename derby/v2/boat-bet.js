@@ -105,6 +105,50 @@
   }
 
   /* 舟券の形（本物の券の並び。研究 26 の「casa の画面に写すときの要点」1〜6）。tickets: [{ k: 'a-b', free, n }] */
+  /* 確定のあとの舟券（2026-11-23 オーナー「ボートも、確定時に競馬の馬券みたいな紙を。ほぼ同じデザインで、色は青っぽく」）:
+     競馬の馬券（v2/ticket.js・ticket.css。本物の券と同じ割合の紙）と同じ組みで、色と地紋だけ青（boat-bet.css の body.boat .tkt）。見た目の決まり ticket.css と、枠に入らない字を縮める道具は v2/ticket.js を読んで使う（boat.html）。
+     組番ごとに 1 枚（同じ組番に重ねた券は「×N枚」）。当たりの券を先頭に、赤い「的中」の判子・「当選額」・「確定の倍率」。はずれは小さな「はずれ」の札と額に線、返還は「返還」の札 */
+  const tkHash = (s) => { let h = 2166136261; for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+  const tkDigits = (seed, n) => { let out = '', h = tkHash(seed); while (out.length < n) { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; out += String(h % 10); } return out; };
+  function tkQr(seed) { // QR 風の飾り（読めない。券ごとに模様が変わるだけ。競馬の券と同じ）
+    const N = 9; let rects = '', h = tkHash(seed);
+    const finder = (x, y) => '<rect x="' + x + '" y="' + y + '" width="3" height="3" fill="none" stroke="currentColor" stroke-width=".9"/><rect x="' + (x + 1) + '" y="' + (y + 1) + '" width="1" height="1"/>';
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { if ((x < 4 && y < 4) || (x > 4 && y < 4) || (x < 4 && y > 4)) continue; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; if (h & 1) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1"/>'; }
+    return '<svg class="qr" viewBox="-.5 -.5 10 10" aria-hidden="true" fill="currentColor">' + finder(0, 0) + finder(6, 0) + finder(0, 6) + rects + '</svg>';
+  }
+  function paper(v, x, r, i) {
+    const res = r.result, p = x.k.split('-').map(Number), capB = !!(res.bptBack === true && !x.free), hit = !!(res.combo === x.k && !capB), inc = res.incident, back = capB || !!(inc && inc.refund && p.indexOf(inc.boat) >= 0), miss = !hit && !back;
+    const oRaw = hit && Number(res.odds) > 0 ? Number(res.odds) : r.exacta ? Number(r.exacta[x.k]) : 0, o = oRaw > 0 ? (Math.round(oRaw * 10) / 10).toFixed(1) : '';
+    const pay = hit ? (res.noPay === true ? 0 : x.n * (Number(res.pay) || 0)) : back ? (x.free ? 0 : x.n * 100) : payOf(x.k) * x.n, t = amt(pay);
+    const d = new Date(r.at + 9 * 3600000 - 5 * 3600000), ymd = d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日', p2 = (n) => ('0' + n).slice(-2);
+    const store = storeName(v.storeId || STORE), b1 = boatOf(p[0]), b2 = boatOf(p[1]), issued = [v.updatedAt, v.votedAt].map(Number).find((q) => isFinite(q) && q > 0);
+    const seed = (v.id || r.id) + '|' + x.k + '|' + (x.free ? 'f' : 'b'), combo = '1着 ' + (p[0] + 1) + '番 → 2着 ' + (p[1] + 1) + '番';
+    const ser = String(d.getUTCFullYear()).slice(2) + p2(d.getUTCMonth() + 1) + p2(d.getUTCDate()) + (p[0] + 1) + (p[1] + 1) + tkDigits(seed, 5) + ' ' + tkDigits(seed + 'a', 13) + ' ' + tkDigits(seed + 'b', 8);
+    const nm = (b, i2, lb) => '<span class="tn"><span class="tl">' + lb + '</span>' + waku(i2, 'sm') + '<span class="nmx" data-fit="7">' + esc(b.name) + '</span></span>';
+    const stamp = hit ? '<div class="tk-hit" role="img" aria-label="的中"><span class="tk-hit-in"><i>casa BOAT</i><b>的中</b><i>' + esc(ymd) + '</i></span></div>' : '';
+    return '<div class="mine tk btk' + (hit ? ' hit' : miss ? ' miss' : ' back') + '"><p class="mk">' + (hit ? '的中した舟券' : i ? '舟券' : 'あなたの舟券') +
+      (hit ? '<span class="vn bt">的中</span>' : back ? '<span class="vn">返還</span>' : '<span class="vn ms">はずれ</span>') + (x.free ? '<span class="vn">無料</span>' : '') + (x.n > 1 ? '<span class="vn xn">×' + x.n + '枚</span>' : '') + '</p>' +
+      '<div class="tkt"><div class="tkin">' +
+        '<div class="tk-l"><div class="tk-date">' + esc(ymd) + '</div><div class="tk-store" data-fit="14">' + esc(store) + '</div>' +
+          '<div class="tk-rno tm"><b>' + esc(hm(r.at)) + '</b><span>レース</span></div>' +
+          '<div class="tk-qrs">' + tkQr(seed) + tkQr(seed + 'q') + '</div>' +
+          '<div class="tk-race"><span class="cb" data-fit="7">' + (hit ? '2連単 的中 ' : '') + combo + '</span></div>' +
+          '<div class="tk-brand"><b>casa BOAT</b><span data-fit="7">' + esc(store) + '</span></div></div>' +
+        '<div class="tk-band" aria-hidden="true"><i>EXACTA</i><b>2連単</b><i>EXACTA</i></div>' +
+        '<div class="tk-r"><span class="tk-free">舟券<small>（' + (x.free ? '無料' : 'BPT') + '）</small></span>' +
+          '<div class="tk-row r1"><span class="bx">' + (p[0] + 1) + '</span><i>-</i><span class="bx">' + (p[1] + 1) + '</span><span class="tk-pts"><span class="tk-ifw">' + (hit ? '当選額' : back ? '返還' : '当たれば') + '</span><span class="tk-st" aria-hidden="true">★★★</span>' +
+            '<span class="tk-amt' + (t.length >= 7 ? ' l7' : t.length >= 6 ? ' l6' : '') + '">' + t + '<small class="pt">BPT</small></span></span></div>' +
+          '<div class="tk-row r2"><div class="tk-names">' + nm(b1, p[0], '1着') + nm(b2, p[1], '2着') + '</div><span class="tk-odd2"><small>' + (hit ? '確定の倍率' : '倍率') + '</small><b>' + (o || '—') + '<small>倍</small></b></span>' + stamp + '</div></div>' +
+        '<div class="tk-stub"><span class="tk-who"><span class="nw tk-nick" data-fit="9">' + esc(v.nick || '') + '</span></span>' + (issued ? '<span class="tk-iss">発行 ' + esc(hm(issued)) + '</span>' : '') + '</div>' +
+        '<div class="tk-ser" aria-hidden="true">' + esc(ser) + '</div>' +
+      '</div></div></div>';
+  }
+  function papers(v) { // 当たり → 返還 → はずれ の順。欄の中だけ動く（.fx）
+    const r = S.race, res = r && r.result; if (!v || !res) return v ? fune(v, { cls: 'small' }) : '';
+    const rank = (x) => { const p = x.k.split('-').map(Number), capB = res.bptBack === true && !x.free, inc = res.incident; return res.combo === x.k && !capB ? 0 : capB || (inc && inc.refund && p.indexOf(inc.boat) >= 0) ? 1 : 2; };
+    const T = ticketsOfMine(v).map((x, i) => ({ x, i, k: rank(x) })).sort((a, b) => a.k - b.k || a.i - b.i);
+    return '<div class="fx btks" data-scrollarea>' + T.map((q, i) => paper(v, q.x, r, i)).join('') + '</div>';
+  }
   function ticketsOfMine(v) {
     if (!v) return [];
     const out = [{ k: v.first + '-' + v.second, free: true, n: 1 }];
@@ -216,7 +260,7 @@
     return '<div class="bptcard"><div class="bh"><span>あなたの BPT</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります。競馬の「追加の券」に 1 枚 100 BPT で使えます（毎週月曜の朝 5 時にリセット）</p></div>';
   }
   function howCard() {
-    return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>今日の競馬に参加したスマホなら、ボートも無料で 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で券を何枚でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし）</span></div></div>';
+    return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>テレビの QR を読めば、だれでも 1 レース 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で券を何枚でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし）</span></div></div>';
   }
   const LOGO_BIG = '<h1 class="logo-h1"><img src="../art/logo-boat/lockup-boat.png" width="280" height="93" alt="casa BOAT" draggable="false"></h1>'; // 2026-11-23 オーナー決定: casa BOAT のロゴ（art/logo-boat。競馬の lockup と同じ作りの絵）。読み込み中の画面（競馬の R.boot と同じ扱い）
   const bootMsg = () => '<p class="lead" role="status" data-wrap>' + (S.slow && !S.gotLive ? '通信に時間がかかっています。自動でつなぎ直しています' : '読み込み中…') + '</p>';
@@ -254,7 +298,7 @@
   /* 初めての人への説明（2026-11-20 オーナー「競馬の初めての人への案内と同じ形で、絵つきで 3〜4 枚めくる」）: v2/intro.js（競馬）と同じ言い方・同じ絵の作り。4 枚をめくる。
      1 回だけ出す（casa.boat.intro）。あとで見返す入口は待ちの画面などの「あそびかた」（S.introAgain）。文言は ref/boat/説明の文言_2026-11-20.md と同じ */
   const INTRO = [
-    { h: '無料で 1 票', p: '今日の競馬に会計番号で参加したスマホなら、ボートも無料で 1 票。',
+    { h: '無料で 1 票', p: 'テレビの QR をスマホで読むだけ。1 レースに 1 票、だれでも無料です。', /* 2026-11-23 オーナー決定: その日の競馬に参加していなくても投票できる */
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><ellipse cx="46" cy="66" rx="30" ry="6" class="ln"/><g transform="translate(46 36)"><circle r="28" class="b2"/><circle r="23" class="b1"/><circle r="17" class="cr"/><text y="5" text-anchor="middle" font-size="13" font-weight="900" fill="#06233a" font-family="inherit">FREE</text></g></svg>' },
     { h: '1着と2着を、順番に当てる', p: '6 艇から、1着と2着になる艇を順番に選びます（2連単）。',
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><rect x="2" y="12" width="88" height="54" rx="5" class="pp"/><rect x="2" y="12" width="8" height="54" rx="2" class="b1"/><text x="18" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">1着</text><text x="60" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">2着</text><rect x="18" y="32" width="24" height="24" rx="3" fill="#f4f4f4" stroke="#14203a"/><text x="30" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#111" font-family="inherit">1</text><path d="M46 44 h8 m-3 -4 l4 4 l-4 4" fill="none" stroke="#14203a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="60" y="32" width="24" height="24" rx="3" fill="#d6332b"/><text x="72" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#fff" font-family="inherit">3</text></svg>' },
@@ -342,10 +386,10 @@
     const zero = !!(cp && cp.capped && cp.real === 0);
     const gainH = zero ? '<p class="hitmsg">的中しました</p><div class="gain zero"><em>BPT が上限に達しているため増えません</em></div>'
       : '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x.won)) + '</b><small>BPT</small>' + (cp && cp.capped ? '<em>上限で止まりました</em>' : '') + '</div>';
-    if (won) return scr('b-result win', gainH + resLine(res) + incLine + capLine + fune(v, { cls: 'small' }) +
+    if (won) return scr('b-result win', gainH + resLine(res) + incLine + capLine + papers(v) +
       '<p class="bnote">BPT 残り <b>' + (fresh ? amt(S.bpt.bal) : '…') + '</b><span class="bn2"><br>この BPT で競馬の券を足せます（100 BPT で 1 枚）</span></p><a class="btn tokeiba" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ（BPT で券を足す）</a>' + next);
     const lead = !v ? '' : x && x.hit > 0 && res.noPay === true ? '的中（上限のため払い戻しなし）' : bk && bk.n && !(bk.bpt > 0) && v.won != null ? '返還（BPT が上限に達しているため増えません）' : bk && bk.n ? '返還 ＋' + amt(bk.bpt) + ' BPT' + (fresh ? '（BPT 残り ' + amt(S.bpt.bal) + '）' : '') : bk && bk.free && !v.n ? '無料券は返還（はずれではありません）' : '今回ははずれ';
-    return scr('b-result lose', '<h1>結果</h1>' + resLine(res) + incLine + capLine + (v ? fune(v, { cls: 'small' }) + '<p class="lead">' + lead + '</p>' : '') + next);
+    return scr('b-result lose', '<h1>結果</h1>' + resLine(res) + incLine + capLine + (v ? papers(v) + '<p class="lead">' + lead + '</p>' : '') + next);
   }
   /* 取り消し（2026-11-21: 戻る BPT も 3,000 まで。実際に戻った額を出す。お金の係が票に書く額があればそれ、無ければ枚数 × 100） */
   function vPrev() { // 前のレースの結果（「前の結果を見る」。H4）: 今の画面の中身を前のレースに一時的に入れ替えて、結果画面と同じ作りで出す
@@ -421,6 +465,7 @@
     Array.prototype.forEach.call(m.querySelectorAll('.fx'), (e, i) => { if (fxs[i]) e.scrollTop = fxs[i]; });
     $('app').classList.remove('booting');
     fitLevel();
+    if (window.BetTicketFit) { try { BetTicketFit(m); } catch (e) { /* 字の大きさの合わせだけ */ } } // 確定のあとの舟券（v2/ticket.js の道具）
   }
   // 場面の変わり目（投票の始まり・締切・映像・発表・終わり）ちょうどに描き直す（1 秒ごとの描き直しを待たない。2026-11-20 B3: 締切のあと 1 秒ほど「投票する」が押せた）
   function armEdge() {
