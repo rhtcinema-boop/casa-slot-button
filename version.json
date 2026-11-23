@@ -1,9 +1,9 @@
 {
- "v": "b226",
+ "v": "b227",
  "files": [
   {
    "path": "index.html",
-   "sha256": "e9c010d432db42f7710b026e165bf474854bd158c1469e3a55f7c2b3a65fc39e"
+   "sha256": "6552657c16b2376dbdf7d7f412a0dc296e18fe4f0c55af1575a2d3ac0787c771"
   },
   {
    "path": "manifest.webmanifest",
@@ -303,7 +303,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "e909662aee5c1ca8ca2e1b3cd7c3e3148f599ad08232c17352ca4e8e09a99bda"
+   "sha256": "f452113870ea86bd62a015f929be4813d8a704fa8218f2470690d637e4714789"
   },
   {
    "path": "derby/js/audio.js",
@@ -395,11 +395,11 @@
   },
   {
    "path": "derby/v2/boat-core.js",
-   "sha256": "021e12b7e0ab0a6cdb6f3f781a5e776912b257aa59030ab56ab988ab24eac2d5"
+   "sha256": "4d5db352a50de4922edf5b9fc1e2a4d6016c99d502f1f3aa673ca28f0852fd77"
   },
   {
    "path": "derby/v2/boat-firestore.js",
-   "sha256": "bcfeecbad4efe4faa9fd9ea8c4543c9ad1c87d84a7ee3d3d631b162de1bf59e6"
+   "sha256": "61ccb9946a3d597d5dedf6771bd51fdc5d71df658e3d0198338086417fa97891"
   },
   {
    "path": "derby/v2/client-firestore.js",
@@ -439,7 +439,7 @@
   },
   {
    "path": "derby/v2/tv-boat.js",
-   "sha256": "5c4f0eaccbd748825160454a0ca2e3d881f71d0921a4c8c37b3a01efe74bd975"
+   "sha256": "1c30857608834b058f5dd08dc37ebd2648d53dfd0eaf5464e54100de53404c89"
   },
   {
    "path": "derby/v2/tv.css",
