@@ -384,10 +384,12 @@
       { const ns = Boat.nextsOf(races, t, cfg, 3); if (ns.length) live.nexts = ns; } // このあとのボートレース 3 件（2026-11-23。テレビとスマホの「このあと」の帯）
       if (cfg.tvq === 'low') live.q = 'low'; // テレビの映像の画質（軽いときだけ書く。2026-11-22。v2/tv-boat.js が読む）
       if (cfg.tvqs && Object.keys(cfg.tvqs).length) live.qs = cfg.tvqs; // 店ごとの画質（管理画面のボートの「テレビ」。その店の指定があれば q より先） // まだ作っていない次のレース（時刻表から）
-      const sig = stable(live);
+      /* last（前のレースの結果の軽い形。2026-11-23。Boat.liveOf）は「変わったか」の比べに入れない: last だけが変わっても書かない（書き込みも、見張っている全員の読み取りも増やさない）。
+         last が変わるのは、ふつう race が変わるのと同じとき（結果の画面が終わった所）なので、そのときの書き込みに一緒に乗る */
+      const sig = stable(Object.assign({}, live, { last: null }));
       if (sig === T.liveSig) return false;
       if (!T.liveSig) { // 進行役になって最初の 1 回（2026-11-20）: いま置いてある中身を 1 回読み、同じなら書かない（書くと、見張っているスマホ・テレビの全員がもう 1 回読むことになる）
-        try { const cur = strip(data(await doc(COLB.live, 'all').get())); if (cur) { delete cur.updatedAt; if (stable(cur) === sig) { T.liveSig = sig; return false; } } } catch (e) { /* 読めなければ書く */ }
+        try { const cur = strip(data(await doc(COLB.live, 'all').get())); if (cur) { delete cur.updatedAt; cur.last = null; if (stable(cur) === sig) { T.liveSig = sig; return false; } } } catch (e) { /* 読めなければ書く */ }
       }
       await doc(COLB.live, 'all').set(Object.assign({}, live, { updatedAt: t }));
       T.liveSig = sig; return true;
