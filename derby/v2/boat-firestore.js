@@ -125,8 +125,8 @@
       let cands = null;
       if (!old) {
         if (!Boat.CODE_RE.test(String(o.code || ''))) throw E(403, 'bad_code', 'テレビの QR を読み直してください');
-        cands = derbyCands(o.dvs, r.day);
-        if (!cands.length) throw E(403, 'no_derby', '今日の競馬に会計番号で参加したスマホだけ投票できます');
+        cands = derbyCands(o.dvs, r.day); // 2026-11-23 オーナー決定: その日の競馬に参加していなくても投票できる（競馬の票があれば、その店の票として出す。無ければ下で「競馬の票なし」で出す）
+        if (!cands.length && !/^[a-z0-9_-]{1,32}$/.test(String(store || ''))) throw E(403, 'bad_code', 'テレビの QR を読み直してください'); // 店が分からないページ（QR からでない）
       }
       let w = null;
       if (add.length) {
@@ -160,7 +160,13 @@
             // この競馬の票は使えない（スタッフが番号を空けた・別の日）→ 次の候補
           }
         }
-        if (!nv) { if (last && cands.some((x) => dvMemo[x.vid] && dvMemo[x.vid].day === r.day)) throw mapVoteErr(last); throw E(403, 'no_derby', '今日の競馬に会計番号で参加したスマホだけ投票できます'); }
+        /* 2026-11-23 オーナー決定: その日の競馬に参加していなくても投票できる: 競馬の票が無い・使えない（別の日・スタッフが番号を空けた・人の票）ときは、競馬の票なし（dv ＝ 空）で出す。店はこのページの店（テレビの QR の店）。
+           合言葉・締切・BPT が理由で断られていたときは、この出し直しも同じ理由で断られる（そのときの知らせで返す） */
+        if (!nv) {
+          if (!/^[a-z0-9_-]{1,32}$/.test(String(store || ''))) throw E(403, 'bad_code', 'テレビの QR を読み直してください');
+          try { nv = await write('', store); }
+          catch (e) { const y = await landed(); if (y) return sameView(y.v, y.st); throw mapVoteErr(e); }
+        }
       }
       if (add.length) { w = Object.assign({}, w, { spent: (Number(w.spent) || 0) + add.length * Boat.STAKE, buse: vid }); bptNote(w); }
       else w = await bptDoc(false);
@@ -375,6 +381,7 @@
     async function publish(races, cfg, t) {
       const live = Boat.liveOf(races, t);
       if (!live.next && cfg.rules.length) { const e = Boat.schedule(t, cfg.rules, cfg.startAt).find((x) => x.at - cfg.voteSec * 1000 > t && !Boat.quietSpan(x.at, cfg)); if (e) live.next = { id: e.id, at: e.at, openAt: e.at - cfg.voteSec * 1000 }; }
+      { const ns = Boat.nextsOf(races, t, cfg, 3); if (ns.length) live.nexts = ns; } // このあとのボートレース 3 件（2026-11-23。テレビとスマホの「このあと」の帯）
       if (cfg.tvq === 'low') live.q = 'low'; // テレビの映像の画質（軽いときだけ書く。2026-11-22。v2/tv-boat.js が読む）
       if (cfg.tvqs && Object.keys(cfg.tvqs).length) live.qs = cfg.tvqs; // 店ごとの画質（管理画面のボートの「テレビ」。その店の指定があれば q より先） // まだ作っていない次のレース（時刻表から）
       const sig = stable(live);
