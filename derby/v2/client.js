@@ -102,7 +102,7 @@
      親の部品（client-firestore.js・core.js）をそのまま使う（SDK を 2 回読まない・2 つ目の匿名ログインを作らない・親のログインを入れ替えない）。時計も親のもの。
      親が無い（アドレスを直接開いた）ときは、このページで SDK を読み、前のログイン（同じブラウザの投票ページの匿名ログイン）があるときだけ見られる */
   function watchParent() {
-    try { const P = window.parent; if (!P || P === window || !P.BETWATCH || !P.DerbyFirestore || !P.DerbyFirestore.connect || !P.DerbyCore) return null; void P.location.href; return P; } catch (e) { return null; } // 親が投票ページ（v2/bet.js の BETWATCH）のときだけ。別のサイトの窓（読めない）は使わない
+    try { const P = window.parent; if (!P || P === window || !(P.BETWATCH || P.BOATWATCH) || !P.DerbyFirestore || !P.DerbyFirestore.connect || !P.DerbyCore) return null; void P.location.href; return P; } catch (e) { return null; } // 親が投票ページ（v2/bet.js の BETWATCH）のときだけ。別のサイトの窓（読めない）は使わない
   }
   function createFirestore(opt, cfg) {
     let implP = null, impl = null; const adm = {};
