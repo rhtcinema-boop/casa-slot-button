@@ -49,7 +49,7 @@
      スタート展示は本番とは別の種で走らせる短い走り（当たりの決め方には一切つながない＝本番の結果の手がかりにならない）。 */
   const stage = $('stage');
   const ov = document.createElement('div'); ov.id = 'boatOv'; ov.hidden = true;
-  ov.innerHTML = '<div class="bo-top"><span class="bo-pill st" id="boPill"></span><span class="bo-pill tm" id="boTime"></span><span class="bo-pill pr" id="boPromo">無料で 1 票</span><span class="bo-pill ct" id="boCnt" hidden></span><b class="bo-logo">casa <i>BOAT</i></b><span class="bo-pill sn" id="boStore"></span></div>' +
+  ov.innerHTML = '<div class="bo-top"><span class="bo-pill st" id="boPill"></span><span class="bo-pill tm" id="boTime"></span><span class="bo-pill pr" id="boPromo">無料で 1 票</span><span class="bo-pill ct" id="boCnt" hidden></span><b class="bo-logo"><img src="' + ROOT + 'art/logo-boat/lockup-boat.png" width="168" height="56" alt="casa BOAT" draggable="false" onerror="this.outerHTML=\'casa <i>BOAT</i>\'"></b><span class="bo-pill sn" id="boStore"></span></div>' +
     '<section id="boVote" class="bo-vote" hidden>' +
       '<div class="bo-panel bo-vid" id="boVid"><div class="bo-vfit" id="boVfit"></div><div class="bo-st" id="boSt" hidden></div><div class="bo-how" id="boHow" hidden></div></div>' +
       '<div class="bo-panel bo-card2" id="boCardP"><h3>出走表</h3><div id="boCardT"></div></div>' +
@@ -65,7 +65,9 @@
      斜めの帯 3 枚が左から走って画面を覆う → 覆い切った所で中身を入れ替える → 右へ抜ける（行き先のロゴを真ん中に。ボートへ＝水色と紺、競馬へ＝金と黒）。動かすのは transform と opacity だけ（Fire TV でも軽い）。
      覆い切るまで中身は前のまま（競馬の 3D の止め・音の止めは今までどおりすぐ）。幕が閉まる途中で向きが変わったら、閉まり切った所でそのときの向きに合わせる。BOATTV.stop と ?boatsw=0 は幕なし */
   const sw = document.createElement('div'); sw.id = 'boatSw'; sw.hidden = true; sw.setAttribute('aria-hidden', 'true');
-  sw.innerHTML = '<i class="sw-a"></i><i class="sw-b"></i><i class="sw-c"></i><b class="sw-logo">casa <em id="boSwNm"></em></b>';
+  sw.innerHTML = '<i class="sw-a"></i><i class="sw-b"></i><i class="sw-c"></i><b class="sw-logo"><span class="sw-tx">casa <em id="boSwNm"></em></span>' + // 2026-11-23 オーナー決定: casa BOAT のロゴ（art/logo-boat。競馬の lockup と同じ作りの絵）。幕のロゴも絵に（読めたときだけ。読めなければ字のまま）
+    '<img class="sw-lb" alt="" draggable="false" src="' + ROOT + 'art/logo-boat/lockup-boat.png"><img class="sw-ld" alt="" draggable="false" src="' + ROOT + 'art/logo-3d/B/lockup-3d-B-casaWhite.svg"></b>';
+  [['.sw-lb', 'has-b'], ['.sw-ld', 'has-d']].forEach(([q, c]) => { const im = sw.querySelector(q); if (!im) return; const ok = () => { if (im.naturalWidth > 0) sw.dataset[c === 'has-b' ? 'lb' : 'ld'] = '1'; }; if (im.complete) ok(); else im.addEventListener('load', ok); });
   if (stage) stage.appendChild(sw);
   const SW = { ph: 0, t: 0, n: 0 }, SW_IN = 640, SW_HOLD = 320, SW_OUT = 640, NOSW = /[?&]boatsw=0\b/.test(location.search);
   const swFace = () => { const b = BOATTV.active; sw.classList.toggle('to-boat', b); sw.classList.toggle('to-derby', !b); const e = $('boSwNm'); if (e && e.textContent !== (b ? 'BOAT' : 'DERBY')) e.textContent = b ? 'BOAT' : 'DERBY'; };
@@ -195,9 +197,9 @@
     '<h4>casa BOAT のあそびかた</h4><div class="hw"><b>1</b><div><em>テレビの QR をスマホで読む</em><small>今日の競馬に会計番号で参加したスマホなら、無料で 1 票</small></div></div>' +
       '<div class="hw"><b>2</b><div><em>1着と2着を、順番に当てる</em><small>6 艇から 2連単。BPT 100 でボートの券も足せます</small></div></div>' +
       '<div class="hw"><b>3</b><div><em>当たりは BPT</em><small>100 BPT × 倍率。スマホに自動で入ります</small></div></div>',
-    // 2026-11-20 オーナー決定: BPT は 3,000 を超えて貯められない（当たりで超える分は 3,000 で止まる）→ 1 行足した。数は bptMax()（下）
+    // 2026-11-20 オーナー決定: BPT は 3,000 を超えて貯められない（当たりで超える分は 3,000 で止まる）。2026-11-23 オーナー決定: この数字は裏の設定なので画面には出さない（足していた 1 行を外した）
     () => '<h4>BPT は競馬の券に使えます</h4><div class="big"><span class="c">100<small>BPT</small></span><span class="ar">▶</span><span class="t">競馬の券 1 枚</span></div>' +
-      '<p class="l">無料の券と合わせて 1 レース 5 枚まで</p><p class="l">貯められる BPT は ' + amt(bptMax()) + ' まで</p><p class="l">BPT は毎週月曜の朝 5 時にリセット</p>',
+      '<p class="l">無料の券と合わせて 1 レース 5 枚まで</p><p class="l">BPT は毎週月曜の朝 5 時にリセット</p>',
   ], HOW_SEC = 6;
   const howHtml = (i) => (typeof HOW[i] === 'function' ? HOW[i]() : HOW[i]);
   /* BPT の持ち上限（2026-11-20 オーナー決定「3,000 まで」）。数の置き場は v2/core.js の BPT_MAX（お金の係）。読めなければ 3,000 */
