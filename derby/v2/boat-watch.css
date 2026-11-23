@@ -1,0 +1,110 @@
+/* casa BOAT スマホの「レースを見る」（v2/boat-watch.html・boat-watch.js。2026-11-23）。
+   部品の見た目（上の帯 .wtop・ボタン .wb・自分の予想 .wv・番号の札 .wk・順位の表 .word・盛り上げ .hb・結果 .wr・大きいボタン .wbig・見られないとき .wlock・結果の知らせ .wcele・縦向きの案内 .wrot）と、
+   縦向き（html.w-port）・横向き（html.w-bot / w-side）の置き方は、競馬の v2/watch.css をそのまま使う（先に読む）。ここはボートだけの分:
+     映像の枠（#bwStage。位置と大きさは boat-watch.js の fit が --wx・--wy・--ww・--wh・--ws に入れる。競馬はテレビの画面 #stage を tv.js が置く）
+     場面の札と時計の行（.wst。競馬はテレビの画面の中にあるので要らない）
+     iOS 26 の Safari の下の浮いたバーの分（--sbar）を空ける
+     横向きのスマホ（w-bot）: 戻る・表示の切り替えのボタンを下の帯に置く（競馬は映像の右上に重ねるが、ボートの映像は右上に TIME の札があるので重ねない） */
+html.bw, html.bw body { margin: 0; height: 100%; overflow: hidden; background: #0b101b; color: #fff; font-family: 'Noto Sans JP', system-ui, -apple-system, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+html.bw button { font: inherit; cursor: pointer; }
+html.bw [hidden] { display: none !important; }
+
+/* ---------- 映像の枠 ---------- */
+#bwStage { position: fixed; left: var(--wx, 0px); top: var(--wy, 40px); width: var(--ww, 100vw); height: var(--wh, 48vw); overflow: hidden; background: #0b1626; z-index: 1; }
+#bwStage.w-locked { visibility: hidden; }
+#bwFit { position: absolute; left: 0; top: 0; width: 1250px; height: 600px; transform-origin: 0 0; transform: scale(var(--ws, .3)); } /* 絵は 1250×600 で描いて縮める（boat-watch.js の IN_W・IN_H と同じ数） */
+#bwGl, #bwHud { position: absolute; left: 0; top: 0; width: 1250px; height: 600px; display: block; }
+#bwHud { pointer-events: none; }
+#bwMap { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#bwHold { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; pointer-events: none; }
+#bwHold:empty { display: none; }
+#bwHold b { padding: 8px 14px; border-radius: 12px; background: rgba(8, 14, 26, .78); font-size: 15px; font-weight: 900; line-height: 1.5; letter-spacing: .02em; }
+html.bw-map #bwHold { place-items: end center; }
+html.bw-map #bwHold b { font-size: 13px; padding: 5px 12px; margin-bottom: 4px; }
+
+/* ---------- 場面の札と時計 ---------- */
+.wst { display: flex; align-items: center; gap: 8px; min-height: 24px; flex: none; }
+.wst .tagw { display: inline-flex; flex: none; }
+.wst .tag { padding: 3px 10px; border-radius: 999px; background: #2459c9; font-size: 13px; font-weight: 900; white-space: nowrap; }
+.wst .tag.live { background: #d6332b; } .wst .tag.hot { background: #d6332b; } .wst .tag.res { background: #ffd84a; color: #3a2400; }
+.wst .ttl { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700; color: #dfe7f3; white-space: nowrap; }
+.wst .ttl small { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, .16); font-size: 11px; }
+.wst .clk { flex: none; margin-left: auto; font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wst .clk small { font-size: 11px; color: #b9c6da; margin-right: 4px; font-weight: 700; }
+.wst .clk:empty { display: none; }
+
+/* ---------- 部品の足し分 ---------- */
+.wv .cb .xn { margin-left: 2px; font-size: 13px; font-weight: 900; color: #fff; }
+.wv.back { opacity: .9; }
+.word .r.out { opacity: .6; }
+.wr .bk, .wr .cp { flex-basis: 100%; font-size: 12px; font-weight: 700; }
+.word .r { padding: 3px 5px; gap: 4px; }
+.word .r .nm { font-size: 11px; text-overflow: clip; letter-spacing: -.02em; }
+.wk { color: #111; } /* 色は艇ごとに入れる（1 白・2 黒・3 赤・4 青・5 黄・6 緑） */
+.word .r .wk, .wv .wk { box-shadow: 0 0 0 1px rgba(255, 255, 255, .35), 0 0 0 1px rgba(0, 0, 0, .35) inset; }
+
+/* ---------- 縦向き ---------- */
+html.bw.w-port .wmine { bottom: calc(56px + var(--sbar, 0px) + env(safe-area-inset-bottom)); overflow: hidden; }
+html.bw.w-port .wrot { bottom: calc(8px + var(--sbar, 0px) + env(safe-area-inset-bottom)); }
+html.bw.w-port .wl { overflow: hidden auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; margin: -5px; padding: 5px; } /* まわりの 5px は、当たりの形の光と動きが切れないための余白 */
+html.bw .wv.hot { animation-name: bwPulse; } /* 競馬より小さく動かす（幅いっぱいの行が画面の外へ出ない） */
+@keyframes bwPulse { from { transform: scale(1); } to { transform: scale(1.018); } }
+html.bw.w-port .wl::-webkit-scrollbar { display: none; }
+html.bw.w-port .wl .wv .cb .xn { font-size: 20px; }
+html.bw.w-port .wl[data-n="2"] .wv .cb .xn { font-size: 16px; }
+html.bw.w-port .wres .wbig { flex: none; }
+html.bw.w-port .wres { flex: none; }
+/* 予想が 3 行（3 つ・または 2 つ＋ほか n 件）のとき、背の低い画面で 2 行のとき: 1 行ぶんを「組番と当たれば」「いま○位」の 2 段に詰める（競馬は 3 段で、ボートは BPT の字が長く入り切らない） */
+html.bw.w-port .wl[data-n="3"] .wv, html.bw.bw-short.w-port .wl[data-n="2"] .wv { flex: 1 1 auto; max-height: 92px; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; align-content: center; gap: 1px 8px; padding: 5px 8px; overflow: visible; border-radius: 12px; }
+html.bw.w-port .wl[data-n="3"] .wv .k, html.bw.bw-short.w-port .wl[data-n="2"] .wv .k { font-size: 12px; }
+html.bw.w-port .wl[data-n="3"] .wv .cb, html.bw.bw-short.w-port .wl[data-n="2"] .wv .cb { gap: 4px; }
+html.bw.w-port .wl[data-n="3"] .wv .cb small, html.bw.bw-short.w-port .wl[data-n="2"] .wv .cb small { font-size: 11px; }
+html.bw.w-port .wl[data-n="3"] .wv .cb em, html.bw.bw-short.w-port .wl[data-n="2"] .wv .cb em { font-size: 16px; margin: 0; }
+html.bw.w-port .wl[data-n="3"] .wv .cb .xn, html.bw.bw-short.w-port .wl[data-n="2"] .wv .cb .xn { font-size: 13px; }
+html.bw.w-port .wl[data-n="3"] .wv .wk, html.bw.bw-short.w-port .wl[data-n="2"] .wv .wk { min-width: 28px; height: 28px; font-size: 18px; border-radius: 6px; }
+html.bw.w-port .wl[data-n="3"] .wv .pt, html.bw.bw-short.w-port .wl[data-n="2"] .wv .pt { font-size: 12px; }
+html.bw.w-port .wl[data-n="3"] .wv .pt b, html.bw.bw-short.w-port .wl[data-n="2"] .wv .pt b { font-size: 18px; }
+html.bw.w-port .wl[data-n="3"] .wv .pos, html.bw.bw-short.w-port .wl[data-n="2"] .wv .pos { flex-basis: 100%; text-align: center; font-size: 13px; font-weight: 700; }
+html.bw.w-port .wl[data-n="3"] .wv .pos b, html.bw.bw-short.w-port .wl[data-n="2"] .wv .pos b { font-size: 14px; }
+html.bw.w-port .wl .wv.more { flex: 0 0 auto; padding: 3px 8px; font-size: 12px; }
+/* 背の低い画面（iPhone SE など。boat-watch.js が html に bw-short を付ける）: 「横向きにすると…」の案内は出さず、その分を自分の予想に使う */
+html.bw.bw-short.w-port .wrot { display: none; }
+html.bw.bw-short.w-port .wmine { bottom: calc(8px + var(--sbar, 0px) + env(safe-area-inset-bottom)); gap: 5px; }
+html.bw.bw-short.w-port .hb { font-size: 17px; padding: 3px 16px; }
+html.bw.bw-short.w-port .wl[data-n="1"] .wv { gap: 3px; padding: 6px 10px; }
+html.bw.bw-short.w-port .wl[data-n="1"] .wv .wk { min-width: 40px; height: 40px; font-size: 25px; }
+html.bw.bw-short.w-port .wl[data-n="1"] .wv .pt b { font-size: 26px; } html.bw.bw-short.w-port .wl[data-n="1"] .wv .pt { font-size: 14px; }
+html.bw.bw-short.w-port .wl[data-n="1"] .wv .pos { font-size: 15px; } html.bw.bw-short.w-port .wl[data-n="1"] .wv .pos b { font-size: 16px; }
+html.bw.bw-short.w-port .wl[data-n="1"] .wv .cb em { font-size: 20px; }
+html.bw.bw-short.w-port .wres .wr b { font-size: 20px; } html.bw.bw-short.w-port .wres .wr .am { font-size: 22px; }
+html.bw.bw-short.w-port .wres .wr { padding: 4px 12px; } html.bw.bw-short.w-port .wres .wbig { height: 38px; }
+
+/* ---------- 横向きのスマホ（w-bot）: 下の細い帯に ［‹ 投票ページ］・場面の札・自分の予想・［図で見る］ ---------- */
+html.bw.w-bot .wtop { left: 0; right: 0; top: auto; bottom: calc(var(--sbar, 0px) + env(safe-area-inset-bottom)); height: 50px; padding: 0 8px; justify-content: space-between; pointer-events: none; z-index: 2; }
+html.bw.w-bot .wtop .wb { pointer-events: auto; }
+html.bw.w-bot .wmine { left: 118px; right: 98px; bottom: calc(var(--sbar, 0px) + env(safe-area-inset-bottom)); height: 50px; box-sizing: border-box; padding: 0; flex-wrap: nowrap; justify-content: center; gap: 4px 8px; overflow: hidden; background: #0b101b; backdrop-filter: none; -webkit-backdrop-filter: none; } /* 左右はボタンの分を空ける（中身がボタンの下に入らない） */
+html.bw.w-bot .wst, html.bw.w-bot .wl, html.bw.w-bot .wv { flex: none; }
+html.bw.w-bot .wst .ttl { display: none; }
+html.bw.w-bot .wst .clk { font-size: 15px; margin-left: 0; }
+html.bw.w-bot .wst .tag { font-size: 12px; padding: 2px 8px; }
+html.bw.w-bot .wl { display: flex; align-items: center; gap: 6px; min-width: 0; }
+html.bw.w-bot .wv { flex-wrap: nowrap; white-space: nowrap; gap: 4px 6px; }
+html.bw.w-bot .wv .cb small:not(.xn) { display: none; }
+html.bw.w-bot .wv.more { padding: 3px 6px; }
+html.bw.w-bot .wres { flex: none; gap: 6px; }
+html.bw.w-bot .wres .wr { padding: 3px 8px; gap: 2px 6px; flex-wrap: nowrap; white-space: nowrap; }
+html.bw.w-bot .wres .wr b { font-size: 15px; } html.bw.w-bot .wres .wr .am { font-size: 16px; }
+html.bw.w-bot .wres .wr .bk, html.bw.w-bot .wres .wr .cp, html.bw.w-bot .wres .wr .tst { flex-basis: auto; }
+html.bw.w-bot .wres .wbig { display: none; } /* 戻るボタンは帯の左にいつもある */
+/* 帯は細いので、段（#wMine の data-ph）ごとに出す物をしぼる: レース前 ＝ 場面の札と時計・予想（当たれば）／レース中 ＝ 予想（いま○位）・盛り上げ／結果 ＝ 場面の札・結果 */
+html.bw.w-bot .wmine[data-ph="race"] .wst, html.bw.w-bot .wmine[data-ph="race"] .wv .pt { display: none; }
+html.bw.w-bot .wmine[data-ph="res"] .wl, html.bw.w-bot .wmine[data-ph="res"] .wh { display: none; }
+html.bw.w-bot .wh { flex: none; order: 3; }
+html.bw.w-bot .hb { font-size: 13px; padding: 4px 9px; white-space: nowrap; letter-spacing: 0; }
+html.bw.w-bot .wv.more { font-size: 11px; padding: 3px 6px; }
+@media (max-width: 720px) { html.bw.w-bot .wv .k, html.bw.w-bot .wmine[data-ph="pre"] .wv .pt { display: none; } html.bw.w-bot .wst { gap: 5px; } html.bw.w-bot .wst .tag { font-size: 11px; padding: 2px 6px; } html.bw.w-bot .wst .clk small { font-size: 10px; margin-right: 3px; } }
+html.bw.w-bot .wlock, html.bw.w-bot .wcele { z-index: 3; }
+
+/* ---------- 横向きで右に空きのある画面（w-side。パソコンなど） ---------- */
+html.bw.w-side .wst { flex-wrap: wrap; }
+html.bw.w-side .wst .ttl { display: none; }
