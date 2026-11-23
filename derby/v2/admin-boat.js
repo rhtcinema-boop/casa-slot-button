@@ -280,13 +280,18 @@
       savebar('tuning', 'btuMsg') + '</div>';
   }
 
+  /* 画質の 5 段（2026-11-23 オーナー「ボートの画質 競馬と同じぐらい細かく」。名前は競馬のテレビのタブと同じ）。保存する値は max・std・auto・lite・min（前の値 high ＝ std・low ＝ lite） */
+  const BQ = [['min', '最もなめらか'], ['lite', 'さらになめらか'], ['auto', 'なめらか優先'], ['std', '標準'], ['max', 'きれい優先']];
+  const bqOf = (v) => (v === 'max' || v === 'auto' || v === 'lite' || v === 'min' ? v : v === 'low' ? 'lite' : 'std');
+  const bqNow = (cfg, id) => bqOf((cfg.tvqs && cfg.tvqs[id]) || cfg.tvq);
   function viewTv() {
     const cfg = S.data.cfg, L = S.stores;
     const rows = !L ? '<div class="empty">' + (S.storesErr ? esc(S.storesErr) : '読み込み中…') + '</div>' : !L.length ? '<div class="empty">店舗がまだありません</div>'
-      : L.map((s) => { const q = (cfg.tvqs && cfg.tvqs[s.id]) || cfg.tvq || 'high'; return '<div class="tvrow" data-store="' + esc(s.id) + '"><div class="nm">' + esc(s.name || s.id) + '</div><div class="seg">' +
-        [['high', 'きれい'], ['low', '軽い']].map(([v, l]) => '<button type="button" class="' + (q === v ? 'on' : '') + '" aria-pressed="' + (q === v) + '" data-act="tvq" data-q="' + v + '"' + dis() + '>' + l + '</button>').join('') + '</div></div>'; }).join('');
+      : L.map((s) => { const q = bqNow(cfg, s.id); return '<div class="tvrow" data-store="' + esc(s.id) + '"><div class="nm">' + esc(s.name || s.id) + '</div><div class="tvq"><span>画質</span><div class="seg q5r" role="group" aria-label="' + esc(s.name || s.id) + 'のボートの画質">' +
+        BQ.map(([v, l]) => '<button type="button" class="' + (q === v ? 'on' : '') + '" aria-pressed="' + (q === v) + '" data-act="tvq" data-q="' + v + '"' + dis() + '>' + l + '</button>').join('') + '</div></div></div>'; }).join('');
     return '<div class="boatadm" data-sub="tv"><div class="panel"><h3>ボートの映像の画質 <small class="qsub">店ごと</small></h3>' +
-      '<p class="hint">きれい＝ふつう。軽い＝古いテレビ・映像がカクつくとき（絵が少し粗くなり、影を出しません）。押すとすぐ保存し、その店の<b>次のボートの映像</b>から変わります。</p>' + rows +
+      '<p class="hint">押すとすぐ保存し、その店の<b>次のボートの映像</b>から変わります。</p>' + rows +
+      '<ul class="qnotes"><li><b>最もなめらか</b>いちばん軽い。観客・木・旗を出さず、絵も粗くなります</li><li><b>さらになめらか</b>動きが重いテレビ向け。艇や水しぶきが少し粗くなり、影を出しません</li><li><b>なめらか優先</b>重いときだけ自動で少し粗くして、動きをなめらかに</li><li><b>標準</b>ふだんはこれ</li><li><b>きれい優先</b>ふちまでくっきり。動きがカクカクすることがあります</li></ul>' +
       (S.err.tv ? '<p class="err">' + esc(S.err.tv) + '</p>' : '') + '</div>' +
       '<div class="panel quiet"><p class="hint">テレビの切り替え（SLOT・DERBY）・読み込み直し・進行役は、いちばん上の <b>casa DERBY</b> →「テレビ」にあります（ボートも同じテレビに出ます）。</p></div></div>';
   }
@@ -493,10 +498,10 @@
       if (S.sub === 'timetable') return ttClick(b, a);
       if (S.sub === 'racers') return rcClick(b, a);
       if (S.sub === 'tv' && a === 'tvq') {
-        const row = b.closest('.tvrow'), id = row && row.dataset.store, q = b.dataset.q === 'low' ? 'low' : 'high'; if (!id) return;
+        const row = b.closest('.tvrow'), id = row && row.dataset.store, q = bqOf(b.dataset.q); if (!id) return;
         return run(async (live) => {
           S.err.tv = '';
-          const m = {}; (S.stores || []).forEach((s) => { m[s.id] = (S.data.cfg.tvqs && S.data.cfg.tvqs[s.id]) || S.data.cfg.tvq || 'high'; }); m[id] = q;
+          const m = {}; (S.stores || []).forEach((s) => { m[s.id] = bqNow(S.data.cfg, s.id); }); m[id] = q;
           try { await S.ctx.api('saveBoat', { tvqs: m }); S.ctx.toast('画質を保存しました（次のボートの映像から）'); } catch (e) { if (live()) S.err.tv = errOf(e, '保存できませんでした'); }
           if (live()) await load(true);
         });
