@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja" class="watch bw">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b101b">
+<meta name="format-detection" content="telephone=no">
+<meta name="robots" content="noindex">
+<title>casa BOAT レースを見る</title>
+<!-- casa BOAT スマホの「レースを見る」（2026-11-23 オーナー「ボートにも入れる」。競馬の v2/watch.js・watchmap.html と同じ役目）。
+     ボートの投票ページ（v2/boat.html）の「レースを見る」の窓で開く: boat-watch.html?s=<店>&race=<レース id>（&view=map で図・&cloud=mock で模擬クラウド）。直接開いたときは投票した端末だけ。
+     見た目の部品（上の帯・自分の予想・順位の表・結果の知らせ）は競馬の watch.css をそのまま読み、ボートだけの置き方を boat-watch.css で足す。中身は boat-watch.js。
+     映像は店のテレビと同じ部品（boat/race-boat.js の BOAT.Race）を、押して開いたあとに読む。音の部品（boat/sound.js ほか）は読まない＝スマホは無音 -->
+<link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
+<link rel="stylesheet" href="watch.css?v=w5">
+<link rel="stylesheet" href="boat-watch.css?v=bw1">
+<script>/* 1 画面の高さ（v2/boat.html・bet.html と同じ）: iOS 26 の Safari は下の浮いたバーの分を --sbar として空ける。確かめ用: window.__sbarForce = true */
+(function () {
+  var d = document.documentElement;
+  function f() {
+    var h = window.innerHeight; if (!(h > 0)) return;
+    var ua = navigator.userAgent || '', ios = /iP(hone|od|ad)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    var saf = ios && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|Line\/|FBAN|FBAV|Instagram/.test(ua);
+    var sa = navigator.standalone === true; try { sa = sa || window.matchMedia('(display-mode: standalone)').matches; } catch (e) { /* noop */ }
+    var v = /Version\/(\d+)/.exec(ua), bar = 0;
+    if (window.__sbarForce || (saf && !sa && v && Number(v[1]) >= 26)) {
+      var land = window.innerWidth > h, sw = screen.width || 0, sh = screen.height || 0, H = land ? Math.min(sw, sh) : Math.max(sw, sh);
+      var tall = H >= 800, cover = tall ? 82 : 60, status = tall ? 59 : 20;
+      bar = Math.max(0, cover - Math.max(0, H - h - status));
+    }
+    d.style.setProperty('--sbar', bar + 'px'); window.__bwSbar = bar;
+    if (window.BoatWatch && window.BoatWatch.layout) window.BoatWatch.layout();
+  }
+  f(); window.__casaVH = f; window.addEventListener('resize', f); window.addEventListener('orientationchange', function () { setTimeout(f, 300); });
+})();</script>
+<script src="config.js?v=v4p"></script>
+</head>
+<body>
+<!-- 映像の枠（位置と大きさは boat-watch.js の fit が --wx・--wy・--ww・--wh・--ws に入れる）。中の絵は 1000×480 で描いて全体を縮める（テレビのページと同じ考え方） -->
+<div id="bwStage" aria-label="レースの映像">
+  <div id="bwFit"><canvas id="bwGl" width="1000" height="480"></canvas><canvas id="bwHud" width="1000" height="480"></canvas></div>
+  <canvas id="bwMap" aria-label="コースを真上から見た図" hidden></canvas>
+  <div id="bwHold" role="status"></div>
+</div>
+<div id="wUi">
+  <div class="wtop" id="wTop"><button type="button" class="wb back" id="wBack"><i aria-hidden="true">‹</i>投票ページ</button><span class="wt">レースを見る</span><button type="button" class="wb" id="wMap">図で見る</button></div>
+  <div class="wmine" id="wMine" hidden>
+    <div class="wst" id="wSt"><span class="tagw" id="wTag"></span><b class="ttl" id="wTitle"></b><span class="clk" id="wClk"></span></div>
+    <div class="word" id="wOrd"></div>
+    <div class="wh" id="wHype" aria-live="polite"></div>
+    <div class="wl" id="wLines" data-scrollarea></div>
+    <div class="wres" id="wRes"></div>
+  </div>
+  <div class="wrot" id="wRot"><i aria-hidden="true">⟳</i>横向きにすると大きく見られます</div>
+  <div class="wlock show" id="wLock" role="status" data-why="load"><div class="in"><b id="wLockT">読み込み中…</b><span id="wLockS"></span><button type="button" class="wbig" id="wLockB">投票ページへ戻る</button></div></div>
+  <div class="wcele" id="wCele" hidden></div>
+</div>
+<script>/* 画面のスクリプト。版の印は、窓を開いた投票ページ（v2/boat.html）がもう読んだものと同じにする（同じファイルを 2 回読まない）。直接開いたときは下の印。
+   公開のたびに V（ボートのファイル）を上げる。DV は競馬と共通のファイル（core.js・client.js）の印で、v2/boat.html の DV と同じにする。実行は入れた順（async=false） */
+(function () {
+  var V = '?v=bw1', DV = '?v=v4q30', BV = '?v=b7', h = document.head, P = null, PW = null;
+  try { if (window.parent && window.parent !== window && window.parent.BOATWATCH) { PW = window.parent; P = PW.document; } } catch (e) { P = null; PW = null; }
+  function from(name, dflt) { // 投票ページが読んだ住所（あれば）。name はファイルの名前そのもの（'core.js' は boat-core.js に当たらない）
+    try { var L = P ? P.querySelectorAll('script[src]') : [], re = new RegExp('/' + name.replace(/\./g, '\\.') + '(\\?|$)'); for (var i = 0; i < L.length; i++) { if (re.test(L[i].src || '')) return L[i].src; } } catch (e) { /* 下へ */ }
+    return dflt;
+  }
+  function sc(u) { var s = document.createElement('script'); s.src = u; s.async = false; h.appendChild(s); }
+  sc(from('core.js', 'core.js' + DV)); sc(from('boat-core.js', 'boat-core.js' + BV));
+  /* Firestore につなぐとき: ボートの読み口（v2/boat-firestore.js）をここで読んでおく。v2/client.js は「見るだけ」（role 'watch'）のつなぎ方ではボートの部品を読まないため
+     （競馬の「見るだけ」用の道）。投票ページのつなぎをそのまま使えるとき（親に BETWATCH と DerbyFirestore がある）は、親の部品を使うので読まない */
+  var FS = !!(window.DERBY_FIREBASE && window.DERBY_FIREBASE.firebase) && !/[?&]cloud=mock\b/.test(location.search), viaParent = false;
+  try { viaParent = !!(PW && PW.BETWATCH && PW.DerbyFirestore && PW.DerbyCore); } catch (e) { viaParent = false; }
+  if (FS && !viaParent) sc(from('boat-firestore.js', 'boat-firestore.js' + BV));
+  sc(from('client.js', 'client.js' + DV)); sc('boat-watch.js' + V);
+})();</script>
+<noscript><p style="color:#fff;text-align:center;padding:24px">JavaScript をオンにしてください</p></noscript>
+</body>
+</html>
