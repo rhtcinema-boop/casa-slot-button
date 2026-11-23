@@ -11,6 +11,8 @@
      直近 5 分の映像（3D が動いている間だけ）: fps 1 秒あたりのコマ ／ as 動いていた秒 ／ j 0.1 秒以上かかったコマ（重い処理の回数）
      rs 直近のレース（新しい順に 5 つまで。ゲートインからゴール・勝ち馬のアップまで）: id レース ／ at 始まり（端末の時計 ms）／ d 長さ（秒）／ fr コマ数 ／ fps ／
         md 1 コマの時間のまん中（ms）／ p95 遅いほう 5% の 1 コマ（ms）／ h1 0.1 秒以上止まった回数 ／ h2 0.25 秒以上止まった回数 ／ mx いちばん長く止まった時間（ms）／ off そのレースの間に切れていた秒
+        2026-11-23: casa BOAT の映像（ピット離れ〜ゴール後。v2/tv-boat.js）も同じ形でここに入る（レースの id が b で始まる。形・置き場・名乗りの回数は同じ）。競馬とボートがまざっても、どちらも直近 2 つは残る（raceEnd）。
+        点数（label）は競馬（race）とボート（boat）を分けて出す
 
    点数（0〜100。管理画面で大きく出す。言葉は点数から）:
      電波 ＝ 100 − 遅れ（まん中が 300ms を超えた分 40ms ごとに 1 点。最大 60）− 失敗 1 回 15 点（最大 45）− 切れていた秒 1 秒 0.5 点（最大 60）− 切れた回数 1 回 5 点（最大 20）
@@ -31,6 +33,7 @@
   const num1 = (v, a, b) => clamp(Math.round((Number(v) || 0) * 10) / 10, a, b);
   const str = (v, n, re) => { const s = String(v == null ? '' : v).slice(0, n); return re && !re.test(s) ? '' : s; };
   const RACE_ID_RE = /^[A-Za-z0-9_:.-]{1,48}$/;
+  const isBoatId = (id) => /^b/.test(String(id == null ? '' : id)); // casa BOAT のレース（b20261123-1530・bx-…。競馬は 20261123-2130・x-…）
   function pct(a, f) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(f * s.length))]; }
 
   /* 1 レースのコマの時間（ms の並び）から、まとめの数字にする */
@@ -78,7 +81,14 @@
       raceEnd() {
         const c = S.cur; S.cur = null; if (!c || c.gaps.length < 30) return null; // 30 コマ未満（途中から見た・すぐ止めた）は残さない
         const t = clock(), r = Object.assign({ id: c.id, at: Math.round(c.at) }, frameStats(c.gaps, t - c.at), { off: int(offSec(c.at, t), 0, 3600) });
-        S.races.unshift(r); if (S.races.length > MAX_RACES) S.races.length = MAX_RACES;
+        S.races.unshift(r);
+        /* 2026-11-23 casa BOAT の映像も同じ並びに入る（v2/tv-boat.js。レースの id が b で始まる）。入りきらないときは「数の多い方の種類（同じ数なら今入れた方）のいちばん古い 1 つ」を外す
+           ＝ 競馬もボートも直近 2 つは残る（競馬だけ・ボートだけの店は今までどおり新しい 5 つ）。h の形・名乗りの回数は変わらない */
+        while (S.races.length > MAX_RACES) {
+          const nb = S.races.filter((x) => isBoatId(x.id)).length, dropB = nb * 2 > S.races.length || (nb * 2 === S.races.length && isBoatId(r.id));
+          let k = S.races.length - 1; for (let i = S.races.length - 1; i >= 0; i--) if (isBoatId(S.races[i].id) === dropB) { k = i; break; }
+          S.races.splice(k, 1);
+        }
         return r;
       },
       get races() { return S.races.slice(); },
@@ -167,8 +177,10 @@
   /* 管理画面の 1 台ぶん: { has, sig: { score, word, lv, cut }, race: { score, word, lv, avg, avgN, last }, details: [文字] } */
   function label(h) {
     if (!h || h.v !== 1) return { has: false, text: '情報なし（古い版）' };
-    const ss = signalScore(h), rs = Array.isArray(h.rs) ? h.rs : [], last = rs[0] || null, ls = raceScore(last);
+    /* 2026-11-23: 直近のレース（h.rs）には casa BOAT の映像も入る（id が b で始まる）。競馬の点（race）は競馬のレースだけで出す＝今までと同じ。ボートの点は boat（同じ形。ボートの映像がまだ無ければ null） */
+    const ss = signalScore(h), all = Array.isArray(h.rs) ? h.rs : [], rs = all.filter((r) => !isBoatId(r && r.id)), bs = all.filter((r) => isBoatId(r && r.id)), last = rs[0] || null, ls = raceScore(last);
     const sc = rs.map(raceScore).filter((x) => x != null), avg = sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : null;
+    const bl = bs[0] || null, bls = raceScore(bl), bsc = bs.map(raceScore).filter((x) => x != null), bavg = bsc.length ? Math.round(bsc.reduce((a, b) => a + b, 0) / bsc.length) : null;
     const sec = (ms) => (ms >= 10000 ? Math.round(ms / 1000) : ms >= 1000 ? Math.round(ms / 100) / 10 : Math.round(ms / 10) / 100) + '秒'; // 1 秒より短いときは 0.05秒 まで
     const net = [h.n > 0 ? '遅れ ' + h.lat + 'ms' : '通信を測っていません', '切断 ' + (h.off || 0) + '回' + (h.offs > 0 ? '（' + h.offs + '秒）' : ''), h.f > 0 ? '失敗 ' + h.f + '回' : '', h.ct ? '回線 ' + h.ct : ''].filter(Boolean);
     const vid = [h.m ? modelName(h.m) : '', h.as > 0 ? 'コマ ' + Math.round(h.fps) + '/秒' : '', h.ver ? '版 ' + h.ver : '', '画質 ' + qName(h.q), h.r === 'p' ? '進行役' : h.r === 'b' ? '予備' : '', '起動 ' + upTxt(h.up)].filter(Boolean);
@@ -176,6 +188,7 @@
       has: true,
       sig: { score: ss, word: ss == null ? '測っていません' : signalWord(ss), lv: lvOf(ss, 50), cut: (h.off || 0) > 0 || (h.offs || 0) > 0 },
       race: last ? { score: ls, word: smoothWord(ls), lv: lvOf(ls, 55), avg, avgN: sc.length, last, text: '直近のレース: ' + smoothWord(ls) + '（コマ ' + Math.round(last.fps) + '/秒・止まり ' + last.h1 + '回・最長 ' + sec(last.mx) + '）' } : null,
+      boat: bl ? { score: bls, word: smoothWord(bls), lv: lvOf(bls, 55), avg: bavg, avgN: bsc.length, last: bl, text: '直近のボート: ' + smoothWord(bls) + '（コマ ' + Math.round(bl.fps) + '/秒・止まり ' + bl.h1 + '回・最長 ' + sec(bl.mx) + '）' } : null,
       net: net.join('・'), vid: vid.join('・'),
     };
   }
@@ -187,8 +200,9 @@
     if (!L.length) return null;
     const sig = L.map((x) => x.sig.score).filter((x) => x != null), rc = L.map((x) => x.race && x.race.avg).filter((x) => x != null);
     const s = sig.length ? Math.min.apply(null, sig) : null, r = rc.length ? Math.min.apply(null, rc) : null, cut = L.some((x) => x.sig.cut);
-    return { sig: s, sigWord: signalWord(s), sigLv: lvOf(s, 50), smooth: r, smoothWord: smoothWord(r), smoothLv: lvOf(r, 55), cut };
+    const bc = L.map((x) => x.boat && x.boat.avg).filter((x) => x != null), b = bc.length ? Math.min.apply(null, bc) : null; // casa BOAT の映像のなめらかさ（2026-11-23。無ければ null）
+    return { sig: s, sigWord: signalWord(s), sigLv: lvOf(s, 50), smooth: r, smoothWord: smoothWord(r), smoothLv: lvOf(r, 55), cut, boat: b, boatWord: smoothWord(b), boatLv: lvOf(b, 55) };
   }
 
-  return { modelCode, modelName, MODELS, WIN, create, meter, frameStats, valid, clean, raceOk, signalScore, raceScore, signalWord, smoothWord, label, storeLine, H_KEYS, R_KEYS };
+  return { isBoatId, modelCode, modelName, MODELS, WIN, create, meter, frameStats, valid, clean, raceOk, signalScore, raceScore, signalWord, smoothWord, label, storeLine, H_KEYS, R_KEYS };
 });
