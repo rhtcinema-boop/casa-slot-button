@@ -45,7 +45,11 @@ BOAT.Race = (function () {
     constructor(glCanvas, hudCanvas, opts) {
       opts = opts || {};
       this.gl = glCanvas; this.hud = hudCanvas; this.ctx = hudCanvas.getContext('2d');
-      this.quality = opts.quality || 'high'; this.parts = {};
+      /* 画質の 5 段（2026-11-23 オーナー「ボートの画質 競馬と同じぐらい細かく」。opts.level）: 'max' きれい優先（細かさ 1.5 倍）・'' 標準・'auto' なめらか優先（重いときは自動で粗く）・
+         'lite' さらになめらか（軽い部品・影なし）・'min' 最もなめらか（軽い部品・細かさ 0.75 倍・観客と木と旗なし）。部品へ渡すのは今までどおり quality（'high' | 'low'）。
+         level が無ければ quality から（'low' → 'lite'、ほか → 標準）＝今までと同じ絵 */
+      this.level = Race.levelOf(opts.level != null ? opts.level : opts.quality === 'low' ? 'lite' : '');
+      this.quality = this.level === 'lite' || this.level === 'min' ? 'low' : 'high'; this.parts = {}; this.autoK = 1; this.perfQ = { last: 0, sum: 0, n: 0, good: 0 };
       const r = this.renderer = new T.WebGLRenderer({ canvas: glCanvas, antialias: this.quality === 'high', powerPreference: 'high-performance' });
       r.setPixelRatio(1);
       this.scene = new T.Scene();
@@ -57,7 +61,23 @@ BOAT.Race = (function () {
       this.boats = []; this.vis = []; this.rank = [];
       this.buildMarks();
       this.tt = -PRE_T; this.speedK = 1; this.cam = null; this.shot = ''; this.shots = []; this.capList = []; this.capCur = null;
+      if (this.level === 'min') this.scene.traverse((o) => { if (o.name === 'boat-crowd' || o.name === 'boat-crowd-standing' || o.name === 'boat-trees' || o.name === 'boat-venue-flags') o.visible = false; }); // 最もなめらか: 観客・木・旗を描かない
       this.resize();
+    }
+    static levelOf(v) { return v === 'max' || v === 'auto' || v === 'lite' || v === 'min' ? v : v === 'low' ? 'lite' : ''; } // 'std'・'high'・空 ＝ 標準
+    /* 細かさの倍率（画面の画素に対して）。きれい優先は 1.5 倍（横 3840 まで）、最もなめらかは 0.75 倍、なめらか優先は autoK（1 から始めて、重いと 0.1 ずつ 0.6 まで下げる） */
+    resK(base) { return this.level === 'max' ? Math.max(1, Math.min(1.5, 3840 / Math.max(1, base))) : this.level === 'min' ? 0.75 : this.level === 'auto' ? this.autoK : 1; }
+    /* なめらか優先: コマの間の平均を 2 秒ごとに見て、40ms より長ければ（1 秒 25 コマ未満）細かさを 0.1 下げる。25ms より短いのが 60 秒続いたら 0.1 戻す */
+    perfTick() {
+      if (this.level !== 'auto') return;
+      const q = this.perfQ, now = performance.now(), gap = now - q.last; q.last = now;
+      if (!(gap > 0 && gap < 500)) return; // 最初のコマ・止まっていた間は数えない
+      q.sum += gap; q.n++;
+      if (q.sum < 2000) return;
+      const avg = q.sum / q.n; q.sum = 0; q.n = 0;
+      if (avg > 40) { q.good = 0; if (this.autoK > 0.6) { this.autoK = Math.max(0.6, Math.round((this.autoK - 0.1) * 10) / 10); this.resize(); } }
+      else if (avg < 25) { if (++q.good >= 30 && this.autoK < 1) { q.good = 0; this.autoK = Math.min(1, Math.round((this.autoK + 0.1) * 10) / 10); this.resize(); } }
+      else q.good = 0;
     }
     part(name, make, stub) {
       try { if (BOAT[name]) { const p = make(); if (p) { this.parts[name] = 'real'; return p; } } } catch (e) { console.warn('BOAT.' + name, e); }
@@ -65,7 +85,7 @@ BOAT.Race = (function () {
     }
     resize() {
       const cw = this.gl.clientWidth || W, ch = this.gl.clientHeight || H, dpr = Math.min(window.devicePixelRatio || 1, this.quality === 'high' ? 2 : 1);
-      this.renderer.setSize(Math.round(cw * dpr), Math.round(ch * dpr), false);
+      const rk = this.resK(cw * dpr); this.renderer.setSize(Math.round(cw * dpr * rk), Math.round(ch * dpr * rk), false); // rk: 画質の段ごとの細かさ（3D の絵だけ。字の絵 hud は変えない）
       const k = Math.min(2, Math.max(1, cw * dpr / W)); this.hud.width = Math.round(W * k); this.hud.height = Math.round(H * k); this.hudK = k;
     }
     /* スタート前だけ水面に重ねる距離の線と字（中継の合成。04 ⑦ 7-3: 白〜水色の細い線、水面に寝かせた半透明の白い字 150m・130m・100m・80m・45m、スタート線だけ太いシアンの光る線、
@@ -409,7 +429,7 @@ BOAT.Race = (function () {
       else { this.live = false; this.seek(target); }
     }
     draw(dt) {
-      const tt = this.tt, r = this.renderer;
+      const tt = this.tt, r = this.renderer; this.perfTick();
       // 大時計: 黄色い針は 12 秒で 1 周・スタートで真上（止めずに回し続ける）、白い針は 60 秒で 1 周
       try { if (tt < 1) { this.venue.setClock((((-tt) % 12) + 12) % 12); if (this.venue.setClock60) this.venue.setClock60(Math.max(0, -tt)); } else this.venue.setClock(null); } catch (e) { }
       try { this.venue.update(dt, tt + PRE_T, this.camera); } catch (e) { }
