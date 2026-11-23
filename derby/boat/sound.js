@@ -44,7 +44,25 @@ BOAT.Sound = (function () {
     ['pointerdown', 'keydown', 'touchstart'].forEach((e) => addEventListener(e, wake, { passive: true }));
     buildEngines(); if (BIG) buildCrowd();
     loadVoice();
+    loadCue();
     setInterval(() => { if (ctx && performance.now() - lastFrame > 400) engBus.gain.setTargetAtTime(0, ctx.currentTime, 0.1); }, 250); // 画面が止まったらエンジンも消す
+  }
+  /* 合図の音（ブザー・ファンファーレ）は、あらかじめ作った音のファイルを流す（2026-11-23 夜。オーナー「ピットアウトの時ファンファーレなってない」）。
+     前は、その場で音を合成していた（のこぎり波 数百本＋残響）。パソコンでは鳴るが、店の Fire TV では実況とエンジンは聞こえるのにブザーとファンファーレだけ聞こえなかった（原因は特定できていない）。
+     Fire TV で聞こえている実況の声と同じ方式（ファイルを読んでそのまま流す）にそろえる。ファイルは同じ合成をそのまま書き出した物（art/voice-boat/fan-A.m4a・fan-B.m4a・buzzer.m4a。頭に CUE_LEAD 秒の無音。
+     割れないように fan は 0.5 倍・buzzer は 4 倍で書き出してあるので、流すときに CUE_K で割り戻す）。ファイルが読めていないときだけ、前の合成で鳴らす */
+  const CUE_LEAD = 0.1, CUE_K = { fan: 0.5, buz: 4 }, cueBuf = { fan: null, buz: null };
+  function loadCue() {
+    const get = (f, k) => fetch(VOICE_DIR + f).then((r) => { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); }).then((ab) => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej))).then((b) => { cueBuf[k] = b; }).catch((e) => { console.warn('boat cue: ' + f, e && e.message); });
+    get('fan-' + FAN + '.m4a', 'fan'); if (BUZ) get('buzzer.m4a', 'buz');
+  }
+  /* when ＝ 音の頭が鳴る時刻。もう過ぎていたら、ほかの店と同じ位置から入る。grid（秒）があるときは、次の区切り（ブザーの次の 1 回）の頭から＝半端な長さで鳴らさない。戻り値: 鳴らしたか */
+  function playBuf(buf, dest, when, vol, grid) {
+    const now = ctx.currentTime, st = when - CUE_LEAD; let at = st, off = 0;
+    if (st < now) { off = now - st; at = now; if (grid && off > CUE_LEAD) { const nx = CUE_LEAD + Math.ceil((off - CUE_LEAD) / grid - 1e-6) * grid - 0.01; at = now + (nx - off); off = nx; } }
+    if (off >= buf.duration - 0.05) return false;
+    const src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf; g.gain.value = vol; src.connect(g); g.connect(dest); src.start(at, off); stat.files = (stat.files || 0) + 1;
+    return true;
   }
   function loadVoice() {
     fetch(VOICE_DIR + 'index.json').then((r) => r.json()).then((j) => {
@@ -255,11 +273,12 @@ BOAT.Sound = (function () {
     if (flow === false || ctx.state !== 'running') return;
     if (stopped) reopen();
     const now = ctx.currentTime;
-    if (BUZ && !cueS.buz && sp < -0.55) { cueS.buz = 1; BOAT.Fanfare.buzzer(ctx, fxBus, now - (sp - BUZ_FROM), LVL.buzzer); } // もう過ぎた回は buzzer が飛ばす
+    if (BUZ && !cueS.buz && sp < -0.55) { cueS.buz = 1; const bw = now - (sp - BUZ_FROM); if (cueBuf.buz) playBuf(cueBuf.buz, fxBus, bw, LVL.buzzer / CUE_K.buz, 1.0); else BOAT.Fanfare.buzzer(ctx, fxBus, bw, LVL.buzzer); } // もう過ぎた回は buzzer が飛ばす
     if (!cueS.fan && sp >= -FAN_PRE) {
       cueS.fan = 1; const late = sp > 0.25; cueS.off = late ? Math.round(sp * 100) / 100 : 0;
       let dest = fxBus; if (late) { const g = ctx.createGain(); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(1, now + 0.3); g.connect(fxBus); dest = g; }
-      BOAT.Fanfare.play(ctx, dest, late ? now - sp : now + Math.max(0.02, -sp), FAN, LVL.fan);
+      const fw = late ? now - sp : now + Math.max(0.02, -sp); cueS.file = cueBuf.fan ? 1 : 0;
+      if (cueBuf.fan) playBuf(cueBuf.fan, dest, fw, LVL.fan / CUE_K.fan); else BOAT.Fanfare.play(ctx, dest, fw, FAN, LVL.fan);
       if (crowd) { crowdTo(2.2, 0.4); later(() => crowdTo(1, 2), 9000); }
     }
   }
@@ -267,7 +286,7 @@ BOAT.Sound = (function () {
   function debug() {
     const now = ctx ? ctx.currentTime : 0, g = (n) => (n ? Math.round(n.gain.value * 1000) / 1000 : null);
     return { state: ctx ? ctx.state : 'none', mute: MUTE, stopped, fading: !!stopT, k: K, kv: Kv, voices: vsrc.length, voiceLeft: Math.round(Math.max(0, voiceUntil - now) * 100) / 100,
-      cue: { key: typeof cueS.key === 'string' ? cueS.key : cueS.key ? 'race' : null, buz: cueS.buz, fan: cueS.fan, off: cueS.off }, gain: { voice: g(voiceBus), eng: g(engBus), duck: g(duckG), fx: g(fxBus), crowd: g(crowdBus) }, stat: Object.assign({}, stat), voice: !!vbuf };
+      cue: { key: typeof cueS.key === 'string' ? cueS.key : cueS.key ? 'race' : null, buz: cueS.buz, fan: cueS.fan, off: cueS.off, file: cueS.file == null ? null : cueS.file, loaded: (cueBuf.fan ? 1 : 0) + (cueBuf.buz ? 1 : 0) }, gain: { voice: g(voiceBus), eng: g(engBus), duck: g(duckG), fx: g(fxBus), crowd: g(crowdBus) }, stat: Object.assign({}, stat), voice: !!vbuf };
   }
   const later = (fn, ms) => { const g0 = gen; setTimeout(() => { if (g0 === gen) fn(); }, ms); }; // stop のあとは実行しない予約
   return { init, say: sayCompat, frame, stop, cue, debug, get _fx() { return fxBus; }, get _crowd() { return crowdBus; }, get _clap() { return clap; }, get _bus() { return { ctx, master, voice: voiceBus, eng: engBus, duck: duckG, fx: fxBus, crowd: crowdBus }; }, update() { }, get on() { return !!ctx && ctx.state === 'running'; }, get ready() { return !!vbuf; }, get voff() { return voff; }, MUTE, BIG, FAN, LVL };
