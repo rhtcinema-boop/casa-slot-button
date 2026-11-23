@@ -41,6 +41,7 @@
     if (!B.loading) B.loading = (async () => {
       const L = ['js/boat-model.js', 'boat/course.js', 'boat/boat3d.js', 'boat/venue3d.js', 'boat/lines.js', 'boat/race-boat.js', 'boat/announce-boat.js', 'boat/fanfare-boat.js', 'boat/sound.js'];
       for (const u of L) { if (u.indexOf('boat-model') >= 0 && window.BoatModel) continue; await load(u + VQ); }
+      try { BOAT.Sound.init(); } catch (e) { /* 音が無くても映像は出す */ } // 2026-11-23 夜: 音の部品を早めに用意する（合図の音のファイル＝ブザー・ファンファーレを、締切より前に読み終えておく）
       return true;
     })().catch((e) => { B.loading = null; BOATTV.err = String(e.message || e); throw e; });
     return B.loading;
