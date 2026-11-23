@@ -6,7 +6,8 @@
    - 当たりの決め方は競馬と同じ隠れた方式（v2/outcome.js の resolveExacta）。1 レースで払う BPT の合計の目安（target）は時刻表の行ごと（初期 1,000 BPT）。
      1 レース上限（capRace 初期 10,000）・1 日上限（capDay 初期 50,000）は管理画面で変えられる。上限は目安より強い（上限を超える組番は選ばない＝当たりなしもある）。
    - 倍率は 2〜40 倍・真ん中が 10 倍になるように、自然な起きやすさの順のまま縮める（oddsOf）。締切後の ±10% のずらしは競馬と同じ。
-   - 投票できるのは「その日（営業日）に競馬へ会計番号で参加したスマホ」で、テレビの QR を読んだ人だけ（QR の合言葉はレースで 1 つ）。位置情報は使わない。
+   - 投票できるのは、テレビの QR を読んだ人（QR の合言葉はレースで 1 つ）。位置情報は使わない。
+     2026-11-23 オーナー決定: その日の競馬に参加していなくても投票できる（前は「その日に競馬へ会計番号で参加したスマホ」だけ）。競馬の票があるスマホは、票の店をその競馬の店にする（今までどおり）。
    - いつも全店同時。時刻表の時刻 at ＝ 投票の締切＝映像の始まり。投票は at の voteSec 秒前から（初期 3 分）。締めてから映像（ピット離れ 100 秒＋走り 約 72 秒＋ゴール後 8 秒）、
      そのあと結果画面 resultSec（初期 2 分）。
    - 競馬と被る時刻は入れられない（全店共通で判定。conflicts）。競馬の「ふさぐ時間」は投票の始まり〜発表（長い場合）＋結果画面の最初の 2 分（DERBY_GUARD_SEC）。
@@ -247,6 +248,15 @@
     const cur = voting.length ? voting[voting.length - 1] : inWin[0] || null;
     const next = L.find((r) => r.status === 'upcoming' && r.openAt > t && (!cur || r.id !== cur.id)) || null;
     return { race: lite(cur), next: next ? { id: next.id, at: next.at, openAt: next.openAt } : null };
+  }
+  /* このあとのボートレース（2026-11-23 オーナー決定「次は競馬なんだ、次はボートなんだ、が全部分かるように」）: 時刻の早い順に n 件（既定 3）の { id, at, openAt }。
+     作ってあるレース（まだ投票が始まっていない物）と、時刻表（cfg.rules）のまだ作っていない分を合わせる。いまのレース（liveOf の race）は入れない。
+     boatLive/all の nexts でテレビ・スマホへ届く（next は今までどおり 1 件目。古いテレビ・スマホは next だけ読む）。読み取りは増えない（同じ文書の中） */
+  function nextsOf(races, t, cfg, n) {
+    const c = configOf(cfg), cur = liveOf(races, t).race, seen = {}, out = [];
+    (races || []).forEach((r) => { if (r && r.kind === 'boat' && r.status === 'upcoming' && r.openAt > t && (!cur || r.id !== cur.id) && !seen[r.id]) { seen[r.id] = 1; out.push({ id: r.id, at: r.at, openAt: r.openAt }); } });
+    if (c.rules.length) schedule(t, c.rules, c.startAt).forEach((e) => { const openAt = e.at - c.voteSec * 1000; if (openAt > t && !seen[e.id] && !quietSpan(e.at, c)) { seen[e.id] = 1; out.push({ id: e.id, at: e.at, openAt }); } });
+    return out.sort((a, b) => a.at - b.at).slice(0, n > 0 ? n : 3);
   }
   // いまの場面: wait（投票の前）| vote | closed（締切〜映像の前）| film | result | over
   function stageOf(r, t) {
@@ -508,6 +518,6 @@
   function parseHash(h) { const m = /^#?(b[0-9A-Za-z_-]{3,40})\.([A-Za-z0-9]{8})$/.exec(String(h || '')); return m ? { raceId: m[1], code: m[2] } : null; }
 
   return { BPT_MAX, STAKE, N, ALL, DEF, FILM_PRE, FILM_POST, RUN_EST, RUN_MAX, DERBY_GUARD_SEC, COUNT_SEC, ODDS_LO, ODDS_MID, ODDS_HI, CODE_RE, OP_RE, OPS_MAX, PREV_MAX, CAP_MIN, BET_MAX, QUIET_MIN,
-    configOf, mergeConfig, cleanRacers, racerPool, RACER_TYPES, RACER_CLS, RACERS_MIN, RACERS_MAX, normalizeRules, quietMin, quietAt, quietText, quietSpan, quietSpanMin, cleanOp, newOp, opsOf, deadOf, cleanPrevOps, opState, opLists, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
+    configOf, mergeConfig, cleanRacers, racerPool, RACER_TYPES, RACER_CLS, RACERS_MIN, RACERS_MAX, normalizeRules, quietMin, quietAt, quietText, quietSpan, quietSpanMin, nextsOf, cleanOp, newOp, opsOf, deadOf, cleanPrevOps, opState, opLists, publicRules, schedule, timesOf, boatSpan, derbySpan, derbyTimingChanged, conflicts, busyWithDerby, busyWithBoat, oddsOf, modelOf, buildRace, boatsOf, lite, liveOf, stageOf, votingOpen,
     voteId, comboKey, cleanPair, cleanPicks, betsOf, betsBad, betCount, addBets, freeKey, ticketsOn, comboCounts, refundOf, hasBoat, ticketsOf, countVotes, voteView, clampOdds, decide, refundPlan, creditPlan, creditDoc, picksLeft, derbyVoteInfo, derbyVoteDay, newCode, joinURL, parseHash };
 });
