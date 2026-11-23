@@ -153,3 +153,21 @@
 #boatOv:not(.bo-ready) #boGl, #boatOv:not(.bo-ready) #boHud { visibility: hidden; }
 /* 2026-11-21 I3: 映像の準備が発走に間に合わないテレビの「まもなく発走・スタートまで あと m:ss」 */
 .bo-closed.soon { color: #ffe08a; font-variant-numeric: tabular-nums; }
+
+/* 競馬 ⇄ ボートの切り替えの幕（2026-11-23 オーナー「スムーズにカッコよく」。v2/tv-boat.js の swGo）: 斜めの帯 3 枚（a → b → c の順に入り、c → b → a の順に抜ける）＋行き先のロゴ。
+   動かすのは transform と opacity だけ。帯は画面より大きく作り（幅 160%・上下 10% はみ出し）、傾けても端が見えない */
+#boatSw { position: absolute; inset: 0; z-index: 70; overflow: hidden; pointer-events: none; font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif; }
+#boatSw[hidden] { display: none; }
+#boatSw i { position: absolute; top: -10%; bottom: -10%; left: -30%; width: 160%; transform: translate3d(-116%, 0, 0) skewX(-14deg); transition: none; will-change: transform; backface-visibility: hidden; }
+#boatSw.in i { transform: translate3d(0, 0, 0) skewX(-14deg); transition: transform .46s cubic-bezier(.76, 0, .24, 1); }
+#boatSw.out i { transform: translate3d(116%, 0, 0) skewX(-14deg); transition: transform .46s cubic-bezier(.76, 0, .24, 1); }
+#boatSw.in .sw-b { transition-delay: .08s; } #boatSw.in .sw-c { transition-delay: .16s; }
+#boatSw.out .sw-b { transition-delay: .08s; } #boatSw.out .sw-a { transition-delay: .16s; }
+#boatSw.to-boat .sw-a { background: #ffe08a; } #boatSw.to-boat .sw-b { background: #3d9bd6; } #boatSw.to-boat .sw-c { background: linear-gradient(100deg, #1a5f99 0%, #0b2f55 45%, #071b33 100%); }
+#boatSw.to-derby .sw-a { background: #fff3c4; } #boatSw.to-derby .sw-b { background: #e9c25e; } #boatSw.to-derby .sw-c { background: linear-gradient(100deg, #1c2740 0%, #0b101b 50%, #05070c 100%); }
+#boatSw .sw-logo { position: absolute; left: 0; right: 0; top: 50%; margin-top: -110px; height: 220px; line-height: 220px; text-align: center; font-size: 168px; font-weight: 900; letter-spacing: .02em; color: #fff; white-space: nowrap; opacity: 0; transform: translate3d(-70px, 0, 0); transition: none; will-change: transform, opacity; }
+#boatSw .sw-logo em { font-style: italic; }
+#boatSw.to-boat .sw-logo { text-shadow: 0 8px 0 #06203c; } #boatSw.to-boat .sw-logo em { color: #ffe08a; }
+#boatSw.to-derby .sw-logo { text-shadow: 0 8px 0 #000; } #boatSw.to-derby .sw-logo em { color: #e9c25e; }
+#boatSw.in .sw-logo { opacity: 1; transform: translate3d(0, 0, 0); transition: opacity .26s ease-out .36s, transform .42s cubic-bezier(.2, .8, .2, 1) .36s; }
+#boatSw.out .sw-logo { opacity: 0; transform: translate3d(90px, 0, 0); transition: opacity .2s ease-in, transform .3s ease-in; }
