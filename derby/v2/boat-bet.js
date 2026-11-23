@@ -2,7 +2,7 @@
    画面と言葉は本物の舟券・公式のネット投票にそろえた（ref/boat/research/26_舟券と投票画面.md）:
      予想 … マークカードの 2 連単の欄（1着・2着の行に 1〜6）。組番は「1-4」（ハイフン）
      確認 … 「投票内容の確認」の表（No・勝式・組番・オッズ・購入金額）＋「合計ベット数」「購入金額」＋［投票内容を修正する］［投票する］
-     投票後 … 「投票結果」「ご投票ありがとうございました。」＋舟券の形（左＝場名・発売所の帯・レース・日付／中央＝縦書きの「2連単」／右＝組番「1▶4」と選手名・金額「◆◆◆100」／下＝合計・通し番号・バーコード）
+     投票後 … 「投票結果」「ご投票ありがとうございました。」＋青い紙の舟券（競馬の馬券と同じ紙。paper・papers。2026-11-23 オーナー決定「ボートを全部青い紙に」で前の白い券の形はやめた）
      当たり … 「的中ベットがありました。おめでとうございます！」＋額
    決まり: 2 連単だけ。無料の券 1 枚（締切まで組番を変えられる）＋ BPT 100 ごとに 1 枚（何通りにでも・同じ組番に重ねてもよい・持っている BPT まで何枚でも（2026-11-19 オーナー決定）・足した券は消せない）。BPT は 3,000 まで（2026-11-20）。
    当たりは BPT（受け取りのスライドなし）。画面に「ポイント」と書かない（BPT と書く）。音は鳴らさない。
@@ -83,7 +83,6 @@
   const payOf = (k) => { const o = S.race && S.race.exacta && Number(S.race.exacta[k]); if (!(o > 0)) return 0; const t = Math.max(10, Math.round(o * 10)); return Math.ceil(t / 10 - 1e-9) * 100; };
   const hm = (ms) => Core.fmtBizTime(ms, 5);
   const left = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)), p2 = (n) => String(n).padStart(2, '0'); return s >= 3600 ? Math.floor(s / 3600) + ':' + p2(Math.floor(s / 60) % 60) + ':' + p2(s % 60) : Math.floor(s / 60) + ':' + p2(s % 60); }; // 1 時間以上は 2:10:00（2026-11-21 H3）
-  const dash = (n, w) => { const s = String(n); return '◆'.repeat(Math.max(0, w - s.length)) + s; }; // 本物の券の「◆◆◆100」（桁を◆で埋める）
   const storeName = (id) => S.stores[id] || id || '';
   /* 知らせ。o.ms: 出す長さ（既定 2.6 秒）・o.btn: [文, data-act] のボタン（前のレースの結果を見る入口。2026-11-21 H4） */
   function toast(t, o) {
@@ -92,14 +91,69 @@
     e.classList.toggle('act', !!o.btn); e.classList.remove('hidden'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hidden'), o.ms || 2600);
   }
 
+  /* ---------- 競馬とつなぐ（2026-11-23 オーナー決定「次は競馬なんだ、次はボートなんだ、が全部分かるように」「受付開始まで何分とかも全部表示」。絵は ref/boat/つなぐ設計案_2026-11-23.jpg の④） ----------
+     待ち・締切後・結果の画面に:「次の競馬 17:00（投票は 16:57 から）」＋［競馬の投票へ］（いつも）／「このあと 15:30 ボート・17:00 競馬」（ボートと競馬を時刻順に 3 件まで）／次のボートの「受付開始まで あと ○:○○」
+     競馬の時刻は競馬の状態（C.state()）から。見張らない。読むのは上の画面に切り替わったときだけ・1 回読んだら 10 分は覚える（60 秒より短い間では読み直さない。開きっぱなしのスマホは画面が替わるまで読まない）。
+     競馬のスマホ（v2/bet.js）が覚えた状態（casa.derby.st.<店>）が新しければそれを使う＝読まない。読んだ物はスマホに覚える（QR を読み直すたびに読まない）
+     ボートのいまの状態は、競馬のスマホ（v2/bet-boat.js）のために軽い形で覚えておく（casa.derby.boatnx。競馬へ移った人は読まずに「次のボートレース」が出る） */
+  const DBKEY = 'casa.boat.dby.' + STORE, DSKEY = 'casa.derby.st.' + STORE, NXKEY = 'casa.derby.boatnx', DB_TTL = 10 * 60000, DB_NONE = 3 * 60000, DB_MIN = 60000;
+  let dby = null, dbyAt = 0, dbyBusy = false, dbyHold = 0, noLink = false; // dbyHold: この時刻までは読まない（読んだあと・読めなかったあとの 1 分）。dby: 競馬のこのあとのレース [{ at, openAt, closeAt }]（早い順）。noLink: 「前の結果」を見ている間は出さない
+  function derbyList(s) {
+    s = s || {}; const m = {}, skip = {}, T = s.settings || {}, lead = ((Number(T.closeLeadSec) || 0) + (Number(T.voteSec) || 180)) * 1000;
+    const add = (at, openAt, closeAt) => { at = Number(at); if (!(at > 0)) return; const o = m[at] || (m[at] = { at }); if (openAt > 0) o.openAt = openAt; if (closeAt > 0) o.closeAt = closeAt; };
+    [s.open, s.next].forEach((r) => { if (!r) return; if (r.test) { skip[r.id] = 1; return; } if (r.status === 'open' || r.status === 'upcoming') add(r.at, r.openAt, r.closeAt); }); // テストのレースは出さない
+    (s.upcoming || []).forEach((e) => { if (e && e.canVote !== false && !skip[e.id]) add(e.at, e.openAt); });
+    (s.today || []).forEach((e) => { if (e && !skip[e.id]) add(e.at, m[e.at] && m[e.at].openAt ? 0 : e.at - lead); }); // 本日の時刻表のうち、まだ作っていないレース（投票の始まりは競馬のスマホと同じ数え方）
+    return Object.keys(m).map((k) => m[k]).sort((a, b) => a.at - b.at).slice(0, 12);
+  }
+  const dbyNext = (t) => (dby || []).find((x) => (x.closeAt || x.at) > t) || null;
+  function loadDerby() {
+    const n = Date.now(); if (dbyBusy || !STORE || n < dbyHold) return;
+    if (!dby && lsOk) { try { const x = JSON.parse(ls.get(DBKEY) || 'null'); if (x && Array.isArray(x.L) && x.at <= n + 60000) { dby = x.L; dbyAt = x.at; } } catch (e) { /* noop */ } }
+    const fresh = () => n - dbyAt < (dby && dbyNext(now()) ? DB_TTL : DB_NONE); // 覚えている間は読まない（このあとの競馬が 1 つも無いときは 3 分で読み直す）
+    if (fresh()) return;
+    if (lsOk) { try { const x = JSON.parse(ls.get(DSKEY) || 'null'); if (x && x.st && x.at > dbyAt && x.at <= n + 60000) { dby = derbyList(x.st); dbyAt = x.at; if (fresh()) return; } } catch (e) { /* noop */ } }
+    dbyBusy = true;
+    dbyHold = n + DB_MIN + 12000;
+    timed(C.state(), 12000).then((s) => { dbyBusy = false; dbyAt = Date.now(); dbyHold = dbyAt + DB_MIN; const L = derbyList(s), ch = JSON.stringify(L) !== JSON.stringify(dby); dby = L; if (lsOk) ls.set(DBKEY, JSON.stringify({ at: dbyAt, L })); if (ch) { lastKey = ''; draw(); } },
+      () => { dbyBusy = false; dbyHold = Date.now() + DB_MIN; /* 読めない: 1 分はあける */ });
+  }
+  const kHref = () => 'bet.html?store=' + encodeURIComponent(STORE);
+  const kParts = () => { const t = now(), e = dbyNext(t); if (!e) return null; const open = !!(e.openAt && t >= e.openAt); return { h: (open ? '競馬 ' : '次の競馬 ') + '<b>' + hm(e.at) + '</b>', s: open ? '（投票受付中）' : e.openAt ? '（投票は ' + hm(e.openAt) + ' から）' : '' }; };
+  function keibaLine() { // 「次の競馬 17:00（投票は 16:57 から）」＋［競馬の投票へ］。競馬の時刻がまだ分からない・今日はもう無いときも、入口だけは出す
+    if (noLink) return ''; const p = kParts();
+    return '<a class="kline' + (p ? '' : ' solo') + '" href="' + kHref() + '">' + (p ? '<span class="kl"><span class="kt">' + p.h + '</span>' + (p.s ? '<small>' + p.s + '</small>' : '') + '</span>' : '') + '<span class="kb">競馬の投票へ</span></a>';
+  }
+  function aftLine(shown) { // 「このあと 15:30 ボート・17:00 競馬」。shown: すぐ上の枠に大きく出しているボートの時刻（その続きから並べる）。縦のスマホは 2 件（1 行に収める）・横や広い画面は 3 件
+    if (noLink) return ''; const t = now(), L = [], seen = {}, r = S.race, lv = S.live || {};
+    const addB = (x) => { if (notTest(x) && x.at > t && x.at !== shown && !seen[x.id || x.at]) { seen[x.id || x.at] = 1; L.push({ at: x.at, g: 'b' }); } }; // テストのレースは並べない
+    if (r && r.status === 'upcoming' && r.refunded !== true) addB(r);
+    (Array.isArray(lv.nexts) && lv.nexts.length ? lv.nexts : lv.next ? [lv.next] : []).forEach(addB);
+    (dby || []).forEach((x) => { if ((x.closeAt || x.at) > t) L.push({ at: x.at, g: 'k' }); });
+    const top = L.sort((a, b) => a.at - b.at).slice(0, innerWidth >= 480 ? 3 : 2); if (!top.length) return '';
+    return '<p class="aft"><span class="ak">このあと</span>' + top.map((x) => '<span class="ai ' + x.g + '"><b>' + hm(x.at) + '</b> ' + (x.g === 'b' ? 'ボート' : '競馬') + '</span>').join('<i>・</i>') + '</p>';
+  }
+  function saveNx() { // 競馬のスマホ用（v2/bet-boat.js の liteOf と同じ形）
+    if (!lsOk || !S.gotLive) return; const l = S.live || {}, r = l.race, ns = Array.isArray(l.nexts) && l.nexts.length ? l.nexts : l.next ? [l.next] : [];
+    ls.set(NXKEY, JSON.stringify({ at: Date.now(), v: { race: r && r.at > 0 ? { id: r.id, at: r.at, openAt: r.openAt, st: r.status || '', off: !!(r.test || r.refunded === true || r.status === 'void') } : null, nexts: ns.filter((x) => notTest(x) && x.at > 0).slice(0, 3).map((x) => ({ id: x.id, at: x.at, openAt: x.openAt })) } }));
+  }
+  const testTag = (r) => (r && r.test ? '<div class="testtag">テストレース</div>' : ''); // 競馬のスマホ（v2/bet.js の testTag）と同じ札
+  /* お客さんの「次のボートレース」「このあと」にテストのレースは出さない（2026-11-23）。いまのレース（S.race）にはテストの印（test）が付いて届くので、ここで外せる。
+     このあとの分（S.live.next・nexts ＝ { id, at, openAt }）には今は印が届かない（id も本番の「すぐ始めるレース」と同じ形）ので、スマホだけでは見分けられない。
+     置き場が test: true を付けて届けるようになったら（v2/boat-core.js の liveOf の next と nextsOf）、ここで外れる。次がテストのときは、その先のテストでないレースを出す */
+  const notTest = (x) => !!x && x.test !== true;
+  const nextR = () => { const l = S.live || {}, n = l.next; return !n || notTest(n) ? n || null : (Array.isArray(l.nexts) ? l.nexts : []).filter(notTest)[0] || null; };
+
   // 上の帯
   function chip() { // 上の帯の右（競馬と同じ「締切まで 2:35」の 1 つだけ）
     const r = S.race, t = now(), st = r ? Boat.stageOf(r, t) : 'none', box = $('raceChip');
     const one = (h) => { if (box.innerHTML !== h) box.innerHTML = h; };
-    if (!r || st === 'over' || st === 'none') { const n = S.live && S.live.next; return one(n ? '<span>次 <b>' + hm(n.at) + '</b></span>' : ''); }
-    if (st === 'wait') return one('<span>投票まで <b>' + left(r.openAt - t) + '</b></span>');
-    if (st === 'vote') return one('<span class="' + (r.closeAt - t <= 30000 ? 'hot' : '') + '">締切まで <b>' + left(r.closeAt - t) + '</b></span>');
-    if (st === 'closed' || st === 'film') return one('<span class="hot">レース中</span>');
+    /* 2026-11-23 残り時間の言い方を競馬とボートでそろえた（ref/boat/つなぐ設計案_2026-11-23.jpg）: 待ち「受付開始まで あと」→ 投票中「締切まで あと」→ 締切後「まもなく発走」。前は「投票まで」「始まりまで あと」「締切まで」 */
+    if (!r || st === 'over' || st === 'none') { const n = nextR(); return one(n ? '<span>次 <b>' + hm(n.at) + '</b></span>' : ''); }
+    if (st === 'wait') return one('<span>受付開始まで あと <b>' + left(r.openAt - t) + '</b></span>');
+    if (st === 'vote') return one('<span class="' + (r.closeAt - t <= 30000 ? 'hot' : '') + '">締切まで あと <b>' + left(r.closeAt - t) + '</b></span>');
+    if (st === 'closed') return one('<span class="hot">まもなく発走</span>'); // 締切のあと、映像が始まる（runAt）まで
+    if (st === 'film') return one('<span class="hot">レース中</span>');
     if (st === 'result') return one('<span>結果</span>');
     return one('<span>取り消し</span>');
   }
@@ -116,9 +170,12 @@
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { if ((x < 4 && y < 4) || (x > 4 && y < 4) || (x < 4 && y > 4)) continue; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; if (h & 1) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1"/>'; }
     return '<svg class="qr" viewBox="-.5 -.5 10 10" aria-hidden="true" fill="currentColor">' + finder(0, 0) + finder(6, 0) + finder(0, 6) + rects + '</svg>';
   }
+  /* 2026-11-23 オーナー決定「ボートを全部青い紙に」: 投票後・レース中（結果の前）も同じ紙。結果の前（r.result が無い）は判子・払戻・確定の倍率を出さず、
+     その時点の数字（締切までは「いまの倍率」・締切のあとは「倍率」・「当たれば ○ BPT」）を同じ場所に。並びは組番を選んだ順（無料の票が先頭） */
   function paper(v, x, r, i) {
-    const res = r.result, p = x.k.split('-').map(Number), capB = !!(res.bptBack === true && !x.free), hit = !!(res.combo === x.k && !capB), inc = res.incident, back = capB || !!(inc && inc.refund && p.indexOf(inc.boat) >= 0), miss = !hit && !back;
+    const res = r.result || null, pre = !res, p = x.k.split('-').map(Number), capB = !!(res && res.bptBack === true && !x.free), hit = !!(res && res.combo === x.k && !capB), inc = res && res.incident, back = capB || !!(inc && inc.refund && p.indexOf(inc.boat) >= 0), miss = !pre && !hit && !back;
     const oRaw = hit && Number(res.odds) > 0 ? Number(res.odds) : r.exacta ? Number(r.exacta[x.k]) : 0, o = oRaw > 0 ? (Math.round(oRaw * 10) / 10).toFixed(1) : '';
+    const oLb = hit ? '確定の倍率' : pre && !(r.closeAt && now() >= r.closeAt) ? 'いまの倍率' : '倍率'; // 締切までは倍率が動く（競馬の券と同じ言い方）
     const pay = hit ? (res.noPay === true ? 0 : x.n * (Number(res.pay) || 0)) : back ? (x.free ? 0 : x.n * 100) : payOf(x.k) * x.n, t = amt(pay);
     const d = new Date(r.at + 9 * 3600000 - 5 * 3600000), ymd = d.getUTCFullYear() + '年' + (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日', p2 = (n) => ('0' + n).slice(-2);
     const store = storeName(v.storeId || STORE), b1 = boatOf(p[0]), b2 = boatOf(p[1]), issued = [v.updatedAt, v.votedAt].map(Number).find((q) => isFinite(q) && q > 0);
@@ -126,8 +183,8 @@
     const ser = String(d.getUTCFullYear()).slice(2) + p2(d.getUTCMonth() + 1) + p2(d.getUTCDate()) + (p[0] + 1) + (p[1] + 1) + tkDigits(seed, 5) + ' ' + tkDigits(seed + 'a', 13) + ' ' + tkDigits(seed + 'b', 8);
     const nm = (b, i2, lb) => '<span class="tn"><span class="tl">' + lb + '</span>' + waku(i2, 'sm') + '<span class="nmx" data-fit="7">' + esc(b.name) + '</span></span>';
     const stamp = hit ? '<div class="tk-hit" role="img" aria-label="的中"><span class="tk-hit-in"><i>casa BOAT</i><b>的中</b><i>' + esc(ymd) + '</i></span></div>' : '';
-    return '<div class="mine tk btk' + (hit ? ' hit' : miss ? ' miss' : ' back') + '"><p class="mk">' + (hit ? '的中した舟券' : i ? '舟券' : 'あなたの舟券') +
-      (hit ? '<span class="vn bt">的中</span>' : back ? '<span class="vn">返還</span>' : '<span class="vn ms">はずれ</span>') + (x.free ? '<span class="vn">無料</span>' : '') + (x.n > 1 ? '<span class="vn xn">×' + x.n + '枚</span>' : '') + '</p>' +
+    return '<div class="mine tk btk' + (pre ? '' : hit ? ' hit' : miss ? ' miss' : ' back') + '"><p class="mk">' + (hit ? '的中した舟券' : i ? '舟券' : 'あなたの舟券') +
+      (pre ? '' : hit ? '<span class="vn bt">的中</span>' : back ? '<span class="vn">返還</span>' : '<span class="vn ms">はずれ</span>') + (x.free ? '<span class="vn">無料</span>' : '') + (x.n > 1 ? '<span class="vn xn">×' + x.n + '票</span>' : '') + '</p>' +
       '<div class="tkt"><div class="tkin">' +
         '<div class="tk-l"><div class="tk-date">' + esc(ymd) + '</div><div class="tk-store" data-fit="14">' + esc(store) + '</div>' +
           '<div class="tk-rno tm"><b>' + esc(hm(r.at)) + '</b><span>レース</span></div>' +
@@ -138,42 +195,22 @@
         '<div class="tk-r"><span class="tk-free">舟券<small>（' + (x.free ? '無料' : 'BPT') + '）</small></span>' +
           '<div class="tk-row r1"><span class="bx">' + (p[0] + 1) + '</span><i>-</i><span class="bx">' + (p[1] + 1) + '</span><span class="tk-pts"><span class="tk-ifw">' + (hit ? '当選額' : back ? '返還' : '当たれば') + '</span><span class="tk-st" aria-hidden="true">★★★</span>' +
             '<span class="tk-amt' + (t.length >= 7 ? ' l7' : t.length >= 6 ? ' l6' : '') + '">' + t + '<small class="pt">BPT</small></span></span></div>' +
-          '<div class="tk-row r2"><div class="tk-names">' + nm(b1, p[0], '1着') + nm(b2, p[1], '2着') + '</div><span class="tk-odd2"><small>' + (hit ? '確定の倍率' : '倍率') + '</small><b>' + (o || '—') + '<small>倍</small></b></span>' + stamp + '</div></div>' +
+          '<div class="tk-row r2"><div class="tk-names">' + nm(b1, p[0], '1着') + nm(b2, p[1], '2着') + '</div><span class="tk-odd2"><small>' + oLb + '</small><b>' + (o || '—') + '<small>倍</small></b></span>' + stamp + '</div></div>' +
         '<div class="tk-stub"><span class="tk-who"><span class="nw tk-nick" data-fit="9">' + esc(v.nick || '') + '</span></span>' + (issued ? '<span class="tk-iss">発行 ' + esc(hm(issued)) + '</span>' : '') + '</div>' +
         '<div class="tk-ser" aria-hidden="true">' + esc(ser) + '</div>' +
       '</div></div></div>';
   }
-  function papers(v) { // 当たり → 返還 → はずれ の順。欄の中だけ動く（.fx）
-    const r = S.race, res = r && r.result; if (!v || !res) return v ? fune(v, { cls: 'small' }) : '';
-    const rank = (x) => { const p = x.k.split('-').map(Number), capB = res.bptBack === true && !x.free, inc = res.incident; return res.combo === x.k && !capB ? 0 : capB || (inc && inc.refund && p.indexOf(inc.boat) >= 0) ? 1 : 2; };
+  function papers(v) { // 結果のあと: 当たり → 返還 → はずれ の順／結果の前: 無料の票 → BPT の票（選んだ順）。欄の中だけ動く（.fx）
+    const r = S.race, res = r && r.result; if (!v || !r) return '';
+    const rank = (x) => { if (!res) return 0; const p = x.k.split('-').map(Number), capB = res.bptBack === true && !x.free, inc = res.incident; return res.combo === x.k && !capB ? 0 : capB || (inc && inc.refund && p.indexOf(inc.boat) >= 0) ? 1 : 2; };
     const T = ticketsOfMine(v).map((x, i) => ({ x, i, k: rank(x) })).sort((a, b) => a.k - b.k || a.i - b.i);
-    return '<div class="fx btks" data-scrollarea>' + T.map((q, i) => paper(v, q.x, r, i)).join('') + '</div>';
+    return '<div class="fx btks' + (res ? '' : ' pre') + '" data-scrollarea>' + T.map((q, i) => paper(v, q.x, r, i)).join('') + '</div>';
   }
   function ticketsOfMine(v) {
     if (!v) return [];
     const out = [{ k: v.first + '-' + v.second, free: true, n: 1 }];
     const by = v.bets || {}; Object.keys(by).forEach((k) => { if (by[k] > 0) out.push({ k, free: false, n: by[k] }); });
     return out;
-  }
-  function serial(v) { const s = String((v && (v.id || v.raceId + v.votedAt)) || ''); let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return String(h % 100000000).padStart(8, '0'); }
-  function barcode(sn) { let x = Number(sn) || 1, out = ''; for (let i = 0; i < 46; i++) { x = (x * 1103515245 + 12345) % 2147483648; const w = 1 + (x % 3); out += '<i style="width:' + w + 'px;margin-right:' + (1 + ((x >> 3) % 2)) + 'px"></i>'; } return out; }
-  function fune(v, o) {
-    o = o || {}; const r = S.race, T = ticketsOfMine(v), d = new Date((r ? r.at : now()) + 9 * 3600000 - 5 * 3600000);
-    const total = T.reduce((a, x) => a + x.n, 0), bptN = total - 1, sn = serial(v), res = r && r.result;
-    if (res) T.sort((a, b) => (b.k === res.combo) - (a.k === res.combo)); // 結果のあとは当たりの組番を上に
-    const rows = T.map((x) => {
-      const p = x.k.split('-').map(Number), capB = !!(res && res.bptBack === true && !x.free), /* 上限のため BPT の券は全部返還（2026-11-20）: 当たりの組番でも「的中」ではなく「返還」 */ hit = !!(res && res.combo === x.k && !capB), inc = res && res.incident, back = capB || !!(inc && inc.refund && p.indexOf(inc.boat) >= 0);
-      return '<div class="tk' + (hit ? ' hit' : '') + '"><div class="kumi"><span class="kn">' + waku(p[0], 'sm') + '<b class="ar">▶</b>' + waku(p[1], 'sm') + '</span>' + (x.free ? '<em class="fr">無料</em>' : '') + (hit ? '<em class="ht">的中</em>' : '') + (back ? '<em class="bk">返還</em>' : '') + '</div>' +
-        '<div class="nm">' + (p[0] + 1) + '. ' + esc(boatOf(p[0]).name) + '<br>' + (p[1] + 1) + '. ' + esc(boatOf(p[1]).name) + '</div>' +
-        '<div class="am">' + dash(x.n * 100, 6) + '<small>BPT</small></div></div>';
-    }).join('');
-    return '<div class="fune' + (o.cls ? ' ' + o.cls : '') + '" aria-label="舟券">' +
-      '<div class="fl"><div class="brand">casa <b>BOAT</b></div><div class="shop">' + esc(storeName(v.storeId || STORE)) + '</div>' +
-      '<div class="rno"><b>' + (r ? hm(r.at) : '') + '</b><small>レース</small></div><div class="dt">' + d.getUTCFullYear() + '.' + (d.getUTCMonth() + 1) + '.' + d.getUTCDate() + '</div></div>' +
-      '<div class="fm"><span>2連単</span></div>' +
-      '<div class="fr fx" data-scrollarea>' + rows + '</div>' +
-      '<div class="fb"><span class="sum">合計' + dash(total, 3) + '枚 ' + dash(total * 100, 6) + '<small>BPT</small>' + (bptN >= 0 ? '<em>（うち無料 1 枚）</em>' : '') + '</span><span class="sn">' + sn.slice(0, 4) + '-' + sn.slice(4) + '</span><span class="bc" aria-hidden="true">' + barcode(sn) + '</span></div>' +
-      '</div>';
   }
 
   /* 2026-11-19 オーナー「投票待ち画面、テレビ・スマホ共に終わってる。競馬の感じをかなり参考に」: 競馬のスマホ（v2/bet.js）と同じ作り・同じ部品（bet.css の .waitbox・.bt／.btr の表・.pickdock）。
@@ -246,7 +283,7 @@
     const cut = over;
     for (let i = S.cart.length - 1; i >= 0 && over > 0; i--) { const x = S.cart[i]; if (x.free) continue; const n = x.n || 1, d = Math.min(n, over); over -= d; if (d >= n) S.cart.splice(i, 1); else x.n = n - d; }
     saveCart(); if (!S.cart.length && S.screen === 'confirm') S.screen = 'pick';
-    toast('BPT の残りに合わせて、えらんだ券を ' + cut + ' 枚へらしました', { ms: 5000 });
+    toast('BPT の残りに合わせて、えらんだ票を ' + cut + ' 票へらしました', { ms: 5000 });
   }
   function cartLine() { // えらんだ券（下の帯の上に 1 行・押すと消せる）
     if (!S.cart.length) return '';
@@ -257,10 +294,10 @@
   function scr(cls, html) { return '<div class="scr ' + cls + '">' + html + '</div>'; }
   function bptCard() {
     if (!S.bpt) return '';
-    return '<div class="bptcard"><div class="bh"><span>あなたの BPT</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります。競馬の「追加の券」に 1 枚 100 BPT で使えます（毎週月曜の朝 5 時にリセット）</p></div>';
+    return '<div class="bptcard"><div class="bh"><span>あなたの BPT</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります。競馬の票を 100 BPT で 1 票 増やせます（毎週月曜の朝 5 時にリセット）</p></div>';
   }
   function howCard() {
-    return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>テレビの QR を読めば、だれでも 1 レース 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で券を何枚でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし）</span></div></div>';
+    return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>テレビの QR を読めば、だれでも 1 レース 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で 1 票、何票でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし）</span></div></div>';
   }
   const LOGO_BIG = '<h1 class="logo-h1"><img src="../art/logo-boat/lockup-boat.png" width="280" height="93" alt="casa BOAT" draggable="false"></h1>'; // 2026-11-23 オーナー決定: casa BOAT のロゴ（art/logo-boat。競馬の lockup と同じ作りの絵）。読み込み中の画面（競馬の R.boot と同じ扱い）
   const bootMsg = () => '<p class="lead" role="status" data-wrap>' + (S.slow && !S.gotLive ? '通信に時間がかかっています。自動でつなぎ直しています' : '読み込み中…') + '</p>';
@@ -271,26 +308,30 @@
   /* 残りの時間は data-cd（その時刻）の付いた所だけ毎秒書き換える（画面全体は作り直さない。2026-11-20: 毎秒の作り直しで、押している途中のボタンが効かないことがあった） */
   const cd = (at, t) => ' data-cd="' + Math.round(at) + '">' + left(at - t);
   function vWait() {
-    const r = S.race, n = S.live && S.live.next, t = now();
-    const nx = r && Boat.stageOf(r, t) === 'wait' ? { at: r.at, openAt: r.openAt } : n;
-    if (!nx) return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wv" data-wrap>いまはボートレースの時間ではありません</p></div>' + bptCard() + howCard());
-    return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wt">' + hm(nx.at) + '<small>締切</small></p>' +
-      '<div class="wr"><p class="wv">投票は ' + hm(nx.openAt) + ' から</p><div class="clock"><div class="k">始まりまで あと</div><div class="v"' + cd(nx.openAt, t) + '</div></div></div></div>' + bptCard() +
+    const r = S.race, n = nextR(), t = now();
+    const nx = r && Boat.stageOf(r, t) === 'wait' ? { at: r.at, openAt: r.openAt, test: r.test } : n;
+    if (!nx) return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wv" data-wrap>いまはボートレースの時間ではありません</p></div>' + bptCard() + keibaLine() + aftLine() + howCard());
+    return scr('mid b-wait', testTag(nx) + '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wt">' + hm(nx.at) + '<small>締切</small></p>' +
+      '<div class="wr"><p class="wv">投票は ' + hm(nx.openAt) + ' から</p><div class="clock"><div class="k">受付開始まで あと</div><div class="v"' + cd(nx.openAt, t) + '</div></div></div></div>' + bptCard() + keibaLine() + aftLine(nx.at) +
       '<p class="sub">投票が始まったら、お店のテレビの QR を読んでください（QR はレースごとに変わります）</p>' + howRow());
   }
   function vNoQr() { // 投票中・このレースの QR をまだ読んでいない
     const r = S.race, t = now(), miss = !S.err && r && S.scanMiss === r.id;
-    return scr('mid b-noqr', '<div class="waitbox hot"><p class="wk">投票受付中</p><p class="wt">' + (r ? hm(r.at) : '') + '<small>締切</small></p><div class="wr"><p class="wv">締切まで</p><div class="clock"><div class="v"' + (r ? cd(r.closeAt, t) : '>') + '</div></div></div></div>' +
+    return scr('mid b-noqr', testTag(r) + '<div class="waitbox hot"><p class="wk">投票受付中</p><p class="wt">' + (r ? hm(r.at) : '') + '<small>締切</small></p><div class="wr"><p class="wv">締切まで あと</p><div class="clock"><div class="v"' + (r ? cd(r.closeAt, t) : '>') + '</div></div></div></div>' +
       '<div class="note qrnote"><b>テレビの QR を読んでください</b>ボートの投票はお店の中だけ。いまテレビに出ている QR を、スマホのカメラで読むと投票できます。</div>' +
       (S.err ? '<p class="err" data-wrap>' + esc(S.err) + '</p>' : miss ? '<p class="err" data-wrap>読んだ QR は、いまのレースのものではありません</p>' : '') + bptCard() + howRow());
   }
   function vClosed() { // 締切のあと・投票していない人（2026-11-20 B3: 「QR を読むと投票できます」は出さない・「締め切りました」は 1 回）
-    const n = S.live && S.live.next;
-    return scr('mid b-noqr', '<div class="waitbox"><p class="wk">締め切りました</p><p class="wv" data-wrap>' + (S.pend ? '投票が届いたか確かめています…' : '次のボートレースを待ってください') + '</p></div>' +
-      (n ? '<p class="nextr">次のボートレース <b>' + hm(n.at) + '</b><br>（投票は ' + hm(n.openAt) + ' から）</p>' : '') + bptCard() + howRow());
+    return scr('mid b-noqr b-closed', testTag(S.race) + '<div class="waitbox"><p class="wk">締め切りました</p><p class="wv" data-wrap>' + (S.pend ? '投票が届いたか確かめています…' : '次のボートレースを待ってください') + '</p></div>' +
+      nextB() + bptCard() + keibaLine() + aftLine() + howRow());
+  }
+  /* 次のボートレースの 1 行（締切後・結果の画面）。2026-11-23: 「受付開始まで あと ○:○○」も出す（残りの数字は data-cd ＝ 毎秒そこだけ書き換える） */
+  function nextB() {
+    const n = nextR(), t = now(); if (!n) return '';
+    return '<p class="nextr">次のボートレース <b>' + hm(n.at) + '</b><br>（投票は ' + hm(n.openAt) + ' から）' + (n.openAt > t ? '<span class="nc">受付開始まで あと <b' + cd(n.openAt, t) + '</b></span>' : '') + '</p>';
   }
   function vNoDerby() { // 競馬に参加していない: 競馬に投票したら自動で投票に戻る（F10。えらんだ券はそのまま）
-    return scr('mid b-noderby', '<div class="waitbox"><p class="wk">ボートの投票</p><p class="wv" data-wrap>今日の競馬に参加したスマホで投票できます</p></div><div class="note">ボートに投票できるのは、<b>今日の casa DERBY（競馬）に会計番号で投票したスマホ</b>だけです。競馬に投票すると、この画面は自動でボートの投票に戻ります' + (S.cart.length ? '（えらんだ券はそのまま）' : '') + '。</div><a class="btn ghost" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ</a>');
+    return scr('mid b-noderby', '<div class="waitbox"><p class="wk">ボートの投票</p><p class="wv" data-wrap>今日の競馬に参加したスマホで投票できます</p></div><div class="note">ボートに投票できるのは、<b>今日の casa DERBY（競馬）に会計番号で投票したスマホ</b>だけです。競馬に投票すると、この画面は自動でボートの投票に戻ります' + (S.cart.length ? '（えらんだ票はそのまま）' : '') + '。</div><a class="btn ghost" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ</a>');
   }
   function vNick() {
     return scr('b-nick', '<h1>ニックネーム</h1><p class="sub">当たったらテレビに出ます（競馬と同じ名前）</p><input id="nk" class="nkin" type="text" maxlength="40" autocomplete="off" autocapitalize="off" enterkeyhint="done" placeholder="8 文字まで" value="' + esc(savedNick()) + '"><div class="dock"><button class="btn" data-act="nick">決める</button></div>');
@@ -304,8 +345,8 @@
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><rect x="2" y="12" width="88" height="54" rx="5" class="pp"/><rect x="2" y="12" width="8" height="54" rx="2" class="b1"/><text x="18" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">1着</text><text x="60" y="27" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">2着</text><rect x="18" y="32" width="24" height="24" rx="3" fill="#f4f4f4" stroke="#14203a"/><text x="30" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#111" font-family="inherit">1</text><path d="M46 44 h8 m-3 -4 l4 4 l-4 4" fill="none" stroke="#14203a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="60" y="32" width="24" height="24" rx="3" fill="#d6332b"/><text x="72" y="50" text-anchor="middle" font-size="17" font-weight="900" fill="#fff" font-family="inherit">3</text></svg>' },
     { h: '当たりは BPT', p: '当たると 100 BPT × 倍率の BPT がこのスマホに入ります。受け取りの手続きはいりません。',
       pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><rect x="8" y="6" width="34" height="66" rx="6" class="ink"/><rect x="11" y="11" width="28" height="56" rx="3" class="bg"/><text x="25" y="44" text-anchor="middle" font-size="9" font-weight="900" fill="#8fdcff" font-family="inherit">+BPT</text><path d="M48 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#8fdcff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><g transform="translate(74 40)"><circle r="15" class="b2"/><circle r="12" class="b1"/><text y="4" text-anchor="middle" font-size="9" font-weight="900" fill="#06233a" font-family="inherit">BPT</text></g></svg>' },
-    { h: 'BPT で競馬の券を足せる', p: '100 BPT で競馬の券を 1 枚足せます（1 レース 合わせて 5 枚まで）。BPT は毎週月曜の朝 5 時にリセット。',
-      pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><g transform="translate(18 40)"><circle r="15" class="b2"/><circle r="12" class="b1"/><text y="4" text-anchor="middle" font-size="9" font-weight="900" fill="#06233a" font-family="inherit">BPT</text></g><path d="M37 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#ffd773" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="54" y="20" width="34" height="40" rx="4" class="pp"/><rect x="54" y="20" width="34" height="9" rx="3" fill="#c9a03e"/><text x="71" y="45" text-anchor="middle" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">競馬</text><text x="71" y="55" text-anchor="middle" font-size="7" font-weight="900" fill="#14203a" font-family="inherit">追加の券</text></svg>' },
+    { h: 'BPT で競馬の票を増やせる', p: '100 BPT で競馬の票を 1 票 増やせます（1 レース 合わせて 5 票まで）。BPT は毎週月曜の朝 5 時にリセット。',
+      pic: '<svg viewBox="0 0 92 78" aria-hidden="true"><g transform="translate(18 40)"><circle r="15" class="b2"/><circle r="12" class="b1"/><text y="4" text-anchor="middle" font-size="9" font-weight="900" fill="#06233a" font-family="inherit">BPT</text></g><path d="M37 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#ffd773" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="54" y="20" width="34" height="40" rx="4" class="pp"/><rect x="54" y="20" width="34" height="9" rx="3" fill="#c9a03e"/><text x="71" y="45" text-anchor="middle" font-size="9" font-weight="900" fill="#14203a" font-family="inherit">競馬</text><text x="71" y="55" text-anchor="middle" font-size="7" font-weight="900" fill="#14203a" font-family="inherit">追加の票</text></svg>' },
   ];
   function vIntro() {
     const k = Math.max(0, Math.min(INTRO.length - 1, S.introPage || 0)), c = INTRO[k], last = k === INTRO.length - 1;
@@ -318,7 +359,7 @@
   function vPick() {
     const k = S.f != null && S.s != null ? S.f + '-' + S.s : null, change = S.mode === 'change';
     const needFree = !hasFree() && !freeInCart(), bl = bptLeft();
-    const head = '<div class="pkh2"><h1>' + (change ? '組番を変える（無料券）' : needFree ? '2連単をえらぶ' : 'BPT で券を追加') + '</h1>' + (change || needFree ? '' : '<span class="bpts">BPT 残り <b>' + (S.bpt ? amt(bptRest()) : '…') + '</b></span>') + '</div>';
+    const head = '<div class="pkh2"><h1>' + (change ? '組番を変える（無料の票）' : needFree ? '2連単をえらぶ' : 'BPT で票を追加') + '</h1>' + testTag(S.race) /* 見出しの行の中（高さを増やさない） */ + (change || needFree ? '' :'<span class="bpts">BPT 残り <b>' + (S.bpt ? amt(bptRest()) : '…') + '</b></span>') + '</div>';
     let dock;
     if (!k) dock = '<p class="pdh">' + (S.f == null ? '1着の艇をえらんでください' : '2着の艇をえらんでください') + '</p>' + (S.cart.length && !change ? '<button class="btn" data-act="confirm">確認へ（' + (cartN() + (freeInCart() ? 1 : 0)) + '件）</button>' : hasFree() ? '<button class="btn ghost" data-act="back">もどる</button>' : '');
     else {
@@ -327,29 +368,58 @@
       const pay = payOf(k) * n, room = S.bpt ? Math.max(0, BPT_CAP - Math.max(0, bptRest() - (change || needFree ? 0 : n * 100))) : pay, gw = Math.min(pay, room);
       const pdw = !S.bpt || gw >= pay ? '<small>当たれば</small><span><b>' + amt(pay) + '</b> BPT</span>' : gw > 0 ? '<small>当たれば（上限まで）</small><span><b>' + amt(gw) + '</b> BPT</span>' : '<small>BPT が上限</small><span>増えません</span>';
       const sel = '<div class="pdsel"><span class="pdc">' + waku(S.f, '') + '<i>→</i>' + waku(S.s, '') + '</span><span class="pdo"><b>' + o + '</b>倍</span><span class="pdw' + (gw < pay ? ' capw' : '') + '">' + pdw + '</span></div>';
-      const qty = change || needFree || bl < 2 ? '' : '<div class="qty"><span>枚数</span><button class="qb" data-act="qm" aria-label="へらす">−</button><b>' + q + '</b><small>枚</small><button class="qb" data-act="qp" aria-label="ふやす">＋</button><button class="qb w" data-act="q10">+10</button></div>';
-      const main = change ? '<button class="btn" data-act="change"' + (S.busy || S.pend ? ' disabled' : '') + '>' + (S.busy ? '送信中…' : S.pend ? '確かめ中…' : 'この組番に変える') + '</button>' : needFree ? '<button class="btn" data-act="add">この組番を無料券に</button>' : '<button class="btn" data-act="add"' + (bl > 0 ? '' : ' disabled') + '>' + (bl > 0 ? 'BPT ' + amt(q * 100) + ' で追加' : S.bpt ? 'BPT が足りません' : 'BPT を確かめています…') + '</button>';
+      const qty = change || needFree || bl < 2 ? '' : '<div class="qty"><span>票数</span><button class="qb" data-act="qm" aria-label="へらす">−</button><b>' + q + '</b><small>票</small><button class="qb" data-act="qp" aria-label="ふやす">＋</button><button class="qb w" data-act="q10">+10</button></div>';
+      const main = change ? '<button class="btn" data-act="change"' + (S.busy || S.pend ? ' disabled' : '') + '>' + (S.busy ? '送信中…' : S.pend ? '確かめ中…' : 'この組番に変える') + '</button>' : needFree ? '<button class="btn" data-act="add">この組番を無料の票に</button>' : '<button class="btn" data-act="add"' + (bl > 0 ? '' : ' disabled') + '>' + (bl > 0 ? 'BPT ' + amt(q * 100) + ' で追加' : S.bpt ? 'BPT が足りません' : 'BPT を確かめています…') + '</button>';
       dock = sel + qty + (S.cart.length && !change ? '<div class="btnrow">' + main.replace('class="btn"', 'class="btn ghost"') + '<button class="btn" data-act="confirm">確認へ（' + (cartN() + (freeInCart() ? 1 : 0)) + '件）</button></div>' : main);
     }
     return scr('pickscr b-pick', head + '<div class="pkbody fx" data-scrollarea>' + boatTable() + '</div>' + (change ? '' : cartLine()) + (S.err ? '<p class="err" data-wrap>' + esc(S.err) + '</p>' : '') + '<div class="pickdock" aria-live="polite">' + dock + '</div>');
   }
   function vConfirm() {
-    const rows = S.cart.map((x, i) => { const p = x.k.split('-').map(Number); return '<tr><td>' + (i + 1) + '</td><td>2連単</td><td class="kb">' + waku(p[0], 'sm') + '-' + waku(p[1], 'sm') + '</td><td class="n">' + odds(x.k) + '</td><td class="n">' + (x.free ? '無料' : amt((x.n || 1) * 100) + '<small>BPT</small>' + (x.n > 1 ? '<br><small>' + x.n + ' 枚</small>' : '')) + '</td></tr>'; }).join('');
+    const rows = S.cart.map((x, i) => { const p = x.k.split('-').map(Number); return '<tr><td>' + (i + 1) + '</td><td>2連単</td><td class="kb">' + waku(p[0], 'sm') + '-' + waku(p[1], 'sm') + '</td><td class="n">' + odds(x.k) + '</td><td class="n">' + (x.free ? '無料' : amt((x.n || 1) * 100) + '<small>BPT</small>' + (x.n > 1 ? '<br><small>' + x.n + ' 票</small>' : '')) + '</td></tr>'; }).join('');
     const nB = cartN(), nAll = nB + (freeInCart() ? 1 : 0), lock = S.busy || !!S.pend; // 送信中・届いたか確かめ中は、修正も投票もできない（B4・F3）
-    return scr('b-confirm', '<h1>投票内容の確認</h1><div class="ctab fx" data-scrollarea><table><thead><tr><th>No</th><th>勝式</th><th>組番</th><th class="n">オッズ</th><th class="n">購入金額</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<div class="csum"><div><span>合計ベット数</span><b>' + nAll + '</b>件</div><div><span>購入金額</span><b>' + amt(nB * 100) + '</b><small>BPT</small>' + (freeInCart() ? '<em>＋無料券 1 枚</em>' : '') + '</div>' + (nB ? '<div class="dim"><span>BPT 残り</span>' + amt((S.bpt ? S.bpt.bal : 0)) + ' → <b>' + amt(Math.max(0, (S.bpt ? S.bpt.bal : 0) - nB * 100)) + '</b></div>' : '') + '</div>' +
+    return scr('b-confirm', testTag(S.race) + '<h1>投票内容の確認</h1><div class="ctab fx" data-scrollarea><table><thead><tr><th>No</th><th>勝式</th><th>組番</th><th class="n">オッズ</th><th class="n">購入金額</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="csum"><div><span>合計ベット数</span><b>' + nAll + '</b>件</div><div><span>購入金額</span><b>' + amt(nB * 100) + '</b><small>BPT</small>' + (freeInCart() ? '<em>＋無料の 1 票</em>' : '') + '</div>' + (nB ? '<div class="dim"><span>BPT 残り</span>' + amt((S.bpt ? S.bpt.bal : 0)) + ' → <b>' + amt(Math.max(0, (S.bpt ? S.bpt.bal : 0) - nB * 100)) + '</b></div>' : '') + '</div>' +
       (S.pend ? '<p class="sub" role="status" data-wrap>投票が届いたか確かめています…（電波が戻ると自動で確かめます）</p>' : '<p class="sub">オッズは締切のあとに少し変わることがあります</p>') + (S.err ? '<p class="err" data-wrap>' + esc(S.err) + '</p>' : '') +
       '<div class="btnrow"><button class="btn ghost" data-act="fix"' + (lock ? ' disabled' : '') + '>投票内容を修正する</button><button class="btn" data-act="vote"' + (lock ? ' disabled' : '') + '>' + (S.busy ? '送信中…' : S.pend ? '確かめ中…' : '投票する') + '</button></div>');
   }
   function vVoted() {
     const r = S.race, t = now(), v = myVote(), bl = S.bpt ? Math.floor((S.bpt.bal || 0) / 100) : 0;
-    return scr('b-voted', '<div class="vhead"><h1 class="done-h">' + (S.thanks ? '投票結果' : '投票済み') + '</h1><span class="cd">締切まで <b' + cd(r.closeAt, t) + '</b></span></div>' + (S.thanks ? '<p class="thx">ご投票ありがとうございました。</p>' : '') +
-      fune(v) + '<p class="sub">締切までは無料券の組番を変えられます。BPT の券は足せますが、消せません</p>' +
-      '<div class="btnrow"><button class="btn ghost" data-act="tochange">組番を変える</button><button class="btn ghost" data-act="tobuy"' + (bl > 0 ? '' : ' disabled') + '>BPT で券を足す' + (S.bpt ? '<small>あと ' + bl + ' 枚</small>' : '') + '</button></div>');
+    return scr('b-voted', '<div class="vhead"><h1 class="done-h">' + (S.thanks ? '投票結果' : '投票済み') + '</h1>' + testTag(r) /* 見出しの行の中（高さを増やさない） */ + '<span class="cd">締切まで あと <b' + cd(r.closeAt, t) + '</b></span></div>' + (S.thanks ? '<p class="thx">ご投票ありがとうございました。</p>' : '') +
+      papers(v) + '<p class="sub">締切までは無料の票の組番を変えられます。BPT の票は足せますが、消せません</p>' +
+      '<div class="btnrow"><button class="btn ghost" data-act="tochange">組番を変える</button><button class="btn ghost" data-act="tobuy"' + (bl > 0 ? '' : ' disabled') + '>BPT で票を足す' + (S.bpt ? '<small>あと ' + bl + ' 票</small>' : '') + '</button></div>');
   }
   function vRace() {
-    return scr('b-race', '<h1>テレビでレース中</h1><p class="sub">' + (S.pend ? '投票が届いたか確かめています…' : '結果はテレビとこの画面に出ます') + '</p>' + fune(myVote()));
+    return scr('b-race', testTag(S.race) + '<h1>テレビでレース中</h1><p class="sub">' + (S.pend ? '投票が届いたか確かめています…' : '結果はテレビとこの画面に出ます') + '</p>' + papers(myVote()) + watchBtn(S.race));
   }
+  /* 「▶ レースを見る」（2026-11-23 オーナー「ボートにも入れる」。競馬のスマホ v2/bet.js の watchBtn・openWatch・closeWatch・BETWATCH と同じ作り）:
+     このスマホに票があるレースの、レース中の画面にだけ出す（取り消したレースには出さない）。押すとこのページの上に窓を開き、v2/boat-watch.html（テレビと同じ映像・図。音なし）を出す。
+     重い部品は押したときに窓の中で初めて読む。閉じ方: 窓の中の「‹ 投票ページ」「投票ページへ戻る」（window.BOATWATCH.close）・スマホの「戻る」。窓の見た目は開くときだけ足す（boat-bet.css を大きくしない） */
+  function watchBtn(r) {
+    if (!myVote() || !r || r.refunded === true || r.status === 'void') return '';
+    return '<button class="btn ghost watchbtn" data-act="watch"><span aria-hidden="true">▶ </span>レースを見る<small>テレビと同じ画面</small></button>';
+  }
+  const WATCH_CSS = '#watchOv{position:fixed;inset:0;z-index:100;background:#0b101b}#watchOv iframe{position:absolute;top:0;bottom:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:100%;border:0;display:block;background:#0b101b}html.watching,html.watching body{overflow:hidden}';
+  function openWatch() {
+    const r = S.race; if (!myVote() || !r || $('watchOv')) return;
+    if (!$('watchCss')) { const s = document.createElement('style'); s.id = 'watchCss'; s.textContent = WATCH_CSS; document.head.appendChild(s); }
+    const keep = ['cloud', 'mute'].map((k) => (qs.get(k) ? '&' + k + '=' + encodeURIComponent(qs.get(k)) : '')).join('');
+    const ov = document.createElement('div'); ov.id = 'watchOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'レースを見る');
+    const fr = document.createElement('iframe'); fr.id = 'watchFr'; fr.title = 'レースを見る';
+    fr.src = 'boat-watch.html?s=' + encodeURIComponent(STORE) + '&race=' + encodeURIComponent(r.id) + keep;
+    ov.appendChild(fr); document.body.appendChild(ov); document.documentElement.classList.add('watching');
+    try { history.pushState(Object.assign({}, history.state || {}, { boatWatch: 1 }), ''); } catch (e) { /* noop */ } // スマホの「戻る」で窓を閉じる
+  }
+  function closeWatch(fromPop) {
+    const ov = $('watchOv'); if (!ov) return; const fr = $('watchFr');
+    try { const w = fr && fr.contentWindow; if (w && w.__boatWatchStop) w.__boatWatchStop(); } catch (e) { /* noop: 窓の中の見張りと絵を止める */ }
+    try { if (fr) fr.src = 'about:blank'; } catch (e) { /* noop */ }
+    ov.remove(); document.documentElement.classList.remove('watching');
+    if (!fromPop) { try { if (history.state && history.state.boatWatch) history.back(); } catch (e) { /* noop */ } }
+    lastKey = ''; draw();
+  }
+  window.addEventListener('popstate', () => { if ($('watchOv')) closeWatch(true); });
+  /* 窓（v2/boat-watch.js）が読むもの: 窓から閉じる・このスマホのそのレースの票（v2/boat-core.js の voteView の形）・いまの状態・時計（窓の中で読み直さない＝読み取りを増やさない） */
+  window.BOATWATCH = { close: () => closeWatch(false), votes: (raceId) => (S.race && S.race.id === raceId ? myVote() : null), live: () => S.live, now: () => now() };
   function resLine(res) {
     const p = String((res && res.combo) || '').split('-').map(Number), ok = p.length === 2 && p.every((i) => i >= 0 && i < 6), od = Number(res && res.odds); // 結果の中身が欠けても落ちない（2026-11-21 J16）
     return '<div class="resl"><span>2連単</span>' + (ok ? waku(p[0]) + '<b class="hy">-</b>' + waku(p[1]) : '<b class="hy">—</b>') + (res && res.noPay === true ? '<span class="po">払い戻しなし</span>' : '<span class="po">払戻 <b>' + amt(res && res.pay) + '</b><small>BPT</small></span>') + (od > 0 ? '<span class="pn">' + (Math.round(od * 10) / 10).toFixed(1) + '倍</span>' : '') + '</div>';
@@ -373,35 +443,36 @@
   }
   function vResult() {
     const r = S.race, res = r.result, v = myVote();
-    if (!res) return scr('mid b-race', '<h1>結果を待っています</h1>' + (v ? fune(v) : ''));
-    const x = resOf(v, r), won = !!(x && x.won > 0), n = S.live && S.live.next;
-    const next = n ? '<p class="nextr">次のボートレース <b>' + hm(n.at) + '</b><br>（投票は ' + hm(n.openAt) + ' から）</p>' : '';
+    if (!res) return scr('mid b-race', testTag(r) + '<h1>結果を待っています</h1>' + papers(v));
+    const x = resOf(v, r), won = !!(x && x.won > 0), tag = testTag(r);
+    const next = nextB() + aftLine(), kp = noLink ? null : kParts(); // 2026-11-23: 次のボート（受付開始までの残りつき）と「このあと」。kp: 次の競馬の時刻（当たりの画面は金のボタンの中に小さく）
     const bk = x && x.back, inc = res.incident, incBpt = bk && !bk.cap ? bk.n : 0; // フライング・転覆で返還の BPT の券（上限のための返還は下の行に出す）
-    const incLine = inc ? '<p class="incl">' + waku(inc.boat, 'sm') + ' ' + (inc.type === 'scratch' ? 'フライング' : '転覆') + '・' + (inc.refund ? 'この艇を含む券は返還' + (bk && (incBpt || bk.free) ? '（あなた: ' + (incBpt ? '＋' + amt(bk.bpt) + ' BPT 戻し' : '') + (bk.free ? (incBpt ? '・' : '') + '無料券は返還' : '') + '）' : '') : '返還なし') + '</p>' : '';
-    /* 2026-11-20: 上限のため、このレースの BPT の券を全部返還にした（result.bptBack）／上限のため払い戻しなし（result.noPay。ごくまれ） */
-    const capLine = (res.bptBack === true ? '<p class="incl capl">上限のため BPT の券は返還' + (bk && bk.cap && bk.n ? ' <b>＋' + amt(bk.bpt) + ' BPT</b>' : '') + '</p>' : '') + (res.noPay === true ? '<p class="incl capl">上限のため、このレースは払い戻しなし</p>' : '');
+    const incLine = inc ? '<p class="incl">' + waku(inc.boat, 'sm') + ' ' + (inc.type === 'scratch' ? 'フライング' : '転覆') + '・' + (inc.refund ? 'この艇を含む票は返還' + (bk && (incBpt || bk.free) ? '（あなた: ' + (incBpt ? '＋' + amt(bk.bpt) + ' BPT 戻し' : '') + (bk.free ? (incBpt ? '・' : '') + '無料の票は返還' : '') + '）' : '') : '返還なし') + '</p>' : '';
+    /* 2026-11-20: 上限のため、このレースの BPT の券を全部返還にした（result.bptBack）／上限のため払い戻しなし（result.noPay。ごくまれ）
+       2026-11-21 オーナー「見せない」: 理由（払い出しの上限）は画面に書かない。返還したこと・払い戻しが無いことだけをふつうの言い方で */
+    const capLine = (res.bptBack === true ? '<p class="incl capl">BPT の票は返還' + (bk && bk.cap && bk.n ? ' <b>＋' + amt(bk.bpt) + ' BPT</b>' : '') + '</p>' : '') + (res.noPay === true ? '<p class="incl capl">このレースは払い戻しなし</p>' : '');
     const fresh = !!S.bpt && (S.donefor === r.id || !(won || (bk && bk.bpt > 0))); // BPT の残りは、当たり・返還のあとに読み直した数だけ出す（読み直す前の古い数を出さない）
     const cp = won ? capInfo(v, r, x) : null; // 上限（3,000 BPT）で止まった: 実際に増えた分と「上限 3,000 BPT」を出す
     /* 2026-11-21 H7: 上限で 1 BPT も増えなかったときは「おめでとう ＋0」と出さず「的中しましたが、上限 3,000 BPT のため BPT は増えません」。読み直す前で上限に届くかもしれないときは額を「…」 */
     const zero = !!(cp && cp.capped && cp.real === 0);
     const gainH = zero ? '<p class="hitmsg">的中しました</p><div class="gain zero"><em>BPT が上限に達しているため増えません</em></div>'
-      : '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x.won)) + '</b><small>BPT</small>' + (cp && cp.capped ? '<em>上限で止まりました</em>' : '') + '</div>';
-    if (won) return scr('b-result win', gainH + resLine(res) + incLine + capLine + papers(v) +
-      '<p class="bnote">BPT 残り <b>' + (fresh ? amt(S.bpt.bal) : '…') + '</b><span class="bn2"><br>この BPT で競馬の券を足せます（100 BPT で 1 枚）</span></p><a class="btn tokeiba" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ（BPT で券を足す）</a>' + next);
-    const lead = !v ? '' : x && x.hit > 0 && res.noPay === true ? '的中（上限のため払い戻しなし）' : bk && bk.n && !(bk.bpt > 0) && v.won != null ? '返還（BPT が上限に達しているため増えません）' : bk && bk.n ? '返還 ＋' + amt(bk.bpt) + ' BPT' + (fresh ? '（BPT 残り ' + amt(S.bpt.bal) + '）' : '') : bk && bk.free && !v.n ? '無料券は返還（はずれではありません）' : '今回ははずれ';
-    return scr('b-result lose', '<h1>結果</h1>' + resLine(res) + incLine + capLine + (v ? papers(v) + '<p class="lead">' + lead + '</p>' : '') + next);
+      : '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x ? x.won : 0)) + '</b><small>BPT</small>' + (cp && cp.capped ? '<em>上限で止まりました</em>' : '') + '</div>'; // x ? : 投票していない人（x が無い）の結果の画面でここが落ちて、締切後の画面のまま止まっていた（2026-11-23 見つけて直した）
+    if (won) return scr('b-result win', tag + gainH + resLine(res) + incLine + capLine + papers(v) +
+      '<p class="bnote">BPT 残り <b>' + (fresh ? amt(S.bpt.bal) : '…') + '</b><span class="bn2"><br>この BPT で競馬の票を増やせます（100 BPT で 1 票）</span></p><a class="btn tokeiba" href="' + kHref() + '">競馬の投票へ（BPT で票を増やす）' + (kp ? '<small class="kn">' + kp.h + kp.s + '</small>' : '') + '</a>' + next);
+    const lead = !v ? '' : x && x.hit > 0 && res.noPay === true ? '的中（このレースは払い戻しなし）' : bk && bk.n && !(bk.bpt > 0) && v.won != null ? '返還（BPT が上限に達しているため増えません）' : bk && bk.n ? '返還 ＋' + amt(bk.bpt) + ' BPT' + (fresh ? '（BPT 残り ' + amt(S.bpt.bal) + '）' : '') : bk && bk.free && !v.n ? '無料の票は返還（はずれではありません）' : '今回ははずれ';
+    return scr('b-result lose', tag + '<h1>結果</h1>' + resLine(res) + incLine + capLine + (v ? papers(v) + '<p class="lead">' + lead + '</p>' : '') + nextB() + keibaLine() + aftLine()); // 2026-11-23: はずれ・投票していない人にも「競馬の投票へ」をいつも（次のボート → 次の競馬と入口 → このあと。待ち・締切後の画面と同じ並び）
   }
   /* 取り消し（2026-11-21: 戻る BPT も 3,000 まで。実際に戻った額を出す。お金の係が票に書く額があればそれ、無ければ枚数 × 100） */
   function vPrev() { // 前のレースの結果（「前の結果を見る」。H4）: 今の画面の中身を前のレースに一時的に入れ替えて、結果画面と同じ作りで出す
     const keep = [S.race, S.mine, S.donefor]; let h = '';
-    try { S.race = S.prev.race; S.mine = { vote: S.prev.vote, bpt: S.bpt }; S.donefor = S.prev.race.id; h = vResult(); } finally { S.race = keep[0]; S.mine = keep[1]; S.donefor = keep[2]; }
+    try { noLink = true; /* 前のレースを見返す画面: 次の競馬・このあとの行は出さない（閉じた先の画面にある） */ S.race = S.prev.race; S.mine = { vote: S.prev.vote, bpt: S.bpt }; S.donefor = S.prev.race.id; h = vResult(); } finally { noLink = false; S.race = keep[0]; S.mine = keep[1]; S.donefor = keep[2]; }
     return h.replace(/<a class="btn tokeiba"[^>]*>[^<]*<\/a>/, '').replace(/<\/div>$/, '<button class="btn ghost" data-act="prevclose">とじる</button></div>').replace('class="scr ', 'class="scr b-prev ');
   }
   function vVoid() {
     // 実際に戻った額は票の voidBack.bpt（ref/boat/opId_の使い方.md。戻し終わる前は無い）
     const v = myVote(), n = v ? Number(v.n) || 0 : 0, real = v && v.voidBack ? numOf(Number(v.voidBack.bpt)) : null;
-    const msg = !n ? 'BPT の券はありませんでした。' : real == null ? 'BPT の券に使った BPT を戻します。' : real >= n * 100 && !v.voidBack.cut ? 'BPT の券に使った ' + amt(real) + ' BPT を戻しました。' : '戻した BPT は ' + amt(real) + ' BPT です（BPT が上限に達したため）。';
-    return scr('mid b-void', '<h1>このレースは取り消しました</h1><div class="note">' + (v ? msg : 'BPT の券に使った BPT は戻しました。') + '</div>');
+    const msg = !n ? 'BPT の票はありませんでした。' : real == null ? 'BPT の票に使った BPT を戻します。' : real >= n * 100 && !v.voidBack.cut ? 'BPT の票に使った ' + amt(real) + ' BPT を戻しました。' : '戻した BPT は ' + amt(real) + ' BPT です（BPT が上限に達したため）。';
+    return scr('mid b-void', testTag(S.race) + '<h1>このレースは取り消しました</h1><div class="note">' + (v ? msg : 'BPT の票に使った BPT は戻しました。') + '</div>');
   }
 
   /* ---------- いまの画面を決める ---------- */
@@ -452,7 +523,7 @@
   let lastKey = '', edgeT = null;
   function draw() {
     tickState();
-    const sc = decideScreen(); if (sc !== S.screen) { if (S.screen === 'voted' && sc !== 'voted') S.thanks = false; S.screen = sc; holdTaps(); }
+    const sc = decideScreen(); if (sc !== S.screen) { if (S.screen === 'voted' && sc !== 'voted') S.thanks = false; S.screen = sc; holdTaps(); if (sc === 'wait' || sc === 'closed' || sc === 'result') loadDerby(); /* 次の競馬の時刻（この 3 つの画面に切り替わったときだけ。覚えていれば読まない） */ }
     const html = (VIEW[sc] || vWait)(), key = cdKey(html), m = $('main');
     chip(); armEdge();
     if (key === lastKey) { // 中身は同じ: 残りの時間だけ
@@ -529,7 +600,7 @@
   }
   function onLive(live) {
     const first = !S.gotLive; S.gotLive = true; S.online = true;
-    S.live = live || { race: null, next: null };
+    S.live = live || { race: null, next: null }; saveNx(); // 競馬のスマホ用に軽い形で覚える（2026-11-23）
     const r = S.live.race || null, changed = !r || !S.race || r.id !== S.race.id;
     let prevHad = false;
     if (changed && S.race && !myVote()) { S.prev = null; S.viewPrev = false; prevTok++; } // 直前のレースに票が無い: 「前の結果」の入口は消す（2 レース前を残さない。2026-11-21 L5）
@@ -565,7 +636,7 @@
     if (race.status === 'void' || race.refunded === true) return '前のレースは取り消し' + (v && v.n > 0 ? '（BPT を戻しました）' : '');
     const x = resOf(v, race); if (!x) return '';
     if (x.won > 0) { const cp = capInfo(v, race, x); return cp && cp.capped && cp.real === 0 ? '前のレース: 的中（BPT が上限に達しているため増えません）' : '前のレース: 的中 ＋' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x.won)) + ' BPT'; }
-    if (x.hit > 0 && race.result && race.result.noPay === true) return '前のレース: 的中（上限のため払い戻しなし）';
+    if (x.hit > 0 && race.result && race.result.noPay === true) return '前のレース: 的中（払い戻しなし）'; // 理由（払い出しの上限）は書かない（2026-11-21）
     return '前のレース: ' + (x.back && x.back.bpt > 0 ? '返還 ＋' + amt(x.back.bpt) + ' BPT' : x.back && x.back.n ? '返還' : 'はずれ');
   }
   let prevTok = 0; // 前のレースが替わったら増える（読んでいる間に次のレースへ進んだら、古いレースを「前の結果」にしない。L5）
@@ -653,7 +724,7 @@
       if (!v0 && fixFree()) saveCart();
       sent = S.cart.slice(); if (!sent.length) return;
       const free = sent.find((x) => x.free), add = []; sent.forEach((x) => { if (!x.free) for (let i = 0; i < (x.n || 1); i++) add.push(x.k); });
-      if (!v0 && !free) { S.err = '先に無料券の組番をえらんでください'; S.screen = 'pick'; return draw(); }
+      if (!v0 && !free) { S.err = '先に無料の票の組番をえらんでください'; S.screen = 'pick'; return draw(); }
       o.code = keyFor(r.id); o.nick = savedNick() || (v0 && v0.nick); o.add = add;
       if (free) { const p = free.k.split('-').map(Number); o.first = p[0]; o.second = p[1]; }
     }
@@ -681,7 +752,7 @@
     /* 前の押し直しが届いていた（prevLanded）・この番号はもう取り消してあった（dead）: 今回は何も足されていない（3 回目 L1） */
     if (x.prevLanded || x.dead === true) {
       dropOp(ctx, true); settle(x.vote, ctx.id); S.err = '';
-      if (x.prevLanded) toast('前の投票が届いていました。' + (S.cart.length ? '残りの券を確かめて、もう一度押してください' : ''), { ms: 6000 });
+      if (x.prevLanded) toast('前の投票が届いていました。' + (S.cart.length ? '残りの票を確かめて、もう一度押してください' : ''), { ms: 6000 });
       else S.err = '送れませんでした。もう一度押してください';
       if (!S.cart.length) { S.f = S.s = null; S.mode = 'buy'; S.screen = 'voted'; } else S.screen = 'confirm';
       return;
@@ -747,7 +818,7 @@
       const r = S.race;
       if (r.status !== 'upcoming' || now() >= r.closeAt) { S.cart = []; saveCart(); S.err = ''; setRetry(null); toast('締め切りました（投票は届いていません）'); }
       else if (p.denied) { dropOp(Object.assign({}, p, { olds: (retryOf(p.id) || { olds: [] }).olds }), true); errOf(p.denied, p); } // 断られていて、前の書き込みも届いていない: 断られた理由を出す（次は新しい番号）
-      else if (st.landed) { S.err = ''; toast('前の投票が届いていました。' + (S.cart.length ? '残りの券を確かめて、もう一度押してください' : ''), { ms: 6000 }); if (!S.cart.length) { S.f = S.s = null; S.mode = 'buy'; S.screen = 'voted'; } }
+      else if (st.landed) { S.err = ''; toast('前の投票が届いていました。' + (S.cart.length ? '残りの票を確かめて、もう一度押してください' : ''), { ms: 6000 }); if (!S.cart.length) { S.f = S.s = null; S.mode = 'buy'; S.screen = 'voted'; } }
       else S.err = '送れませんでした。もう一度押してください';
     }
     draw();
@@ -758,10 +829,10 @@
     if (c === 'no_derby') { S.noderby = r.id; S.dvSig = derbyVotes().join(','); return; } // えらんだ券は残す（競馬に参加したら自動で戻る。F10）
     if (c === 'closed' || r.status !== 'upcoming' || now() >= r.closeAt) { S.cart = []; saveCart(); S.f = S.s = null; S.mode = 'buy'; S.err = ''; toast('締め切りました'); return; }
     if (c === 'bad_code' || (c === 'denied' && first)) { // 合言葉ちがい: QR を読み直してもらう。えらんだ券は消さない（B9）
-      dropKey(r.id); S.err = (c === 'bad_code' ? 'QR の合言葉がちがいました。' : '投票できませんでした。') + 'テレビの QR を読み直すと、えらんだ券のまま投票できます'; return;
+      dropKey(r.id); S.err = (c === 'bad_code' ? 'QR の合言葉がちがいました。' : '投票できませんでした。') + 'テレビの QR を読み直すと、えらんだ票のまま投票できます'; return;
     }
     if (c === 'bad_nick') { ls.set(NKEY, ''); memNick = ''; toast('ニックネームを入れ直してください'); return; }
-    if (c === 'denied') { S.err = 'BPT の券を追加できませんでした。BPT の残りを確かめてください'; loadMine(true, true); return; } // 投票済みの人（合言葉は要らない）が断られた ＝ BPT
+    if (c === 'denied') { S.err = 'BPT の票を追加できませんでした。BPT の残りを確かめてください'; loadMine(true, true); return; } // 投票済みの人（合言葉は要らない）が断られた ＝ BPT
     S.err = (e && e.message) || '送れませんでした。もう一度押してください';
     if (c === 'bad_pick') S.screen = 'pick';
     if (c === 'no_bpt' || c === 'too_many') { S.cart = S.cart.filter((x) => x.free); saveCart(); loadMine(true, true); }
@@ -776,6 +847,7 @@
     const r = S.race;
     if (r && lsOk && !S.busy && !S.pend) { const L = loadCart(r); if (cartSig(L) !== cartSig(S.cart)) S.cart = L; }
     if (r && needMine(r)) { if (!S.busy && !S.pend) loadMine(true, true); } else if (S.gotLive) loadBpt();
+    if (S.screen === 'wait' || S.screen === 'closed' || S.screen === 'result') loadDerby(); // 次の競馬の時刻（覚えが古くなっていたときだけ読む）
     draw();
   }
   // 見張り（いまの状態）。画面を 1 分より長く消している間は止める（開きっぱなしのスマホの読み取りを減らす。戻ったらつなぎ直して最新を受け取る）
@@ -800,11 +872,12 @@
     if ((S.busy || S.pend) && edit) return; // 送信中・届いたか確かめ中は券を動かさない（入れた券が黙って消えない。B4）
     if (b.dataset.f != null) { const i = Number(b.dataset.f); S.f = S.f === i ? null : i; if (S.s === S.f) S.s = null; S.qty = 1; S.err = ''; return draw(); } // 組番を選び直したら枚数は 1 に戻す（B6）
     if (b.dataset.s != null) { const i = Number(b.dataset.s); S.s = S.s === i ? null : i; S.qty = 1; S.err = ''; return draw(); }
-    if (b.dataset.del != null) { S.cart.splice(Number(b.dataset.del), 1); const k = fixFree(); saveCart(); if (k) toast('無料券を ' + comboTx(k) + ' にしました'); if (!S.cart.length && S.screen === 'confirm') S.screen = 'pick'; return draw(); }
+    if (b.dataset.del != null) { S.cart.splice(Number(b.dataset.del), 1); const k = fixFree(); saveCart(); if (k) toast('無料の票を ' + comboTx(k) + ' にしました'); if (!S.cart.length && S.screen === 'confirm') S.screen = 'pick'; return draw(); }
     if (a === 'introNext' || a === 'introPrev') { if (tn - introAt < 300) return; introAt = tn; S.introPage = Math.max(0, Math.min(INTRO.length - 1, (S.introPage || 0) + (a === 'introNext' ? 1 : -1))); return draw(); }
     if (a === 'intro') { if (tn - introAt < 300) return; introAt = tn; tapLock = tn + 300; const again = S.introAgain; if (!again) ls.set('casa.boat.intro', '1'); lastKey = ''; S.introPage = 0; S.introAgain = false; S.screen = again ? '' : 'pick'; return draw(); }
     if (a === 'prevres') { if (!S.prev || !S.prev.race || !S.prev.race.result) return; $('toast').classList.add('hidden'); S.viewPrev = true; S.introAgain = false; return draw(); }
     if (a === 'prevclose') { S.viewPrev = false; return draw(); }
+    if (a === 'watch') return openWatch(); // レースを見る（2026-11-23）
     if (a === 'howto') { S.introAgain = true; S.introPage = 0; introAt = tn; return draw(); }
     if (a === 'nick') { const n = cleanNick(($('nk') || {}).value); if (!n) { toast('ニックネームは 1〜8 文字です'); return; } ls.set(NKEY, n); memNick = n; lastKey = ''; S.screen = 'pick'; if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); return draw(); }
     if (a === 'add') {
@@ -824,6 +897,12 @@
     if (a === 'back') { S.mode = 'buy'; S.f = S.s = null; S.qty = 1; S.cart = []; saveCart(); S.err = ''; S.screen = hasFree() ? 'voted' : 'pick'; return draw(); }
     if (a === 'change') return send('change');
   });
+  /* 「競馬の投票へ」（リンク。2026-11-23 いつも出す入口）: 画面が替わった直後の指の早押しでは開かない（上の早押しよけと同じ 0.4 秒）。開くときは、ボートのいまの状態を「いま見た物」として覚え直す（競馬のスマホが読まずに済む） */
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest || !ev.target.closest('a.kline, a.tokeiba')) return;
+    if (ev.isTrusted && performance.now() < holdUntil) { ev.preventDefault(); return; }
+    if (unWatch && S.online) saveNx();
+  }, true);
   // ニックネーム: 8 文字で止める（日本語の変換中は切らない）・Enter で決める
   // 半角カナの濁点（ｶﾞ ＝ 2 字）は先に全角（ガ ＝ 1 字）へまとめてから数える（濁点の途中で切らない。2026-11-21 H10）
   const nickCut = (ev) => { const i = ev.target; if (!i || i.id !== 'nk') return; let s = i.value; if (/[｡-ﾟ]/.test(s)) s = s.replace(/[｡-ﾟ]+/g, (m) => m.normalize('NFKC')); if (Array.from(s).length > MAX_NICK) s = cutNick(s); if (s !== i.value) i.value = s; };
