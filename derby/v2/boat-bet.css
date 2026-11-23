@@ -252,3 +252,20 @@ body.boat .top .boatcrest img { display: block; width: 96px; height: 32px; point
 body.boat .os-t .boatcrest img, body.boat.os-t .boatcrest img { width: 84px; height: 28px; }
 body.boat .splash .logo-h1 img { aspect-ratio: 1857 / 618; }
 .introh img { display: block; margin: 0 auto; width: 144px; height: 48px; pointer-events: none; }
+
+/* 確定のあとの舟券（2026-11-23 オーナー「競馬の馬券みたいな紙を。ほぼ同じデザインで、色は青っぽく」。v2/boat-bet.js の paper・papers）:
+   組みは競馬の馬券（v2/ticket.css）のまま。紙をうすい青に、地紋を青い丸と波（casa BOAT）に、字の紺を少し青く、組番の文を青に、帯の水色を濃く */
+body.boat .tkt { --tk-ink: #0e2a52; --tk-dim: #47618a; --tk-green: #1668b8; --tk-sky: #4fb2ee; background-color: #f2f8fe;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='120' viewBox='0 0 150 120'%3E%3Cg fill='none' stroke='%23cbe2f6' stroke-width='5'%3E%3Ccircle cx='38' cy='34' r='26'/%3E%3Ccircle cx='113' cy='94' r='26'/%3E%3C/g%3E%3Cg fill='none' stroke='%23d8eafa' stroke-width='1.2'%3E%3Ccircle cx='38' cy='34' r='33'/%3E%3Ccircle cx='113' cy='94' r='33'/%3E%3C/g%3E%3Cg fill='%23c6dff5' font-family='Arial,sans-serif' font-weight='700' font-style='italic' text-anchor='middle'%3E%3Ctext x='38' y='32' font-size='10'%3Ecasa%3C/text%3E%3Ctext x='38' y='43' font-size='9'%3EBOAT%3C/text%3E%3C/g%3E%3Cpath d='M98 90q5-7 10 0t10 0t10 0M98 99q5-7 10 0t10 0t10 0' fill='none' stroke='%23c6dff5' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"), radial-gradient(circle at 85% 20%, rgba(186, 222, 248, .55), transparent 45%); background-size: 190px 152px, 100% 100%;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .4), 0 0 0 1px rgba(200, 230, 255, .6); }
+body.boat .tkt::before { background: rgba(242, 248, 254, .45); }
+body.boat .tk-band::before { opacity: .36; }
+body.boat .tk-row .bx { background: #fff; }
+body.boat .tk-hit { box-shadow: 0 0 0 .4cqw #e9b84a, inset 0 0 0 .7cqw #f2f8fe, inset 0 0 0 1.1cqw #d6332b; }
+body.boat .mine.tk .mk { color: #bfe3ff; } body.boat .mine.tk .mk .vn { border-color: #6fb6ea; color: #e6f4ff; } body.boat .mine.tk .mk .vn.bt { border-color: var(--gold); color: var(--gold); }
+body.boat .tk-amt .pt { font-size: .5em; margin-left: .15em; }
+.mine.tk.back .tk-ifw { color: var(--tk-dim); }
+/* 結果の画面: 券の欄は残りの高さを使い、入らない分は欄の中だけ動く。小さい画面でも券の頭（組番と額）が見える高さは残す */
+.scr.b-result .btks { flex: 1 1 auto; min-height: 118px; gap: 12px; }
+.os-s .scr.b-result .btks { min-height: 104px; } .os-xs .scr.b-result .btks { min-height: 92px; }
+body.boat .tkt { text-align: left; } /* ボートの画面は字が中央寄せなので、券の中は競馬の券と同じ左寄せに戻す（店名・選手名の位置） */
