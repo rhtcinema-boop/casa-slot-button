@@ -218,8 +218,8 @@
   },
   {
    "path": "boat/fanfare-boat.js",
-   "size": 18921,
-   "sha256": "5f657b1b69926ee2bd2b7edeb31796c9fcfb02a05c6878338c05f236be34bb29"
+   "size": 21003,
+   "sha256": "12f9b37f2c6ab8b4216e6ae290f4be35f6208e2dd9d7b60549ca5e9d00fb3f5c"
   },
   {
    "path": "boat/lines.js",
@@ -233,13 +233,13 @@
   },
   {
    "path": "boat/race-boat.js",
-   "size": 102405,
-   "sha256": "3ed379fe205df7ccfcbd410c4b789369521f21dacacc76b4fe992688d4918c91"
+   "size": 119317,
+   "sha256": "5fa140243b1d798f2df1ae3c5e2a8d3feaf31f61e62cc40526dcc7b159f8f4b7"
   },
   {
    "path": "boat/sound.js",
-   "size": 18965,
-   "sha256": "ca9bfe8d3800f4c34dea7a97176eb9c236059a13b739e36cc44feb9f526e1fa1"
+   "size": 29095,
+   "sha256": "6621c494e60059012ecc019afbb3c154eb97e036a846a931c7de12023432b0df"
   },
   {
    "path": "boat/venue3d.js",
@@ -259,7 +259,7 @@
   {
    "path": "index.html",
    "size": 29360,
-   "sha256": "f452113870ea86bd62a015f929be4813d8a704fa8218f2470690d637e4714789"
+   "sha256": "fc10f0a49799a9e1d7ba4a77b10d2c94d4329d6a6bc3512ca0fe25dbce3efdf0"
   },
   {
    "path": "js/audio.js",
@@ -423,13 +423,13 @@
   },
   {
    "path": "v2/tv-boat.css",
-   "size": 22994,
-   "sha256": "98c91c2fd5a45205899ab7c943ec0fe7c1ea1f399671639b2d70eecedc09e51f"
+   "size": 38649,
+   "sha256": "2f47c5024dba7d1b92ff7315ca6c96b2833d075ff1f84260b4ed6cdba83113b5"
   },
   {
    "path": "v2/tv-boat.js",
-   "size": 51661,
-   "sha256": "1c30857608834b058f5dd08dc37ebd2648d53dfd0eaf5464e54100de53404c89"
+   "size": 62832,
+   "sha256": "313e8f962b6daece3ab8b5976726d9297ed4950430bcfe30d10c5b74a8e228ab"
   },
   {
    "path": "v2/tv.css",
