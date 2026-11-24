@@ -802,3 +802,27 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 .bptrow { border: 1.5px solid #4fb0e2; background: linear-gradient(135deg, #12365a, #0d1f36); box-shadow: 0 0 0 1px rgba(79, 176, 226, .25) inset, 0 0 16px rgba(79, 176, 226, .35); }
 .bptrow .bl b { color: #8fdcff; }
 .bptbtn { border: 1.5px solid #4fb0e2; color: #8fdcff; box-shadow: 0 0 14px rgba(79, 176, 226, .3); }
+/* 2026-11-24 BPT で組み合わせを複数（ボートと同じ形）: 予想の画面の下に並べた組み合わせ（押すと消せる）・「もう1つ えらぶ」・まとめて確認の表。色は BPT の水色（上の .bptbtn と同じ） */
+.cartl { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 0 0 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.cartl::-webkit-scrollbar { display: none; }
+.cartl .cc { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 34px; padding: 0 8px; border-radius: 10px; border: 1px solid #4fb0e2; background: #0f2440; color: #fff; font: inherit; white-space: nowrap; cursor: pointer; }
+.cartl .cc i { font-style: normal; color: var(--gold); font-weight: 900; }
+.cartl .cc small { font-size: 12px; font-weight: 700; color: #8fdcff; margin-left: 3px; }
+.cartl .cc em { font-style: normal; color: var(--dim); margin-left: 4px; font-size: 15px; }
+.pickdock .cartbtns .btn { min-height: 52px; }
+.pickdock .cartbtns .cartadd { border: 1.5px solid #4fb0e2; color: #8fdcff; line-height: 1.2; font-size: 15px; }
+.pickdock .cartbtns .cartadd small { display: block; font-size: 11px; font-weight: 600; color: var(--dim); white-space: nowrap; }
+.pickdock .cartbtns .cartadd:disabled { opacity: .55; }
+.os-s .pickdock .cartbtns .btn { min-height: 48px; } .os-s .cartl .cc { height: 30px; }
+.cartc .clh, .cartc .clist .vr { display: grid; grid-template-columns: 62px auto 1fr 1fr 36px; align-items: center; gap: 8px; }
+.cartc .clh { flex: none; padding: 0 16px; font-size: 12px; font-weight: 700; color: var(--dim); text-align: right; }
+.cartc .clist { flex: 0 1 auto; min-height: 0; overflow-y: auto; gap: 4px; }
+.cartc .clist .vr { min-height: 40px; }
+.cartc .clist .vk { font-size: 12px; font-weight: 800; color: var(--cream); }
+.cartc .clist .vk.b { color: #8fdcff; }
+.cartc .cpc { display: inline-flex; align-items: center; gap: 4px; } .cartc .cpc i { font-style: normal; color: var(--gold); font-weight: 900; }
+.cartc .cpo { text-align: right; font-size: 13px; color: var(--dim); font-weight: 700; white-space: nowrap; } .cartc .cpo b { font-size: 20px; color: #fff; font-weight: 900; font-variant-numeric: tabular-nums; margin-right: 1px; }
+.cartc .cpw { text-align: right; font-size: 15px; font-weight: 900; color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cartc .cx { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--btn2); color: var(--dim); font-size: 18px; font-weight: 700; padding: 0; cursor: pointer; }
+.cartc .cx:disabled { opacity: .35; }
+.cartc .cbal { flex: none; margin: 0; text-align: center; font-size: 14px; font-weight: 700; color: #8fdcff; font-variant-numeric: tabular-nums; }
