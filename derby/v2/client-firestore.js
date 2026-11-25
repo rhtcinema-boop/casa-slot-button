@@ -18,7 +18,7 @@
 
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // casa SLOT と同じ版（compat）
   const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', bpt: 'derbyBpt', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev', stamps: 'derbyStamps' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
-  const LEASE_MS = 60000, RENEW_MS = 40000, BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
+  const LEASE_MS = 95000, RENEW_MS = 35000, /* 2026-11-25 読み取りの枠: 鍵の延長は 60 秒に 1 回（前は 20 秒。期限 60 秒→95 秒）。予備の引き継ぎは約 35 秒遅くなるだけ */ BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
   /* ---------- 入れ子の配列の変換（2026-10-18 本番で発覚） ----------
@@ -385,7 +385,7 @@
     const withCounts = (races, counts) => (counts ? races.map((r) => (r.status === 'upcoming' && counts[r.id] ? Object.assign({}, r, { participants: counts[r.id] }) : r)) : races);
     async function compose(s, races, stores, pub) {
       s = s || store;
-      if (WATCH) { if (!countsCache || local() - countsAt > 20000) { countsAt = local(); try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = races.map((r) => (!(r.participants && r.participants.total) && countsCache[r.id] ? Object.assign({}, r, { participants: countsCache[r.id] }) : r)); } // 見るだけ: derbyLive には参加人数が無い → 20 秒に 1 回まで 1 件読む（締切のあとのレースにも付ける）
+      if (WATCH) { if (!countsCache || local() - countsAt > 60000) /* 2026-11-25 読み取りの枠: 20 秒→60 秒 */ { countsAt = local(); try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = races.map((r) => (!(r.participants && r.participants.total) && countsCache[r.id] ? Object.assign({}, r, { participants: countsCache[r.id] }) : r)); } // 見るだけ: derbyLive には参加人数が無い → 20 秒に 1 回まで 1 件読む（締切のあとのレースにも付ける）
       else if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = withCounts(races, countsCache); } // 2026-10-29: 8 秒まで・読めなければ前の値
       const sched = await getSchedule(); // 本日の出走時間（2026-10-27）: 公開の時刻表の決まり → state.today
       return Core.stateFor({ t: now(), store: s, role: VIEW, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [], bigNames: sched.bigNames || {} }); /* bigNames: 次のビッグレースの名前（2026-11-11。公開の時刻表にある） */
@@ -801,11 +801,21 @@
     }
 
     /* ---------- 決める処理（決める係のテレビとマスターが使う。何度呼んでも同じ） ---------- */
-    let secretCache = null, secretAt = 0;
+    let secretCache = null, secretAt = 0, secretUn = null, secretLive = false;
+    /* 2026-11-25 読み取りの枠: 進行役のテレビ（見回りが動いている間）は裏の設定を見張る＝変わった時だけ読む（前は 30 秒ごとに読み直し＝1 日約 2,900 回）。
+       見張りが切れた・見回りの外（管理画面・試験の手回し）は今までどおり 30 秒おぼえる */
+    const secretOf = (s) => ({ tuning: Core.tuningOf((s && s.tuning) || {}), /* 以前のデータ（shiftWidth だけ）も読める */ timetable: (s && s.timetable) || { rules: [] }, salt: (s && s.salt) || 'nosalt' });
+    function secretListen() {
+      let run = false; try { run = decider.running; } catch (e) { return; } // 作る途中（decider がまだ無い）に呼ばれても落ちない
+      if (secretUn || !run) return;
+      try { secretUn = doc(COL.config, 'secret').onSnapshot((sn) => { if (!decider.running) return; secretCache = secretOf(data(sn)); secretAt = local(); secretLive = true; }, () => { secretUn = null; secretLive = false; }); } catch (e) { secretUn = null; secretLive = false; }
+    }
+    function secretUnlisten() { if (secretUn) { try { secretUn(); } catch (e) { /* noop */ } } secretUn = null; secretLive = false; }
     async function secretConfig(force) {
-      if (!force && secretCache && local() - secretAt < 30000) return secretCache;
+      secretListen();
+      if (!force && secretCache && ((secretLive && secretUn) || local() - secretAt < 30000)) return secretCache;
       const s = data(await doc(COL.config, 'secret').get());
-      secretAt = local(); secretCache = { tuning: Core.tuningOf((s && s.tuning) || {}), /* 以前のデータ（shiftWidth だけ）も読める */ timetable: (s && s.timetable) || { rules: [] }, salt: (s && s.salt) || 'nosalt' };
+      secretAt = local(); secretCache = secretOf(s);
       return secretCache;
     }
     // 管理画面で許可したテレビ（2026-11-21 G1。derbyConfig/secret の tvOk）: { <uid>: { store, at } }。読めなければ {}（＝どのテレビも自動では予備にしない）
@@ -1431,7 +1441,7 @@
       loop();
       clearInterval(decider.wdTimer); decider.wdTimer = setInterval(() => { watchdog().catch((e) => noteErr(e, 'watchdog')); }, 10000); // 見張り番は見回りとは別のタイマー
     }
-    function stopDecider() { if (typeof boat !== 'undefined' && boat) boat.stop(); decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); }
+    function stopDecider() { secretUnlisten(); if (typeof boat !== 'undefined' && boat) boat.stop(); decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); }
 
     /* ---------- テレビの手元の写し（2026-10-29 電波の悪い店） ----------
        テレビは、見張りで届いたレース（このテレビに見えるもの・2 時間前から 12 件まで）・店舗・公開の設定・時刻表・参加人数と、もう読めた本物の結果（seed）を
