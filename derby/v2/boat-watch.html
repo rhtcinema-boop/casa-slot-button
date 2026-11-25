@@ -58,7 +58,7 @@
 <script>/* 画面のスクリプト。版の印は、窓を開いた投票ページ（v2/boat.html）がもう読んだものと同じにする（同じファイルを 2 回読まない）。直接開いたときは下の印。
    公開のたびに V（ボートのファイル）を上げる。DV は競馬と共通のファイル（core.js・client.js）の印で、v2/boat.html の DV と同じにする。実行は入れた順（async=false） */
 (function () {
-  var V = '?v=bw3', DV = '?v=v4q33', BV = '?v=b9', h = document.head, P = null, PW = null;
+  var V = '?v=bw3', DV = '?v=v4q34', BV = '?v=b9', h = document.head, P = null, PW = null;
   try { if (window.parent && window.parent !== window && window.parent.BOATWATCH) { PW = window.parent; P = PW.document; } } catch (e) { P = null; PW = null; }
   function from(name, dflt) { // 投票ページが読んだ住所（あれば）。name はファイルの名前そのもの（'core.js' は boat-core.js に当たらない）
     try { var L = P ? P.querySelectorAll('script[src]') : [], re = new RegExp('/' + name.replace(/\./g, '\\.') + '(\\?|$)'); for (var i = 0; i < L.length; i++) { if (re.test(L[i].src || '')) return L[i].src; } } catch (e) { /* 下へ */ }
