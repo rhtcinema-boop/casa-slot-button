@@ -187,6 +187,18 @@
     $('tabs').style.display = ''; markTab();
     setInterval(tick, 1000); tick();
     render();
+    loadUsage();
+  }
+  /* 今日の読み取り（推定）とモード（2026-11-25 ②。オーナー決定「無料のまま 1 日 5 万回を超えない」）: 見出しの時計の横に小さく。
+     読むのはログインしたとき・タブを押したとき（1 分に 1 回まで）・この字を押したときだけ（自動では読み直さない。1 回 1 件） */
+  const UMODE = { normal: 'ふつう', save: '節約', min: '最低限' };
+  let usageAt = 0;
+  async function loadUsage(force) {
+    if (!A || typeof A.usage !== 'function' || (!force && Date.now() - usageAt < 60000)) return;
+    usageAt = Date.now();
+    let el = $('usage'); if (!el) { el = document.createElement('small'); el.id = 'usage'; el.style.cursor = 'pointer'; el.title = '今日（太平洋時間の日付。日本時間 17:00 で切り替わり）の Firestore の読み取りの推定。3 万で節約・4 万で最低限。押すと読み直す'; el.addEventListener('click', () => loadUsage(true)); $('clock').insertAdjacentElement('afterend', el); }
+    try { const u = await A.usage(); el.textContent = '読み取り ' + Number(u.est).toLocaleString('ja-JP') + ' / ' + Number(u.limit).toLocaleString('ja-JP') + '（推定）・' + (UMODE[u.mode] || u.mode); el.style.color = u.mode === 'min' ? '#ff6b6b' : u.mode === 'save' ? '#f5b041' : ''; }
+    catch (e) { el.textContent = ''; }
   }
   $('logout').addEventListener('click', () => { if (!leaveOk()) return; pwDel(); location.reload(); });
   async function reloadCfg() { cfg = normCfg(await api('config')); }
@@ -210,7 +222,7 @@
     render();
     if (name === 'races' && racesData) loadRaces(true); // 今日に戻ったら、前に読んだ一覧を出したまま読み直す（10 秒を待たない）
   }
-  $('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) switchTab(b.dataset.tab); });
+  $('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (b) { switchTab(b.dataset.tab); loadUsage(); } });
 
   function render() {
     clearInterval(racesTimer);
@@ -409,6 +421,7 @@
   let autoBkAt = 0;
   async function autoBackups() {
     if (!pairOk() || typeof A.setBackup !== 'function' || Date.now() - autoBkAt < 10 * 60000) return;
+    if (C && C.usage && C.usage.mode !== 'normal') return; // 読み取りの枠（2026-11-25）: 節約・最低限のときは自動の見回りをしない（手で押すのはそのまま）
     autoBkAt = Date.now();
     let P; try { P = await api('tvs'); } catch (e) { return; }
     if (!P || !Array.isArray(P.backups)) return;
