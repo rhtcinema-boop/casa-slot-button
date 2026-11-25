@@ -45,18 +45,19 @@
   let watchP = null;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const loadScript = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(s); });
+  const counted = (raw) => { try { return window.DerbyFirestore && window.DerbyFirestore.countedDb ? window.DerbyFirestore.countedDb(raw, 'tv') : raw; } catch (e) { return raw; } }; // 読み取りの枠（2026-11-25）: 同じ数え方で数える
   async function getDb() {
     if (LOCAL) {
       if (!sdkStub) return null;
       if (!window.firebase) await loadScript(sdkStub + 'firebase-app-compat.js');
       if (!window.firebase.firestore) await loadScript(sdkStub + 'firebase-firestore-compat.js');
       const a = window.firebase.apps.find((x) => x.name === 'derbySwitch') || window.firebase.initializeApp({ projectId: 'stub', apiKey: 'stub' }, 'derbySwitch');
-      return a.firestore();
+      return counted(a.firestore());
     }
     if (!(window.DERBY_FIREBASE && window.DERBY_FIREBASE.firebase)) return null; // 模擬クラウド
     for (let i = 0; i < 180; i++) { // client.js が SDK を読み込んで 'derby' のアプリを作るのを待つ（最長 3 分）
       const f = window.firebase, a = f && f.apps && f.firestore && f.apps.find((x) => x.name === 'derby');
-      if (a) return a.firestore();
+      if (a) return counted(a.firestore());
       await sleep(1000);
     }
     return null;
@@ -127,7 +128,7 @@
   async function readQuality() { // テレビはもう casa-derby に（匿名か進行役で）ログインしている。その接続で店舗の設定を読む（店舗の設定はログインした人なら読める）
     const fb = window.firebase; if (!fb || !fb.apps || !fb.apps.some((a) => a.name === 'derby')) return undefined;
     const app = fb.app('derby'); if (!app.auth().currentUser) return undefined;
-    const d = await Promise.race([app.firestore().doc('derbyStores/' + STORE).get({ source: 'server' }), sleep(10000).then(() => { throw new Error('timeout'); })]); // 2026-10-29: 返事が来なくても 10 秒で（5 秒ごとの見直しが止まらない）
+    const d = await Promise.race([counted(app.firestore()).doc('derbyStores/' + STORE).get({ source: 'server' }), sleep(10000).then(() => { throw new Error('timeout'); })]); // 2026-10-29: 返事が来なくても 10 秒で（5 秒ごとの見直しが止まらない）
     qState.reads++;
     const st = d.exists ? (d.data().settings || {}) : {}; return qKey(qNorm(st.tvQuality), st.tvStrip);
   }
