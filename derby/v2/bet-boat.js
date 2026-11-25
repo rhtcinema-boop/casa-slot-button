@@ -15,7 +15,7 @@
   const B = window.BET; if (!B || !B.C || window.BetBoat) return;
   const C = B.C;
   const TX = { next: '次のボートレース', how: 'テレビの QR から・無料で 1 票', openIn: '受付開始まで あと', open: '投票受付中', closeIn: '締切まで あと', bpt: 'あなたの BPT', more: '競馬の票を あと {n} 票 増やせます', label: 'ボートレースと BPT' };
-  const NKEY = 'casa.derby.boatnx', TTL = 5 * 60000, RETRY = 60000, SCREENS = ['wait', 'voted', 'result'];
+  const NKEY = 'casa.derby.boatnx', TTL = 15 * 60000, /* 2026-11-25 読み取りの枠: 5 分→15 分 */ RETRY = 60000, SCREENS = ['wait', 'voted', 'result'];
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const now = () => C.serverNow(), amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP'), p2 = (n) => ('0' + n).slice(-2);
   const left = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return (s >= 3600 ? Math.floor(s / 3600) + ':' + p2(Math.floor(s / 60) % 60) : Math.floor(s / 60)) + ':' + p2(s % 60); }; // bet.js の残り時間と同じ形（1 秒ごとの書き換えは bet.js の data-cd）
