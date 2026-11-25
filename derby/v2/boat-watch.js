@@ -31,7 +31,7 @@
   const VQ = '?v=' + ((/[?&]v=([^&#]+)/.exec(ME) || [])[1] || 'bw1'); // 版の印: あとから読む映像の部品にも同じ印を付ける（v2/tv-boat.js と同じやり方。公開のたびに boat-watch.html の V を上げる）
   /* 言葉は競馬の「レースを見る」（v2/watch.js の TX・v2/watchmap.js）と同じ。場面の札はボートのテレビ（v2/tv-boat.js）と同じ言い方。単位だけ BPT */
   const TX = {
-    backBig: '投票ページへ戻る', loading: '読み込み中…', noVote: '投票した方だけ見られます', noVoteSub3d: '投票ページで投票すると、このレースをテレビと同じ画面で見られます', noVoteSubMap: '投票ページで投票すると、このレースを見られます',
+    backBig: '投票ページへ戻る', loading: '読み込み中…', usage: '観戦は休止中です', usageSub: '混み合っているため', /* 読み取りの枠（2026-11-25） */ noVote: '投票した方だけ見られます', noVoteSub3d: '投票ページで投票すると、このレースをテレビと同じ画面で見られます', noVoteSubMap: '投票ページで投票すると、このレースを見られます',
     over: 'このレースは終わりました', overSub: '次のレースも投票すると見られます', login: '投票した方だけ見られます', loginSub: '投票したスマホのブラウザで、投票ページから開いてください',
     mine: 'あなたの予想', more: 'ほか {n} 件', now: 'いま{r}位', loadingMine: 'あなたの予想を読み込み中…', ifWin: '当たれば',
     hot: '当たりの形！', near: 'あと少し！', hit: '的中！', close: 'おしい！', miss: 'ハズレ', back: '返還', congrats: 'おめでとう！', claim: 'BPT はスマホに自動で入ります', capped: '上限で止まりました', noPay: 'このレースは払い戻しなし',
@@ -108,7 +108,7 @@
     (function poll(n) { setTimeout(() => { if (LIVE || stopped) return; C.boatState().then((x) => { if (!LIVE) onLive(x.live); }, noteErr).then(() => { if (!LIVE) poll(n + 1); }); }, n ? Math.min(15000, 3000 * n) : 3000); })(0);
   }
   if (C && !IN_BET && C.backend !== 'firestore' && C.syncClock) { C.syncClock(3).catch(() => {}); setInterval(() => { if (!document.hidden && !stopped) C.syncClock(3).catch(() => {}); }, 60000); } // 模擬クラウドの時刻合わせ（ボートの投票ページと同じ）
-  else if (C && !IN_BET && C.syncClock) setInterval(() => { if (!stopped) C.syncClock().catch(() => {}); }, 30 * 60000); /* 2026-11-25 読み取りの枠: 5 分→30 分 */
+  else if (C && !IN_BET && C.syncClock) setInterval(() => { if (!stopped && (!C.usage || C.usage.tick('bw.clock', 29 * 60000))) C.syncClock().catch(() => {}); }, 30 * 60000); /* 2026-11-25 読み取りの枠: 5 分→30 分 */
 
   /* 自分の票（v2/boat-core.js の voteView の形）。返り値: null（票なし）| { v, pending } */
   const own = {};
@@ -139,6 +139,7 @@
   /* いま見せるレース（見られるか）。返り値 { race, st, v, pending } | { why } */
   let focus = null, ever = false;
   function pickFocus() {
+    if (C && C.usage && !C.usage.watchOk()) { if (unWatch) { try { unWatch(); } catch (e) { /* noop */ } unWatch = null; } return { why: 'usage' }; } // 読み取りの枠（2026-11-25）: 節約・最低限・この端末の上限のときは見張りを止めて案内だけ
     const L = liveNow(); if (!L) return { why: loginErr ? 'login' : 'load' };
     const t = now(), r0 = L.race || null, r = r0 && (!RACE_Q || r0.id === RACE_Q) ? r0 : null;
     const gone = loginErr ? 'login' : ever || RACE_Q ? 'over' : 'novote'; // レースを名指しで開いた（投票ページの入口から）のに、そのレースがもう無い ＝ 終わった
@@ -198,7 +199,7 @@
   async function hiddenOf(id) {
     if (C.backend === 'firestore') {
       const app = fbApp();
-      if (app) { const sn = await app.firestore().collection('boatResults').doc(id).get(); if (!sn.exists) return null; const d = Object.assign({}, sn.data()); delete d.runAtTs; return d; }
+      if (app) { const sn = await (window.DerbyFirestore && DerbyFirestore.countedDb ? DerbyFirestore.countedDb(app.firestore(), 'watch') : app.firestore()).collection('boatResults').doc(id).get(); /* countedDb: 読み取りの枠（2026-11-25）の数え方で数える */ if (!sn.exists) return null; const d = Object.assign({}, sn.data()); delete d.runAtTs; return d; }
       READS.race++; const x = await C.boatRace(id); return (x && x.hidden) || null; // Firebase の入口が見つからないとき: 窓口から（窓口が種を返す作りになっていれば届く）
     }
     const res = await fetch('/api/boat/race?id=' + encodeURIComponent(id) + '&watch=1', { cache: 'no-store' }); if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -393,7 +394,7 @@
   const last = { lock: '', lines: null, hype: null, res: null, ord: null, tag: null, clk: null, hold: null, title: null };
   function setHtml(id, key, html) { if (last[key] === html) return false; last[key] = html; $(id).innerHTML = html; return true; }
   function lock(why) {
-    const t = why === 'nogl' ? [TX.noGl, TX.noGlSub] : why === 'load' ? [TX.loading, ''] : why === 'login' ? [TX.login, TX.loginSub] : why === 'over' ? [TX.over, TX.overSub] : why === 'void' ? [TX.voided, ''] : [TX.noVote, VIEW === 'map' ? TX.noVoteSubMap : TX.noVoteSub3d];
+    const t = why === 'usage' ? [TX.usage, TX.usageSub] : why === 'nogl' ? [TX.noGl, TX.noGlSub] : why === 'load' ? [TX.loading, ''] : why === 'login' ? [TX.login, TX.loginSub] : why === 'over' ? [TX.over, TX.overSub] : why === 'void' ? [TX.voided, ''] : [TX.noVote, VIEW === 'map' ? TX.noVoteSubMap : TX.noVoteSub3d];
     const k = why + '|' + t[0];
     if (last.lock !== k) { last.lock = k; $('wLockT').textContent = t[0]; $('wLockS').textContent = t[1]; $('wLock').dataset.why = why; $('wLock').classList.add('show'); $('bwStage').classList.add('w-locked'); $('wMine').hidden = true; }
   }
