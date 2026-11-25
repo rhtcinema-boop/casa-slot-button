@@ -46,60 +46,209 @@
   }
   const encodePatch = (p) => { const o = {}; Object.keys(p || {}).forEach((k) => (o[k] = encodeFS(p[k], false))); return o; };
   const rawOf = (r) => (r && r._derbyRaw) || r;
-  function wrapDocSnap(sn) {
-    if (!sn) return sn;
-    return { id: sn.id, exists: sn.exists, metadata: sn.metadata || null, get ref() { return wrapRef(sn.ref); }, data: () => decodeFS(sn.data()), get: (f) => decodeFS(sn.get(f)), _derbyRaw: sn }; // metadata: 手元の写しか（fromCache。2026-10-29 電波の悪い店）
+  /* ---------- 読み取りの枠（2026-11-25 ②③。オーナー決定「無料のまま。1 日 5 万回を絶対に超えない」） ----------
+     ② 使った回数のメーター: 全部の端末が自分の Firestore の読み取りを課金と同じ数え方で数える（数えるのは下の wrapDb の入口だけ）:
+          get ＝ 返った件数（1 件読み・0 件の問い合わせも 1）／見張り ＝ 最初はサーバーから届いた件数（0 件でも 1）、そのあとは変わった件数／手元の写し（fromCache・source 'cache'）は数えない。
+        決まりの中の読み取り（ルールの get/exists）は端末では見えないので、1 回の頼み（読み・書き）ごとの見込み e を足す（RULE_EST。下の ruleEst）。
+        たまった数は端末の中（localStorage 'casa.derby.usage.q'。使えなければこのページの間だけ）に貯め、100 回たまるか 10 分たったら（1 以上あれば）
+        derbyUsage/<太平洋時間の日付> に increment で足す（r ＝ 読み取り・e ＝ 決まりの見込み・by ＝ 端末の種類ごと）。
+        進行役のテレビが 5 分ごとに合計を読み、推定（usageEstimate）からモードを決めて、みんなが見張っている書類に載せる（変わったときだけ）:
+          derbyLive/<店>.um（競馬のスマホ・観戦）・boatLive/all.um（ボートのスマホ・観戦・テレビ）・derbyCounts/live._um（テレビ・スタッフ）。ふつうのときは項目なし。
+        normal（ふつう）／save（節約: 推定 3 万回以上）／min（最低限: 推定 4 万回以上）。
+     ③ 1 台の 1 日の上限: 端末ごと・種類ごとに、その日（太平洋時間）の自分の読み取りを localStorage 'casa.derby.usage.dev' に覚え、CAPS を超えたら定期の読み直しと観戦を止める。
+        進行役（見回りが動いているテレビ）と、お客さんが自分で押した操作（投票・受け取り）は止めない。localStorage が使えない端末は覚えない（＝止めない）。
+     画面は usage.tick(key, 間隔)（定期の読み直しをしてよいか）・usage.watchOk()（観戦してよいか）だけを見る。 */
+  const USAGE = { COL: 'derbyUsage', LIMIT: 50000, SAVE_AT: 30000, MIN_AT: 40000, FLUSH_N: 100, FLUSH_MS: 10 * 60000, POLL_MS: 5 * 60000, MAX_INC: 5000, SLOW: 4,
+    /* 1 台の 1 日の上限（測定 2026-11-25・1 台 1 時間: スマホ待ち 30・投票後 64・ボート 13〜38／観戦 46〜175・ボート観戦 36〜78／スタッフ 4〜20／ほかのテレビ 14〜74。店は最長 19 時間あく）:
+       phone 400 ＝ 投票後の多い時間（64）でも 6 時間・待ち（30）なら 13 時間／watch 300 ＝ 観戦 2〜6 時間／staff 600 ＝ 20 × 19 時間 ＋ 余り／tv 1,500 ＝ 74 × 19 時間 ＋ 余り。
+       進行役・予備（見回りが動いているテレビ）と管理画面は上限なし */
+    CAPS: { phone: 400, watch: 300, staff: 600, tv: 1500 },
+    KINDS: ['dec', 'tv', 'staff', 'phone', 'watch', 'admin'],
+    /* ログインした人なら決まりが get を使わずに読める置き場（進行役のテレビがここを読むときは決まりの中の読み取りが無い） */
+    PUB: { derbyLive: 1, derbyRaces: 1, derbyCounts: 1, derbyStores: 1, derbySchedule: 1, derbyLock: 1, derbyClock: 1, boatRaces: 1, boatLive: 1, boatCounts: 1 },
+    TXT_WATCH: '混み合っているため、観戦は休止中です' };
+  const LSQ = 'casa.derby.usage.q', LSD = 'casa.derby.usage.dev';
+  let ptFmt = null;
+  /* 太平洋時間の日付 'YYYY-MM-DD'（無料枠は太平洋時間の 0 時＝日本時間 17:00（夏は 16:00）にリセット） */
+  function ptDay(ms) {
+    try { ptFmt = ptFmt || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }); const s = ptFmt.format(new Date(ms)); if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; } catch (e) { /* 下へ */ }
+    return new Date(ms - 8 * 3600000).toISOString().slice(0, 10); // Intl が無い: 冬の時刻で
   }
-  function wrapQuerySnap(q) { const docs = q.docs.map(wrapDocSnap); return { docs, size: q.size, empty: q.empty, metadata: q.metadata || null, forEach: (fn) => docs.forEach(fn), _derbyRaw: q }; }
+  /* 推定（報告の式）: 推定 ＝ ⌈(r ＋ e ＋ この端末のまだ送っていない分) × 1.03⌉ ＋ 300。
+     r ＝ 端末が数えて送った読み取り・e ＝ 決まりの中の読み取りの見込み・3% と 300 ＝ ほかの端末のまだ送っていない分（1 台 100 回まで）と数えられない読み取りの余り */
+  function usageEstimate(d, pend) { d = d || {}; const base = (Number(d.r) || 0) + (Number(d.e) || 0) + (Number(pend) || 0); return Math.ceil(base * 1.03) + 300; }
+  const usageModeOf = (est) => (est >= USAGE.MIN_AT ? 'min' : est >= USAGE.SAVE_AT ? 'save' : 'normal');
+  const modeNorm = (v) => (v === 'save' || v === 'min' ? v : 'normal');
+  /* 決まりの中の読み取りの見込み（1 回の頼みごと。v2/firestore.prod.rules の get/exists の数から）:
+     進行役のテレビ（dec）: 書き込み 1（isDecider の derbyDeciders）・決める係だけが読める置き場の読み 1。スマホ: 書き込み 4（票のレース・1 票目・端末・印）。スタッフ: 書き込み 2（derbyStaff・derbyPins）・当たりと記録の読み 2。
+     時刻合わせ（derbyClock）・この合計の書類（derbyUsage）の書き込みは 0 */
+  function ruleEst(kind, coll, write) {
+    if (coll === 'derbyClock' || (write && coll === USAGE.COL)) return 0;
+    if (write) return kind === 'dec' ? 1 : kind === 'phone' ? 4 : kind === 'staff' ? 2 : 0;
+    if (kind === 'dec') return USAGE.PUB[coll] ? 0 : 1;
+    if (kind === 'staff') return coll === 'derbyPayouts' || coll === 'derbyLogs' ? 2 : 0;
+    return 0;
+  }
+  // ---- 端末の中の置き場（localStorage。使えなければ null） ----
+  const UQ = { mem: {}, devMem: null, noLs: false, writer: null, busy: false, failAt: 0, timer: null, now: () => Date.now() };
+  function uls() { if (UQ.noLs) return null; try { return typeof localStorage !== 'undefined' && localStorage ? localStorage : null; } catch (e) { return null; } }
+  function uget(k) { const ls = uls(); if (!ls) return undefined; let v; try { v = ls.getItem(k); } catch (e) { UQ.noLs = true; return undefined; } try { return JSON.parse(v || 'null'); } catch (e) { return null; } } // 読めない端末: 以後は覚えない
+  function uput(k, v) { const ls = uls(); if (!ls) return false; try { ls.setItem(k, JSON.stringify(v)); return true; } catch (e) { UQ.noLs = true; return false; } } // 書けない（容量・プライベート）: 以後は覚えない
+  function uq() { const x = uget(LSQ); return x === undefined || UQ.noLs ? UQ.mem : x && typeof x === 'object' ? x : {}; }
+  function uqSave(q) { if (!uput(LSQ, q)) UQ.mem = q; }
+  /* 端末のその日の読み取り（種類ごと）。覚えられない端末は null（＝上限で止めない） */
+  function devN(kind, t) { const d = uget(LSD); if (d === undefined || UQ.noLs) return null; return d && d.day === ptDay(t) && d.by ? Number(d.by[kind]) || 0 : 0; }
+  function uAdd(kind, r, e, t) {
+    const day = ptDay(t), q = uq(), x = q[day] || (q[day] = { r: 0, e: 0, by: {}, since: t });
+    x.r += r; x.e += e; if (r) x.by[kind] = (x.by[kind] || 0) + r; if (!x.since) x.since = t;
+    Object.keys(q).forEach((d) => { if (d < ptDay(t - 2 * 86400000)) delete q[d]; }); // 2 日より前の送れなかった分は捨てる
+    uqSave(q);
+    if (r) { const d = uget(LSD); if (d !== undefined && !UQ.noLs) { const dd = d && d.day === day && d.by ? d : { day, by: {} }; dd.by[kind] = (dd.by[kind] || 0) + r; uput(LSD, dd); } }
+    if (x.r >= USAGE.FLUSH_N) usageFlush(false).catch(() => {});
+  }
+  const uPending = (day) => { const x = uq()[day]; return x ? x.r + x.e : 0; };
+  /* 合計の書類へ足す。100 回たまった・10 分たった（force: 今すぐ）ものを、日ごとに 1 回の書き込みで（1 回 5,000 まで。決まりの上限）。送れたら送った分だけ引く（送っている間に増えた分は残る） */
+  async function usageFlush(force) {
+    if (UQ.busy || !UQ.writer) return false;
+    const t = UQ.now(); if (!force && UQ.failAt && t - UQ.failAt < 60000) return false;
+    UQ.busy = true; let sent = false;
+    try {
+      const q = uq(), today = ptDay(t);
+      for (const day of Object.keys(q).sort()) {
+        const x = q[day]; if (!x || !(x.r + x.e > 0)) { delete q[day]; continue; }
+        if (!force && day === today && x.r < USAGE.FLUSH_N && t - (x.since || t) < USAGE.FLUSH_MS) continue;
+        const r = Math.min(x.r, USAGE.MAX_INC), e = Math.min(x.e, USAGE.MAX_INC), by = {}; let left = r;
+        Object.keys(x.by || {}).forEach((k) => { const n = Math.min(Number(x.by[k]) || 0, left); if (n > 0 && USAGE.KINDS.indexOf(k) >= 0) { by[k] = n; left -= n; } });
+        await UQ.writer(day, { r, e, by });
+        sent = true;
+        const q2 = uq(), y = q2[day];
+        if (y) { y.r = Math.max(0, y.r - r); y.e = Math.max(0, y.e - e); Object.keys(by).forEach((k) => { y.by[k] = Math.max(0, (y.by[k] || 0) - by[k]); if (!y.by[k]) delete y.by[k]; }); if (!(y.r + y.e > 0)) delete q2[day]; else y.since = t; }
+        uqSave(q2);
+      }
+      UQ.failAt = 0;
+    } catch (e) { UQ.failAt = t; } finally { UQ.busy = false; }
+    return sent;
+  }
+  function usageTimer() {
+    if (UQ.timer || typeof setInterval === 'undefined') return;
+    UQ.timer = setInterval(() => { usageFlush(false).catch(() => {}); }, 60000);
+    if (UQ.timer && UQ.timer.unref) UQ.timer.unref(); // node の試験: これだけで終わりを待たせない
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      const hide = () => { usageFlush(true).catch(() => {}); };
+      document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); });
+      if (typeof addEventListener === 'function') addEventListener('pagehide', hide);
+    }
+  }
+  /* 数える係（1 つの create・またはページの直の読み取り）: kindOf() ＝ いまの種類・exemptOf() ＝ 止めない端末か（進行役） */
+  function usageChannel(kindOf, nowOf, exemptOf) {
+    const st = { r: 0, e: 0, mode: 'normal', cbs: [], last: {}, est: null, day: null };
+    const ch = {
+      read(n, coll) { n = Number(n) || 0; if (n <= 0) return; st.r += n; uAdd(kindOf(), n, 0, nowOf()); },
+      req(coll, write) { const n = ruleEst(kindOf(), coll, write); if (n > 0) { st.e += n; uAdd(kindOf(), 0, n, nowOf()); } },
+      see(v) { const m = modeNorm(v); if (m === st.mode) return; st.mode = m; st.cbs.slice().forEach((cb) => { try { cb(ch.view); } catch (e) { /* noop */ } }); },
+      st,
+    };
+    const capOf = (k) => USAGE.CAPS[k] || 0;
+    const overOf = (k) => { if (exemptOf()) return false; const c = capOf(k), n = c ? devN(k, nowOf()) : null; return n != null && n >= c; };
+    ch.view = {
+      get mode() { return st.mode; }, get kind() { return kindOf(); }, get exempt() { return !!exemptOf(); },
+      get n() { return devN(kindOf(), nowOf()); }, get cap() { return capOf(kindOf()) || null; }, get over() { return overOf(kindOf()); },
+      get counted() { return { r: st.r, e: st.e }; }, get est() { return st.est; },
+      /* 定期の読み直しをしてよいか（key ごとに前回からの間隔を見る）: 進行役 ＝ いつもの間隔／上限を超えた・最低限 ＝ しない／節約 ＝ 間隔 × 4 */
+      tick(key, baseMs) {
+        const t = nowOf(), ex = !!exemptOf();
+        if (!ex && (st.mode === 'min' || overOf(kindOf()))) return false;
+        const f = !ex && st.mode === 'save' ? USAGE.SLOW : 1, l = st.last[key];
+        if (l != null && t - l < (Number(baseMs) || 0) * f) return false;
+        st.last[key] = t; return true;
+      },
+      // 観戦してよいか: ふつうのときだけ・この端末の観戦の上限（とこの端末の種類の上限）の前
+      watchOk() { if (st.mode !== 'normal') return false; const w = devN('watch', nowOf()); if (w != null && w >= USAGE.CAPS.watch) return false; return !overOf(kindOf()); },
+      on(cb) { if (typeof cb !== 'function') return () => {}; st.cbs.push(cb); return () => { const i = st.cbs.indexOf(cb); if (i >= 0) st.cbs.splice(i, 1); }; },
+      flush: (force) => usageFlush(force !== false),
+    };
+    return ch;
+  }
+
+  /* 読み取りの数え方（2026-11-25 ②）: m（usageChannel）を渡した wrapDb の読み書きは、ここで全部数える（画面ごとには数えない）。m が無ければ今までどおり */
+  const collOf = (r) => { try { return String((r && r.path) || '').split('/')[0] || ''; } catch (e) { return ''; } };
+  const cacheSnap = (s) => !!(s && s.metadata && s.metadata.fromCache);
+  const metaOpt = (a) => !!(a && typeof a === 'object' && typeof a !== 'function');
+  function wrapDocSnap(sn, m) {
+    if (!sn) return sn;
+    return { id: sn.id, exists: sn.exists, metadata: sn.metadata || null, get ref() { return wrapRef(sn.ref, m); }, data: () => decodeFS(sn.data()), get: (f) => decodeFS(sn.get(f)), _derbyRaw: sn }; // metadata: 手元の写しか（fromCache。2026-10-29 電波の悪い店）
+  }
+  function wrapQuerySnap(q, m) { const docs = q.docs.map((d) => wrapDocSnap(d, m)); return { docs, size: q.size, empty: q.empty, metadata: q.metadata || null, forEach: (fn) => docs.forEach(fn), _derbyRaw: q }; }
   /* onSnapshot(cb, ecb) と onSnapshot({ includeMetadataChanges: true }, cb, ecb) の両方（2026-10-29: つながっているかの見張りに使う） */
-  const snapArgs = (a, b, c, wrap) => (a && typeof a === 'object' && typeof a !== 'function' ? [a, (x) => b(wrap(x)), c] : [(x) => a(wrap(x)), b]);
-  function wrapRef(r) {
+  const snapArgs = (a, b, c, wrap) => (metaOpt(a) ? [a, (x) => b(wrap(x)), c] : [(x) => a(wrap(x)), b]);
+  /* 見張りの数え方: サーバーから届いた写しだけ。1 件の見張りは届くたびに 1。問い合わせの見張りは最初が件数（0 件でも 1）・あとは変わった件数（docChanges。無ければ中身を比べる）。
+     includeMetadataChanges の見張りは数えない（同じ問い合わせをもう 1 本見張って「つながっているか」を見るだけ＝本物は 1 本ぶんしか数えない） */
+  function docCounter(m, coll, a) { if (!m) return () => {}; m.req(coll, false); if (metaOpt(a)) return () => {}; return (x) => { if (!cacheSnap(x)) m.read(1, coll); }; }
+  function queryCounter(m, coll, a) {
+    if (!m) return () => {}; m.req(coll, false); if (metaOpt(a)) return () => {};
+    let first = true, seen = null;
+    const sig = (x) => { const o = {}; (x.docs || []).forEach((d) => { let v = ''; try { v = JSON.stringify(d.data()); } catch (e) { v = String(Math.random()); } o[d.id] = v; }); return o; };
+    return (x) => {
+      if (cacheSnap(x)) return;
+      const dc = typeof x.docChanges === 'function';
+      if (first) { first = false; m.read(Math.max(1, Number(x.size != null ? x.size : (x.docs || []).length) || 0), coll); if (!dc) seen = sig(x); return; }
+      let n = 0;
+      if (dc) { try { n = x.docChanges().filter((d) => d.type !== 'removed').length; } catch (e) { n = 0; } }
+      else { const now2 = sig(x); Object.keys(now2).forEach((id) => { if (seen[id] !== now2[id]) n++; }); seen = now2; }
+      if (n > 0) m.read(n, coll);
+    };
+  }
+  function wrapRef(r, m) {
     if (!r || r._derbyRaw) return r;
+    const coll = collOf(r);
     return {
       id: r.id, path: r.path, _derbyRaw: r,
-      collection: (c) => wrapColl(r.collection(c)),
-      get: (o) => r.get(o).then(wrapDocSnap),
-      set: (d, o) => (o === undefined ? r.set(encodeFS(d, false)) : r.set(encodeFS(d, false), o)),
-      update: (p) => r.update(encodePatch(p)),
-      delete: () => r.delete(),
-      onSnapshot: (a, b, c) => r.onSnapshot(...snapArgs(a, b, c, wrapDocSnap)),
+      collection: (c) => wrapColl(r.collection(c), m),
+      get: (o) => { if (m) m.req(coll, false); return r.get(o).then((sn) => { if (m && !(o && o.source === 'cache') && !cacheSnap(sn)) m.read(1, coll); return wrapDocSnap(sn, m); }); },
+      set: (d, o) => { if (m) m.req(coll, true); return o === undefined ? r.set(encodeFS(d, false)) : r.set(encodeFS(d, false), o); },
+      update: (p) => { if (m) m.req(coll, true); return r.update(encodePatch(p)); },
+      delete: () => { if (m) m.req(coll, true); return r.delete(); },
+      onSnapshot: (a, b, c) => { const cnt = docCounter(m, coll, a); return r.onSnapshot(...snapArgs(a, b, c, (x) => { cnt(x); return wrapDocSnap(x, m); })); },
     };
   }
-  function wrapQuery(q) {
+  function wrapQuery(q, m, coll) {
     return {
       _derbyRaw: q,
-      where: (a, b, c) => wrapQuery(q.where(a, b, c)),
-      orderBy: (a, b) => wrapQuery(b === undefined ? q.orderBy(a) : q.orderBy(a, b)),
-      limit: (n) => wrapQuery(q.limit(n)),
-      get: (o) => q.get(o).then(wrapQuerySnap),
-      onSnapshot: (a, b, c) => q.onSnapshot(...snapArgs(a, b, c, wrapQuerySnap)),
+      where: (a, b, c) => wrapQuery(q.where(a, b, c), m, coll),
+      orderBy: (a, b) => wrapQuery(b === undefined ? q.orderBy(a) : q.orderBy(a, b), m, coll),
+      limit: (n) => wrapQuery(q.limit(n), m, coll),
+      get: (o) => { if (m) m.req(coll, false); return q.get(o).then((x) => { if (m && !(o && o.source === 'cache') && !cacheSnap(x)) m.read(Math.max(1, Number(x.size != null ? x.size : (x.docs || []).length) || 0), coll); return wrapQuerySnap(x, m); }); },
+      onSnapshot: (a, b, c) => { const cnt = queryCounter(m, coll, a); return q.onSnapshot(...snapArgs(a, b, c, (x) => { cnt(x); return wrapQuerySnap(x, m); })); },
     };
   }
-  function wrapColl(c) {
-    return Object.assign(wrapQuery(c), { id: c.id, path: c.path, doc: (id) => wrapRef(id === undefined ? c.doc() : c.doc(id)), add: (d) => c.add(encodeFS(d, false)).then(wrapRef) });
+  function wrapColl(c, m) {
+    return Object.assign(wrapQuery(c, m, c.id), { id: c.id, path: c.path, doc: (id) => wrapRef(id === undefined ? c.doc() : c.doc(id), m), add: (d) => { if (m) m.req(c.id, true); return c.add(encodeFS(d, false)).then((r) => wrapRef(r, m)); } });
   }
-  function wrapDb(db) {
+  function wrapDb(db, m) {
     if (!db || db._derbyRaw) return db;
     const out = {
       _derbyRaw: db,
-      collection: (c) => wrapColl(db.collection(c)),
-      doc: (p) => wrapRef(db.doc(p)),
+      collection: (c) => wrapColl(db.collection(c), m),
+      doc: (p) => wrapRef(db.doc(p), m),
       runTransaction: (fn) => db.runTransaction((tx) => {
+        let wc = null; // この回の書き込み（取引のまとめた書き込み 1 回 ＝ 頼み 1 回）
+        const note = (ref) => { if (wc == null) wc = collOf(rawOf(ref)); };
         const w = {
-          get: (ref) => tx.get(rawOf(ref)).then(wrapDocSnap),
-          set: (ref, d, o) => { if (o === undefined) tx.set(rawOf(ref), encodeFS(d, false)); else tx.set(rawOf(ref), encodeFS(d, false), o); return w; },
-          update: (ref, p) => { tx.update(rawOf(ref), encodePatch(p)); return w; },
-          delete: (ref) => { tx.delete(rawOf(ref)); return w; },
+          get: (ref) => { const coll = collOf(rawOf(ref)); if (m) m.req(coll, false); return tx.get(rawOf(ref)).then((sn) => { if (m) m.read(1, coll); return wrapDocSnap(sn, m); }); },
+          set: (ref, d, o) => { note(ref); if (o === undefined) tx.set(rawOf(ref), encodeFS(d, false)); else tx.set(rawOf(ref), encodeFS(d, false), o); return w; },
+          update: (ref, p) => { note(ref); tx.update(rawOf(ref), encodePatch(p)); return w; },
+          delete: (ref) => { note(ref); tx.delete(rawOf(ref)); return w; },
         };
-        return fn(w);
+        return Promise.resolve(fn(w)).then((v) => { if (m && wc != null) m.req(wc, true); return v; });
       }),
       batch: () => {
-        const b = db.batch();
+        const b = db.batch(); let wc = null;
+        const note = (ref) => { if (wc == null) wc = collOf(rawOf(ref)); };
         const w = {
-          set: (ref, d, o) => { if (o === undefined) b.set(rawOf(ref), encodeFS(d, false)); else b.set(rawOf(ref), encodeFS(d, false), o); return w; },
-          update: (ref, p) => { b.update(rawOf(ref), encodePatch(p)); return w; },
-          delete: (ref) => { b.delete(rawOf(ref)); return w; },
-          commit: () => b.commit(),
+          set: (ref, d, o) => { note(ref); if (o === undefined) b.set(rawOf(ref), encodeFS(d, false)); else b.set(rawOf(ref), encodeFS(d, false), o); return w; },
+          update: (ref, p) => { note(ref); b.update(rawOf(ref), encodePatch(p)); return w; },
+          delete: (ref) => { note(ref); b.delete(rawOf(ref)); return w; },
+          commit: () => { if (m && wc != null) m.req(wc, true); return b.commit(); },
         };
         return w;
       },
@@ -107,6 +256,9 @@
     if (db.enablePersistence) out.enablePersistence = (...a) => db.enablePersistence(...a);
     return out;
   }
+  /* ページが Firebase を直に使う所（v2/bet-boat.js・v2/boat-watch.js・v2/tvswitch.js）も、これを通して同じ数え方で数える（kind: その端末の種類） */
+  const countedCh = {};
+  function countedDb(raw, kind) { const k = USAGE.KINDS.indexOf(kind) >= 0 ? kind : 'tv'; const ch = countedCh[k] || (countedCh[k] = usageChannel(() => k, () => UQ.now(), () => false)); return wrapDb(raw && raw._derbyRaw ? raw._derbyRaw : raw, ch); }
 
   /* ---------- ブラウザ: SDK を読み込んでつなぐ（casa SLOT の js/cloud.js と同じやり方） ---------- */
   let connectP = null;
@@ -173,7 +325,12 @@
     const WATCH = role === 'watch', VIEW = WATCH ? 'tv' : role; // VIEW: 中身（Core.stateFor・publicRace）にはテレビとして渡す（結果・確定演出・人気の組み合わせ。読めたものだけ）
     const { fb, Engine, Outcome, Core } = env, cfg = env.config || {};
     const { auth, FieldValue, Timestamp } = fb;
-    const db = wrapDb(fb.db); /* 入れ子の配列を自動で包む・戻す（上の encodeFS / decodeFS） */
+    /* 読み取りの枠（2026-11-25 ②③）: この端末の数える係。種類 ＝ スマホ phone・観戦 watch・スタッフ staff・管理 admin・テレビ tv（見回りが動いている進行役・予備は dec ＝ 止めない）。
+       合計の書類への足し込み（書き込み）と進行役の合計の読み取りは、ブラウザ（と opts.usage: true の試験）だけ。node の今までの試験では数えるだけで書かない */
+    const USAGE_ON = opts.usage != null ? !!opts.usage : typeof window !== 'undefined';
+    const decRun = () => { try { return !!(decider.running || decider.leader); } catch (e) { return false; } }; // 見回りが動いている（進行役・予備）か鍵を持っている。decider はこの下で作る（作る前に呼ばれても落ちない）
+    const meter = usageChannel(() => (role === 'tv' ? (decRun() ? 'dec' : 'tv') : role === 'phone' ? 'phone' : WATCH ? 'watch' : role === 'staff' ? 'staff' : role === 'admin' ? 'admin' : 'tv'), () => now(), decRun);
+    const db = wrapDb(fb.db, meter); /* 入れ子の配列を自動で包む・戻す（上の encodeFS / decodeFS）。読み取りを数える（上の usageChannel） */
     const E = Core.err;
     let offset = 0, synced = false;
     const local = env.now || (() => Date.now());
@@ -225,7 +382,7 @@
           if (denied) { try { await auth.signOut(); } catch (e) { /* noop */ } await signInAnon(); mode = 'anon'; logD && logD([now(), 'tv account not approved → anon']); }
         }
         /* 時刻合わせ: スマホは待たない（2026-10-28。書いて読み戻す 2 往復ぶん画面が遅れていた）。合うまでは端末の時計。投票は合ってから（vote の clockP） */
-        watchUser();
+        watchUser(); usageReady();
         clockP = syncClock(role === 'tv' ? 3 : 1).catch(() => {});
         if (role === 'tv') await Promise.race([clockP, new Promise((res) => setTimeout(res, TV_BOOT_WAIT_MS))]); // テレビ: 8 秒まで（上の説明）
         else if (role !== 'phone') await clockP;
@@ -239,11 +396,18 @@
       if (!readyP) readyP = (async () => {
         if (!auth.currentUser) await authSettled();
         if (!auth.currentUser) throw E(401, 'no_login', '投票した方だけ見られます');
-        mode = 'anon';
+        mode = 'anon'; usageReady();
         clockP = syncClock().catch(() => {});
         await Promise.race([clockP, new Promise((res) => setTimeout(res, 3000))]);
       })().catch((e) => { readyP = null; throw e; });
       return readyP;
+    }
+    /* 読み取りの枠（2026-11-25 ②）: ログインできたら、たまった数を合計の書類 derbyUsage/<太平洋時間の日付> に足す係になる（ページで最後にログインした物。書き込みは 1 回 5,000 まで・項目は r・e・by・at だけ＝決まりの下書き usage-draft） */
+    function usageReady() {
+      if (!USAGE_ON) return;
+      UQ.now = () => now();
+      UQ.writer = (day, x) => { const by = {}; Object.keys(x.by || {}).forEach((k) => { by[k] = FieldValue.increment(x.by[k]); }); return withTimeout(db.collection(USAGE.COL).doc(day).set({ r: FieldValue.increment(x.r), e: FieldValue.increment(x.e), by, at: FieldValue.serverTimestamp() }, { merge: true }), 15000, 'usage'); };
+      usageTimer();
     }
     function readTvPass() { // テレビ用のパスワード: ?tvkey=... で 1 回開くと、そのテレビに覚える（URL からは消す）
       try {
@@ -386,23 +550,24 @@
     async function compose(s, races, stores, pub) {
       s = s || store;
       if (WATCH) { if (!countsCache || local() - countsAt > 60000) /* 2026-11-25 読み取りの枠: 20 秒→60 秒 */ { countsAt = local(); try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = races.map((r) => (!(r.participants && r.participants.total) && countsCache[r.id] ? Object.assign({}, r, { participants: countsCache[r.id] }) : r)); } // 見るだけ: derbyLive には参加人数が無い → 20 秒に 1 回まで 1 件読む（締切のあとのレースにも付ける）
-      else if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { countsCache = countsCache || {}; } } races = withCounts(races, countsCache); } // 2026-10-29: 8 秒まで・読めなければ前の値
+      else if (role !== 'phone') { if (!countsCache || live.subs === 0) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; meter.see(countsCache._um); } catch (e) { countsCache = countsCache || {}; } } races = withCounts(races, countsCache); } // 2026-10-29: 8 秒まで・読めなければ前の値
       const sched = await getSchedule(); // 本日の出走時間（2026-10-27）: 公開の時刻表の決まり → state.today
       return Core.stateFor({ t: now(), store: s, role: VIEW, stores, races, tuning: pub, results: await resultsFor(races.filter((r) => Core.visibleTo(r, s))), rules: Array.isArray(sched.rules) ? sched.rules : [], bigNames: sched.bigNames || {} }); /* bigNames: 次のビッグレースの名前（2026-11-11。公開の時刻表にある） */
     }
     // スマホ: 見張っていなければ「いまの状態」1 件を読む（レースの一覧を問い合わせない）
-    async function phoneLive(storeId) { if (role !== 'phone' && !WATCH) return null; try { return data(await doc(COL.live, storeId).get()); } catch (e) { return null; } }
+    async function phoneLive(storeId) { if (role !== 'phone' && !WATCH) return null; try { const d = data(await doc(COL.live, storeId).get()); if (d) meter.see(d.um); return d; } catch (e) { return null; } } // um: 読み取りの枠のモード（2026-11-25）
     async function openRace(storeId) {
       if ((role === 'phone' || WATCH) && !(live.subs > 0 && live.races)) { const d = await phoneLive(storeId); if (d) return Core.openRaceFor(d.races || [], storeId, now()); }
       return Core.openRaceFor(await getRaces(), storeId, now());
     }
 
     /* ---------- 共通 ---------- */
-    async function state(s) { await ready(); try {
+    const watchStop = () => { if (WATCH && !meter.view.watchOk()) throw E(503, 'usage_pause', USAGE.TXT_WATCH); }; // 観戦の休止（2026-11-25 読み取りの枠）: 見るだけは読まずに断る
+    async function state(s) { watchStop(); await ready(); try {
       getSchedule().catch(() => {}); // 公開の時刻表を同時に読み始める（compose が待つ。順番に読むと 1 往復ぶん遅い。2026-10-28）
       if ((role === 'phone' || WATCH) && !(live.subs > 0 && live.races)) { const d = await phoneLive(s || store); if (d) return compose(s, d.races || [], d.stores || [], Object.assign({}, Core.DEFAULT_TUNING, d.pub || {})); } const [stores, races, pub] = await Promise.all([getStores(), getRaces(), getPublic()]); return compose(s, races, stores, pub); } catch (e) { throw mapErr(e); } }
     async function race(id) {
-      await ready();
+      watchStop(); await ready();
       const g = doc(COL.races, id).get(), r = data(await (role === 'tv' || WATCH ? withTimeout(g, READ_MS, 'race') : g)); if (!r) throw E(404, 'no_race', 'レースが見つかりません'); // テレビ: 8 秒まで（2026-10-29）
       const soft = (q, dflt) => (role === 'tv' || WATCH ? withTimeout(q, READ_MS, 'race').catch(() => dflt) : q); // テレビ: 店舗・一覧は読めなければ手元のもので（2026-10-29）
       const stores = (await soft(getStores(), storesCache)) || [], st = stores.find((x) => x.id === store);
@@ -827,11 +992,12 @@
     const liveKeys = {};
     async function publishLive(races) {
       const stores = await getStores(), pub = await getPublic(), t = now(), from = t - 30 * 60000;
+      if (!UP.mode && !countsCache) { try { const c = await withTimeout(doc(COL.counts, 'live').get(), READ_MS, 'counts'); countsCache = c.exists ? c.data() : {}; } catch (e) { /* 読めなければふつう */ } } // 管理画面から書くとき: 配られているモード（um）を消さない（2026-11-25）
       const sinfo = stores.map((x) => ({ id: x.id, name: x.name, settings: x.settings || {}, order: x.order || 0 }));
       const pubLite = Core.publicTuning(pub);
       for (const st of stores) {
         const list = races.filter((r) => Core.visibleTo(r, st.id) && (r.at >= from || r.status !== 'done')).sort((a, b) => a.at - b.at).map(liteRace);
-        const body = { store: st.id, stores: sinfo, pub: pubLite, races: list }, key = JSON.stringify(body);
+        const um = usageMode(), body = Object.assign({ store: st.id, stores: sinfo, pub: pubLite, races: list }, um !== 'normal' ? { um } : {}), key = JSON.stringify(body); // um: 読み取りの枠のモード（2026-11-25。ふつうのときは項目なし）
         if (liveKeys[st.id] === key) continue;
         await doc(COL.live, st.id).set(Object.assign({ at: t }, body)); liveKeys[st.id] = key;
       }
@@ -1047,6 +1213,29 @@
       return { voided: got.pl.voided };
     }
 
+    /* ---------- 読み取りの枠のモード（2026-11-25 ②。進行役が決めて配る） ----------
+       5 分に 1 回 derbyUsage/<太平洋時間の日付> を読み（決まりの中の読み取りも 1）、推定（usageEstimate）で ふつう／節約（3 万）／最低限（4 万）を決める。
+       合計は増えるだけなので、その日の中でモードが戻ることはない（太平洋時間の 0 時＝新しい書類でふつうに戻る）。読めなかったら 1 分あとにもう一度（それまで前のモード。まだ一度も読めていなければ配られているモード） */
+    const UP = { at: 0, mode: null, um: undefined };
+    const usageMode = () => (UP.mode || modeNorm(countsCache && countsCache._um));
+    const usageSlow = (save, min) => { const m = usageMode(); return m === 'min' ? min : m === 'save' ? save : 1; };
+    async function usagePoll() {
+      if (!USAGE_ON) return false;
+      const t = now(); if (UP.at && t - UP.at < USAGE.POLL_MS) return false; UP.at = t;
+      const day = ptDay(t); let d = null;
+      try { d = data(await withTimeout(doc(USAGE.COL, day).get(), READ_MS, 'usage')); } catch (e) { UP.at = t - USAGE.POLL_MS + 60000; return false; }
+      const est = usageEstimate(d, uPending(day)), m = usageModeOf(est), was = usageMode();
+      meter.st.est = { day, est, r: Number(d && d.r) || 0, e: Number(d && d.e) || 0, mode: m, at: t };
+      UP.mode = m; meter.see(m);
+      if (m !== was) logD([t, 'usage ' + m + ' est=' + est]);
+      return m !== was;
+    }
+    async function usageCounts() {
+      const m = usageMode(), want = m === 'normal' ? null : m, cur = UP.um !== undefined ? UP.um : (countsCache && countsCache._um) || null;
+      if (want === cur) return;
+      try { await doc(COL.counts, 'live').set({ _um: want || FieldValue.delete() }, { merge: true }); UP.um = want; } catch (e) { /* 次の見回りで */ }
+    }
+
     /* ---------- 決める係のテレビ（方式 B） ---------- */
     const decider = { running: false, leader: false, until: 0, nextTry: 0, me: randId('tv-', 8), lastBeat: 0, timer: null, wdTimer: null, ticketUnsubs: {}, participantsAt: {}, pending: {}, flushT: {}, payUnsubs: {}, payPending: {}, payT: {}, lastExpire: 0, errors: 0, log: [],
       okAt: 0, startedAt: 0, tickSeq: 0, inTick: false, inTickAt: 0, lastErr: '', lastErrAt: 0, wdResetAt: 0, wdResets: 0, reloadAsked: 0 };
@@ -1136,7 +1325,7 @@
           if (!decider.leader) return;
           decider.pending[id] = p; // 参加人数は derbyCounts/live に（レースのドキュメントは決まったときの最終の人数だけ）
           if (decider.flushT[id]) return; // 5 秒に 1 回にまとめる（この 1 行がコメントの中に入っていて、票が入るたびに書いていた）
-          const wait = Math.max(0, 5000 - (local() - (decider.participantsAt[id] || 0)));
+          const wait = Math.max(0, 5000 * usageSlow(3, 6) - (local() - (decider.participantsAt[id] || 0))); // 読み取りの枠（2026-11-25）: 節約 15 秒・最低限 30 秒に 1 回（書くたびに全部のテレビ・スタッフが 1 回読む）
           decider.flushT[id] = setTimeout(() => { decider.flushT[id] = null; decider.participantsAt[id] = local(); const v = decider.pending[id]; if (v && decider.leader) doc(COL.counts, 'live').set({ [id]: v }, { merge: true }).catch(() => {}); }, wait);
         }, () => {});
       });
@@ -1187,6 +1376,7 @@
       if (!(await heartbeat())) { if (boat) boat.stop(); Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); return { leader: false }; }
       live0();
       const sc = await secretConfig(), races = await getRaces(), t = now(), did = [];
+      live0(); const uch = await usagePoll(); // 読み取りの枠（2026-11-25 ②）: 5 分に 1 回、合計を読んでモードを決める
       live0();
       for (const r of races.filter((x) => (x.status === 'upcoming' && x.closeAt <= t) || (x.status === 'closing' && (x.closingAt || 0) < t - CLOSING_STALE_MS)).sort((a, b) => a.closeAt - b.closeAt)) { live0(); if (await decideRace(r.id, decider.me)) did.push('decide ' + r.id); }
       for (const r of races.filter((x) => x.status === 'decided' && x.revealAt <= t)) { live0(); if (await revealRace(r.id)) did.push('reveal ' + r.id); }
@@ -1197,7 +1387,8 @@
       live0();
       watchParticipants(races);
       watchUnpaid(live.races || races); // 受け取りがまだの人（2026-11-17）
-      if (!did.length) await publishLive(live.races || races).catch(() => {}); // 何かした回は、その場でもう書いてある（はじめに読んだ古い一覧で上書きしない）
+      if (!did.length || uch) await publishLive(live.races || races).catch(() => {}); // 何かした回は、その場でもう書いてある（はじめに読んだ古い一覧で上書きしない）。モードが変わった回は書く（um）
+      await usageCounts(); // テレビ・スタッフに配るモード（derbyCounts/live._um。変わったときだけ書く）
       /* 期限切れの見回りは 15 分に 1 回と、営業日の区切り（5 時）を越えたとき */ const dayNow = Core.bizDate(t, sc.tuning.dayStartHour); if (t - decider.lastExpire > 15 * 60000 || decider.lastExpireDay !== dayNow) { decider.lastExpire = t; decider.lastExpireDay = dayNow; const n = await expirePayouts(); if (n) did.push('expire ' + n); }
       return { leader: true, did };
     }
@@ -1311,6 +1502,7 @@
         const ref = doc(COL.testReq, sid), id = Core.testRaceId(sid, at), startIn = Core.testStartIn(q.startIn);
         const made = data(await doc(COL.races, id).get());
         if (made) { await ref.set({ raceId: id, raceAt: made.at, doneAt: t }, { merge: true }); continue; } // 作ったあとに止まっていた: 印だけ
+        if (usageMode() === 'min') { await ref.set({ err: 'busy', doneAt: t }, { merge: true }); did.push('test usage ' + sid); continue; } // 読み取りの枠（2026-11-25）: 最低限のときはテストのレースを作らない（本物のレースの分を残す）
         if (t - at > Core.TEST_RACE.tvWaitSec * 1000) { await ref.set({ err: 'tv_wait', doneAt: t }, { merge: true }); did.push('test tv_wait ' + sid); continue; } // その 4: 5 分待っても作れなかった（テレビがゲーム中のまま・進行役が戻らない）→ 理由を出してやめる
         const stRow = (await getStores()).find((s) => s.id === sid);
         if (!stRow) { await ref.set({ err: 'no_store', doneAt: t }, { merge: true }); continue; }
@@ -1501,6 +1693,12 @@
         healT = setTimeout(() => { healT = null; start(); }, ms);
       }
       const fail = (e) => { if (handlers.error) handlers.error(e); if (TV) heal(); };
+      /* 観戦の休止（2026-11-25 読み取りの枠）: 見るだけ（WATCH）は、節約・最低限のとき・この端末の上限を超えたときに見張りを全部止めて error（503 usage_pause）を 1 回知らせる */
+      const watchPaused = () => {
+        if (!WATCH || meter.view.watchOk()) return false;
+        if (!closed) { closed = true; clearTimeout(timer); teardown(); if (handlers.error) { try { handlers.error(E(503, 'usage_pause', USAGE.TXT_WATCH)); } catch (e) { /* noop */ } } }
+        return true;
+      };
       const setLink = (up) => { if (up) healN = 0; if (linkState && linkState.up === up) return; linkState = { up, at: local() }; if (handlers.link) { try { handlers.link(Object.assign({}, linkState)); } catch (e) { /* noop */ } } };
       if (TV) { // 手元の写し（上）: あればすぐ画面に出す（本物が届いたら入れ替わる）
         const sn = snapLoad();
@@ -1513,7 +1711,7 @@
         }
       }
       const start = () => ready().then(() => {
-        if (closed) return;
+        if (closed || watchPaused()) return;
         live.subs++; unsubs.push(() => { live.subs--; });
         const gotRaces = (list) => { races = list; live.races = races; snapOnly = false; schedDirty = true; /* レースの一覧が変わった → 公開の時刻表も次に読み直す（2026-10-27） */ raceHooks.forEach((f) => { try { f(); } catch (e) { /* noop */ } }); if (!opened) { opened = true; if (handlers.open) handlers.open(); if (handlers.hello) handlers.hello({ now: now(), store, role }); } soon(); };
         let full = false;
@@ -1534,13 +1732,13 @@
           }
           soon();
         }, fail));
-        if (role !== 'phone' && !WATCH) unsubs.push(doc(COL.counts, 'live').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && countsCache) return; countsCache = s.exists ? s.data() : {}; soon(); }, () => {}));
+        if (role !== 'phone' && !WATCH) unsubs.push(doc(COL.counts, 'live').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && countsCache) return; countsCache = s.exists ? s.data() : {}; meter.see(countsCache._um); /* 読み取りの枠のモード（2026-11-25） */ soon(); }, () => {}));
         unsubs.push(doc(COL.config, 'public').onSnapshot((s) => { if (TV && !fresh(s) && !s.exists && pub) return; pub = Object.assign({}, Core.DEFAULT_TUNING, s.exists ? s.data() : {}); pubCache = pub; pubAt = local(); soon(); }, fail));
         };
         if (role === 'phone' || WATCH) { // スマホ・見るだけ（WATCH）: 「いまの状態」1 件だけ（変わったときに 1 回読む）
           unsubs.push(doc(COL.live, store).onSnapshot((s) => {
             if (!s.exists) { startFull(); return; }
-            const d = s.data(); stores = d.stores || []; storesCache = stores; storesAt = local(); pub = Object.assign({}, Core.DEFAULT_TUNING, d.pub || {}); pubCache = pub; pubAt = local();
+            const d = s.data(); meter.see(d.um); /* 読み取りの枠のモード（2026-11-25） */ if (watchPaused()) return; stores = d.stores || []; storesCache = stores; storesAt = local(); pub = Object.assign({}, Core.DEFAULT_TUNING, d.pub || {}); pubCache = pub; pubAt = local();
             gotRaces(d.races || []);
           }, () => startFull()));
         } else startFull();
@@ -1599,7 +1797,7 @@
           };
           watchDay(); unsubs.push(() => { clearTimeout(dayT); if (un) un(); });
         }
-        const iv = setInterval(emit, 1000); unsubs.push(() => clearInterval(iv)); // 時刻で変わる場面（締切・ゲート）と、テレビの結果の読み込み
+        const iv = setInterval(() => { if (!watchPaused()) emit(); }, 1000); unsubs.push(() => clearInterval(iv)); // 時刻で変わる場面（締切・ゲート）と、テレビの結果の読み込み
       }).catch(fail);
       if (TV) { const iv0 = setInterval(() => { if (!unsubs.length) emit(); }, 1000); start(); return function () { closed = true; clearTimeout(timer); clearTimeout(healT); clearInterval(iv0); teardown(); }; } // テレビ: つなぎ直しを待つ間も（手元の写しで）毎秒の更新を続ける
       start();
@@ -1863,13 +2061,19 @@
         reload: wrap(async (sid) => { const stores = await getStores(true); let n = 0; for (const s of stores) { if (sid && s.id !== sid) continue; await doc(COL.stores, s.id).update({ reloadSeq: FieldValue.increment(1) }); n++; } return { ok: true, sent: n }; }),
         expire: wrap(async (o) => { o = o || {}; if (o.pid) { const sc = await secretConfig(); return { ok: true, expired: await expirePayouts({ pid: o.pid, today: Core.bizDate(now() + 2 * 86400000, sc.tuning.dayStartHour) }) }; } return { ok: true, expired: await expirePayouts() }; }),
         setPassword: async () => { throw E(400, 'use_console', '管理パスワードは Firebase のコンソール（Authentication）で変えてください'); },
+        /* 今日の読み取り（2026-11-25 ②。管理画面の上に小さく出す）: derbyUsage/<太平洋時間の日付> を 1 件読み、進行役と同じ式で推定とモードを出す。開いたとき・押したときだけ（自動では読み直さない） */
+        usage: wrap(async () => {
+          const t = now(), day = ptDay(t), d = data(await doc(USAGE.COL, day).get()) || {}, est = usageEstimate(d, uPending(day)), m = usageModeOf(est);
+          meter.see(m);
+          return { day, r: Number(d.r) || 0, e: Number(d.e) || 0, by: d.by || {}, est, mode: m, limit: USAGE.LIMIT, saveAt: USAGE.SAVE_AT, minAt: USAGE.MIN_AT, now: t };
+        }),
         ...(boat ? boat.admin(wrap) : {}), // casa BOAT の設定・すぐ始めるレース・取り消し（2026-11-19）
       };
     }
 
     /* casa BOAT（2026-11-19）: v2/boat-firestore.js を同じログイン・同じ見回りにつなぐ（部品が無いページ＝競馬のスマホでは何もしない） */
     const BoatFS = env.BoatFS || (typeof self !== 'undefined' && self.DerbyBoatFS) || null, BoatC = env.Boat || (typeof self !== 'undefined' && self.BoatCore) || null, BoatM = env.BoatModel || (typeof self !== 'undefined' && self.BoatModel) || null;
-    const boat = BoatFS && BoatC ? BoatFS.attach({ db, doc, data, now, uid, ready, role, store, Ts, Core, Boat: BoatC, Engine, Outcome, BoatModel: BoatM, E, oddsAsync: env.oddsAsync || null, getStores, auto: opts.deciderAuto !== false && typeof setTimeout !== 'undefined', cap, myBpt, bptNote /* 2026-11-20: 取引を分ける大きさ（競馬と同じ）・自分の BPT の手元の写し（競馬と同じもの） */ }) : null;
+    const boat = BoatFS && BoatC ? BoatFS.attach({ db, doc, data, now, uid, ready, role, store, Ts, Core, Boat: BoatC, Engine, Outcome, BoatModel: BoatM, E, oddsAsync: env.oddsAsync || null, getStores, auto: opts.deciderAuto !== false && typeof setTimeout !== 'undefined', cap, myBpt, bptNote, usage: meter, usageMode, usageSlow /* 読み取りの枠（2026-11-25）: 数える係・進行役が決めたモード・間隔の倍率 */ /* 2026-11-20: 取引を分ける大きさ（競馬と同じ）・自分の BPT の手元の写し（競馬と同じもの） */ }) : null;
     return {
       store, role, serverNow: now, syncClock, get offset() { return offset; }, get synced() { return synced; }, backend: 'firestore',
       get link() { return linkState ? Object.assign({}, linkState) : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
@@ -1885,10 +2089,13 @@
       // 決める係（テストと確認用）
       decider: { tick: deciderTick, start: startDecider, stop: stopDecider, heartbeat, watchdog, resetNet, get paired() { return pair.decider; }, get role() { return pair.decider ? pair.role || 'primary' : myRole(); }, get leader() { return decider.leader; }, get me() { return decider.me; }, get log() { return decider.log; }, get state() { return { okAt: decider.okAt, errors: decider.errors, lastErr: decider.lastErr, lastErrAt: decider.lastErrAt, wdResets: decider.wdResets, running: decider.running, tickSeq: decider.tickSeq }; }, decideRace, revealRace, expirePayouts, voidRace, watchUnpaid, get unpaidWatches() { return Object.keys(decider.payUnsubs); } },
       ready, onUser,
+      usage: meter.view, // 読み取りの枠（2026-11-25 ②③）: { mode, over, n, cap, tick(key, ms), watchOk(), on(cb) }
       /* スマホ（2026-10-28）: 画面に初めてさわったとき（client.js）に、投票で使う端末のリストを先に読み、App Check を有効にする。見るだけの人は読まない（読み取りの数を増やさない） */
       warm: () => ready().then(() => { if (role === 'phone' && mode === 'anon') myDevice().catch(() => {}); if (fb.appCheck) fb.appCheck(); }).catch(() => {}),
     };
   }
 
-  return { create, connect, COL, SDK, encodeFS, decodeFS, wrapDb, NESTED_ARRAY_MARK: NA };
+  return { create, connect, COL, SDK, encodeFS, decodeFS, wrapDb, NESTED_ARRAY_MARK: NA,
+    countedDb, // 読み取りの枠（2026-11-25）: ページが Firebase を直に使う所も同じ数え方で数える
+    usage: { USAGE, ptDay, estimate: usageEstimate, modeOf: usageModeOf, flush: usageFlush, pending: uPending, _reset: () => { UQ.mem = {}; UQ.writer = null; UQ.busy = false; UQ.failAt = 0; UQ.noLs = false; } } };
 });
