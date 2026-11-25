@@ -108,7 +108,7 @@
     (function poll(n) { setTimeout(() => { if (LIVE || stopped) return; C.boatState().then((x) => { if (!LIVE) onLive(x.live); }, noteErr).then(() => { if (!LIVE) poll(n + 1); }); }, n ? Math.min(15000, 3000 * n) : 3000); })(0);
   }
   if (C && !IN_BET && C.backend !== 'firestore' && C.syncClock) { C.syncClock(3).catch(() => {}); setInterval(() => { if (!document.hidden && !stopped) C.syncClock(3).catch(() => {}); }, 60000); } // 模擬クラウドの時刻合わせ（ボートの投票ページと同じ）
-  else if (C && !IN_BET && C.syncClock) setInterval(() => { if (!stopped) C.syncClock().catch(() => {}); }, 5 * 60000);
+  else if (C && !IN_BET && C.syncClock) setInterval(() => { if (!stopped) C.syncClock().catch(() => {}); }, 30 * 60000); /* 2026-11-25 読み取りの枠: 5 分→30 分 */
 
   /* 自分の票（v2/boat-core.js の voteView の形）。返り値: null（票なし）| { v, pending } */
   const own = {};
