@@ -1269,6 +1269,21 @@
        予備: 鍵の期限が切れて 60 秒たってから取る（進行役が止まると 1〜2 分で引き継ぐ）。予備が鍵を持っている間は、見回りのたびに鍵を読み直す（取り返されたらすぐやめる）。
        テレビ用アカウント・マスター: 今までどおり（期限が切れたら取る） */
     const BACKUP_GRACE_MS = 60000;
+    /* 2026-11-25 書き込みの枠: 予備の時計が進行役より約 2 分以上進んでいると、生きている進行役の鍵（進行役の時計で書いた until）を「切れて 60 秒たった」と見て毎回取り、
+       進行役が毎回取り返していた（見回りのたびに 2 台とも鍵を書く＝1 時間に 3,000 回以上・読み取りも同じだけ。模擬で再現）。
+       → 予備は、一度でも進行役に取り返されたら（＝時計がずれている）、1 時間は「鍵の中身（holder・at・until）が、この端末の時計で LEASE_MS 変わらない」ことも確かめてから取る
+         （進行役は生きていれば 60 秒ごとに書き直すので、中身は 95 秒も同じままにならない）。ふだん（取り返されていない）は今までどおり＝引き継ぎの速さは変わらない。
+       → どちらの場合も、鍵の中身が LEASE_MS + 60 秒変わらなければ取る（予備の時計が遅れていても、進行役が止まれば引き継ぐ） */
+    const lockSeen = { key: null, since: 0 };
+    const lockSameMs = (l) => { const k = l ? [l.holder, l.at, l.until].join('|') : ''; const L = local(); if (k !== lockSeen.key) { lockSeen.key = k; lockSeen.since = L; } return L - lockSeen.since; };
+    const CLOCK_DISTRUST_MS = 3600000;
+    function backupMayTake(l, t) {
+      const same = lockSameMs(l);
+      if (decider.leader && l.holder !== decider.me && l.role !== 'backup') { if (!decider.clockDistrustAt) logD([t, 'clock distrust']); decider.clockDistrustAt = local(); } // 持っていた鍵を進行役に取り返された
+      if (same >= LEASE_MS + BACKUP_GRACE_MS) return true;
+      if (!(l.until < t - BACKUP_GRACE_MS)) return false;
+      return !(decider.clockDistrustAt && local() - decider.clockDistrustAt < CLOCK_DISTRUST_MS) || same >= LEASE_MS;
+    }
     const myRole = () => (mode === 'tv' ? 'account' : mode === 'master' ? 'master' : pair.role === 'backup' ? 'backup' : 'primary');
     async function heartbeat(force) {
       const t = now(), role = myRole();
@@ -1277,7 +1292,7 @@
       const ref = doc(COL.lock, 'decider');
       const out = await withTimeout(db.runTransaction(async (tx) => {
         const l = data(await tx.get(ref)), mine = !!(l && l.holder === decider.me), expired = !l || l.until < t;
-        const take = mine || (role === 'primary' ? expired || l.role === 'backup' : role === 'backup' ? !l || l.until < t - BACKUP_GRACE_MS : expired);
+        const take = mine || (role === 'primary' ? expired || l.role === 'backup' : role === 'backup' ? !l || backupMayTake(l, t) : expired);
         if (!take) return { got: false, l };
         if (!mine || force || l.until - t <= RENEW_MS) {
           tx.set(ref, { holder: decider.me, until: t + LEASE_MS, at: t, store: store || null, uid: uid(), kind: mode === 'tv' ? 'account' : mode === 'master' ? 'master' : 'paired', role, // uid・kind: 管理画面の「いま進めているテレビ」と、進行役を替えたときに鍵を外すため（2026-10-19）。role: 進行役・予備（2026-10-28）
@@ -1290,7 +1305,7 @@
       if (got) { decider.until = out.until; decider.nextTry = 0; }
       else {
         const l = out.l;
-        decider.nextTry = role === 'backup' ? Math.min(l.until + BACKUP_GRACE_MS + 500 + Math.floor(Math.random() * 3000), t + 5 * 60000) // 予備: 引き継げる時刻まで読まない（同時に取り合わないように少しずらす）
+        decider.nextTry = role === 'backup' ? t + Math.min(5 * 60000, Math.max(20000, l.until + BACKUP_GRACE_MS + 500 + Math.floor(Math.random() * 3000) - t)) // 予備: 引き継げる時刻まで読まない（同時に取り合わないように少しずらす）。2026-11-25 書き込みの枠: 時計がずれていても 20 秒より短い間隔では読まない（前は見回りのたびに読んでいた）
           : role === 'primary' && l.role === 'backup' ? 0 : Math.min(l.until + 500, t + 20000);
       }
       if (got && out.pre) { logD([t, 'reclaim']); got = false; decider.nextTry = 0; } // 予備から取り返した: この見回りでは何もしない（予備は次の見回りで鍵を読んでやめる）
