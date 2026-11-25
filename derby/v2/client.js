@@ -156,12 +156,13 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'tvApprove', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund', 'boatStats', 'boatDay']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
+    const ADMIN = ['usage' /* 今日の読み取り（2026-11-25） */, 'config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'tvApprove', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund', 'boatStats', 'boatDay']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
       get offset() { return impl ? impl.offset : 0; }, get synced() { return impl ? impl.synced : false; },
       get link() { return impl ? impl.link : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
+      get usage() { return impl ? impl.usage || null : null; }, // 読み取りの枠（2026-11-25 ②③）: { mode, over, tick(key, ms), watchOk(), on(cb) }。つながる前は null（＝止めない）
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
       vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'), stamps: call('stamps'), /* スタンプラリー（2026-11-02。オフなら null） */ bpt: call('bpt'), /* BPT（2026-11-18）: { bal, cost } | null */
       staffLogin: call('staffLogin'), release: call('release'), wins: call('wins'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
