@@ -59,7 +59,7 @@
     checking: '最新状況を確認中…', closedSend: '受付できませんでした（締め切りました）', ownerChanged: 'この端末の記録が変わったため、ここからは選び直せません。変更はスタッフにお伝えください',
     sendQueued: '電波が戻ったら自動で送ります（締切 {t} まで）', sendFail: '送れませんでした。電波が戻ると自動で送ります', resend: 'もう一度送る',
     /* 2026-10-29 オーナー「投票終わった端末のみレースを観測できるように」: 投票した人だけの「レースを見る」（テレビと同じ画面。v2/watch.js） */
-    watchBtn: 'レースを見る', watchSub: 'テレビと同じ画面',
+    watchBtn: 'レースを見る', watchSub: 'テレビと同じ画面', watchOff: '観戦は休止中です', watchOffSub: '混み合っているため', /* 読み取りの枠（2026-11-25） */
   };
   const fill = (s, o) => String(s).replace(/\{(\w+)\}/g, (m, k) => (o && o[k] != null ? o[k] : ''));
 
@@ -457,14 +457,20 @@
      押すとこのページの上に窓を開き、テレビと同じ画面（../index.html?store=<店>&watch=1。v2/watch.js・tv.js の見るだけ）を出す。重い部品（3D の映像）は押したときに初めて読む。
      出すのは結果の画面が終わるまで（endAt）。取り消しのレースは出さない */
   const watchEnd = (r) => r.endAt || (r.revealAt ? r.revealAt + 300000 : (r.closeAt || 0) + 15 * 60000);
+  /* 読み取りの枠（2026-11-25 ②③。v2/client-firestore.js の usage）: 観戦してよいか・定期の読み直しをしてよいか（模擬クラウドはいつも良い） */
+  const watchOk = () => !(C && C.usage) || C.usage.watchOk();
+  const utk = (k, ms) => !(C && C.usage) || C.usage.tick(k, ms);
+  let lastWok = true;
   function watchBtn(r) {
     if (!my || !my.vote || !r || r.refunded || r.status === 'void' || my.lost || now() >= watchEnd(r)) return '';
+    if (!watchOk()) return '<button class="btn ghost watchbtn" disabled aria-disabled="true">' + esc(TX.watchOff) + '<small>' + esc(TX.watchOffSub) + '</small></button>'; // 読み取りの枠（2026-11-25）: 節約・最低限・この端末の上限のときは観戦を出さない
     return '<button class="btn ghost watchbtn" data-act="watch"><span aria-hidden="true">▶ </span>' + esc(TX.watchBtn) + '<small>' + esc(TX.watchSub) + '</small></button>';
   }
   /* 窓の見た目は開くときだけ足す（投票ページの最初の読み込みを重くしない＝bet.css には入れない） */
   const WATCH_CSS = '#watchOv{position:fixed;inset:0;z-index:100;background:#0b101b}#watchOv iframe{position:absolute;top:0;bottom:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:100%;border:0;display:block;background:#0b101b}html.watching,html.watching body{overflow:hidden}.watchbtn small{display:block;font-size:12px;font-weight:500;opacity:.8}';
   function openWatch() {
     if (!my || !my.vote || $('watchOv')) return;
+    if (!watchOk()) { lastSig = ''; route(); return; }
     if (!$('watchCss')) { const s = document.createElement('style'); s.id = 'watchCss'; s.textContent = WATCH_CSS; document.head.appendChild(s); }
     const keep = ['cloud', 'mute'].map((k) => (qs.get(k) ? '&' + k + '=' + encodeURIComponent(qs.get(k)) : '')).join('');
     const ov = document.createElement('div'); ov.id = 'watchOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', TX.watchBtn);
@@ -1081,6 +1087,7 @@
     if (ph !== lastPh) { const first = !lastPh; lastPh = ph; if (!first) { refreshState(); if (my) loadMine(true); } }
     if (screen === 'wait') { const pk = prepKey(); if (pk !== lastPrep) { const was = lastPrep; lastPrep = pk; draw(); if (pk && !was) refreshState(); } } // 準備中に入った・3 分たった・レースが届いた（2026-10-28）
     drawTop();
+    { const w = watchOk(); if (w !== lastWok) { lastWok = w; if (!w && $('watchOv')) closeWatch(false); else { lastSig = ''; route(); } } } // 観戦の休止・再開（2026-11-25）
   }, 1000);
   // 通知が届かない環境の保険
   /* 2026-11-14 Firestore の無料枠（読み取り 1 日 5 万回）を超えて 14:10 からレースが作れなくなった: 保険の読み直しを 6 秒 → 30 秒に（票・状態は見張りで届く）。送れなかった投票の送り直しは 6 秒のまま */
@@ -1088,9 +1095,10 @@
   setInterval(() => {
     if (document.hidden || !C || screen === 'badStore') return;
     const slow = (insN++ % 5) === 0; // 30 秒に 1 回
-    if (slow && my && ['voted', 'race', 'result'].indexOf(screen) >= 0 && !(my.vote && my.vote.result && [my.vote, my.vote2].every((x) => !x || !x.result || !x.result.win || (x.result.payout && x.result.payout.status !== 'unpaid')))) loadMine();
-    if (slow && (!online || ['wait', 'boot'].indexOf(screen) >= 0)) refreshState();
-    if (Date.now() - scanAt > 300000) scanUnpaid();
+    /* 読み取りの枠（2026-11-25）: 保険の読み直しは utk（節約 ＝ 4 倍あける・最低限と端末の上限 ＝ しない。票・状態は見張りで届く）。送れなかった投票の送り直しは止めない */
+    if (slow && my && ['voted', 'race', 'result'].indexOf(screen) >= 0 && !(my.vote && my.vote.result && [my.vote, my.vote2].every((x) => !x || !x.result || !x.result.win || (x.result.payout && x.result.payout.status !== 'unpaid'))) && utk('bet.mine', 25000)) loadMine();
+    if (slow && (!online || ['wait', 'boot'].indexOf(screen) >= 0) && utk('bet.state', 25000)) refreshState();
+    if (Date.now() - scanAt > 300000 && utk('bet.scan', 290000)) scanUnpaid();
     flushResend(false); // 送れなかった投票は 15 秒ごとにも（Wi-Fi はつながっているのに外へ出られないとき）
   }, 6000);
 
