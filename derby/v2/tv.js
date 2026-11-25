@@ -276,8 +276,8 @@
   let subStop = null; // 見張りを止める関数（見るだけ: 窓を閉じるときに止める。投票ページの Firebase の見張りを残さない）
   if (C) {
     (async () => { try { await C.syncClock(); } catch (e) { } await refresh(); })();
-    setInterval(() => { if (C.syncClock && !TV.playing) C.syncClock().catch(() => {}); }, 30 * 60 * 1000); /* 2026-11-14 無料枠: 時刻合わせ 5 分 → 30 分（1 回で 3 回読み書きする） */ // b203: レースを流している間は時刻合わせをしない（合わせ直しで馬が飛ぶ）
-    setInterval(refresh, 30000); // SSE が黙って止まっていても取り直す（2026-11-14 無料枠: 10 秒 → 30 秒）
+    setInterval(() => { if (C.syncClock && !TV.playing && (!C.usage || C.usage.tick('tv.clock', 29 * 60000))) C.syncClock().catch(() => {}); }, 30 * 60 * 1000); /* 読み取りの枠（2026-11-25）: 進行役はいつもどおり・ほかのテレビは節約で 4 倍・最低限と上限でしない */ /* 2026-11-14 無料枠: 時刻合わせ 5 分 → 30 分（1 回で 3 回読み書きする） */ // b203: レースを流している間は時刻合わせをしない（合わせ直しで馬が飛ぶ）
+    setInterval(() => { if (!C.usage || C.usage.tick('tv.refresh', 29000)) refresh(); }, 30000); /* 読み取りの枠（2026-11-25）: 同上（見張りで届くので止めても画面は進む） */ // SSE が黙って止まっていても取り直す（2026-11-14 無料枠: 10 秒 → 30 秒）
     setInterval(() => { try { pruneCache(); } catch (e) { console.error(e); } }, 10 * 60 * 1000);
     try {
       subStop = C.subscribe({
