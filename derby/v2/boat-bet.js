@@ -113,6 +113,7 @@
     const fresh = () => n - dbyAt < (dby && dbyNext(now()) ? DB_TTL : DB_NONE); // 覚えている間は読まない（このあとの競馬が 1 つも無いときは 3 分で読み直す）
     if (fresh()) return;
     if (lsOk) { try { const x = JSON.parse(ls.get(DSKEY) || 'null'); if (x && x.st && x.at > dbyAt && x.at <= n + 60000) { dby = derbyList(x.st); dbyAt = x.at; if (fresh()) return; } } catch (e) { /* noop */ } }
+    if (C.usage && !C.usage.tick('boat.dby', DB_MIN)) return; // 読み取りの枠（2026-11-25）: 節約 ＝ 4 倍あける・最低限と端末の上限 ＝ 読まない（覚えている時刻で出す）
     dbyBusy = true;
     dbyHold = n + DB_MIN + 12000;
     timed(C.state(), 12000).then((s) => { dbyBusy = false; dbyAt = Date.now(); dbyHold = dbyAt + DB_MIN; const L = derbyList(s), ch = JSON.stringify(L) !== JSON.stringify(dby); dby = L; if (lsOk) ls.set(DBKEY, JSON.stringify({ at: dbyAt, L })); if (ch) { lastKey = ''; draw(); } },
@@ -394,13 +395,18 @@
   /* 「▶ レースを見る」（2026-11-23 オーナー「ボートにも入れる」。競馬のスマホ v2/bet.js の watchBtn・openWatch・closeWatch・BETWATCH と同じ作り）:
      このスマホに票があるレースの、レース中の画面にだけ出す（取り消したレースには出さない）。押すとこのページの上に窓を開き、v2/boat-watch.html（テレビと同じ映像・図。音なし）を出す。
      重い部品は押したときに窓の中で初めて読む。閉じ方: 窓の中の「‹ 投票ページ」「投票ページへ戻る」（window.BOATWATCH.close）・スマホの「戻る」。窓の見た目は開くときだけ足す（boat-bet.css を大きくしない） */
+  /* 読み取りの枠（2026-11-25 ②③。v2/client-firestore.js の usage）: 節約・最低限・この端末の上限のときは観戦を出さない（模擬クラウドはいつも良い） */
+  const watchOk = () => !(C && C.usage) || C.usage.watchOk();
+  let lastWok = true;
   function watchBtn(r) {
     if (!myVote() || !r || r.refunded === true || r.status === 'void') return '';
+    if (!watchOk()) return '<button class="btn ghost watchbtn" disabled aria-disabled="true">観戦は休止中です<small>混み合っているため</small></button>';
     return '<button class="btn ghost watchbtn" data-act="watch"><span aria-hidden="true">▶ </span>レースを見る<small>テレビと同じ画面</small></button>';
   }
   const WATCH_CSS = '#watchOv{position:fixed;inset:0;z-index:100;background:#0b101b}#watchOv iframe{position:absolute;top:0;bottom:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:100%;border:0;display:block;background:#0b101b}html.watching,html.watching body{overflow:hidden}';
   function openWatch() {
     const r = S.race; if (!myVote() || !r || $('watchOv')) return;
+    if (!watchOk()) { lastKey = ''; draw(); return; }
     if (!$('watchCss')) { const s = document.createElement('style'); s.id = 'watchCss'; s.textContent = WATCH_CSS; document.head.appendChild(s); }
     const keep = ['cloud', 'mute'].map((k) => (qs.get(k) ? '&' + k + '=' + encodeURIComponent(qs.get(k)) : '')).join('');
     const ov = document.createElement('div'); ov.id = 'watchOv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'レースを見る');
@@ -933,7 +939,10 @@
     startWatch(); // いまの状態は見張りで届く（別に読まない）。3 秒たっても届かないときだけ読みに行く（届くまで間をあけてくり返す）
     (function poll(n) { setTimeout(() => { if (S.gotLive) return; C.boatState().then((x) => { if (!S.gotLive) onLive(x.live); }, () => {}).then(() => { if (!S.gotLive) poll(n + 1); }); }, n ? Math.min(15000, 3000 * n) : 3000); })(0);
     setTimeout(() => { if (!S.gotLive) { S.slow = true; draw(); } }, 6000);
-    setInterval(() => { if (document.hidden) return; try { draw(); } catch (e) { console.error(e); } }, 1000);
+    setInterval(() => {
+      { const w = watchOk(); if (w !== lastWok) { lastWok = w; if (!w && $('watchOv')) closeWatch(false); else lastKey = ''; } } // 観戦の休止・再開（2026-11-25）
+      if (document.hidden) return; try { draw(); } catch (e) { console.error(e); }
+    }, 1000);
     addEventListener('resize', () => { lastKey = ''; draw(); });
     addEventListener('online', () => { $('net').classList.add('hidden'); resync(); });
     addEventListener('offline', () => $('net').classList.remove('hidden'));
