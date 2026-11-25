@@ -191,7 +191,7 @@
     const note = (id, patch) => { T.local[id] = Object.assign({}, T.local[id] || {}, patch); };
     /* 2026-11-21（J2）: 発表・返還の途中のレースは、6 時間より古くても探して続ける（進行役が長く止まったあと）。60 秒に 1 回だけ読む（ふつうは 0 件） */
     async function pendingRaces() {
-      if (T.pendAt && now() - T.pendAt < 60000 && T.pend) return T.pend;
+      if (T.pendAt && now() - T.pendAt < 600000 && T.pend) /* 2026-11-25 読み取りの枠: 60 秒→10 分 */ return T.pend;
       const m = {};
       /* 2026-11-21 深夜（K2・M8）: 締切を過ぎて「投票中」のまま残ったレース（進行役が締切の前から長く止まった）も探す（投票中のレースはふつう 1〜2 件） */
       for (const q of [db.collection(COLB.races).where('status', '==', 'decided'), db.collection(COLB.races).where('backDone', '==', false), db.collection(COLB.races).where('status', '==', 'upcoming')]) { try { (await q.get()).docs.forEach((d) => { m[d.id] = strip(Object.assign({ id: d.id }, d.data())); }); } catch (e) { /* 次の回 */ } }
