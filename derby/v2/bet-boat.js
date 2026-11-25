@@ -50,12 +50,14 @@
       const F = window.DerbyFirestore, cfg = window.DERBY_FIREBASE; if (!F || !cfg) throw new Error('no firestore');
       const env = await F.connect(cfg, { role: 'phone' }); // bet.js がもうつないである（同じ約束が返る。ログインは増えない）
       if (!env.fb.auth.currentUser) throw new Error('no user'); // 匿名ログインがまだ: 次に描くときにもう一度
-      const s = await env.fb.db.collection('boatLive').doc('all').get(); return s.exists ? s.data() : {};
+      const s = await (F.countedDb ? F.countedDb(env.fb.db, 'phone') : env.fb.db).collection('boatLive').doc('all').get(); return s.exists ? s.data() : {}; // countedDb: 読み取りの枠（2026-11-25）の数え方で数える
     }
     return ((await C.boatState()) || {}).live;
   }
   function loadLive() {
-    if (liveBusy || Date.now() - liveAt < TTL) return; liveBusy = true; reads.live++;
+    if (liveBusy || Date.now() - liveAt < TTL) return;
+    if (C.usage && !C.usage.tick('bet.boatnx', TTL)) return; // 読み取りの枠（2026-11-25）: 節約 ＝ 4 倍あける・最低限と端末の上限 ＝ 読まない
+    liveBusy = true; reads.live++;
     timed(readLive(), 10000).then((l) => { const v = liteOf(l), ch = JSON.stringify(v) !== JSON.stringify(live); live = v; liveAt = Date.now(); liveBusy = false; lsSet(NKEY, JSON.stringify({ at: liveAt, v })); if (ch) redraw(); },
       () => { liveBusy = false; liveAt = Date.now() - TTL + RETRY; /* 読めない（電波・ボートの決まりがまだ）: 1 分はあける */ });
   }
