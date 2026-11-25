@@ -35,18 +35,25 @@
 
     /* ---------- スマホ・テレビ ---------- */
     let liveCache = null, watching = 0; // watching: 見張っている数（見張っていない時の写しは古いかもしれないので使わない）
-    async function boatState() { await ready(); if (watching > 0 && liveCache) return { now: now(), live: liveCache }; /* 見張り中は届いている写しを返す（読まない。2026-11-20） */ const d = strip(data(await doc(COLB.live, 'all').get())); liveCache = d || { race: null, next: null }; return { now: now(), live: liveCache }; }
+    const U = X.usage || null, umSee = (l) => { if (U && l) U.see(l.um); }; // 読み取りの枠（2026-11-25 ②）: 進行役が boatLive/all に載せたモード（um）を受け取る
+    const umOf = () => (X.usageMode ? X.usageMode() : 'normal');
+    async function boatState() { await ready(); if (watching > 0 && liveCache) return { now: now(), live: liveCache }; /* 見張り中は届いている写しを返す（読まない。2026-11-20） */ const d = strip(data(await doc(COLB.live, 'all').get())); liveCache = d || { race: null, next: null }; umSee(liveCache); return { now: now(), live: liveCache }; }
     function boatWatch(h) {
       h = h || {}; let unCount = null, countFor = null;
       const countWatch = (d) => {
-        const r = d && d.race, want = role === 'tv' && r && r.status === 'upcoming' && now() < r.closeAt + 3000 ? r.id : null; // テレビだけ・投票中だけ（読み取りを増やさない）
+        const r = d && d.race, want = role === 'tv' && r && r.status === 'upcoming' && now() < r.closeAt + 3000 && !(U && U.st.mode === 'min') ? r.id : null; // テレビだけ・投票中だけ（読み取りを増やさない）。最低限のとき（2026-11-25）は参加人数を見張らない
         if (want === countFor) return; if (unCount) { unCount(); unCount = null; } countFor = want;
         if (want) unCount = doc(COLB.counts, 'live').onSnapshot((sn) => { const c = data(sn); if (c && c.raceId === want && h.count) h.count(strip(c)); }, () => {});
       };
+      /* 観戦（role 'watch'）の休止（2026-11-25 読み取りの枠）: 節約・最低限のとき・この端末の上限を超えたら、見張りを止めて error（503 usage_pause）を 1 回知らせる */
+      let off = false, un = null, iv = null;
+      const stopAll = () => { if (off) return; off = true; watching--; if (un) un(); if (unCount) { unCount(); unCount = null; } clearInterval(iv); };
+      const paused = () => { if (role !== 'watch' || !U || U.view.watchOk()) return false; if (!off) { stopAll(); if (h.error) { try { h.error(E(503, 'usage_pause', '混み合っているため、観戦は休止中です')); } catch (e) { /* noop */ } } } return true; };
       watching++;
-      const un = doc(COLB.live, 'all').onSnapshot((sn) => { liveCache = strip(data(sn)) || { race: null, next: null }; if (h.boat) h.boat(liveCache); countWatch(liveCache); }, (e) => { if (h.error) h.error(e); });
-      const iv = setInterval(() => countWatch(liveCache), 5000);
-      return () => { watching--; un(); if (unCount) unCount(); clearInterval(iv); };
+      if (paused()) return () => {};
+      un = doc(COLB.live, 'all').onSnapshot((sn) => { if (off) return; liveCache = strip(data(sn)) || { race: null, next: null }; umSee(liveCache); if (paused()) return; if (h.boat) h.boat(liveCache); countWatch(liveCache); }, (e) => { if (h.error) h.error(e); });
+      iv = setInterval(() => { if (!paused()) countWatch(liveCache); }, 5000);
+      return stopAll;
     }
     async function boatRace(id) {
       await ready(); const r = data(await doc(COLB.races, String(id || '')).get());
@@ -370,7 +377,7 @@
     async function counts(races, t) {
       const cur = races.find((r) => Boat.votingOpen(r, t)) || null, want = cur ? cur.id : null;
       if (want !== T.cntFor) { if (T.cntUn) { T.cntUn(); T.cntUn = null; } T.cntFor = want; T.cntVotes = null; T.cntSig = ''; if (want && auto) T.cntUn = db.collection(COLB.votes).where('raceId', '==', want).onSnapshot((q) => { T.cntVotes = q.docs.map((d) => d.data()); }, () => { T.cntUn = null; T.cntFor = null; }); }
-      if (!want || t - T.cntAt < Boat.COUNT_SEC * 1000) return;
+      if (!want || t - T.cntAt < Boat.COUNT_SEC * 1000 * (X.usageSlow ? X.usageSlow(2, 4) : 1)) return; // 読み取りの枠（2026-11-25）: 節約 30 秒・最低限 60 秒に 1 回（書くたびに投票中のテレビが 1 回読む）
       let votes = T.cntVotes; if (!auto) votes = (await db.collection(COLB.votes).where('raceId', '==', want).get()).docs.map((d) => d.data());
       if (!votes) return;
       const c = Boat.countVotes(votes), sig = want + JSON.stringify(c);
@@ -382,6 +389,7 @@
       const live = Boat.liveOf(races, t);
       if (!live.next && cfg.rules.length) { const e = Boat.schedule(t, cfg.rules, cfg.startAt).find((x) => x.at - cfg.voteSec * 1000 > t && !Boat.quietSpan(x.at, cfg)); if (e) live.next = { id: e.id, at: e.at, openAt: e.at - cfg.voteSec * 1000 }; }
       { const ns = Boat.nextsOf(races, t, cfg, 3); if (ns.length) live.nexts = ns; } // このあとのボートレース 3 件（2026-11-23。テレビとスマホの「このあと」の帯）
+      { const um = umOf(); if (um !== 'normal') live.um = um; } // 読み取りの枠のモード（2026-11-25。ふつうのときは項目なし）。変わったときだけ書く（下の sig に入る）
       if (cfg.tvq === 'low') live.q = 'low'; // テレビの映像の画質（軽いときだけ書く。2026-11-22。v2/tv-boat.js が読む）
       if (cfg.tvqs && Object.keys(cfg.tvqs).length) live.qs = cfg.tvqs; // 店ごとの画質（管理画面のボートの「テレビ」。その店の指定があれば q より先） // まだ作っていない次のレース（時刻表から）
       /* last（前のレースの結果の軽い形。2026-11-23。Boat.liveOf）は「変わったか」の比べに入れない: last だけが変わっても書かない（書き込みも、見張っている全員の読み取りも増やさない）。
