@@ -113,7 +113,7 @@
   async function usageFlush(force) {
     if (UQ.busy || !UQ.writer) return false;
     const t = UQ.now(); if (!force && UQ.failAt && t - UQ.failAt < 60000) return false;
-    UQ.busy = true; let sent = false;
+    UQ.busy = true; let sent = false, timedOut = false;
     try {
       const q = uq(), today = ptDay(t);
       for (const day of Object.keys(q).sort()) {
@@ -121,13 +121,15 @@
         if (!force && day === today && x.r < USAGE.FLUSH_N && t - (x.since || t) < USAGE.FLUSH_MS) continue;
         const r = Math.min(x.r, USAGE.MAX_INC), e = Math.min(x.e, USAGE.MAX_INC), by = {}; let left = r;
         Object.keys(x.by || {}).forEach((k) => { const n = Math.min(Number(x.by[k]) || 0, left); if (n > 0 && USAGE.KINDS.indexOf(k) >= 0) { by[k] = n; left -= n; } });
-        await UQ.writer(day, { r, e, by });
+        /* 2026-11-27 点検: 返事が来ないだけ（時間切れ）の書き込みは、あとで届くことがある。送り直すと同じ分を二重に数える（推定が大きくなり、早く節約に入る）。
+           → 時間切れのときは送った分を引く（少なめに数える側へ倒す）。ほかの失敗（断られた など）は今までどおり次に送り直す */
+        try { await UQ.writer(day, { r, e, by }); } catch (e) { if (!(e && e.code === 'deadline-exceeded')) throw e; timedOut = true; }
         sent = true;
         const q2 = uq(), y = q2[day];
         if (y) { y.r = Math.max(0, y.r - r); y.e = Math.max(0, y.e - e); Object.keys(by).forEach((k) => { y.by[k] = Math.max(0, (y.by[k] || 0) - by[k]); if (!y.by[k]) delete y.by[k]; }); if (!(y.r + y.e > 0)) delete q2[day]; else y.since = t; }
         uqSave(q2);
       }
-      UQ.failAt = 0;
+      UQ.failAt = timedOut ? t : 0; // 時間切れのあとは 1 分あける
     } catch (e) { UQ.failAt = t; } finally { UQ.busy = false; }
     return sent;
   }
