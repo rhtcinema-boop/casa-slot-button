@@ -1714,7 +1714,7 @@
   const comboNo = (k) => { const m = /^(\d+)-(\d+)$/.exec(String(k || '')); return m ? (+m[1] + 1) + '→' + (+m[2] + 1) : ''; };
   function winRows(logs) {
     const by = {}; (logs || []).forEach((l) => { if (l.pid && (l.type === 'paid' || l.type === 'expired')) by[l.pid] = l; });
-    return (logs || []).filter((l) => l.type === 'win').map((w) => { const e = by[w.pid]; return { raceId: w.raceId, at: w.at, date: w.date || ymd(w.at), race: raceHm(w.raceId) || hms(w.at).slice(0, 5), storeId: w.storeId, bill: w.bill, nick: w.nick || '', combo: comboNo(w.combo), amount: Number(w.amount) || 0, flag: w.flag || '', st: e ? e.type : 'unpaid', stAt: e ? e.at : 0, via: e ? e.via : '' }; });
+    return (logs || []).filter((l) => l.type === 'win').map((w) => { const e = by[w.pid]; return { raceId: w.raceId, at: w.at, date: w.date || ymd(w.at), race: raceHm(w.raceId) || hms(w.at).slice(0, 5), storeId: w.storeId, bill: w.bill, nick: w.nick || '', combo: comboNo(w.combo), amount: Number(w.amount) || 0, flag: w.flag || '', pid: w.pid || '', st: e ? e.type : 'unpaid', stAt: e ? e.at : 0, via: e ? e.via : '' }; });
   }
   // 取り消したレース（返還）の当たり: 記録には残るので、その日のレース一覧の refunded で「取消」にする（渡していない当たりは無効。渡した当たりはそのまま）
   async function voidRaces(rows) {
@@ -1724,7 +1724,7 @@
   }
   function viewWins() {
     const W = winsData, sum = W ? W.filter((x) => x.st !== 'void').reduce((a, x) => a + x.amount, 0) : 0, un = W ? W.filter((x) => x.st === 'unpaid').reduce((a, x) => a + x.amount, 0) : 0;
-    const stTxt = (x) => (x.st === 'paid' ? '<span class="wst ok">渡した ' + esc(hms(x.stAt).slice(0, 5)) + (x.via === 'self' ? '（お客さん）' : '（スタッフ）') + '</span>' : x.st === 'expired' ? '<span class="wst">期限切れ</span>' : x.st === 'void' ? '<span class="wst">取消（レース取消）</span>' : '<b class="wst ng" style="color:var(--unpaid)">まだ</b>');
+    const stTxt = (x) => (x.st === 'paid' ? '<span class="wst ok">渡した ' + esc(hms(x.stAt).slice(0, 5)) + (x.via === 'self' ? '（お客さん）' : x.via === 'admin' ? '（管理）' : '（スタッフ）') + '</span>' : x.st === 'expired' ? '<span class="wst">期限切れ</span>' : x.st === 'void' ? '<span class="wst">取消（レース取消）</span>' : '<b class="wst ng" style="color:var(--unpaid)">まだ</b>' + (x.pid ? ' <button type="button" class="btn xs" data-act="win-paid" data-pid="' + esc(x.pid) + '">渡した</button>' : '')); /* 管理画面から渡したにする（2026-11-26） */
     return '<div class="panel" id="winsPanel"><h3>当たり一覧 <small class="qsub">期間・店舗は上と同じ・新しい順</small></h3>' +
       (winsErr ? '<div class="err">' + esc(winsErr) + '</div>' : '') +
       (W == null && !winsErr ? '<div class="empty">読み込み中…</div>' : !W ? '' : !W.length ? '<div class="empty">この期間の当たりはありません</div>' :
@@ -1980,6 +1980,13 @@
         /* 集計 */
         case 'day-more': { const tr = b.closest('tr'); const op = !tr.classList.contains('open'); tr.classList.toggle('open', op); b.setAttribute('aria-expanded', String(op)); b.textContent = op ? '閉じる' : 'くわしく'; return; }
         case 'stq': { const r = quickRange(b.dataset.q); stFrom = r[0]; stTo = r[1]; logsData = null; return loadStats(); }
+        case 'win-paid': {
+          const x = (winsData || []).find((w) => w.pid === b.dataset.pid); if (!x) return;
+          if (!confirm('渡したことにします\n\n' + fmtDay(x.date) + ' ' + x.race + '・' + storeName(x.storeId) + ' ' + x.bill + '番 ' + x.nick + '\n額: ' + ptT(x.amount) + '\n\n元に戻せません。よいですか？')) return;
+          b.disabled = true;
+          try { await api('paid', x.pid); x.st = 'paid'; x.stAt = Date.now(); x.via = 'admin'; toast('渡したにしました'); } catch (e) { alert(errText(e)); }
+          logsData = null; return loadStats();
+        }
         case 'wins-csv': {
           if (!winsData || !winsData.length) return;
           const rows = [['日付', 'レース', '店舗', '会計番号', 'ニックネーム', '当たり（1着→2着）', '額(pt)', '受け取り', '受け取りの時刻']].concat(winsData.map((x) => [x.date, x.race, storeName(x.storeId), x.bill, x.nick, x.combo, x.amount, x.st === 'paid' ? '渡した' : x.st === 'expired' ? '期限切れ' : x.st === 'void' ? '取消' : 'まだ', x.stAt ? hms(x.stAt) : '']));
