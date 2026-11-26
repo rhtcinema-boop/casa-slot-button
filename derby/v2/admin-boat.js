@@ -20,7 +20,8 @@
   const SUBS = [['today', '今日'], ['timetable', '時刻表'], ['tv', 'テレビ'], ['tuning', '調整'], ['racers', '選手'], ['stats', '集計']];
   const EDITS = ['timetable', 'tuning', 'racers']; // 保存ボタンのあるタブ
   const S = { sub: 'today', data: null, tt: null, tun: null, rc: null, open: new Set(), dirty: {}, err: {}, conflicts: [], loadErr: '', actErr: '', busy: false, seq: 0, gen: 0, on: false, ctx: null, main: null,
-    stores: null, storesErr: '', st: { from: '', to: '', data: null, err: '', days: {} } };
+    stores: null, storesErr: '', st: { from: '', to: '', data: null, err: '', days: {} },
+    gr: { code: '', who: null, n: '', note: '', err: '', msg: '' } }; // gr: BPT を付ける（2026-11-26）。who ＝ 確かめた人 { code, name, bal }
   const hm = (ms) => (window.DerbyCore ? DerbyCore.fmtBizTime(ms, 5) : new Date(ms).toTimeString().slice(0, 5));
   const errOf = (e, d) => (e && (e.body && e.body.message || e.message)) || d;
   let kSeq = 0; const nk = () => 'k' + (++kSeq);
@@ -329,6 +330,20 @@
   }
 
   const stQuick = (q) => { const t = bizToday(); return q === 'today' ? [t, t] : q === 'yday' ? [dayShift(t, -1), dayShift(t, -1)] : q === 'month' ? [t.slice(0, 8) + '01', t] : [dayShift(t, -(Number(q) - 1)), t]; };
+  /* BPT を付ける（2026-11-26 オーナー決定。LINE でログインした人の会員 ID に、遠隔で BPT を付ける）: ID を入れて「確かめる」→ 名前と今の残りを見てから、数と理由を入れて「付ける」。
+     記録は derbyBptGrants（誰に・いくつ・理由・いつ）。付けたあとの残りは持ち上限まで（超える分は付かない） */
+  function grantHtml() {
+    const g = S.gr, w = g.who;
+    return '<div class="panel bgrant"><h3>BPT を付ける</h3>' +
+      '<div class="grrow"><label class="f"><span>会員 ID</span><input type="text" id="grCode" data-gr="code" value="' + esc(g.code) + '" placeholder="C-4821" autocomplete="off" inputmode="text" maxlength="12"></label>' +
+      '<button type="button" class="btn sm ghost" data-act="gr-look">確かめる</button></div>' +
+      '<div id="grWho">' + (w ? '<p class="grw"><b>' + esc(w.name || '（名前なし）') + '</b>（' + esc(w.code) + '）・いまの BPT <b>' + amt(w.bal) + '</b></p>' +
+        '<div class="grrow"><label class="f"><span>付ける BPT</span><input type="number" id="grN" data-gr="n" value="' + esc(g.n) + '" min="1" max="' + holdMax() + '" step="1" inputmode="numeric"></label>' +
+        '<label class="f grnote"><span>理由</span><input type="text" id="grNote" data-gr="note" value="' + esc(g.note) + '" maxlength="100" placeholder="例: 不具合のおわび"></label></div>' +
+        '<button type="button" class="btn sm" data-act="gr-give">付ける</button></div>' : '') + '</div>' +
+      (g.err ? '<div class="err">' + esc(g.err) + '</div>' : '') + (g.msg ? '<p class="hint grmsg">' + esc(g.msg) + '</p>' : '') +
+      '<p class="hint">持てる BPT は ' + amt(holdMax()) + ' まで（超える分は付きません）。付けた記録は残ります。</p></div>';
+  }
   function viewStats() {
     const st = S.st, days = (st.data && st.data.days) || [], tot = days.reduce((a, x) => ({ races: a.races + x.races, paid: a.paid + x.paid }), { races: 0, paid: 0 });
     const qOn = (q) => { const r = stQuick(q); return r[0] === st.from && r[1] === st.to; };
@@ -338,7 +353,7 @@
         : '<table class="cards"><tr class="hd"><th>締切</th><th>状態</th><th class="n">参加</th><th class="n">払った BPT</th><th>結果（1着 → 2着）</th></tr>' + o.races.map((r) => '<tr><td><b>' + hm(r.at) + '</b>' + (r.test ? ' <small class="hint">テスト</small>' : '') + '</td><td>' + (ST[r.status] || r.status) + '</td><td class="n">' + ((r.participants && r.participants.total) || 0) + '人 / 券 ' + ((r.participants && r.participants.tickets) || 0) + '</td><td class="n">' + amt(r.paid) + '</td><td>' + (r.result ? r.result.combo.split('-').map((y) => Number(y) + 1).join(' → ') + '（' + r.result.odds + '倍）' : '') + '</td></tr>' + winRow(r, 5)).join('') + '</table>';
       return '<tr class="bst-day"><td colspan="3"><div class="tbl">' + body + '</div></td></tr>';
     };
-    return '<div class="boatadm" data-sub="stats"><div class="panel"><h3>ボートの集計を見る</h3>' +
+    return '<div class="boatadm" data-sub="stats">' + grantHtml() + '<div class="panel"><h3>ボートの集計を見る</h3>' +
       '<div class="quick">' + [['today', '今日'], ['yday', '昨日'], ['7', '7 日'], ['month', '今月'], ['31', '31 日']].map((q) => '<button type="button" class="btn sm ghost" data-act="stq" data-q="' + q[0] + '" aria-pressed="' + qOn(q[0]) + '">' + q[1] + '</button>').join('') + '</div>' +
       '<div class="range"><label class="f"><span>開始</span><input type="date" id="bstfrom" value="' + esc(st.from) + '" max="' + esc(st.to) + '"></label><label class="f"><span>終了</span><input type="date" id="bstto" value="' + esc(st.to) + '" min="' + esc(st.from) + '"></label></div>' +
       (st.err ? '<div class="err">' + esc(st.err) + '</div>' : '') +
@@ -458,6 +473,11 @@
     if (main.__boatBound) return; main.__boatBound = true;
     main.addEventListener('input', (ev) => {
       const t = ev.target; if (!S.on || !S.data || !t.closest('.boatadm')) return;
+      if (t.dataset.gr) { // BPT を付ける（2026-11-26）: 打っている間は描き直さない。ID を変えたら確かめ直す
+        S.gr[t.dataset.gr] = t.value;
+        if (t.dataset.gr === 'code' && S.gr.who) { S.gr.who = null; const w = main.querySelector('#grWho'); if (w) w.innerHTML = ''; }
+        return;
+      }
       if (S.sub === 'tuning' && S.tun) {
         if (t.dataset.k) { S.tun[t.dataset.k] = t.value; touch('tuning'); }
         if (t.dataset.c) { S.tun[t.dataset.c] = t.checked ? 1 : 0; touch('tuning'); }
@@ -514,6 +534,23 @@
           const m = {}; (S.stores || []).forEach((s) => { m[s.id] = bqNow(S.data.cfg, s.id); }); m[id] = q;
           try { await S.ctx.api('saveBoat', { tvqs: m }); S.ctx.toast('画質を保存しました（次のボートの映像から）'); } catch (e) { if (live()) S.err.tv = errOf(e, '保存できませんでした'); }
           if (live()) await load(true);
+        });
+      }
+      if (S.sub === 'stats' && (a === 'gr-look' || a === 'gr-give')) { // BPT を付ける（2026-11-26）
+        const g = S.gr; g.err = ''; g.msg = ''; const gErr = (e, d) => (e && e.code === 'not_supported' ? '本番（Firebase）のときだけ使えます' : errOf(e, d)); // 模擬クラウドには無い
+        if (a === 'gr-look') return run(async (live) => { try { const w = await S.ctx.api('bptMember', g.code); if (!live()) return; g.who = w; g.code = w.code; } catch (e) { if (live()) { g.who = null; g.err = gErr(e, '確かめられませんでした'); } } });
+        const w = g.who, n = Number(g.n), note = String(g.note || '').trim();
+        if (!w) { g.err = '先に会員 ID を確かめてください'; return keepScroll(paint); }
+        if (!Number.isInteger(n) || n < 1 || n > holdMax()) { g.err = '付ける BPT は 1〜' + amt(holdMax()) + ' の整数で入れてください'; return keepScroll(paint); }
+        if (!note) { g.err = '理由を入れてください'; return keepScroll(paint); }
+        if (!confirm((w.name || '（名前なし）') + '（' + w.code + '）に ' + amt(n) + ' BPT を付けますか？\n理由: ' + note)) return;
+        return run(async (live) => {
+          try {
+            const r = await S.ctx.api('bptGrant', { code: w.code, n, note }); if (!live()) return;
+            g.who = Object.assign({}, w, { bal: r.bal }); g.n = ''; g.note = '';
+            g.msg = (r.name || w.name || w.code) + ' に ' + amt(r.gain) + ' BPT を付けました（いまの BPT ' + amt(r.bal) + '）' + (r.capped ? '。上限のため ' + amt(n - r.gain) + ' は付きませんでした' : '');
+            S.ctx.toast('BPT を付けました');
+          } catch (e) { if (live()) g.err = gErr(e, '付けられませんでした'); }
         });
       }
       if (S.sub === 'stats') {
@@ -578,7 +615,8 @@
     '.brc-row{display:grid;grid-template-columns:28px minmax(120px,1.2fr) minmax(140px,1.5fr) 92px 150px auto;gap:6px 8px;align-items:end;padding:10px 0;border-top:1px solid var(--line,#2a2a31)}.brc-row:first-child{border-top:0}.brc-row.off{opacity:.55}.brc-no{color:var(--sub,#a89f89);padding-bottom:10px;font-variant-numeric:tabular-nums}' +
     '.brc-f{display:flex;flex-direction:column;gap:2px;min-width:0;margin:0}.brc-f span{font-size:11px;color:var(--sub,#a89f89)}.brc-f input,.brc-f select{height:38px;border-radius:10px;width:100%;min-width:0}.brc-ops{display:flex;gap:6px;padding-bottom:3px}.brc-st{grid-column:2/-1;display:grid;grid-template-columns:repeat(4,minmax(0,110px)) minmax(0,170px);gap:6px 8px}.brc-err{grid-column:2/-1;margin:0}' +
     '@media (max-width:760px){.brc-row{grid-template-columns:28px repeat(2,minmax(0,1fr))}.brc-ops{grid-column:2/-1}.brc-st{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
-    '.bst-day td{background:rgba(255,255,255,.03);padding:6px 10px}'; document.head.appendChild(st); }
+    '.bst-day td{background:rgba(255,255,255,.03);padding:6px 10px}' +
+    '.bgrant .grrow{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:0 0 8px}.bgrant .grrow .f{margin:0}.bgrant .grw{margin:4px 0 8px;font-size:15px}.bgrant .grw b{font-variant-numeric:tabular-nums}.bgrant .grnote{flex:1 1 220px}.bgrant .grmsg{color:var(--ok,#8fe0a0);font-weight:700}.bgrant #grCode{text-transform:uppercase;width:140px}.bgrant #grN{width:120px}'; /* BPT を付ける（2026-11-26） */ document.head.appendChild(st); }
 
   /* render: ボートの画面を出す（v2/admin.js）。reset: 画面に入る前・出るときに呼ばれる（読み直す・保存していない編集を捨てる・途中の読み込みの返事は捨てる）。dirty: 保存していない編集があるか */
   window.AdminBoat = {
