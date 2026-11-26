@@ -194,13 +194,23 @@
   const dis = () => (S.busy ? ' disabled' : '');
   const savebar = (sub, msgId) => '<div class="savebar"><div class="msg" id="' + msgId + '">' + (S.err[sub] ? '<div class="err">' + esc(S.err[sub]) + '</div>' : '') + '</div><button type="button" class="btn ghost" data-act="revert"' + dis() + '>元に戻す</button><button type="button" class="btn" data-act="save"' + dis() + '>保存</button></div>';
 
+  /* 当たった人（2026-11-26 オーナー「誰がいつ当たったか見れるように」）: 発表したレースの下に、名前・店・足した BPT を並べる。
+     中身は発表のときにレースに書く winners（v2/boat-firestore.js の revealOne。名前・店・当たりの額・実際に増えた分・上限で止まった印）。ボートは会計札を聞かないので名前と店だけ */
+  function winRow(r, cols) {
+    if (!r || r.status !== 'done') return '';
+    const ws = r.winners || [];
+    const body = ws.length ? ws.map((w) => '<span class="bwin"><b>' + esc(w.nick || '（名前なし）') + '</b> <small>' + esc(w.storeName || w.storeId || '') + '</small> +' + amt(w.gain != null ? w.gain : w.amount) + ' BPT' + (w.capped ? ' <small class="hint">（上限で ' + amt(w.amount) + ' → ' + amt(w.gain) + '）</small>' : '') + '</span>').join('')
+      : '<span class="hint">当たった人なし</span>';
+    return '<tr class="bwins"><td colspan="' + cols + '"><small class="hint">当たった人 ' + ws.length + '人</small> ' + body + '</td></tr>';
+  }
+  (function () { if (document.getElementById('bwinCss')) return; const st = document.createElement('style'); st.id = 'bwinCss'; st.textContent = '.boatadm tr.bwins td{padding-top:2px;line-height:1.9}.boatadm .bwin{display:inline-block;margin:0 14px 0 6px;white-space:nowrap}'; document.head.appendChild(st); })();
   function viewToday() {
     const d = S.data, cfg = d.cfg;
     const stuck = (d.stuck || []).filter(stuckOf), todayIds = new Set((d.races || []).map((r) => r.id)), stuckOther = stuck.filter((x) => !todayIds.has(x.id)); // 今日の一覧に無いレース（前の日の発表待ちなど）は上にまとめて出す
     const races = (d.races || []).map((r) => '<tr><td><b>' + hm(r.at) + '</b>' + (r.test ? ' <small class="hint">テスト</small>' : '') + '</td><td>' + (ST[r.status] || r.status) + '</td><td class="n">' + ((r.participants && r.participants.total) || 0) + '人 / 券 ' + ((r.participants && r.participants.tickets) || 0) + '</td>' +
       '<td class="n">' + amt(r.paid || (r.decision && r.decision.paid) || 0) + ' / ' + amt(r.target) + ' BPT</td><td>' + (r.result ? r.result.combo.split('-').map((x) => Number(x) + 1).join(' → ') + '（' + r.result.odds + '倍）' : '') +
       (stuckOf(r.stuck) || stuck.find((x) => x.id === r.id) ? '<div class="err boatstuck">' + esc(stuckText(stuckOf(r.stuck) || stuck.find((x) => x.id === r.id))) + '</div>' : '') + '</td>' +
-      '<td>' + (r.status !== 'done' && r.status !== 'void' ? '<button class="btn sm ghost" data-void="' + esc(r.id) + '"' + dis() + '>取り消す</button>' : '') + '</td></tr>').join('');
+      '<td>' + (r.status !== 'done' && r.status !== 'void' ? '<button class="btn sm ghost" data-void="' + esc(r.id) + '"' + dis() + '>取り消す</button>' : '') + '</td></tr>' + winRow(r, 6)).join('');
     const start = Number(cfg.startAt) > Date.now() ? '<p class="hint"><b class="boatstart">ボートは ' + esc(startText(cfg.startAt)) + ' から始まります（「調整」の「ボートを始める日」）</b></p>' : '';
     return '<div class="boatadm" data-sub="today"><div class="panel"><h3>今日のボート <button type="button" class="btn sm ghost" data-act="reload"' + dis() + '>最新にする</button></h3>' +
       '<p class="hint">今日使った BPT ' + amt(d.used) + ' / 1 日上限 ' + amt(cfg.capDay) + '（発表待ちのレースの分も入っています）</p>' + start + // 使った分は「決めた」ときに数える（発表の前でも 1 日の上限に入る。2026-11-20）
@@ -325,7 +335,7 @@
     const dayRaces = (x) => {
       const o = st.days[x.day]; if (!o) return '';
       const body = o.err ? '<div class="err">' + esc(o.err) + '</div>' : !o.races ? '<div class="empty">読み込み中…</div>' : !o.races.length ? '<div class="empty">この日のレースはありません</div>'
-        : '<table class="cards"><tr class="hd"><th>締切</th><th>状態</th><th class="n">参加</th><th class="n">払った BPT</th><th>結果（1着 → 2着）</th></tr>' + o.races.map((r) => '<tr><td><b>' + hm(r.at) + '</b>' + (r.test ? ' <small class="hint">テスト</small>' : '') + '</td><td>' + (ST[r.status] || r.status) + '</td><td class="n">' + ((r.participants && r.participants.total) || 0) + '人 / 券 ' + ((r.participants && r.participants.tickets) || 0) + '</td><td class="n">' + amt(r.paid) + '</td><td>' + (r.result ? r.result.combo.split('-').map((y) => Number(y) + 1).join(' → ') + '（' + r.result.odds + '倍）' : '') + '</td></tr>').join('') + '</table>';
+        : '<table class="cards"><tr class="hd"><th>締切</th><th>状態</th><th class="n">参加</th><th class="n">払った BPT</th><th>結果（1着 → 2着）</th></tr>' + o.races.map((r) => '<tr><td><b>' + hm(r.at) + '</b>' + (r.test ? ' <small class="hint">テスト</small>' : '') + '</td><td>' + (ST[r.status] || r.status) + '</td><td class="n">' + ((r.participants && r.participants.total) || 0) + '人 / 券 ' + ((r.participants && r.participants.tickets) || 0) + '</td><td class="n">' + amt(r.paid) + '</td><td>' + (r.result ? r.result.combo.split('-').map((y) => Number(y) + 1).join(' → ') + '（' + r.result.odds + '倍）' : '') + '</td></tr>' + winRow(r, 5)).join('') + '</table>';
       return '<tr class="bst-day"><td colspan="3"><div class="tbl">' + body + '</div></td></tr>';
     };
     return '<div class="boatadm" data-sub="stats"><div class="panel"><h3>ボートの集計を見る</h3>' +
