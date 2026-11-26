@@ -1,9 +1,9 @@
 {
- "v": "b239",
+ "v": "b240",
  "files": [
   {
    "path": "index.html",
-   "sha256": "4a5154e637f7cddf44ea60610c62525a68bea732ec0aedb3aa7aa34e38df77c1"
+   "sha256": "1b6142fd391a91ffc19bea2fdab73a889940f5215c28870b3c223ce49f270352"
   },
   {
    "path": "manifest.webmanifest",
@@ -423,7 +423,7 @@
   },
   {
    "path": "derby/v2/client-firestore.js",
-   "sha256": "3e586d7f2c63c4cb4b2af566ac5751f49cd4d0d51563225030c98717dfbcdf8a"
+   "sha256": "d47ad69048f20f3b83aafa5436bb0e970352511a85047d8c204a89b0a6053a1f"
   },
   {
    "path": "derby/v2/client.js",
