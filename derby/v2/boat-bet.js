@@ -72,6 +72,8 @@
 
   const C = window.DerbyCloud.create({ role: 'phone', store: STORE, boat: true });
   const now = () => C.serverNow();
+  /* 会員 ID（2026-11-26 LINE ログイン）: LINE でログインしたスマホだけ「あなたの BPT」の横に小さく出す（管理画面から BPT を付けるときに伝える番号）。匿名のまま・模擬クラウドは出さない */
+  if (C.member) Promise.resolve().then(() => C.member()).then((m) => { if (m && m.code) { S.member = m; if (S.screen !== 'boot') draw(); } }, () => {});
   /* S.known: 自分の票が分かっているレースの id／S.pend: 届いたか分からない投票（確かめ中）／S.ver: 自分の票の中身の版（読み取りより新しい中身が入ったら増える）／S.send: 送信の番号（レースが変わったら増やして古い返事を捨てる） */
   const S = { live: null, race: null, mine: null, bpt: null, bptWk: null, f: null, s: null, qty: 1, cart: [], mode: 'buy', screen: 'boot', thanks: false, busy: false, pend: null, err: '', stores: {}, minefor: '', known: '', donefor: '', doneAsk: '', noderby: '', dvSig: '', scanMiss: '', gotLive: false, slow: false, ver: 0, send: 0, introPage: 0, introAgain: false, online: true, pre: null };
 
@@ -295,7 +297,7 @@
   function scr(cls, html) { return '<div class="scr ' + cls + '">' + html + '</div>'; }
   function bptCard() {
     if (!S.bpt) return '';
-    return '<div class="bptcard"><div class="bh"><span>あなたの BPT</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります。競馬の票を 100 BPT で 1 票 増やせます（毎週月曜の朝 5 時にリセット）</p></div>';
+    return '<div class="bptcard"><div class="bh"><span>あなたの BPT' + (S.member ? '<small class="mid">ID ' + esc(S.member.code) + '</small>' : '') + '</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります。競馬の票を 100 BPT で 1 票 増やせます（毎週月曜の朝 5 時にリセット）</p></div>';
   }
   function howCard() {
     return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>テレビの QR を読めば、だれでも 1 レース 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で 1 票、何票でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし）</span></div></div>';
