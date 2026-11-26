@@ -324,3 +324,4 @@ body.boat .nextr, body.boat .os-s .nextr { display: block; }
   .scr.b-race > .testtag { justify-self: center; }
   .scr.b-voted > .thx { margin: 0; }
 }
+.bptcard .bh .mid { margin-left: 8px; font-size: 11.5px; font-weight: 600; color: var(--dim); letter-spacing: .02em; white-space: nowrap; } /* 会員 ID（2026-11-26 LINE ログイン） */
