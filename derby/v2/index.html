@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>casa</title>
+<style>html,body{height:100%;margin:0;background:#0b1220;color:#cfd8e6;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif}body{display:flex;align-items:center;justify-content:center;font-size:15px}</style>
+</head>
+<body>
+<p id="m">ログイン中…</p>
+<!-- LINE ログインの戻り先（2026-11-27）: LINE はログインのあと、まず LIFF のエンドポイント（このフォルダ）に戻す。
+     ここで liff.init を呼ぶと、SDK が元のページ（投票のページ）へ移してくれる。直接ここを開いた人は競馬の投票ページへ -->
+<script src="config.js?v=v4p2"></script>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+(function () {
+  var id = (window.DERBY_LINE && window.DERBY_LINE.liffId) || '2012817848-mLpbgONy';
+  var done = false;
+  function go() { if (done) return; done = true; location.replace('bet.html' + location.search); }
+  if (!window.liff) return go();
+  // 戻り先つきで来たときは、init の中で SDK が元のページへ移る。来ていない（直接開いた）ときは init が終わるので投票ページへ
+  try { liff.init({ liffId: id }).then(function () { setTimeout(go, 2500); }, function () { setTimeout(go, 800); }); } catch (e) { go(); }
+  setTimeout(go, 15000);
+})();
+</script>
+</body>
+</html>
