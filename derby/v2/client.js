@@ -102,8 +102,10 @@
      親の部品（client-firestore.js・core.js）をそのまま使う（SDK を 2 回読まない・2 つ目の匿名ログインを作らない・親のログインを入れ替えない）。時計も親のもの。
      親が無い（アドレスを直接開いた）ときは、このページで SDK を読み、前のログイン（同じブラウザの投票ページの匿名ログイン）があるときだけ見られる */
   function watchParent() {
-    try { const P = window.parent; if (!P || P === window || !(P.BETWATCH || P.BOATWATCH) || !P.DerbyFirestore || !P.DerbyFirestore.connect || !P.DerbyCore) return null; void P.location.href; return P; } catch (e) { return null; } // 親が投票ページ（v2/bet.js の BETWATCH）のときだけ。別のサイトの窓（読めない）は使わない
+    try { const P = window.parent; if (!P || P === window || !(P.BETWATCH || P.BOATWATCH) || !P.DerbyFirestore || !P.DerbyFirestore.connect || !P.DerbyCore) return null; void P.location.href; return P; } catch (e) { return null; } // 親が投票ページ（v2/bet.js の BETWATCH・ボートは v2/boat-bet.js の BOATWATCH 2026-11-23）のときだけ。別のサイトの窓（読めない）は使わない
   }
+  /* LINE ログイン（2026-11-26）: v2/config.prod.js の DERBY_LINE（liffId・loginUrl）があるときだけ、スマホと観戦で v2/line-login.js も読む（無ければ今までどおり匿名ログイン） */
+  const lineOn = () => { const c = typeof window !== 'undefined' ? window.DERBY_LINE : null; return !!(c && c.liffId && c.loginUrl); };
   function createFirestore(opt, cfg) {
     let implP = null, impl = null; const adm = {};
     function getImpl() {
@@ -117,6 +119,7 @@
           const L = [];
           if (!window.DerbyCore) L.push(DIR + 'core.js' + VQ);
           if (!window.DerbyFirestore) L.push(DIR + 'client-firestore.js' + VQ);
+          if (lineOn() && !window.DerbyLine) L.push(DIR + 'line-login.js' + VQ); // LINE ログイン（2026-11-26）
           if (typeof window.firebase === 'undefined') L.push(SDK + 'firebase-app-compat.js', SDK + 'firebase-auth-compat.js', SDK + 'firebase-firestore-compat.js');
           await Promise.all(L.map((u) => loadScript(u)));
           const env = await window.DerbyFirestore.connect(cfg, { role: 'phone' }); // スマホと同じつなぎ方（App Check を待たない）
@@ -140,6 +143,7 @@
            艇の走りの部品（js/boat-model.js）はレースを作る・決めるテレビと管理画面（すぐ始めるレース）だけ。版の印はこのファイルと同じ（公開のたびに変わる。以前は ?v=b1 固定で古い控えが残った） */
         if (opt.role === 'tv' || opt.role === 'admin' || opt.boat) { if (!window.BoatCore) L.push(DIR + 'boat-core.js' + VQ); if (!window.DerbyBoatFS) L.push(DIR + 'boat-firestore.js' + VQ); if ((opt.role === 'tv' || opt.role === 'admin') && !window.BoatModel) L.push(DIR + '../js/boat-model.js' + (VQ || BQ)); }
         if (!window.DerbyFirestore) L.push(DIR + 'client-firestore.js' + VQ);
+        if (opt.role === 'phone' && lineOn() && !window.DerbyLine) L.push(DIR + 'line-login.js' + VQ); // LINE ログイン（2026-11-26）
         if (typeof window.firebase === 'undefined') L.push(SDK + 'firebase-app-compat.js', SDK + 'firebase-auth-compat.js', SDK + 'firebase-firestore-compat.js');
         await Promise.all(L.map((u) => loadScript(u)));
         const env = await window.DerbyFirestore.connect(cfg, { role: opt.role });
@@ -156,7 +160,7 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['usage' /* 今日の読み取り（2026-11-25） */, 'config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'paid' /* 管理画面から「渡した」（2026-11-26） */, 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'tvApprove', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund', 'boatStats', 'boatDay']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
+    const ADMIN = ['usage' /* 今日の読み取り（2026-11-25） */, 'config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'paid' /* 管理画面から「渡した」（2026-11-26） */, 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'tvApprove', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund', 'boatStats', 'boatDay', 'bptMember', 'bptGrant' /* BPT を付ける（2026-11-26） */]; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）。adminKey・saveAdminKey: 公開用の管理画面の入口（v2/admin-gate.js）の鍵（2026-11-21）
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
@@ -164,7 +168,7 @@
       get link() { return impl ? impl.link : null; }, // テレビ: つながっているか（2026-10-29。{ up, at } | null）
       get usage() { return impl ? impl.usage || null : null; }, // 読み取りの枠（2026-11-25 ②③）: { mode, over, tick(key, ms), watchOk(), on(cb) }。つながる前は null（＝止めない）
       syncClock: call('syncClock'), stores: call('stores'), state: call('state'), race: call('race'),
-      vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'), stamps: call('stamps'), /* スタンプラリー（2026-11-02。オフなら null） */ bpt: call('bpt'), /* BPT（2026-11-18）: { bal, cost } | null */
+      vote: async (o) => { const r = await (await getImpl()).vote(o); if (r && r.vote) myVotes.set(r.vote.raceId, r.vote.vid, r.key); return r; }, myVote: call('myVote'), claimSelf: call('claimSelf'), stamps: call('stamps'), /* スタンプラリー（2026-11-02。オフなら null） */ bpt: call('bpt'), /* BPT（2026-11-18）: { bal, cost } | null */ member: call('member'), /* 会員 ID（2026-11-26 LINE ログイン）: { code, name } | null */
       staffLogin: call('staffLogin'), release: call('release'), wins: call('wins'), staffPayout: call('staffPayout'), claim: call('claim'), next: call('next'), logs: call('logs'), tvGame: call('tvGame'), tvQuality: call('tvQuality'),
       testRace: call('testRace'), testRaceStatus: call('testRaceStatus'), // この店だけテストレース（2026-10-19）
       deciderHealth: call('deciderHealth'), // 進行役のテレビが止まっていないか（2026-10-28）→ { lock, stall, text }
