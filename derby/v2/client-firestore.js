@@ -62,9 +62,9 @@
      画面は usage.tick(key, 間隔)（定期の読み直しをしてよいか）・usage.watchOk()（観戦してよいか）だけを見る。 */
   const USAGE = { COL: 'derbyUsage', LIMIT: 50000, SAVE_AT: 30000, MIN_AT: 40000, FLUSH_N: 100, FLUSH_MS: 10 * 60000, POLL_MS: 5 * 60000, MAX_INC: 5000, SLOW: 4,
     /* 1 台の 1 日の上限（測定 2026-11-25・1 台 1 時間: スマホ待ち 30・投票後 64・ボート 13〜38／観戦 46〜175・ボート観戦 36〜78／スタッフ 4〜20／ほかのテレビ 14〜74。店は最長 19 時間あく）:
-       phone 400 ＝ 投票後の多い時間（64）でも 6 時間・待ち（30）なら 13 時間／watch 300 ＝ 観戦 2〜6 時間／staff 600 ＝ 20 × 19 時間 ＋ 余り／tv 1,500 ＝ 74 × 19 時間 ＋ 余り。
+       phone 1,000 ＝ 投票後の多い時間（64）でも 15 時間・ページを約 75 回開ける（2026-11-27 オーナー決定: 400 → 1,000。400 は約 30 回開くと当たった）／watch 300 ＝ 観戦 2〜6 時間／staff 600 ＝ 20 × 19 時間 ＋ 余り／tv 1,500 ＝ 74 × 19 時間 ＋ 余り。
        進行役・予備（見回りが動いているテレビ）と管理画面は上限なし */
-    CAPS: { phone: 400, watch: 300, staff: 600, tv: 1500 },
+    CAPS: { phone: 1000, watch: 300, staff: 600, tv: 1500 },
     KINDS: ['dec', 'tv', 'staff', 'phone', 'watch', 'admin'],
     /* ログインした人なら決まりが get を使わずに読める置き場（進行役のテレビがここを読むときは決まりの中の読み取りが無い） */
     PUB: { derbyLive: 1, derbyRaces: 1, derbyCounts: 1, derbyStores: 1, derbySchedule: 1, derbyLock: 1, derbyClock: 1, boatRaces: 1, boatLive: 1, boatCounts: 1 },
