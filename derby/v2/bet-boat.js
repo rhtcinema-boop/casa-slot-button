@@ -28,6 +28,7 @@
     '.bbc .bbt{font-size:14px;font-weight:700;color:#d8f3ff;white-space:nowrap}.bbc .bbt b{margin-left:2px;font-family:var(--display);font-size:22px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}' +
     '.bbc .bbcd{margin-left:auto;font-size:11.5px;color:#a9c4dc;white-space:nowrap}.bbc .bbcd b{margin-left:1px;font-family:var(--display);font-size:18px;font-weight:900;color:#d8f3ff;font-variant-numeric:tabular-nums}.bbc .bbcd.hot,.bbc .bbcd.hot b{color:#ffe08a}' +
     '.bbc .bbh{font-size:12.5px;color:#a9c4dc}' +
+    '.bbc .bb3 .bbid{margin-left:auto;font-size:11.5px;font-weight:600;color:#a9c4dc;white-space:nowrap}' + /* 会員 ID（2026-11-26 LINE ログイン） */
     '.bbc .bb3{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px;font-size:13px;font-weight:700;color:#8fdcff}.bbc .bb1~.bb3{padding-top:5px;border-top:1px dashed rgba(143,220,255,.35)}' +
     '.bbc .bb3 b{margin-left:2px;font-family:var(--display);font-size:21px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}.bbc .bb3 small{font-size:12.5px;font-weight:600;color:#d8f3ff}' +
     /* 入らない画面だけ詰める（bet.js の fitLevel）: .os-s 余白 → .os-xs 字を少し小さくして時刻と残り時間を 1 行に → .os-xx（それでも入らないときだけ）説明を省く＝「（テレビの QR から…）」「投票受付中・」「（競馬の票を…）」と、BPT の行があるときのスタンプカードの下の 1 文（数は上に出ている） */
@@ -80,12 +81,16 @@
     if (balBusy || !rawBpt || Date.now() - balAt < TTL || !boatUser()) return; balBusy = true; reads.bpt++;
     timed(rawBpt(), 10000).then((x) => { const n = x ? Number(x.bal) || 0 : 0, ch = n !== bal; bal = n; balAt = Date.now(); balBusy = false; if (ch) redraw(); }, () => { balBusy = false; balAt = Date.now() - TTL + RETRY; });
   }
+  /* 会員 ID（2026-11-26 LINE ログイン）: LINE でログインしたスマホだけ BPT の行に小さく「ID C-4821」（BPT が 0 でも ID だけ出す＝管理画面から BPT を付けるときに伝える番号）。匿名のまま・模擬クラウドは出さない */
+  let mem = null;
+  if (C.member) Promise.resolve().then(() => C.member()).then((x) => { if (x && x.code && (!mem || mem.code !== x.code)) { mem = x; redraw(); } }, () => {});
   function bptLine(k) {
     const m = B.my, voted = k === 'voted', mb = voted && m && m.bpt ? m.bpt : null; let n = 0;
-    if (mb) { bal = Number(mb.bal) || 0; balAt = Date.now(); if (mb.left > 0 && !m.lost) return ''; } // 投票済み: bet.js が読んだ数。「BPT で票を追加（あと○票）」のボタンが出ているときは書かない
+    const idTag = mem ? '<small class="bbid">ID ' + esc(mem.code) + '</small>' : '', idOnly = mem ? '<p class="bb3">' + idTag + '</p>' : '';
+    if (mb) { bal = Number(mb.bal) || 0; balAt = Date.now(); if (mb.left > 0 && !m.lost) return idOnly; } // 投票済み: bet.js が読んだ数。「BPT で票を追加（あと○票）」のボタンが出ているときは書かない
     else { loadBpt(); if (!voted) n = Math.min(4, Math.floor((bal || 0) / 100)); } // 「あと○票」は次のレースの話（待ち・結果）。投票済みの画面では数だけ
-    if (!(bal > 0)) return '';
-    return '<p class="bb3"><span>' + esc(TX.bpt) + ' <b>' + amt(bal) + '</b></span>' + (n > 0 ? '<small>（' + esc(TX.more.replace('{n}', n)) + '）</small>' : '') + '</p>';
+    if (!(bal > 0)) return idOnly;
+    return '<p class="bb3"><span>' + esc(TX.bpt) + ' <b>' + amt(bal) + '</b></span>' + (n > 0 ? '<small>（' + esc(TX.more.replace('{n}', n)) + '）</small>' : '') + idTag + '</p>';
   }
 
   /* ---------- 描く ---------- */
