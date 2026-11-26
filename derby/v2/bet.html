@@ -55,6 +55,14 @@ window.DERBY_FIREBASE = {
    reCAPTCHA Enterprise のキーなら DERBY_APPCHECK_PROVIDER を 'enterprise' に。 */
 window.DERBY_APPCHECK_KEY = '6Lc_WgMuAAAAAMlyGK4WqQ9r5O0in5sR0fuyxTY4'; // 2026-10-27 作成（reCAPTCHA → Fraud Defense に登録・Firestore と Auth は「非適用」＝記録だけ）
 window.DERBY_APPCHECK_PROVIDER = 'enterprise'; // Firebase の App Check に Fraud Defense（旧 reCAPTCHA Enterprise）で登録したので enterprise
+/* LINE ログイン（2026-11-26 オーナー決定「スマホは LINE ログイン必須」。v2/line-login.js・ログイン係は Apps Script）。どちらも公開してよい値（秘密ではない）。
+   2026-11-27 いまは「試し」: アドレスに ?line=1 を付けて開いたスマホだけ LINE ログインになる（?line=0 で元に戻る。覚えるのはそのブラウザだけ）。
+   全員に出すときは、下の on をいつも true にする */
+(function () {
+  var on = false, q = location.search;
+  try { if (/[?&]line=1(&|$)/.test(q)) localStorage.setItem('casa.lineTrial', '1'); if (/[?&]line=0(&|$)/.test(q)) localStorage.removeItem('casa.lineTrial'); on = localStorage.getItem('casa.lineTrial') === '1'; } catch (e) { on = /[?&]line=1(&|$)/.test(q); }
+  window.DERBY_LINE = on ? { liffId: '2012817848-mLpbgONy', loginUrl: 'https://script.google.com/macros/s/AKfycbwYB7DH7wNfKusuuA47qhf2YvuySZzeQq2jaBgtm3f9skJLFUs0CbopGAw_fvU8-lI2/exec' } : null;
+})();
 </script><!-- v2/config.prod.js を埋め込んだもの（tools/build-derby-deploy.js） --><!-- つなぎ先（公開版は本番の Firebase。client.js より先に・document.write なし） -->
 <script>/* 文字（Noto Sans JP）: 前に読めた端末だけすぐ読む（キャッシュにある）。初めての端末は画面が出たあと bet.js が読む（読めるまでは端末の文字）。保存領域が使えなくても止まらない */
 (function () { var f = false; try { f = localStorage.getItem('casa.derby.font') === '1'; } catch (e) { f = false; }
@@ -74,7 +82,7 @@ window.DERBY_APPCHECK_PROVIDER = 'enterprise'; // Firebase の App Check に Fra
 <script>/* 2026-10-28 b155 速さの見直し 2: 画面のスクリプトは、起動の画面（ロゴ）が出てから読む（それまでの通信はページ・ロゴだけ＝最初の表示とロゴを待たせない）。
    ロゴが 1.5 秒で出なくても読み始める。前に開いた端末（店の状態を覚えている）はロゴを待たずにすぐ。Firebase のときは、つなぎの部品（client.js が同じ URL で使う）もここで同時に読み始める。実行は入れた順（async=false） */
 (function () {
-  var V = '?v=v4q35', S = 'https://www.gstatic.com/firebasejs/10.12.2/', h = document.head, done = false;
+  var V = '?v=v4q38', S = 'https://www.gstatic.com/firebasejs/10.12.2/', h = document.head, done = false;
   function sc(u) { var s = document.createElement('script'); s.src = u; s.async = false; h.appendChild(s); }
   function pre(u) { var l = document.createElement('link'); l.rel = 'preload'; l.as = 'script'; l.href = u; h.appendChild(l); }
   function go() {
