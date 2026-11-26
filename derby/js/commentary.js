@@ -746,6 +746,16 @@ window.Commentary = (function () {
       S.crowd = new Crowd(ctx, S.cgain, rnd);
     }
     loadLib(ctx).catch(() => {});
+    /* 2026-11-27 オーナー「テレビの実況の声がなくなった」: 声の素材の読み込み・戻しに 1 回でも失敗すると（電波の切れ目・読み込み直しの直後など）、
+       ページを読み込み直すまで実況がずっと出なかった（失敗の印 Lib.failed が残り、やり直さない作りだった）。
+       → 失敗していたら、60 秒ごとにやり直す（うまくいけば次のレースから実況が戻る。レースの映像・効果音には触らない） */
+    if (!S.retryT && typeof setInterval !== 'undefined') S.retryT = setInterval(retryLib, 60000);
+  }
+  function retryLib() {
+    if (!S.ctx || !Lib.failed || Lib.ready) return;
+    if (S.dir && !S.finished) return; // 実況の途中は触らない
+    Lib.failed = false; Lib.loading = null; Lib.decoding = null; Lib.raw = null; Lib.retries = (Lib.retries || 0) + 1;
+    loadLib(S.ctx).catch(() => {});
   }
   // 発走前に呼ぶ。実況エンジンが話すなら true（そのときは従来の読み上げを止める）
   function begin(view, race, odds) {
