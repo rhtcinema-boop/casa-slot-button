@@ -10,18 +10,41 @@
 <body>
 <p id="m">ログイン中…</p>
 <!-- LINE ログインの戻り先（2026-11-27）: LINE はログインのあと、まず LIFF のエンドポイント（このフォルダ）に戻す。
-     ここで liff.init を呼ぶと、SDK が元のページ（投票のページ）へ移してくれる。直接ここを開いた人は競馬の投票ページへ -->
+     ここで liff.init を呼ぶと、SDK が元のページ（投票のページ）へ移してくれる。直接ここを開いた人は競馬の投票ページへ。
+     2026-11-27 総点検: SDK が移さなかったとき（LINE を途中でやめた・SDK が読めない・準備の失敗）は、元のページ（競馬・ボート・観戦）へ自分で戻す -->
 <script src="config.js?v=v4p2"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 (function () {
   var id = (window.DERBY_LINE && window.DERBY_LINE.liffId) || '2012817848-mLpbgONy';
-  var done = false;
-  function go() { if (done) return; done = true; location.replace('bet.html' + location.search); }
-  if (!window.liff) return go();
+  var done = false, LIFF = ['code', 'state', 'liffClientId', 'liffRedirectUri', 'error', 'error_description', 'liff.state', 'liff.referrer'];
+  /* 2026-11-27 総点検: 元のページ（LINE へ移る前に v2/line-login.js が端末に覚えた住所。15 分以内）。無ければ LINE が付けた戻り先（liffRedirectUri）。
+     同じサイトのこのフォルダのページだけ。前は、SDK が元のページへ移さなかったとき（LINE を途中でやめた・SDK が読めない）に、
+     ボートや観戦から来た人も店の印の無い競馬のページへ送っていた */
+  function from() {
+    var c = [], dir = location.origin + location.pathname.replace(/[^\/]*$/, '');
+    try { var x = JSON.parse(localStorage.getItem('casa.derby.line.ss') || 'null'); if (x && x.from && Date.now() - x.at < 15 * 60000) c.push(x.from); } catch (e) { /* 覚えが使えないブラウザ */ }
+    try { c.push(new URL(location.href).searchParams.get('liffRedirectUri') || ''); } catch (e) { /* noop */ }
+    for (var i = 0; i < c.length; i++) { try { var u = new URL(c[i], location.href); if (u.href.indexOf(dir) === 0 && /\.html$/.test(u.pathname) && u.pathname !== location.pathname) return u; } catch (e) { /* 次 */ } }
+    return null;
+  }
+  /* keep: LINE の印（code など）を付けたまま渡すか。SDK の準備が済んだあと（＝ログインの続きは SDK が覚えている）は付けない。LINE を途中でやめた（error）ときは error だけ渡す（元のページが「もう一度」の案内を出す） */
+  function go(keep) {
+    if (done) return; done = true;
+    var here, u, err = '';
+    try {
+      here = new URL(location.href); err = here.searchParams.get('error') || ''; u = from();
+      if (!u) { u = new URL('bet.html', location.href); here.searchParams.forEach(function (v, k) { if (LIFF.indexOf(k) < 0) u.searchParams.set(k, v); }); } // 直接ここを開いた人: 競馬の投票ページへ（店の印などはそのまま）
+      LIFF.forEach(function (k) { u.searchParams.delete(k); });
+      if (err) u.searchParams.set('error', err);
+      else if (keep) ['code', 'state', 'liffClientId', 'liffRedirectUri'].forEach(function (k) { var v = here.searchParams.get(k); if (v) u.searchParams.set(k, v); });
+      location.replace(u.href);
+    } catch (e) { location.replace('bet.html'); }
+  }
+  if (/[?&]error=/.test(location.search) || !window.liff) return go(true); // LINE を途中でやめた・SDK が読めない: 待たずに元のページへ
   // 戻り先つきで来たときは、init の中で SDK が元のページへ移る。来ていない（直接開いた）ときは init が終わるので投票ページへ
-  try { liff.init({ liffId: id }).then(function () { setTimeout(go, 2500); }, function () { setTimeout(go, 800); }); } catch (e) { go(); }
-  setTimeout(go, 15000);
+  try { liff.init({ liffId: id }).then(function () { setTimeout(function () { go(false); }, 2500); }, function () { setTimeout(function () { go(true); }, 800); }); } catch (e) { go(true); }
+  setTimeout(function () { go(true); }, 15000);
 })();
 </script>
 </body>
