@@ -2082,6 +2082,21 @@
           return { race: Core.publicRace(d || data(await ref.get()), { role: 'admin', secret, result: d && d.result }) };
         }),
         reveal: wrap(async (raceId) => { const r = await revealRace(raceId, true); if (!r) throw E(409, 'not_decided', 'まだ結果が決まっていません'); return { race: Core.publicRace(r, { role: 'admin', secret: data(await doc(COL.secrets, raceId).get()) }) }; }),
+        /* 管理画面から「渡した」（2026-11-26 オーナー「管理画面から渡したって押せるように」）: スタッフの受け渡し（claim）と同じ確かめ（発表のあと・期限の前・まだ渡していない・取り消しでない）。
+           印は paidVia 'admin'・記録（derbyLogs）も同じ形で via 'admin'。店は問わない（マスターだけ） */
+        paid: wrap(async (pid) => {
+          const id = String(pid || ''); if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw E(400, 'bad_pid', '当たりの指定がちがいます');
+          const ref = doc(COL.payouts, id), names = storeNameOf(await getStores());
+          const p = await db.runTransaction(async (tx) => {
+            const s = data(await tx.get(ref)), rr = s ? data(await tx.get(doc(COL.races, s.raceId))) : null;
+            claimCheck(s, rr, names);
+            const patch = { status: 'paid', paidAt: now(), paidBy: uid(), paidVia: 'admin' };
+            tx.update(ref, patch); const done = Object.assign(s, patch);
+            await addLog(Object.assign({ _id: 'paid_' + s.pid }, { type: 'paid', via: 'admin', storeId: s.storeId, bill: s.bill, nick: s.nick, amount: s.amount, combo: s.combo || null, vid: s.vid || null, pid: s.pid, raceId: s.raceId }), tx);
+            return done;
+          });
+          return { payout: Core.payoutView(p, names, true) };
+        }),
         refund: wrap(async (raceId) => { const x = await voidRace(raceId); const r = data(await doc(COL.races, raceId).get()); return { ok: true, voided: x.voided, race: Core.publicRace(r, { role: 'admin', secret: data(await doc(COL.secrets, raceId).get()) }) }; }), // 取り消し（v4。以前の返還）
         reload: wrap(async (sid) => { const stores = await getStores(true); let n = 0; for (const s of stores) { if (sid && s.id !== sid) continue; await doc(COL.stores, s.id).update({ reloadSeq: FieldValue.increment(1) }); n++; } return { ok: true, sent: n }; }),
         expire: wrap(async (o) => { o = o || {}; if (o.pid) { const sc = await secretConfig(); return { ok: true, expired: await expirePayouts({ pid: o.pid, today: Core.bizDate(now() + 2 * 86400000, sc.tuning.dayStartHour) }) }; } return { ok: true, expired: await expirePayouts() }; }),
