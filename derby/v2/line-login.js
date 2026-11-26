@@ -7,7 +7,13 @@
      LIFF の SDK を読む → liff.init → 未ログインなら「LINEでログイン」の画面（ボタン 1 つ）→ 押すと liff.login（LINE へ移って、このページへ戻る）
      → liff.getIDToken() → ログイン係に POST（いま匿名ログインが残っていればその ID トークンも＝BPT の引き継ぎ）→ signInWithCustomToken → いつもの画面へ。
    会員 ID（例 C-4821）は、ログイン係の返事を端末に覚える（casa.derby.member）。無ければ v2/client-firestore.js の member() が derbyMembers を 1 回読む。
-   試験: node tests/line-login.test.js（LIFF・ログイン係・Firebase はにせ物） */
+   2026-11-27 総点検（画面の試験 tests/line-login-phone.plan.js）で直した所:
+     ・はじめての人に「ログイン中…」を一瞬出していた → ページの「読み込み中…」のまま待って、ボタンの画面だけ出す
+     ・LINE へ移れなかった・LINE の画面から「戻る」で戻った → 「ログイン中…」のまま止まっていた → 8 秒／pageshow でボタンに戻す
+     ・LINE を途中でやめて戻った（アドレスに error）→ LIFF の準備が失敗し続けてやり直せなかった → 印を消して、ボタンと「ログインが終わっていません」
+     ・LINE のアプリの中でトークンが古い → 押しても何も起きなかった（アプリの中は liff.login が使えない）→ 読み直してやり直す（自動は 1 回）
+     ・赤字は 2 行に決めて書く・「ログイン中…」の字を白のまま・ログイン係の中の失敗は「電波を確認」と書かない・LINE へ移る前に元のページの住所を覚える（戻り先のページが使う）
+   試験: node tests/line-login.test.js（LIFF・ログイン係・Firebase はにせ物）・画面は tests/line-login-phone.plan.js */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -15,9 +21,14 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const SDK = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
-  const LS_MEMBER = 'casa.derby.member', LS_KEEP = 'casa.derby.line.ss', KEEP_MS = 15 * 60000;
+  const LS_MEMBER = 'casa.derby.member', LS_KEEP = 'casa.derby.line.ss', SS_RELOAD = 'casa.derby.line.rl', KEEP_MS = 15 * 60000;
+  const LEAVE_MS = 8000, RELOAD_GAP_MS = 60000; // 2026-11-27 総点検: LINE へ移れないまま待つ長さ・LINE のアプリの中の自動の読み直しをくり返さない間
   const LIFF_PARAMS = ['code', 'state', 'liffClientId', 'liffRedirectUri', 'error', 'error_description'];
-  const TX = { title: 'ログイン', lead: 'スマホやブラウザを変えても BPT が残ります', btn: 'LINEでログイン', busy: 'ログイン中…', again: 'もう一度', errNet: '通信できませんでした。電波を確認して、もう一度押してください', errLine: 'ログインできませんでした。もう一度押してください', errLoad: 'LINE の読み込みに失敗しました。もう一度押してください' };
+  /* 2026-11-27 総点検: 赤字は 2 行に決めて書く（\n で改行。幅のせまいスマホで文の途中で折れない・出たときに画面が動かない）。
+     errSrv ＝ ログイン係の中の失敗（電波のせいではないので「電波を確認」と書かない）・errStop ＝ LINE を途中でやめて戻った */
+  const TX = { title: 'ログイン', lead: 'スマホやブラウザを変えても BPT が残ります', btn: 'LINEでログイン', busy: 'ログイン中…', again: 'もう一度',
+    errNet: '通信できませんでした。\n電波を確認して、もう一度押してください', errLine: 'ログインできませんでした。\nもう一度押してください', errLoad: 'LINE の読み込みに失敗しました。\nもう一度押してください',
+    errSrv: 'ログインできませんでした。\n少し待って、もう一度押してください', errStop: 'ログインが終わっていません。\nもう一度押してください' };
   const isLineUid = (u) => typeof u === 'string' && /^L/.test(u);
 
   /* deps（試験で差し替える）: cfg（DERBY_LINE）・liff・loadScript・fetch・doc（document）・loc（location）・hist（history）・ls（localStorage）・setTimeout */
@@ -41,13 +52,22 @@
     /* ---------- LINE へ移る間の覚え ----------
        ボートの QR の合言葉などは、このタブの覚え（sessionStorage の casa.…）にある。LINE から戻ると別のタブになるブラウザもあるので、
        LINE へ移る前に端末の覚え（localStorage）へ写し、戻ったら（15 分以内なら）足りない分だけ戻す */
-    function keepSession() {
-      try { const S = ss(), L = ls(); if (!S || !L) return; const v = {}; for (let i = 0; i < S.length; i++) { const k = S.key(i); if (k && /^casa\./.test(k)) v[k] = S.getItem(k); } L.setItem(LS_KEEP, JSON.stringify({ at: Date.now(), v })); } catch (e) { /* noop */ }
+    function keepSession() { // 2026-11-27 総点検: 元のページの住所（from）も覚える（戻り先のページ v2/line-return.index.html が、ここへ戻す）
+      try { const S = ss(), L = ls(); if (!L) return; const v = {}; if (S) for (let i = 0; i < S.length; i++) { const k = S.key(i); if (k && /^casa\./.test(k) && k !== SS_RELOAD) v[k] = S.getItem(k); } L.setItem(LS_KEEP, JSON.stringify({ at: Date.now(), v, from: here() })); } catch (e) { /* noop */ }
     }
     function restoreSession(drop) {
       try { const S = ss(), L = ls(); if (!L) return; const x = JSON.parse(L.getItem(LS_KEEP) || 'null'); if (drop) L.removeItem(LS_KEEP); if (!S || !x || !x.v || !(Date.now() - x.at < KEEP_MS)) return; Object.keys(x.v).forEach((k) => { if (S.getItem(k) == null) S.setItem(k, x.v[k]); }); } catch (e) { /* noop */ }
     }
     function toLine(L) { keepSession(); L.login({ redirectUri: here() }); }
+    /* 2026-11-27 総点検: LINE へ移っている途中か（15 分以内に LINE へ送り出した覚えがある）＝ 戻ってきたページは、すぐ「ログイン中…」を出す */
+    function wentToLine() { try { const L = ls(), x = L ? JSON.parse(L.getItem(LS_KEEP) || 'null') : null; return !!(x && Date.now() - x.at < KEEP_MS); } catch (e) { return false; } }
+    function dropKeep() { try { const L = ls(); if (L) L.removeItem(LS_KEEP); } catch (e) { /* noop */ } }
+    const urlHas = (keys) => { try { const u = new URL(loc.href); return keys.some((k) => u.searchParams.has(k)); } catch (e) { return false; } };
+    const inClient = (L) => { try { return typeof L.isInClient === 'function' && !!L.isInClient(); } catch (e) { return false; } }; // LINE のアプリの中（liff.login が使えない）
+    /* LINE のアプリの中でトークンが古いとき: 読み直すと LINE が新しいトークンを出す。自動は 1 分に 1 回まで（このタブの覚えが使えないブラウザでは自動でしない＝くり返さない） */
+    function reloadOnce() {
+      try { const S = ss(); if (!S || !loc || typeof loc.reload !== 'function') return false; if (Date.now() - (Number(S.getItem(SS_RELOAD)) || 0) < RELOAD_GAP_MS) return false; S.setItem(SS_RELOAD, String(Date.now())); if (!S.getItem(SS_RELOAD)) return false; loc.reload(); return true; } catch (e) { return false; }
+    }
 
     /* ---------- LIFF ---------- */
     let liffP = null;
@@ -89,7 +109,8 @@
         '#lnGate .in{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:14px}' +
         '#lnGate h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.02em}#lnGate p{margin:0;font-size:14px;line-height:1.6;color:#c9c2ad}' +
         '#lnGate button{width:100%;height:56px;margin-top:6px;border:0;border-radius:14px;background:#06c755;color:#fff;font:inherit;font-size:18px;font-weight:900;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
-        '#lnGate button:active{filter:brightness(.92)}#lnGate button[disabled]{opacity:.6;cursor:default}#lnGate .err{min-height:1.6em;color:#ff9d8c;font-size:13px;font-weight:700}#lnGate .err:empty{visibility:hidden}';
+        '#lnGate button:active{filter:brightness(.92)}#lnGate button[disabled]{background:#0b7a3b;color:#fff;cursor:default;filter:none}' + /* 2026-11-27 総点検: 「ログイン中…」は字を白のまま・地だけ暗く（前は全体を薄くして字が読みにくかった） */
+        '#lnGate .err{min-height:3.2em;color:#ff9d8c;font-size:13px;font-weight:700;white-space:pre-line}#lnGate .err:empty{visibility:hidden}'; /* 赤字は 2 行ぶんの場所を先に取る（出たときに画面が動かない） */
       doc.head.appendChild(st);
     }
     function show(o) {
@@ -97,7 +118,7 @@
       css();
       if (!ui) {
         const el = doc.createElement('div'); el.id = 'lnGate'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-labelledby', 'lnT');
-        el.innerHTML = '<div class="in"><h1 id="lnT"></h1><p id="lnP"></p><button type="button" id="lnB"></button><p class="err" id="lnE" role="alert"></p></div>';
+        el.innerHTML = '<div class="in"><h1 id="lnT"></h1><p id="lnP"></p><button type="button" id="lnB"></button><p class="err" id="lnE" role="alert" data-wrap></p></div>';
         doc.body.appendChild(el); ui = el;
       }
       ui.querySelector('#lnT').textContent = TX.title; ui.querySelector('#lnP').textContent = TX.lead;
@@ -135,31 +156,53 @@
       if (running) return running;
       const auth = o.auth;
       running = new Promise((resolve) => {
-        let tries = 0;
+        let tries = 0, away = false, awayL = null, leaveT = null;
         const fail = (msg) => show({ err: msg, retry: true, onTap: () => go(true) });
+        /* LINE へ移る（2026-11-27 総点検）: 移れなかった（何も起きない・LINE の画面からブラウザの「戻る」で前の画面がそのまま戻った）ときに「ログイン中…」のまま止まらないよう、
+           8 秒たっても同じページにいる・pageshow（persisted）が来た → ボタンを押せる形に戻す */
+        const comeBack = () => { if (!away) return; away = false; clearTimeout(leaveT); const L = awayL; show({ onTap: () => leave(L) }); };
+        function leave(L) {
+          show({ busy: true }); away = true; awayL = L;
+          try { toLine(L); } catch (e) { away = false; return fail(TX.errLine); }
+          clearTimeout(leaveT); leaveT = later(comeBack, LEAVE_MS); if (leaveT && leaveT.unref) leaveT.unref();
+        }
+        try { if (W.addEventListener) W.addEventListener('pageshow', (ev) => { if (ev && ev.persisted) comeBack(); }); } catch (e) { /* noop */ }
         async function go(tapped) {
           tries++; restoreSession(false);
-          show({ busy: true });
+          /* 2026-11-27 総点検: LINE を途中でやめて戻った（アドレスに error）→ 印を先に消す（残したままだと LIFF の準備が失敗し続けて、やり直せない）。ボタンと「ログインが終わっていません」 */
+          const stopped = urlHas(['error']); if (stopped) cleanUrl();
+          /* はじめての人には「ログイン中…」を出さない（ページの「読み込み中…」のまま待ち、LIFF の準備が済んだらボタン）。出すのは、押したあと・LINE から戻ったとき・LINE にログイン済みと分かったあと */
+          if (tapped || (!stopped && (urlHas(['code', 'liffClientId']) || wentToLine()))) show({ busy: true });
           let L;
-          try { L = await liff(); } catch (e) { return fail(TX.errLoad); }
+          try { L = await liff(); } catch (e) { cleanUrl(); return fail(TX.errLoad); } // LINE の印が残っていたら消す（「もう一度」は、まっさらな形でやり直す）
           if (!L.isLoggedIn()) {
-            if (!tapped) return show({ onTap: () => { show({ busy: true }); try { toLine(L); } catch (e) { fail(TX.errLine); } } });
-            show({ busy: true }); try { toLine(L); } catch (e) { fail(TX.errLine); } return;
+            if (tapped) return leave(L);
+            dropKeep(); // LINE から戻ったがログインしていない（やめた）: 送り出した覚えを消す（このタブの覚えは上でもう戻した）
+            return show({ err: stopped ? TX.errStop : '', onTap: () => leave(L) });
           }
+          show({ busy: true });
           const idToken = L.getIDToken && L.getIDToken();
-          if (!idToken) { try { L.logout(); } catch (e) { /* noop */ } return show({ onTap: () => { show({ busy: true }); toLine(L); } }); }
+          if (!idToken) { try { L.logout(); } catch (e) { /* noop */ } return show({ onTap: () => leave(L) }); }
           let anonToken = null;
           const cur = auth.currentUser;
           if (cur && cur.isAnonymous && !isLineUid(cur.uid)) { try { anonToken = await cur.getIdToken(); } catch (e) { anonToken = null; } }
           let j;
           try { j = await callServer({ idToken, anonToken }); }
           catch (e) {
-            if (e.code === 'line_token') { try { L.logout(); } catch (e2) { /* noop */ } return show({ err: TX.errLine, onTap: () => { show({ busy: true }); toLine(L); } }); } // 期限切れなど: LINE でもう一度
-            return fail(TX.errNet);
+            if (e.code === 'line_token') { // 期限切れなど: LINE でもう一度
+              try { L.logout(); } catch (e2) { /* noop */ }
+              if (inClient(L)) { // 2026-11-27 総点検: LINE のアプリの中では liff.login が使えない（押しても何も起きず止まっていた）→ 読み直す（自動は 1 回だけ・だめなら文と「もう一度」）
+                if (reloadOnce()) return;
+                return show({ err: TX.errLine, retry: true, onTap: () => { show({ busy: true }); try { loc.reload(); } catch (e3) { fail(TX.errLine); } } });
+              }
+              return show({ err: TX.errLine, onTap: () => leave(L) });
+            }
+            return fail(e.code === 'network' ? TX.errNet : TX.errSrv);
           }
           try { await fbSignIn(auth, j.token); } catch (e) { return fail(TX.errNet); }
           const uid = auth.currentUser ? auth.currentUser.uid : j.uid;
           remember(uid, { code: j.code, name: j.name }); restoreSession(true);
+          away = false; clearTimeout(leaveT);
           hide(); running = null;
           resolve({ uid, code: j.code || null, name: j.name || '', moved: Number(j.moved) || 0, tries });
         }
