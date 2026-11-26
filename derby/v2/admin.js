@@ -1755,7 +1755,7 @@
       '</div>';
   }
   const LOG_KIND = { vote: ['投票', 'info'], release: ['番号を空けた', ''], win: ['当たり', 'warn'], paid: ['受け取り', 'ok'], expired: ['期限切れ', ''] };
-  const logKind = (x) => (x.type === 'paid' ? ['受け取り（' + (x.via === 'self' ? 'お客さんのスライド' : 'スタッフ') + '）', 'ok'] : LOG_KIND[x.type] || [x.type, '']);
+  const logKind = (x) => (x.type === 'paid' ? ['受け取り（' + (x.via === 'self' ? 'お客さんのスライド' : x.via === 'admin' ? '管理画面' : 'スタッフ') + '）', 'ok'] : LOG_KIND[x.type] || [x.type, '']);
   const logAmt = (x) => (x.type === 'win' || x.type === 'paid' || x.type === 'expired' ? Number(x.amount != null ? x.amount : x.count) || 0 : null);
   // 会計番号ごと（店＋番号）の集計（core.js の sumBill と同じ形）: 票・当選額・渡した・期限切れ
   function sumLogs(logs) {
