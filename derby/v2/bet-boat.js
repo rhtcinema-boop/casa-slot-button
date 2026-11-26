@@ -14,7 +14,7 @@
   'use strict';
   const B = window.BET; if (!B || !B.C || window.BetBoat) return;
   const C = B.C;
-  const TX = { next: '次のボートレース', how: 'テレビの QR から・無料で 1 票', openIn: '受付開始まで あと', open: '投票受付中', closeIn: '締切まで あと', bpt: 'あなたの BPT', more: '競馬の票を あと {n} 票 増やせます', label: 'ボートレースと BPT' };
+  const TX = { next: '次のボートレース', how: 'テレビの QR から・無料で 1 票', openIn: '受付開始まで あと', open: '投票受付中', closeIn: '締切まで あと', bpt: 'あなたの BPT', id: 'あなたの ID', more: '競馬の票を あと {n} 票 増やせます', label: 'ボートレースと BPT' };
   const NKEY = 'casa.derby.boatnx', TTL = 15 * 60000, /* 2026-11-25 読み取りの枠: 5 分→15 分 */ RETRY = 60000, SCREENS = ['wait', 'voted', 'result'];
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const now = () => C.serverNow(), amt = (n) => Math.round(Number(n) || 0).toLocaleString('ja-JP'), p2 = (n) => ('0' + n).slice(-2);
@@ -29,6 +29,7 @@
     '.bbc .bbcd{margin-left:auto;font-size:11.5px;color:#a9c4dc;white-space:nowrap}.bbc .bbcd b{margin-left:1px;font-family:var(--display);font-size:18px;font-weight:900;color:#d8f3ff;font-variant-numeric:tabular-nums}.bbc .bbcd.hot,.bbc .bbcd.hot b{color:#ffe08a}' +
     '.bbc .bbh{font-size:12.5px;color:#a9c4dc}' +
     '.bbc .bb3 .bbid{margin-left:auto;font-size:11.5px;font-weight:600;color:#a9c4dc;white-space:nowrap}' + /* 会員 ID（2026-11-26 LINE ログイン） */
+    '.bbc .bb3.bbio b{font-size:17px;letter-spacing:.02em}.os-xs .bbc .bb3.bbio b{font-size:16px}' + /* 2026-11-27 総点検: BPT が無いときの ID だけの行は「あなたの ID C-4821」と左から書く（前は右端に小さな ID だけで、空の枠に見えた） */
     '.bbc .bb3{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px;font-size:13px;font-weight:700;color:#8fdcff}.bbc .bb1~.bb3{padding-top:5px;border-top:1px dashed rgba(143,220,255,.35)}' +
     '.bbc .bb3 b{margin-left:2px;font-family:var(--display);font-size:21px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}.bbc .bb3 small{font-size:12.5px;font-weight:600;color:#d8f3ff}' +
     /* 入らない画面だけ詰める（bet.js の fitLevel）: .os-s 余白 → .os-xs 字を少し小さくして時刻と残り時間を 1 行に → .os-xx（それでも入らないときだけ）説明を省く＝「（テレビの QR から…）」「投票受付中・」「（競馬の票を…）」と、BPT の行があるときのスタンプカードの下の 1 文（数は上に出ている） */
@@ -86,7 +87,7 @@
   if (C.member) Promise.resolve().then(() => C.member()).then((x) => { if (x && x.code && (!mem || mem.code !== x.code)) { mem = x; redraw(); } }, () => {});
   function bptLine(k) {
     const m = B.my, voted = k === 'voted', mb = voted && m && m.bpt ? m.bpt : null; let n = 0;
-    const idTag = mem ? '<small class="bbid">ID ' + esc(mem.code) + '</small>' : '', idOnly = mem ? '<p class="bb3">' + idTag + '</p>' : '';
+    const idTag = mem ? '<small class="bbid">ID ' + esc(mem.code) + '</small>' : '', idOnly = mem ? '<p class="bb3 bbio"><span>' + esc(TX.id) + ' <b>' + esc(mem.code) + '</b></span></p>' : ''; // 2026-11-27 総点検: ID だけの行
     if (mb) { bal = Number(mb.bal) || 0; balAt = Date.now(); if (mb.left > 0 && !m.lost) return idOnly; } // 投票済み: bet.js が読んだ数。「BPT で票を追加（あと○票）」のボタンが出ているときは書かない
     else { loadBpt(); if (!voted) n = Math.min(4, Math.floor((bal || 0) / 100)); } // 「あと○票」は次のレースの話（待ち・結果）。投票済みの画面では数だけ
     if (!(bal > 0)) return idOnly;
