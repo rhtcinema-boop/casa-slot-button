@@ -156,7 +156,7 @@
       return implP;
     }
     const call = (name) => async (...a) => (await getImpl())[name](...a);
-    const ADMIN = ['usage' /* 今日の読み取り（2026-11-25） */, 'config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'tvApprove', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund', 'boatStats', 'boatDay']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
+    const ADMIN = ['usage' /* 今日の読み取り（2026-11-25） */, 'config', 'saveStores', 'saveTimetable', 'preview', 'saveTuning', 'races', 'stats', 'abuse', 'stampStats', 'logs', 'createRace', 'close', 'reveal', 'refund', 'paid' /* 管理画面から「渡した」（2026-11-26） */, 'reload', 'expire', 'setPassword', 'createTvAccount', 'tvs', 'tvAsk', 'setDecider', 'setBackup', 'setBackupsAll', 'tvApprove', 'health', 'boatConfig', 'saveBoat', 'boatRace', 'boatRefund', 'boatStats', 'boatDay']; // setBackup・setBackupsAll・health: 予備の進行役と止まっている知らせ（2026-10-28）
     const api = {
       store: opt.store || null, role: opt.role || 'tv', backend: 'firestore',
       serverNow: () => (impl ? impl.serverNow() : Date.now()),
