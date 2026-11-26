@@ -2061,7 +2061,16 @@
         logs: wrap(async (o) => {
           o = o || {}; const sc = await secretConfig(), to = o.to || Core.bizDate(now(), sc.tuning.dayStartHour), from = o.from || to;
           const q = await db.collection(COL.logs).where('date', '>=', from).where('date', '<=', to).get();
-          const list = q.docs.map((d) => d.data()).filter((l) => (!o.store || l.storeId === o.store) && (!o.bill || l.bill === String(o.bill)) && (!l.test || o.test === '1' || o.test === true)).sort((a, b) => b.at - a.at).slice(0, 5000);
+          /* 2026-11-26: お客さんがスマホのスライドで受け取った分（paidVia 'self'）は記録（derbyLogs）に残らない（お客さんは記録を書けない決まり）ので、
+             管理画面の当たり一覧で「まだ」に見えていた。その期間の当たり（derbyPayouts の day）を読み、受け取り済みで記録の無い物を「渡した（お客さん）」の行として足す */
+          const rows = q.docs.map((d) => d.data());
+          try {
+            const have = new Set(rows.filter((l) => l.type === 'paid' && l.pid).map((l) => l.pid));
+            const pq = await db.collection(COL.payouts).where('day', '>=', from).where('day', '<=', to).get();
+            pq.docs.forEach((d) => { const p = d.data() || {}; if (p.status !== 'paid' || !p.pid || have.has(p.pid)) return; const t = Number(p.paidAt) || 0;
+              rows.push({ at: t, date: p.day, cal: Core.dateStr(t), type: 'paid', via: p.paidVia || 'self', storeId: p.storeId, bill: p.bill, nick: p.nick, amount: p.amount, combo: p.combo || null, vid: p.vid || null, pid: p.pid, raceId: p.raceId }); });
+          } catch (e) { /* 読めなければ記録だけ（今までどおり） */ }
+          const list = rows.filter((l) => (!o.store || l.storeId === o.store) && (!o.bill || l.bill === String(o.bill)) && (!l.test || o.test === '1' || o.test === true)).sort((a, b) => b.at - a.at).slice(0, 5000);
           return { from, to, logs: list, byBill: Core.sumBill(list) };
         }),
         createRace: wrap(async (o) => {
