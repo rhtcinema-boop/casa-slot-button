@@ -1285,9 +1285,19 @@
       return !(decider.clockDistrustAt && local() - decider.clockDistrustAt < CLOCK_DISTRUST_MS) || same >= LEASE_MS;
     }
     const myRole = () => (mode === 'tv' ? 'account' : mode === 'master' ? 'master' : pair.role === 'backup' ? 'backup' : 'primary');
+    /* 2026-11-26 書き込みの枠: 予備が鍵を持って進めている間（進行役のテレビが止まった朝など）、見回りのたびに（2 秒ごと）鍵を取引で読み直していた
+       （本番で 1 時間に約 1,700 回の書き込みと読み取り。11/25・11/26 の朝 5 時すぎから。進行役の上野のテレビが止まり、予備の渋谷が進めていた時間と一致）。
+       → 予備が持っている間は鍵の書類を見張り（変わった時だけ 1 回読む）、自分が持っていると分かる間は取引をしない。取り返されたら見張りに届いてすぐやめる */
+    let lockUn = null, lockLive = null;
+    function lockListen() {
+      if (lockUn) return;
+      try { lockUn = doc(COL.lock, 'decider').onSnapshot((sn) => { lockLive = data(sn) || null; if (decider.leader && myRole() === 'backup' && (!lockLive || lockLive.holder !== decider.me)) { decider.leader = false; decider.until = 0; decider.nextTry = 0; } }, () => { lockUn = null; lockLive = null; }); } catch (e) { lockUn = null; lockLive = null; }
+    }
+    function lockUnlisten() { if (lockUn) { try { lockUn(); } catch (e) { /* noop */ } } lockUn = null; lockLive = null; }
     async function heartbeat(force) {
       const t = now(), role = myRole();
       if (!force && decider.leader && role !== 'backup' && decider.until - t > RENEW_MS) return true; // まだ期限に余裕がある（読み書きしない）
+      if (!force && decider.leader && role === 'backup' && decider.until - t > RENEW_MS) { lockListen(); if (lockUn && lockLive && lockLive.holder === decider.me) return true; } // 予備が持っている間: 見張りで自分の鍵と分かれば読み書きしない（2026-11-26 書き込みの枠）
       if (!force && !decider.leader && t < decider.nextTry) return false;          // ほかのテレビが持っている: 期限が切れるころまで待つ
       const ref = doc(COL.lock, 'decider');
       const out = await withTimeout(db.runTransaction(async (tx) => {
@@ -1648,7 +1658,7 @@
       loop();
       clearInterval(decider.wdTimer); decider.wdTimer = setInterval(() => { watchdog().catch((e) => noteErr(e, 'watchdog')); }, 10000); // 見張り番は見回りとは別のタイマー
     }
-    function stopDecider() { secretUnlisten(); if (typeof boat !== 'undefined' && boat) boat.stop(); decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); }
+    function stopDecider() { lockUnlisten(); secretUnlisten(); if (typeof boat !== 'undefined' && boat) boat.stop(); decider.running = false; clearTimeout(decider.timer); clearInterval(decider.wdTimer); decider.wdTimer = null; Object.values(decider.ticketUnsubs).forEach((u) => u()); decider.ticketUnsubs = {}; Object.keys(decider.payUnsubs).forEach(stopUnpaidWatch); }
 
     /* ---------- テレビの手元の写し（2026-10-29 電波の悪い店） ----------
        テレビは、見張りで届いたレース（このテレビに見えるもの・2 時間前から 12 件まで）・店舗・公開の設定・時刻表・参加人数と、もう読めた本物の結果（seed）を
