@@ -31,9 +31,10 @@ window.Commentary = (function () {
       Lib.index = ix;
       // 声の表記（VOICEVOX は「VOICEVOX:キャラクター名」の表示が必要）を起動画面の隅へ
       const cr = typeof document !== 'undefined' && document.getElementById('voiceCredit'); if (cr && ix.credit) cr.textContent = '実況の声 ' + ix.credit;
+      Lib.vars = {}; // やり直しのたびに同じ部品が二重に並ばないように（2026-11-27）
       Object.keys(ix.clips).forEach((id) => { const b = id.replace(/#\d+$/, ''); (Lib.vars[b] = Lib.vars[b] || []).push(id); });
       return Promise.all(Object.keys(ix.files).map((t) => fetch(base + ix.files[t]).then((r) => r.arrayBuffer()).then((ab) => [t, ab])));
-    }).then((list) => { Lib.raw = list; return Lib; }).catch((e) => { Lib.failed = true; console.warn('実況の声を読めませんでした', e); throw e; });
+    }).then((list) => { Lib.raw = list; return Lib; }).catch((e) => { Lib.failed = true; Lib.failAt = Date.now(); console.warn('実況の声を読めませんでした', e); throw e; });
     return Lib.loading;
   }
   function decodeOne(ctx, ab) { return new Promise((res, rej) => { const p = ctx.decodeAudioData(ab.slice(0), res, rej); if (p && p.then) p.then(res, rej); }); }
@@ -41,11 +42,11 @@ window.Commentary = (function () {
   function loadLib(ctx, base) {
     if (Lib.ready) return Promise.resolve(Lib);
     if (Lib.decoding) return Lib.decoding;
-    Lib.decoding = fetchLib(base).then(() => Promise.all(Lib.raw.map(([t, ab]) => decodeOne(ctx, ab).then((b) => {
+    Lib.decoding = fetchLib(base).then(() => Promise.all(Lib.raw.map(([t, ab]) => Lib.buf[t] ? null /* もう戻してある部品はやり直さない（2026-11-27） */ : decodeOne(ctx, ab).then((b) => {
       const x = b.getChannelData(0); let a = 0; while (a < x.length && Math.abs(x[a]) < 0.02) a++;
       const want = (Lib.index.onset && Lib.index.onset[t]) || 0, sh = clamp(a / b.sampleRate - want, -0.15, 0.15);
       Lib.buf[t] = { b, shift: sh };
-    })))).then(() => { Lib.ready = true; return Lib; }).catch((e) => { Lib.failed = true; console.warn('実況の声を戻せませんでした', e); throw e; });
+    })))).then(() => { Lib.ready = true; return Lib; }).catch((e) => { Lib.failed = true; Lib.failAt = Date.now(); console.warn('実況の声を戻せませんでした', e); throw e; });
     return Lib.decoding;
   }
   // 部品 1 つ: { id, buf, off, dur, text }。clips[id] の 4 つ目があれば、その名前の音声ファイル（あとから足した部品。例 'g' → g.m4a）
@@ -748,13 +749,20 @@ window.Commentary = (function () {
     loadLib(ctx).catch(() => {});
     /* 2026-11-27 オーナー「テレビの実況の声がなくなった」: 声の素材の読み込み・戻しに 1 回でも失敗すると（電波の切れ目・読み込み直しの直後など）、
        ページを読み込み直すまで実況がずっと出なかった（失敗の印 Lib.failed が残り、やり直さない作りだった）。
-       → 失敗していたら、60 秒ごとにやり直す（うまくいけば次のレースから実況が戻る。レースの映像・効果音には触らない） */
+       → 失敗していたら、やり直す（うまくいけば次のレースから実況が戻る。レースの映像・効果音には触らない）。
+       2026-11-27 朝: 上野のテレビが、この直しを読み込んだ直後（01:12）から連絡が途絶えて固まった。失敗が続くテレビで 60 秒ごとに
+       約 5MB の読み込みと音声への戻し（メモリを大きく使う）を際限なく繰り返す作りだった → やり直しは 3 回まで（約 1 分・5 分・15 分あけて）、
+       読み込めた素材・戻せた部品はやり直さない。3 回だめなら、ページを読み込み直すまで実況なし（映像・効果音はそのまま） */
     if (!S.retryT && typeof setInterval !== 'undefined') S.retryT = setInterval(retryLib, 60000);
   }
+  const RETRY_GAPS = [50000, 5 * 60000, 15 * 60000]; // 前の失敗からあける時間。3 回まで
   function retryLib() {
     if (!S.ctx || !Lib.failed || Lib.ready) return;
     if (S.dir && !S.finished) return; // 実況の途中は触らない
-    Lib.failed = false; Lib.loading = null; Lib.decoding = null; Lib.raw = null; Lib.retries = (Lib.retries || 0) + 1;
+    const n = Lib.retries || 0;
+    if (n >= RETRY_GAPS.length || Date.now() - (Lib.failAt || 0) < RETRY_GAPS[n]) return;
+    Lib.failed = false; Lib.decoding = null; Lib.retries = n + 1;
+    if (!Lib.raw) Lib.loading = null; // 読み込みまで済んでいれば、もう一度落とさない（戻すところだけやり直す）
     loadLib(S.ctx).catch(() => {});
   }
   // 発走前に呼ぶ。実況エンジンが話すなら true（そのときは従来の読み上げを止める）
