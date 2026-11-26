@@ -58,7 +58,7 @@
   }
   function loadLive() {
     if (liveBusy || Date.now() - liveAt < TTL) return;
-    if (C.usage && !C.usage.tick('bet.boatnx', TTL)) return; // 読み取りの枠（2026-11-25）: 節約 ＝ 4 倍あける・最低限と端末の上限 ＝ 読まない
+    if (C.usage && !C.usage.tick('bet.boatnx', live ? TTL : RETRY)) return; /* 2026-11-27 点検: 覚えが無い（最初の読み込みに失敗した）ときは 1 分でやり直す（前は 15 分あいて「次のボートレース」が出なかった） */ // 読み取りの枠（2026-11-25）: 節約 ＝ 4 倍あける・最低限と端末の上限 ＝ 読まない
     liveBusy = true; reads.live++;
     timed(readLive(), 10000).then((l) => { const v = liteOf(l), ch = JSON.stringify(v) !== JSON.stringify(live); live = v; liveAt = Date.now(); liveBusy = false; lsSet(NKEY, JSON.stringify({ at: liveAt, v })); if (ch) redraw(); },
       () => { liveBusy = false; liveAt = Date.now() - TTL + RETRY; /* 読めない（電波・ボートの決まりがまだ）: 1 分はあける */ });
