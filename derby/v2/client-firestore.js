@@ -17,8 +17,10 @@
   'use strict';
 
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/'; // casa SLOT と同じ版（compat）
-  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', bpt: 'derbyBpt', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev', stamps: 'derbyStamps' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
+  const COL = { live: 'derbyLive', counts: 'derbyCounts', stores: 'derbyStores', pins: 'derbyPins', staff: 'derbyStaff', config: 'derbyConfig', races: 'derbyRaces', results: 'derbyResults', secrets: 'derbyRaceSecrets', votes: 'derbyVotes', bpt: 'derbyBpt', payouts: 'derbyPayouts', logs: 'derbyLogs', stats: 'derbyStats', lock: 'derbyLock', clock: 'derbyClock', tvSwitch: 'derbySwitch', schedule: 'derbySchedule', tvs: 'derbyTvs', deciders: 'derbyDeciders', testReq: 'derbyTestReq', devices: 'derbyDevices', bonus: 'derbyBonus', bonusDev: 'derbyBonusDev', stamps: 'derbyStamps', members: 'derbyMembers', memberCodes: 'derbyMemberCodes', grants: 'derbyBptGrants' }; /* tvs・deciders: 進行役のテレビ／testReq: この店だけテストレース（2026-10-19）／devices・bonus: 端末のリストと初参加ボーナスの印（2026-10-24）／bonusDev: 同じ端末のボーナスは 1 日 1 回（2026-10-27） */
   const LEASE_MS = 95000, RENEW_MS = 35000, /* 2026-11-25 読み取りの枠: 鍵の延長は 60 秒に 1 回（前は 20 秒。期限 60 秒→95 秒）。予備の引き継ぎは約 35 秒遅くなるだけ */ BEAT_MS = 2000, CLOSING_STALE_MS = 20000;
+  /* 会員 ID の書き方をそろえる（2026-11-26）: 「4821」「c4821」「Ｃ－４８２１」→ 'C-4821'。数字 4〜6 桁でなければ null */
+  const memberCode = (v) => { const s = String(v == null ? '' : v).replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)).replace(/[Ｃｃ]/g, 'C').replace(/[－ー−‐-]/g, '').replace(/\s+/g, '').toUpperCase(); const m = /^C?([1-9]\d{3,5})$/.exec(s); return m ? 'C-' + m[1] : null; };
   const randId = (p, n) => { let s = ''; const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; for (let i = 0; i < n; i++) s += a[Math.floor(Math.random() * a.length)]; return p + s; };
 
   /* ---------- 入れ子の配列の変換（2026-10-18 本番で発覚） ----------
@@ -341,6 +343,19 @@
 
     /* ---------- ログイン ---------- */
     let readyP = null, mode = 'anon', clockP = null;
+    /* LINE ログイン（2026-11-26 オーナー決定「スマホは LINE ログイン必須」。v2/line-login.js）: お客さんのスマホ（phone）と観戦（watch）だけ。
+       v2/config.prod.js の DERBY_LINE が未設定（null）なら LINE は null ＝ 今までどおり匿名ログイン。env.line で差し替えられる（試験） */
+    const LINE = role === 'phone' || WATCH ? (env.line !== undefined ? env.line : (typeof self !== 'undefined' && self.DerbyLine && self.DerbyLine.enabled && self.DerbyLine.enabled() ? self.DerbyLine : null)) : null;
+    const lineUid = (u) => !!u && typeof u.uid === 'string' && /^L/.test(u.uid);
+    /* 前のログイン（端末に保存）が戻るのを待ってから、L のログインでなければ LINE でログイン（いまの匿名ログインは BPT の引き継ぎに渡す） */
+    async function lineSignIn() {
+      if (!lineUid(auth.currentUser)) await authSettled(true);
+      if (lineUid(auth.currentUser)) return;
+      const cur = auth.currentUser;
+      const r = await LINE.signIn({ auth, anon: cur && cur.isAnonymous ? cur : null });
+      if (r && r.code && auth.currentUser) memberMemo = { uid: auth.currentUser.uid, m: { code: r.code, name: r.name || '' } };
+    }
+    let memberMemo = null;
     /* 匿名ログイン（2026-10-28）: LINE・Instagram などのアプリの中のブラウザで保存領域（IndexedDB・localStorage）が使えないと失敗することがある。
        そのときは「このページの間だけ覚える」（none）に切り替えてもう一度（SDK も中で LOCAL → SESSION → メモリーの順に試すが、念のため）。
        通信の失敗はそのまま投げる（呼ぶ側が自動でやり直す） */
@@ -360,15 +375,17 @@
        - 時刻合わせ（書いて読み戻す 3 往復）は 8 秒まで待って先へ進む（残りは裏で続ける）。以前は通信が切れていると書き込みの返事が来ず、テレビの画面が最初の状態を出せなかった。
          進行役（決める係）は今までどおり時刻合わせが終わってから見回りを始める（startDecider の中で待つ） */
     const TV_BOOT_WAIT_MS = opts.bootWaitMs || 8000;
-    function authSettled() {
-      if ((role !== 'tv' && !WATCH) || typeof auth.onAuthStateChanged !== 'function') return Promise.resolve();
+    function authSettled(any) {
+      if ((role !== 'tv' && !WATCH && !any) || typeof auth.onAuthStateChanged !== 'function') return Promise.resolve();
       return new Promise((res) => { let un = null, done = false; const fin = () => { if (done) return; done = true; clearTimeout(h); try { if (un) un(); } catch (e) { /* noop */ } res(); }; const h = setTimeout(fin, TV_BOOT_WAIT_MS); try { un = auth.onAuthStateChanged(() => { if (un) fin(); else setTimeout(fin, 0); }); } catch (e) { fin(); } });
     }
     async function ready() {
       if (WATCH) return readyWatch();
       if (!readyP) readyP = (async () => {
-        if (!auth.currentUser) await authSettled();
-        if (!auth.currentUser) {
+        if (LINE) { await lineSignIn(); mode = 'anon'; } // スマホ: LINE でログイン（2026-11-26）
+        else if (!auth.currentUser) await authSettled();
+        if (LINE) { /* 上でログイン済み */ }
+        else if (!auth.currentUser) {
           const tvPass = role === 'tv' && cfg.tvEmail ? (opts.tvPassword || readTvPass()) : null;
           if (tvPass) { try { await auth.signInWithEmailAndPassword(cfg.tvEmail, tvPass); mode = 'tv'; } catch (e) { await signInAnon(); } }
           else await signInAnon();
@@ -395,6 +412,7 @@
     function readyWatch() {
       if (!readyP) readyP = (async () => {
         if (!auth.currentUser) await authSettled();
+        if (LINE && !lineUid(auth.currentUser)) await lineSignIn(); // 観戦も LINE でログイン（2026-11-26）
         if (!auth.currentUser) throw E(401, 'no_login', '投票した方だけ見られます');
         mode = 'anon'; usageReady();
         clockP = syncClock().catch(() => {});
@@ -667,6 +685,15 @@
       return bptP;
     }
     const bptNote = (d) => { bptCache = d || null; bptAt = d ? local() : 0; }; // casa BOAT（v2/boat-firestore.js）が自分で書いたあとの中身を写しに入れる（null ＝ 次は読み直す。2026-11-20）
+    /* 会員 ID（2026-11-26 LINE ログイン）: { code: 'C-4821', name } | null（LINE でログインしていない＝匿名のまま）。
+       ログイン係の返事を端末に覚えたもの（v2/line-login.js）を使い、無ければ derbyMembers/<uid> を 1 回だけ読む */
+    async function member() {
+      await ready(); const u = uid(); if (!u || !/^L/.test(u)) return null;
+      if (memberMemo && memberMemo.uid === u) return memberMemo.m;
+      let m = LINE && LINE.member ? LINE.member(u) : null;
+      if (!m) { try { const d = data(await doc(COL.members, u).get()); m = d && d.code ? { code: String(d.code), name: String(d.name || '') } : null; if (m && LINE && LINE.remember) LINE.remember(u, m); } catch (e) { return null; } }
+      memberMemo = { uid: u, m }; return m;
+    }
     async function bpt() { await ready(); const d = await myBpt(true); return d ? { bal: Core.bptBalance(d, now()), earned: Number(d.earned) || 0, spent: Number(d.spent) || 0, cost: Core.BPT_PER_TICKET } : null; }
     // いま追加の券を入れられるか: { bal, cost, have（もう足した枚数）, left（あと何枚） } | null（投票の時間でない・テスト・読めない）
     async function bptCan(v1, r, v2) { // v2: 2 票目（あれば合計 5 枚までの残りが 1 枚へる。2026-11-18）
@@ -2116,6 +2143,34 @@
           meter.see(m);
           return { day, r: Number(d.r) || 0, e: Number(d.e) || 0, by: d.by || {}, est, mode: m, limit: USAGE.LIMIT, saveAt: USAGE.SAVE_AT, minAt: USAGE.MIN_AT, now: t };
         }),
+        /* BPT を付ける（2026-11-26 オーナー決定。管理画面のボートの「集計」）: 会員 ID（LINE でログインした人。例 C-4821）に BPT を遠隔で付ける。
+           bptMember(code) ＝ { code, uid, name, bal }（付ける前に名前と今の残りを確かめる）。
+           bptGrant({ code, n, note }) ＝ derbyBpt/<uid> の earned に足す（今週の分として。足したあとの残りは 3,000 まで＝v2/boat-core.js の creditPlan と同じ）＋ derbyBptGrants に記録（誰に・いくつ・理由・いつ）。
+           取引で読んで書く（ボートの当たりと同時でも数が消えない）。返り値 { code, name, gain: 実際に増えた分, bal: 付けたあとの残り, capped: 上限で減った } */
+        bptMember: wrap(async (code) => {
+          const c = memberCode(code); if (!c) throw E(400, 'bad_code', '会員 ID は「C-」と数字です（例 C-4821）');
+          const x = data(await doc(COL.memberCodes, c).get()); if (!x || !x.uid) throw E(404, 'no_member', c + ' の人は見つかりません');
+          const m = data(await doc(COL.members, x.uid).get()) || {}, b = data(await doc(COL.bpt, x.uid).get());
+          return { code: c, uid: x.uid, name: String(m.name || ''), bal: Core.bptBalance(b, now()) };
+        }),
+        bptGrant: wrap(async (o) => {
+          o = o || {}; const c = memberCode(o.code), n = Number(o.n), note = String(o.note == null ? '' : o.note).trim();
+          if (!c) throw E(400, 'bad_code', '会員 ID は「C-」と数字です（例 C-4821）');
+          if (!Number.isInteger(n) || n < 1 || n > Core.BPT_MAX) throw E(400, 'bad_n', '付ける BPT は 1〜' + Core.BPT_MAX.toLocaleString('ja-JP') + ' の整数で');
+          if (!note || note.length > 100) throw E(400, 'bad_note', '理由を 100 文字までで入れてください');
+          const gref = db.collection(COL.grants).doc();
+          return db.runTransaction(async (tx) => {
+            const x = data(await tx.get(doc(COL.memberCodes, c))); if (!x || !x.uid) throw E(404, 'no_member', c + ' の人は見つかりません');
+            const m = data(await tx.get(doc(COL.members, x.uid))) || {}, cur = data(await tx.get(doc(COL.bpt, x.uid)));
+            const t = now(), wk = Core.bptWeek(t), same = !!cur && cur.wk != null && Number(cur.wk) === wk;
+            const e = same ? Math.max(0, Number(cur.earned) || 0) : 0, sp = same ? Math.max(0, Number(cur.spent) || 0) : 0, bal0 = Math.max(0, e - sp);
+            const gain = Math.min(n, Math.max(0, Core.BPT_MAX - bal0));
+            if (gain <= 0) throw E(409, 'bpt_full', 'この人の BPT は上限（' + Core.BPT_MAX.toLocaleString('ja-JP') + '）です。付けられません');
+            tx.set(doc(COL.bpt, x.uid), { earned: e + gain, spent: sp, wk }, { merge: true });
+            tx.set(gref, { uid: x.uid, code: c, name: String(m.name || '').slice(0, 40), n, gain, bal: bal0 + gain, note: note.slice(0, 100), by: (auth.currentUser && auth.currentUser.email) || '', at: FieldValue.serverTimestamp(), atMs: t });
+            return { code: c, name: String(m.name || ''), gain, bal: bal0 + gain, capped: gain < n, id: gref.id };
+          });
+        }),
         ...(boat ? boat.admin(wrap) : {}), // casa BOAT の設定・すぐ始めるレース・取り消し（2026-11-19）
       };
     }
@@ -2129,6 +2184,7 @@
       stores: async () => { await ready(); return (await getStores()).map((s) => ({ id: s.id, name: s.name })); },
       state, race, vote, myVote, claimSelf, stamps, // stamps: スタンプラリー（2026-11-02。オフなら null）
       bpt, // BPT（2026-11-18）: { bal, earned, spent, cost } | null
+      member, // 会員 ID（2026-11-26 LINE ログイン）: { code, name } | null
       staffLogin, release, wins, staffPayout, claim, next, logs, tvGame, tvQuality, testRace, testRaceStatus,
       deciderHealth: (sid) => deciderHealth(sid === undefined ? store : sid), // 進行役のテレビが止まっていないか（2026-10-28）
       admin, subscribe,
@@ -2144,7 +2200,7 @@
     };
   }
 
-  return { create, connect, COL, SDK, encodeFS, decodeFS, wrapDb, NESTED_ARRAY_MARK: NA,
+  return { create, connect, COL, SDK, memberCode, encodeFS, decodeFS, wrapDb, NESTED_ARRAY_MARK: NA,
     countedDb, // 読み取りの枠（2026-11-25）: ページが Firebase を直に使う所も同じ数え方で数える
     usage: { USAGE, ptDay, estimate: usageEstimate, modeOf: usageModeOf, flush: usageFlush, pending: uPending, _reset: () => { UQ.mem = {}; UQ.writer = null; UQ.busy = false; UQ.failAt = 0; UQ.noLs = false; } } };
 });
