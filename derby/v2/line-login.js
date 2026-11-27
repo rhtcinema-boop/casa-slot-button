@@ -26,12 +26,12 @@
   const LIFF_PARAMS = ['code', 'state', 'liffClientId', 'liffRedirectUri', 'error', 'error_description'];
   /* 2026-11-27 総点検: 赤字は 2 行に決めて書く（\n で改行。幅のせまいスマホで文の途中で折れない・出たときに画面が動かない）。
      errSrv ＝ ログイン係の中の失敗（電波のせいではないので「電波を確認」と書かない）・errStop ＝ LINE を途中でやめて戻った */
-  const TX = { title: 'ログイン', lead: 'スマホやブラウザを変えても\nBPTを引き継げます', btn: 'LINEでログイン', busy: 'ログイン中…', again: 'もう一度',
+  const TX = { title: 'ログイン', lead: 'LINEでログインしてください' /* 2026-11-28 オーナー「説明に余計な日本語は要らない。ふつうのでいい」 */, btn: 'LINEでログイン', busy: 'ログイン中…', again: 'もう一度',
     errNet: '通信できませんでした。\n電波を確認して、もう一度押してください', errLine: 'ログインできませんでした。\nもう一度押してください', errLoad: 'LINE の読み込みに失敗しました。\nもう一度押してください',
-    errSrv: 'ログインできませんでした。\n少し待って、もう一度押してください', errStop: 'ログインが完了していません。\nもう一度「LINEでログイン」を押してください',
+    errSrv: 'ログインできませんでした。\n少し待って、もう一度押してください', errStop: 'ログインが完了していません',
     /* 2026-11-28 オーナー「メール・パスワードを入れる画面は無し。LINE のアプリで許可するだけ」: LINE のアプリが自動で開かなかった人（シークレットモードなど）には、
        LINE 側のページにメール・パスワードの欄が出る（こちらからは消せない）。そのページのいちばん下に「LINEアプリでログイン」がある → LINE から戻ってきた人にだけ案内する */
-    tip: 'メールアドレスの入力画面が出たときは、\nいちばん下の「LINEアプリでログイン」を\n押してください' };
+    tip: 'メールアドレスの画面が出たら\n下の「LINEアプリでログイン」へ' };
   const isLineUid = (u) => typeof u === 'string' && /^L/.test(u);
 
   /* deps（試験で差し替える）: cfg（DERBY_LINE）・liff・loadScript・fetch・doc（document）・loc（location）・hist（history）・ls（localStorage）・setTimeout */
@@ -113,7 +113,7 @@
         '#lnGate h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.02em}#lnGate p{margin:0;font-size:14px;line-height:1.6;color:#c9c2ad;white-space:pre-line}' +
         '#lnGate button{width:100%;height:56px;margin-top:6px;border:0;border-radius:14px;background:#06c755;color:#fff;font:inherit;font-size:18px;font-weight:900;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
         '#lnGate button:active{filter:brightness(.92)}#lnGate button[disabled]{background:#0b7a3b;color:#fff;cursor:default;filter:none}' + /* 2026-11-27 総点検: 「ログイン中…」は字を白のまま・地だけ暗く（前は全体を薄くして字が読みにくかった） */
-        '#lnGate .tip{font-size:13px;line-height:1.6;color:#c9c2ad;white-space:pre-line;min-height:4.8em}#lnGate .tip:empty{visibility:hidden}' + /* 案内の 3 行ぶんの場所を先に取る（出たときにボタンが動かない。2026-11-28 採点） */
+        '#lnGate .tip{font-size:13px;line-height:1.6;color:#c9c2ad;white-space:pre-line;min-height:3.2em}#lnGate .tip:empty{visibility:hidden}' + /* 案内の 2 行ぶんの場所を先に取る（出たときにボタンが動かない。2026-11-28 採点） */
         '' +
         '#lnGate .err{min-height:3.2em;color:#ff9d8c;font-size:13px;font-weight:700;white-space:pre-line}#lnGate .err:empty{visibility:hidden}'; /* 赤字は 2 行ぶんの場所を先に取る（出たときに画面が動かない） */
       doc.head.appendChild(st);
