@@ -1055,7 +1055,7 @@
       const c = comboOf(R);
       $('v2resPay').innerHTML = c ? '<span class="k">2連単</span><span class="cmb">' + comboH(R, c.first, c.second, 0) + '</span><b class="o">' + ox(c.odds) + '<small class="bai">倍</small></b><span class="x"><small>当選額</small><b>' + ptH(payFor(c.odds)) + '</b></span>' : '';
       const list = R.winners || [];
-      $('v2resCnt').innerHTML = R.refunded ? '' : R.winners ? '全店で<b>' + list.length + '</b>人' : '集計中…';
+      $('v2resCnt').innerHTML = R.refunded ? '' : R.winners ? '<b>' + list.length + '</b>人' : '集計中…'; // 2026-11-28 採点の直し ⑧: 見出しが「全店の当たった人」なので、人数に「全店で」を重ねない（「全店の当たった人 2人」）
       // 受け取りの案内（当たった人がいるときだけ）: v4 はお客さんのスマホのスライドをスタッフが動かす。テストレースは受け取りなし
       const tst = !!R.test || (list.length > 0 && list.every((w) => w.test));
       $('v2resActB').textContent = tst ? 'テストレースです' : '当たった方は';
