@@ -8,7 +8,7 @@
      venue.setClock(sec);           // 大時計の 12 秒針（黄だいだい）。sec = 発走までの残り秒（12 → 0 で 1 周して真上で 0）。null なら真上で止める
      venue.setClock60(sec);         // 大時計の 1 分針（白）。sec = 残り秒（60 → 0 で 1 周して真上で 0）。null なら真上。残り 15 秒からは遮蔽板に隠れる
      venue.setBoard(text);          // 対岸の大型映像装置の文字（\n で改行）
-     venue.setTime(hour);           // 時間帯（0〜24 の小数。省くと今の時刻）。昼 7〜15.5 時 / 夕方 15.5〜18.5 時（と明け方 5〜7 時）/ ナイター 18.5〜5 時。venue.timeOfDay = 'day' | 'dusk' | 'night'
+     venue.setTime(hour);           // 時間帯（0〜24 の小数。省くと 晴れた昼＝13 時。2026-11-28 オーナー「暗い・どよーんとしている」→ 今の時刻には合わせない。夕方・ナイターは hour を渡した時だけ）。昼 7〜15.5 時 / 夕方 15.5〜18.5 時（と明け方 5〜7 時）/ ナイター 18.5〜5 時。venue.timeOfDay = 'day' | 'dusk' | 'night'
      venue.setWeather({ windDir, windSpeed, wave });   // 風と波（レースごとに呼ぶ。呼ばなければ静かな水面＝風 1m・波 1cm）。水面の肌・旗・吹き流し・空中線の小旗が変わる
                                     //   windDir（度）＝風が吹いていく向き。公式サイトの矢印と同じで 0 ＝ 対岸へ・90 ＝ 追い風（1 マークへ）・180 ＝ スタンドへ・270 ＝ 向かい風。{ arrow: 1〜16（17 ＝ 無風）} でも渡せる
                                     //   windSpeed（m/s）、wave（波高 cm）。資料 11 の ③-1・③-3・⑤-3 のコマに合わせた段（2〜3m の水面・泡の筋の出はじめ・流れる速さは仮。setWeather の中のコメント）
@@ -153,7 +153,7 @@ BOAT.Venue = (function () {
   function skyTex(low, mode, sunU, sunV, horizon) {
     const W = low ? 1024 : 2048, H = low ? 256 : 512, c = cv(W, H), g = c.getContext('2d'), hz = H * 0.909; // hz = 地平線の高さ（球を 99°まで作るので 90/99）
     const night = mode === 'night', dusk = mode === 'dusk';
-    const stops = night ? [[0, '#04070f'], [0.55, '#0a1226'], [0.9, '#17233e'], [1, horizon]] : dusk ? [[0, '#3c66a6'], [0.42, '#7f9cc6'], [0.72, '#d6c2b4'], [0.9, '#f4c890'], [1, horizon]] : [[0, '#3a7cc8'], [0.45, '#6aa6dc'], [0.8, '#a9cde8'], [1, horizon]];
+    const stops = night ? [[0, '#0a1838'], [0.55, '#132a5a'], [0.9, '#27407a'], [1, horizon]] : dusk ? [[0, '#2f6fc4'], [0.4, '#6ea6e0'], [0.7, '#f2cfae'], [0.9, '#ffc98a'], [1, horizon]] : [[0, '#1a72d6'], [0.45, '#3f98ea'], [0.8, '#84c4f4'], [1, horizon]];   // 2026-11-28: 3 つとも明るく・青をはっきり（ナイターも まっ黒でなく濃い青の空）
     const gr = g.createLinearGradient(0, 0, 0, hz); stops.forEach((q) => gr.addColorStop(q[0], q[1]));
     g.fillStyle = gr; g.fillRect(0, 0, W, hz + 1); g.fillStyle = horizon; g.fillRect(0, hz, W, H - hz);
     const r = srand(20261117), k = H / 512;
@@ -166,7 +166,7 @@ BOAT.Venue = (function () {
     }
     // わた雲: 丸いぼかしを集めて作る（下は影の色）
     function puff(x, y, rad, col, al) { for (const dx of [-W, 0, W]) { const pg = g.createRadialGradient(x + dx, y, 0, x + dx, y, rad); pg.addColorStop(0, col + (0.9 * al) + ')'); pg.addColorStop(0.55, col + (0.5 * al) + ')'); pg.addColorStop(1, col + '0)'); g.fillStyle = pg; g.fillRect(x + dx - rad, y - rad, rad * 2, rad * 2); } }
-    const n = night ? 6 : low ? 10 : 13, lit = night ? 'rgba(46,56,84,' : dusk ? 'rgba(255,222,186,' : 'rgba(255,255,255,', shade = night ? 'rgba(20,26,44,' : dusk ? 'rgba(150,128,150,' : 'rgba(196,214,232,', al = night ? 0.7 : 1;
+    const n = night ? 6 : low ? 10 : 13, lit = night ? 'rgba(70,90,140,' : dusk ? 'rgba(255,232,204,' : 'rgba(255,255,255,', shade = night ? 'rgba(32,44,84,' : dusk ? 'rgba(190,160,170,' : 'rgba(206,224,242,', al = night ? 0.7 : 1;
     for (let i = 0; i < n; i++) {
       const cx = (i + r() * 0.8) / n * W, el = 0.08 + r() * r() * 0.5, cy = hz - el * hz * 0.72, size = (16 + r() * 30) * k * (0.5 + el), wide = 2.2 + r() * 2.2, m = 9 + Math.floor(r() * 9);
       for (let j = 0; j < m; j++) puff(cx + (r() - 0.5) * size * wide * 2, cy + size * 0.22 + r() * size * 0.12, size * (0.5 + r() * 0.4), shade, al);
@@ -256,6 +256,7 @@ BOAT.Venue = (function () {
     return m;
   }
   // 水面: 不透明。本物のコマ（昼＝鳴門 2026-10-13 3R、夕方＝尼崎 SG ダービー優勝戦、ナイター＝桐生 SG メモリアル優勝戦・住之江 グランプリ優勝戦）に色と模様を合わせた。
+  //   2026-11-28: 色だけは本物のコマに合わせるのをやめた（オーナー「暗い・どよーんとしている」）。明るい青の水に入れ替え（下の TOD の表）。模様・映り込み・照り返しの式はそのまま
   //   ・見下ろす角度が深いほど水そのものの暗い色、浅いほど空と対岸の映り込み（本物の水と同じ割合の式）。
   //   ・波の傾きの絵を 5 枚（low は 3 枚）: 風にそって流れる細かいさざ波 2 枚、山の長いゆるいうねり 2 枚、大きなむら 1 枚。
   //   ・照明の映り込みは「その灯を目へはね返す傾き」と波の傾きが合った所だけ光る（細い柱がきらきらと手前へのびる）。
@@ -474,7 +475,7 @@ BOAT.Venue = (function () {
     const WHITE = '#eceeed', BLACK = '#0d0d0d';
 
     // ── 地面と護岸（岸はななめ。水面は X_MIN〜X_MAX、shoreZ(x)〜farZ(x)） ──
-    const XA = X0 - 36, XB = X1 + 16, DN = 72, DF = 20, BIG = 2600, CONC = '#8b8a85', CONC2 = '#85867f', GRASS = '#6d8a58', TOWN = '#8f968f';
+    const XA = X0 - 36, XB = X1 + 16, DN = 72, DF = 20, BIG = 2600, CONC = '#8b8a85', CONC2 = '#85867f', GRASS = '#6fae58', TOWN = '#8f968f';
     const hq = (g, xa, xb, lo, hi, col) => g.quad([xa, LY, hi(xa)], [xb, LY, hi(xb)], [xb, LY, lo(xb)], [xa, LY, lo(xa)], col);
     const sN = (x) => SZ(x) + DN, fS = (x) => FZ(x) - DF, bigN = () => BIG, bigS = () => -BIG;
     hq(G, XA, XB, SZ, sN, CONC); hq(G, XA, XB, fS, FZ, CONC2); hq(G, XA, X0, FZ, SZ, CONC2); hq(G, X1, XB, FZ, SZ, CONC2);
@@ -805,7 +806,7 @@ BOAT.Venue = (function () {
     })();
     (function () {
       const me = inst(treeGeo(low), tintMat(U, 0), trees.length, 'boat-trees');
-      trees.forEach((q, i) => { me.setMatrixAt(i, m4.copy(mat(q.x, LY - 0.4, q.z, q.h * (1.25 + rnd() * 0.5), q.h, q.h * (1.25 + rnd() * 0.5), 0, rnd() * 6.28))); me.setColorAt(i, _c.setHSL(0.24 + rnd() * 0.07, 0.24 + rnd() * 0.16, 0.15 + rnd() * 0.08).convertSRGBToLinear()); });
+      trees.forEach((q, i) => { me.setMatrixAt(i, m4.copy(mat(q.x, LY - 0.4, q.z, q.h * (1.25 + rnd() * 0.5), q.h, q.h * (1.25 + rnd() * 0.5), 0, rnd() * 6.28))); me.setColorAt(i, _c.setHSL(0.26 + rnd() * 0.07, 0.42 + rnd() * 0.16, 0.24 + rnd() * 0.09).convertSRGBToLinear()); });
     })();
 
     // ── 動かす所 ──
@@ -869,19 +870,23 @@ BOAT.Venue = (function () {
       if (shadows && camera) followShadow(camera);
     }
     // ── 時間帯（昼・夕方・ナイター）: 光・空・霧・水面の色・灯を入れ替える。作り直しはしない（空の絵だけ初回に作る） ──
+    /* 2026-11-28 明るく作り直し（オーナー「暗い・どよーんとしている」「競馬に寄せてよい」）: 前は本物の中継のコマの色（昼の水 #1c2a2b〜#293e41 ＝ ほぼ黒に近い濃紺、夕方は灰色、ナイターは暗い緑）。
+       昼 ＝ 晴れた昼のレース場（明るい青〜青緑の水・青い空）。夕方 ＝ 晴れた夕方（青い水に だいだいの光）。ナイター ＝ 照明で水面と艇が明るい（濃い青の空）。
+       白い引き波・しぶきが見えるように、水は「白より 2 段暗い はっきりした青」で止める（空の映り込み skyH も白くしない）。光の数・影・解像度は変えていない（色と強さだけ） */
     const TOD = {
-      day: { exp: 0.92, dir: [CO.SUN.x, CO.SUN.y, CO.SUN.z], sun: ['#ffe4bd', 1.8], hemi: ['#cfe0f5', '#6f807c', 0.78], amb: ['#ffffff', 0.08], fill: ['#ffffff', 0], fog: '#cfe5f3', fogFar: 1900, sign: 0.28, city: 0, lamp: '#aeb3b8', glow: 0, lights: 0,
-        w: { deep: '#1c2a2b', shal: '#293e41', skyH: '#8ba1bc', skyZ: '#6583ad', sunC: '#fff0d2', net: '#2f4f47', bld: '#b4b9b8', std: '#4b4f55', gl: [5.0, 0.10], lamp: '#000000', board: '#0c1830', mk: '#e8674a' } },
-      dusk: { exp: 1.0, dir: [-0.6, 0.23, -0.56], sun: ['#ffae5c', 2.2], hemi: ['#b4c0e0', '#8a7460', 0.62], amb: ['#ffe2c4', 0.1], fill: ['#ffd9b0', 0.22], fog: '#e6c5a2', fogFar: 1700, sign: 0.5, city: 0.4, lamp: '#fff3d6', glow: 0.35, lights: 0.55,
-        w: { deep: '#3a454b', shal: '#4e5c66', skyH: '#ccd3dc', skyZ: '#9aacc8', sunC: '#ffb050', net: '#27332f', bld: '#c9b79c', std: '#514a42', gl: [0.6, 0.02], lamp: '#3a3426', board: '#1a2c52', mk: '#e07a66' } },
-      night: { exp: 1.0, dir: [0.12, 0.8, 0.58], sun: ['#eef3ff', 1.3], hemi: ['#3c4c7c', '#1a2030', 0.5], amb: ['#8fa0c8', 0.22], fill: ['#dfe8ff', 0.6], fog: '#131b2e', fogFar: 760, sign: 0.9, city: 1.0, lamp: '#ffffff', glow: 1.0, lights: 1.0,
-        w: { deep: '#303b27', shal: '#3f4c33', skyH: '#2c3528', skyZ: '#10140f', sunC: '#93a8cc', net: '#0b1814', bld: '#3b382c', std: '#4e4636', gl: [0.0, 0.0], lamp: '#f2f6ff', board: '#1b2c58', mk: '#b85a48' } },
+      day: { exp: 1.06, dir: [CO.SUN.x, CO.SUN.y, CO.SUN.z], sun: ['#fff1d8', 1.9], hemi: ['#d8eaff', '#8fa39c', 0.98], amb: ['#ffffff', 0.1], fill: ['#ffffff', 0], fog: '#d4ecfb', fogFar: 2200, sign: 0.28, city: 0, lamp: '#aeb3b8', glow: 0, lights: 0,
+        w: { deep: '#106ca2', shal: '#1e86b8', skyH: '#74b6e8', skyZ: '#3585d4', sunC: '#fff6e0', net: '#3a7a62', bld: '#d2dadb', std: '#6f7880', gl: [5.0, 0.10], lamp: '#000000', board: '#0c1830', mk: '#f06a48' } },
+      dusk: { exp: 1.08, dir: [-0.6, 0.23, -0.56], sun: ['#ffc27a', 2.2], hemi: ['#c6d6f4', '#9a8668', 0.86], amb: ['#ffe8cc', 0.14], fill: ['#ffe0bc', 0.3], fog: '#f4d6b0', fogFar: 1900, sign: 0.5, city: 0.4, lamp: '#fff3d6', glow: 0.35, lights: 0.55,
+        w: { deep: '#1f6690', shal: '#317fa6', skyH: '#b4c6e6', skyZ: '#6f9fd8', sunC: '#ffb050', net: '#2f5a4c', bld: '#e0c8a2', std: '#6a5e50', gl: [1.0, 0.03], lamp: '#3a3426', board: '#1a2c52', mk: '#e8745a' } },
+      night: { exp: 1.15, dir: [0.12, 0.8, 0.58], sun: ['#f4f7ff', 1.7], hemi: ['#5a72b4', '#2a3654', 0.7], amb: ['#a8b8e0', 0.3], fill: ['#e6eeff', 0.8], fog: '#1c2e56', fogFar: 1000, sign: 0.9, city: 1.0, lamp: '#ffffff', glow: 1.0, lights: 1.0,
+        w: { deep: '#11567f', shal: '#196a92', skyH: '#2a4a76', skyZ: '#0d1e40', sunC: '#93a8cc', net: '#12332a', bld: '#4a4e50', std: '#5a5a52', gl: [0.0, 0.0], lamp: '#f2f6ff', board: '#1b2c58', mk: '#d0604a' } },
     };
+    const DAY_HOUR = 13;
     const venue = { PIT: PIT, root: root, sun: sun, fill: fill, hemi: hemi, water: water, boards: boards, quality: low ? 'low' : 'high', timeOfDay: null, hour: 12, sunDir: SUN,
       clock: { x: ckx, y: CK_Y, z: ckz, nx: cnx, nz: cnz, d: CK_D },                                       // 大時計の中心・向き（文字盤の向く方）・直径
       stand: { roofY: RF_Y0, lampTopY: ROOF_LAMP_Y + 1.3, u0: SU0, u1: SU1, frontW: RF_Z0, backW: RF_Z1, angle: aS, at: (u, y, w) => toW(TS, u, y, w) } };   // スタンドの屋根（前の端の高さ・照明の上の端・岸からの奥行き）。at(岸にそった m, 高さ, 岸から奥へ m) → 世界の座標
     function setTime(hour) {
-      let h = Number(hour); if (hour == null || !isFinite(h)) { const d = new Date(); h = d.getHours() + d.getMinutes() / 60; }
+      let h = Number(hour); if (hour == null || !isFinite(h)) h = DAY_HOUR;   // 2026-11-28: 指定が無ければ 晴れた昼（前は今の時刻。15 時半から夕方・18 時半からナイターの絵 ＝ 全店のレースがある 19 時〜深夜は毎回ナイターの暗い絵だった）
       h = ((h % 24) + 24) % 24; venue.hour = h;
       const mode = (h >= 7 && h < 15.5) ? 'day' : (h >= 5 && h < 18.5) ? 'dusk' : 'night';
       if (mode === venue.timeOfDay) return;
@@ -901,7 +906,7 @@ BOAT.Venue = (function () {
       wu.uSun.value.copy(SUN); wu.uGl.value.set(W.gl[0], W.gl[1]);
       wu.uDeep.value.copy(C(W.deep)); wu.uShal.value.copy(C(W.shal)); wu.uSkyH.value.copy(C(W.skyH)); wu.uSkyZ.value.copy(C(W.skyZ)); wu.uSunCol.value.copy(C(W.sunC));
       wu.uNet.value.copy(C(W.net)); wu.uBld.value.copy(C(W.bld)); wu.uStd.value.copy(C(W.std)); wu.uLampCol.value.copy(C(W.lamp)).multiplyScalar(mode === 'night' ? 8.0 : 1); wu.uBoardCol.value.copy(C(W.board)); wu.uMkCol.value.copy(C(W.mk));
-      markM.color.setScalar(mode === 'night' ? 0.6 : mode === 'dusk' ? 0.85 : 1);   // 照明の下でも赤が白く飛ばないように（桐生のコマでは赤がはっきり赤い）
+      markM.color.setScalar(mode === 'night' ? 0.75 : mode === 'dusk' ? 0.9 : 1);   // 照明の下でも赤が白く飛ばないように（桐生のコマでは赤がはっきり赤い）
     }
     setTime(opts.hour);
     setWeather({ windDir: 90, windSpeed: 1, wave: 1 });                            // 呼ばれるまでは静かな水面
