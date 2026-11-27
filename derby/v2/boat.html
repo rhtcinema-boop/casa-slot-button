@@ -34,7 +34,7 @@
   }
   f(); window.__casaVH = f; window.addEventListener('resize', f); window.addEventListener('orientationchange', function () { setTimeout(f, 300); });
 })();</script>
-<script src="config.js?v=v4p2"></script>
+<script src="config.js?v=v4p3"></script>
 <script>(function () { var f = false; try { f = localStorage.getItem('casa.derby.font') === '1'; } catch (e) { f = false; }
   if (f) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap'; l.id = 'webfont'; document.head.appendChild(l); } })();</script>
 </head>
@@ -52,7 +52,7 @@
 <script>/* 画面のスクリプト（2026-11-21: 競馬の v2/bet.html と同じく、版の印は 1 か所）。公開のたびに V（ボートのファイル）を上げる。
    DV は競馬と共通のファイル（core.js・client.js）の印で、v2/bet.html の V と同じにする。実行は入れた順（async=false） */
 (function () {
-  var V = '?v=b12', DV = '?v=v4q41', h = document.head;
+  var V = '?v=b12', DV = '?v=v4q42', h = document.head;
   function sc(u) { var s = document.createElement('script'); s.src = u; s.async = false; h.appendChild(s); }
   sc('core.js' + DV); sc('boat-core.js' + V); sc('client.js' + DV); sc('boat-bet.js' + V); sc('ticket.js' + V); /* ticket.js: 確定のあとの舟券の見た目（競馬の馬券と同じ紙。ticket.css を読む。2026-11-23） */
 })();</script>
