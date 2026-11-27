@@ -78,7 +78,7 @@
       '<div class="bo-panel bo-card2" id="boCardP"><h3>出走表</h3><div id="boCardT"></div></div>' +
       '<div class="bo-panel bo-cd" id="boCd"></div>' +
       '<div class="bo-panel bo-popp" id="boPopP"><h3>人気の組番 <small>2連単</small></h3><div id="boPop"></div></div>' +
-      '<div class="bo-panel bo-qrp" id="boQrP"><h3>アプリ不要 スマホで参加</h3><div class="bo-qr" id="boQr"><span>QR を準備中…</span></div><p class="bo-qrc" id="boQrc">無料で 1 票・当たりは BPT</p></div>' +
+      '<div class="bo-panel bo-qrp" id="boQrP"><h3>アプリ不要 スマホで参加</h3><p class="bo-qfree"><b>参加無料</b><small>1 レース 1 票</small></p><div class="bo-qr" id="boQr"><span>QR を準備中…</span></div><p class="bo-qrc" id="boQrc">無料で 1 票・当たりは BPT</p></div>' +
     '</section>' +
     '<section id="boFilm" class="bo-film" hidden><div class="bo-fit" id="boFit"><canvas id="boGl" width="1000" height="480"></canvas><canvas id="boHud" width="1000" height="480"></canvas><div id="boCard" class="bo-card" hidden></div></div><div class="bo-shime" id="boShime" aria-hidden="true">締切ました</div></section>' + // boShime: 締切の瞬間の大きな字（2026-11-23。競馬の「締切ました」と同じ見せ方。ふだんは透明）
     '<section id="boRes" class="bo-res" hidden></section>' +
@@ -189,6 +189,7 @@
       waitOff(); // 待ちの回しの板（出走表・前の結果）をしまい、展示を頭から（投票中の回し: 展示 → ST → 遊び方 1・2）
       // QR はレースごと: 次のレースに変わったら、前のレースの QR をすぐ消して「準備中」にする（2026-11-20 F8: 合言葉を読む間、前のレースの QR が残っていた＝読むと「読み直してください」になる）
       if (B.qrFor !== r.id) { B.qrFor = r.id; BOATTV.qr = ''; setH($('boQr'), '<span>QR を準備中…</span>'); qrFor(r); }
+      else if (!wait && BOATTV.qr && BOATTV.qr.indexOf('#') < 0) { BOATTV.qr = ''; setH($('boQr'), '<span>QR を準備中…</span>'); } // 投票が始まったのに合言葉がまだ: 店の QR（投票できない）は下げる
     }
     // 出走表: レースが変わったとき・くわしい中身（調子の言葉）が届いたときに描き直す（2026-11-20 F7: 「届いた」の印が前のレースのまま残り、2 レース目からは描き直さなかった）
     const full = B.full[r.id] || null, ck = r.id + (full && full.model ? '+' : '-');
@@ -213,19 +214,26 @@
     if (!r || !r.id || B.key[r.id] || B.keyP[r.id] || !B.C || !B.C.boatKey) return;
     B.keyP[r.id] = B.C.boatKey(r.id).then((k) => { B.key[r.id] = k; }, (e) => { B.keyE[r.id] = e || new Error('key'); });
   }
+  const qrBase = () => (window.DerbyQR && DerbyQR.joinURL ? DerbyQR.joinURL(STORE) : location.origin + '/v2/bet.html?store=' + STORE).split('?')[0].replace(/bet\.html$/, 'boat.html');
+  /* 店の QR（2026-11-28。待ち時間でまだレースが作られていないとき）: 合言葉なしでボートのページを開くだけ */
+  async function qrGeneric(forId) { // forId: '' ＝ まだレースが無い待ち時間 / レース id ＝ 合言葉を待っている間（どちらも、もう QR が出ていれば書かない＝本物の QR を上書きしない）
+    try {
+      const url = qrBase() + '?s=' + encodeURIComponent(STORE), svg = await DerbyQR.svg(url, { size: 300, margin: 2, ecl: 'M' });
+      if (B.qrFor === forId && !BOATTV.qr && $('boQr')) { BOATTV.qr = url; setH($('boQr'), svg); }
+    } catch (e) { BOATTV.err = 'qr ' + (e && e.message); B.qrGen = ''; }
+  }
   async function qrFor(r) {
     try {
       if (B.keyP[r.id]) { await B.keyP[r.id]; delete B.keyP[r.id]; if (B.keyE[r.id]) { const e = B.keyE[r.id]; delete B.keyE[r.id]; throw e; } }
       const k = B.key[r.id] || (B.key[r.id] = await B.C.boatKey(r.id));
-      const base = (window.DerbyQR && DerbyQR.joinURL ? DerbyQR.joinURL(STORE) : location.origin + '/v2/bet.html?store=' + STORE).split('?')[0].replace(/bet\.html$/, 'boat.html');
-      const url = Boat().joinURL(base, STORE, r.id, k.code);
+      const url = Boat().joinURL(qrBase(), STORE, r.id, k.code);
       const svg = await DerbyQR.svg(url, { size: 300, margin: 2, ecl: 'M' });
       if (B.qrFor === r.id && $('boQr')) { BOATTV.qr = url; setH($('boQr'), svg); } // 待っている間に次のレースへ変わっていたら書かない
     } catch (e) {
       BOATTV.err = 'qr ' + (e && e.message); delete B.key[r.id];
       if (B.qrFor !== r.id) return;
       if (e && (e.code === 'tv_only' || e.status === 403)) { setH($('boQr'), '<span>このテレビは QR を出せません<br>（テレビ用アカウントでログインしてください）</span>'); return; } // 読めないテレビは読み直さない（読み取りを増やさない）
-      setTimeout(() => { if (B.qrFor === r.id) qrFor(r); }, 10000);
+      setTimeout(() => { if (B.qrFor === r.id) qrFor(r); }, B.voteId === r.id + 'w' ? 60000 : 10000); // 待ち時間（2026-11-28 から待ちにも QR）は 1 分おき・投票中は 10 秒おき（読み取りを増やさない）
     }
   }
 
@@ -569,8 +577,13 @@
     const key = tgt.id + 'w', v = $('boVote');
     if (B.voteId !== key) {
       B.voteId = key; B.voteRace = tgt.id; B.popKey = ''; B.voteSig = ''; v.className = 'bo-vote is-wait'; v.dataset.sw = ''; B.wp.key = '';
-      B.qrFor = ''; BOATTV.qr = ''; setH($('boQr'), '<span class="bo-qw">投票が始まると<br>ここに QR が出ます</span>'); // 前のレースの QR は残さない
+      /* 2026-11-28 オーナー「投票時間にならないと QR が出ない（競馬に寄せて）」: 待ち時間もいつも QR を出す。
+         レースがもう作られている頃（締切の 14 分前から。レースと合言葉は 15 分前に作られる）＝ そのレースの QR（読んでおけば、投票が始まったらそのまま投票できる）。
+         それより前 ＝ 店の QR（合言葉なし。ボートのページが開く＝ログイン・次のレース・BPT が見られる。読み取りは増えない） */
+      if (B.qrFor !== tgt.id) { B.qrFor = ''; B.qrGen = ''; BOATTV.qr = ''; setH($('boQr'), '<span>QR を準備中…</span>'); }
     }
+    if (tgt.at - t <= 14 * 60000) { if (B.qrFor !== tgt.id) { B.qrFor = tgt.id; if (!BOATTV.qr) qrGeneric(tgt.id); keyPre(tgt); qrFor(tgt); } } // 合言葉が届くまでは店の QR を出しておく。keyPre: 合言葉を読むのは 1 レース 1 回のまま（あとで来る keyPre・投票開始の qrFor は、ここで読んだ物を使う）
+    else if (!B.qrFor && B.qrGen !== STORE) { B.qrGen = STORE; qrGeneric(''); }
     const lv = B.live && B.live.race && B.live.race.id === tgt.id ? B.live.race : null;
     if (lv) keyPre(lv);
     const sec = Math.max(0, Math.ceil((tgt.openAt - t) / 1000)), sig = key + '|' + sec + '|' + storeNm;
@@ -652,7 +665,8 @@
   function annMuted() { const A = window.DerbyAnnounce; try { if (A && A.env && A.env.muted) return !!A.env.muted(); } catch (e) { return true; } return /[?&](mute=1|voice=0)\b/.test(QS) || !!(window.Sfx && Sfx.isMuted && Sfx.isMuted()); }
   function annLoad(ctx) {
     ANN.st = 'loading'; const dir = ROOT + 'art/voice-boat/';
-    fetch(dir + 'ann.json').then((r) => r.json()).then((j) => { ANN.idx = j; return fetch(dir + (j.sprite || 'ann.m4a')).then((r) => r.arrayBuffer()); })
+    /* 2026-11-28: 案内の声を作り直した（速さを競馬に合わせた）。古い一覧と新しい音が組にならないよう、このファイルと同じ版の印を付けて読む（公開のたびに取り直す） */
+    fetch(dir + 'ann.json' + VQ).then((r) => r.json()).then((j) => { ANN.idx = j; return fetch(dir + (j.sprite || 'ann.m4a') + VQ).then((r) => r.arrayBuffer()); })
       .then((ab) => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej))).then((b) => { ANN.buf = b; ANN.st = 'ready'; })
       .catch((e) => { ANN.st = 'failed'; ANN.failAt = performance.now(); console.warn('boat ann', e && e.message); });
   }
