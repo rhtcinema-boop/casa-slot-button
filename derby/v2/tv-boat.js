@@ -78,7 +78,7 @@
       '<div class="bo-panel bo-card2" id="boCardP"><h3>出走表</h3><div id="boCardT"></div></div>' +
       '<div class="bo-panel bo-cd" id="boCd"></div>' +
       '<div class="bo-panel bo-popp" id="boPopP"><h3>人気の組番 <small>2連単</small></h3><div id="boPop"></div></div>' +
-      '<div class="bo-panel bo-qrp" id="boQrP"><h3>アプリ不要 スマホで参加</h3><p class="bo-qfree"><b>参加無料</b><small>1 レース 1 票</small></p><div class="bo-qr" id="boQr"><span>QR を準備中…</span></div><p class="bo-qrc" id="boQrc">無料で 1 票・当たりは BPT</p></div>' +
+      '<div class="bo-panel bo-qrp" id="boQrP"><h3>アプリ不要 スマホで参加</h3><p class="bo-qfree"><b>参加無料</b><small>毎レース 無料で 1 票</small></p><div class="bo-qr" id="boQr"><span>QR を準備中…</span></div><p class="bo-qrc" id="boQrc">無料で 1 票・当たりは BPT</p></div>' +
     '</section>' +
     '<section id="boFilm" class="bo-film" hidden><div class="bo-fit" id="boFit"><canvas id="boGl" width="1000" height="480"></canvas><canvas id="boHud" width="1000" height="480"></canvas><div id="boCard" class="bo-card" hidden></div></div><div class="bo-shime" id="boShime" aria-hidden="true">締切ました</div></section>' + // boShime: 締切の瞬間の大きな字（2026-11-23。競馬の「締切ました」と同じ見せ方。ふだんは透明）
     '<section id="boRes" class="bo-res" hidden></section>' +
@@ -206,7 +206,7 @@
     $('boCd').classList.toggle('last', !wait && r.closeAt - t <= 30000);
     if (!wait && (B.popKey !== r.id || B.popC !== c)) { const same = B.popRace === r.id; B.popKey = r.id; B.popC = c; B.popRace = r.id; popFlip($('boPop'), popular(r), same); } // 人気の組番: レースが変わったとき・参加人数（15 秒ごと）が届いたとき（同じレースの並び替えは動かして見せる）
     setH(B.qrH3 || (B.qrH3 = $('boQrP').querySelector('h3')), wait ? 'アプリ不要<br>スマホで参加' : 'アプリ不要 スマホで参加');
-    setT($('boQrc'), wait ? '投票は ' + hm(r.openAt) + ' から' : '無料で 1 票・当たりは BPT');
+    setT($('boQrc'), wait ? '投票は ' + hm(r.openAt) + ' から' : 'QRを読んで参加・当たりはBPT'); // 投票中: 何をすればよいか（QR を読む）と、当たりは BPT（2026-11-28 採点。「無料で 1 票」は上の札にある）
   }
   /* QR の合言葉を先に読んでおく（2026-11-23 つなぐ: 待ちの画面に QR を出さなくなったので、投票が始まった瞬間に QR を出せるよう、投票の 1 分前（レースが「いまの状態」に入った所）で読む。
      読むのは今までと同じ 1 レース 1 回（qrFor は、ここで読んだ物・断られた結果をそのまま使う） */
@@ -441,7 +441,7 @@
     setH(e, '<div class="bo-kakutei"><span class="bo-k">確定</span>' + waku(a, 'lg') + '<b class="bo-ar">-</b>' + waku(b, 'lg') + '<div class="bo-nm">1着 ' + esc(a.name) + '<br>2着 ' + esc(b.name) + (kim ? '<br><small>決まり手 ' + esc(kim) + '</small>' : '') + '</div></div>' +
       '<div class="bo-pay"><span>2連単</span><b>' + (res.combo ? res.combo.split('-').map((x) => Number(x) + 1).join('-') : '') + '</b>' + (noPay ? '<b class="y np">払い戻しなし</b>' : '<span>払戻</span><b class="y">' + amt(res.pay) + '</b><small>BPT</small>') + '<span class="od">' + (res.odds ? (Math.round(res.odds * 10) / 10).toFixed(1) + '倍' : '') + '</span></div>' +
       (notes ? '<div class="bo-notes">' + notes + '</div>' : '') +
-      '<div class="bo-wins"><h3>的中 ' + (r.people || 0) + ' 人' + (mine ? '（この店 ' + mine + ' 人）' : '') + '</h3>' + (ws.length ? '<ol>' + ws.map((w) => '<li class="' + (w.storeId === STORE ? 'me' : '') + '"><span class="nk">' + esc(w.nick) + '</span><span class="st">' + esc(w.storeName || w.storeId) + '</span><b>＋' + amt(gainOf(w)) + '<small>BPT</small></b>' + (cappedOf(w) ? '<i class="cp">上限</i>' : '') + '</li>').join('') + '</ol>' : '<p class="bo-none">' + (noPay ? '上限のため払い戻しなし' : '今回は的中なし') + '</p>') + '</div>' +
+      '<div class="bo-wins"><h3>全店で ' + (r.people || 0) + ' 人 的中' + (mine ? '（この店 ' + mine + ' 人）' : '') + '</h3>' + (ws.length ? '<ol>' + ws.map((w) => '<li class="' + (w.storeId === STORE ? 'me' : '') + '"><span class="nk">' + esc(w.nick) + '</span><span class="st">' + esc(w.storeName || w.storeId) + '</span><b>＋' + amt(gainOf(w)) + '<small>BPT</small></b>' + (cappedOf(w) ? '<i class="cp">上限</i>' : '') + '</li>').join('') + '</ol>' : '<p class="bo-none">' + (noPay ? '上限のため払い戻しなし' : '今回は的中なし') + '</p>') + '</div>' +
       '<div class="bo-order"><h3>着順</h3>' + (res.order || []).filter((i) => i !== outB).map((i, k) => row((k + 1) + '着', i)).join('') + (inc ? row(fl ? 'Ｆ' : '転', outB, true) : '') + '</div>' +
       '<p class="bo-note">当たった BPT は競馬の票に使えます（1 票 100 BPT）</p>'); // 2026-11-23: 「券」→「票」（前は「競馬の「追加の券」に使えます（1 枚 100 BPT）」）。次のレースの 1 行（boNext）は「このあと」の帯に替えた
   }
@@ -880,7 +880,7 @@
         const done = r.status === 'done' && !!r.result, mine = !!(B.film && B.film.id === r.id && B.R);
         B.want = mine ? 'film:' + r.id : ''; dropOld(); setReady(mine);
         if (mine && (!B.R.done || !done) && t < r.revealAt + 20000) { show('boFilm'); kaRender(t, '', '', false); filmFrame(r, t); return; } // 映像の最後（ゴール後）まで。発表（決める係が結果を書く）が届くまでは勝った艇のアップのまま（20 秒まで）
-        show('boRes'); B.lastFrame = 0; promo(true); quiet(0.5); hmEnd(); // 結果の画面（確認中も）では鳴らさない（2026-11-23: 前は映像を流したテレビだけ、結果の 2 分間エンジンの音が鳴り続けた。映像の終わりで音はもう消えている＝ここは片付け）
+        show('boRes'); B.lastFrame = 0; promo(false); quiet(0.5); hmEnd(); /* promo(false): 結果の画面では「無料で 1 票」の札を出さない（2026-11-28 採点: 投票が終わっているのに、今も参加できると読める） */ // 結果の画面（確認中も）では鳴らさない（2026-11-23: 前は映像を流したテレビだけ、結果の 2 分間エンジンの音が鳴り続けた。映像の終わりで音はもう消えている＝ここは片付け）
         kaNext(t); // 「このあと」の帯: 次に来るレース（競馬でもボートでも）と、その受付開始まで
         if (!done) { topFor('● 結果を確認中', false, hm(r.at) + ' のレース'); renderPending(r); lwOff(); pendRetry(r, t); return; } // 発表がまだ: 中身が届いたら下で描き直す（D2）。届かなければ読み直す（2026-11-21 J14）
         const n = B.live && B.live.next, endShow = n && n.openAt > t && n.openAt < r.endAt ? n.openAt : r.endAt; // 「あと ○:○○」は次の投票開始が先ならそちらまで（2026-11-21 I4: 前は途中で次の投票に替わり「あと 1:10」で切れていた）
