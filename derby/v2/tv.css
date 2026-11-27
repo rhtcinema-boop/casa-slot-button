@@ -1694,3 +1694,30 @@
 .v2nx .today .rc.bt s, .v2res .foot .today .rc.bt s { text-decoration: none; font: 900 18px/1 var(--font-tv); background: #1f7fd6; color: #fff; border-radius: 6px; padding: 4px 7px; }
 .v2nx .today .rc.bt.nx, .v2res .foot .today .rc.bt.nx { box-shadow: inset 0 0 0 2px rgba(255, 225, 77, .8); color: #ffe14d; }
 .v2res .foot .nx i.bt { align-self: center; font: 900 22px/1 var(--font-tv); font-style: normal; background: #1f7fd6; color: #fff; border-radius: 8px; padding: 5px 10px; }
+
+/* ======================================================================================================
+   2026-11-28 採点の直し（ChatGPT の採点 1 回目 84 点の指摘 ④⑤⑦。大きく変えず、悪い所だけ。⑧ の文言「全店の当たった人 ○人」は v2/tv.js の showResult）
+   大きさは設計座標（1600×900）。1920 の画面では 1.2 倍。場所・色・文言・動きは変えていない
+   ====================================================================================================== */
+/* ④ 出馬表の「調子」の言葉（絶好調・好調・普通・不調・絶不調）が小さい → 印を少し小さく（29→26px）、言葉を 1.4 倍（15→21px。1920 で 25px）。
+   印は 26px より小さくしない（出馬表の字は 26px 以上の決まり。tests/v2-qr-size.plan.js）。印＋言葉の高さは 47px（前は 45px）で行の高さ 50px の中。
+   いちばん長い「絶好調」「絶不調」の幅は 61px（列の幅 72px の中） */
+#stage.v2 .horse .v3cd b { font-size: 26px; -webkit-text-stroke-width: 1.4px; }
+#stage.v2 .horse .v3cd small { margin-top: 0; font-size: 21px; letter-spacing: -.04em; }
+/* 待ち時間の「次のレースの出馬表」も同じ割合で（印 36→32px・言葉 18→25px。1920 で 30px。行の高さ 約 70px の中） */
+.v2wait .ecard .r .cd b { font-size: 32px; }
+.v2wait .ecard .r .cd small { font-size: 25px; }
+/* ⑤ レース中の右の列「2連単 人気上位」: 順位の数字（1〜6）が馬番の札の左上にくっついていた → 数字を札の左に並べる（札の高さの真ん中・19→22px・札との間 8px）。
+   「順位＋札」をひとまとまりで行の真ん中に置き、倍率は今までどおり下の行の真ん中。幅は 数字 13＋間 8＋札 94 ＝ 115px（行の中身 124px・列 140px の中）。
+   レースの途中の小さい形（.cmp。札 34px）も同じ並び。行の高さ・札・倍率の大きさは変えない */
+#stage.v2 .v2odds.xo li { display: grid; grid-template-columns: auto auto; justify-content: center; align-content: center; align-items: center; justify-items: center; column-gap: 8px; }
+#stage.v2 .v2odds.xo li em, #stage.v2 .v2odds.xo.cmp li em { position: static; font-size: 22px; }
+#stage.v2 .v2odds.xo li b { grid-column: 1 / -1; }
+/* ⑦ 結果の画面の右下の QR「次のレースに スマホで参加」: QR が小さい → 板の中の余白を詰めて QR の一辺を 234px に（1920 で 281px。写真を撮る模擬クラウドの QR は 39 マスで 195→234px＝1.2 倍、本番は参加 URL が長く 43 マスなので 214→234px）。
+   詰めた所: QR の上下の余白 10・4→0（QR の絵の中に 3 マスの白がある）・見出しの帯 40→36px・「参加無料・1人1票まで」の行 26→24px・下の余白 8→6px。
+   板の幅 290px・右と下の端（x1555・y871）はそのまま。板は上へ 17px だけ伸びる（上の端 y588→571）。上の「当たった方は…」の板（下の端 y549）との間は、白い縁の外で 14px。
+   これより大きくすると上の板に重なる（1.3 倍＝254px は入らない）。一辺は決まった数（--qr は使わない）: QR のマスの数（参加 URL の長さ）で板の高さが変わらないように */
+#stage.v2.m-result .v2qr { padding-bottom: 6px; }
+#stage.v2.m-result .v2qr .tx b { height: 36px; line-height: 36px; }
+#stage.v2.m-result .v2qr .code { width: 234px; height: 234px; margin: 0; }
+#stage.v2.m-result .v2qr .free { line-height: 1.1; }
