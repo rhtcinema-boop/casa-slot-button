@@ -14,10 +14,6 @@ window.DERBY_FIREBASE = {
 window.DERBY_APPCHECK_KEY = '6Lc_WgMuAAAAAMlyGK4WqQ9r5O0in5sR0fuyxTY4'; // 2026-10-27 作成（reCAPTCHA → Fraud Defense に登録・Firestore と Auth は「非適用」＝記録だけ）
 window.DERBY_APPCHECK_PROVIDER = 'enterprise'; // Firebase の App Check に Fraud Defense（旧 reCAPTCHA Enterprise）で登録したので enterprise
 /* LINE ログイン（2026-11-26 オーナー決定「スマホは LINE ログイン必須」。v2/line-login.js・ログイン係は Apps Script）。どちらも公開してよい値（秘密ではない）。
-   2026-11-27 いまは「試し」: アドレスに ?line=1 を付けて開いたスマホだけ LINE ログインになる（?line=0 で元に戻る。覚えるのはそのブラウザだけ）。
-   全員に出すときは、下の on をいつも true にする */
-(function () {
-  var on = false, q = location.search;
-  try { if (/[?&]line=1(&|$)/.test(q)) localStorage.setItem('casa.lineTrial', '1'); if (/[?&]line=0(&|$)/.test(q)) localStorage.removeItem('casa.lineTrial'); on = localStorage.getItem('casa.lineTrial') === '1'; } catch (e) { on = /[?&]line=1(&|$)/.test(q); }
-  window.DERBY_LINE = on ? { liffId: '2012817848-mLpbgONy', loginUrl: 'https://script.google.com/macros/s/AKfycbwYB7DH7wNfKusuuA47qhf2YvuySZzeQq2jaBgtm3f9skJLFUs0CbopGAw_fvU8-lI2/exec' } : null;
-})();
+   2026-11-28 全員に出した（オーナー「出していいよ」。11/27 は「試し」＝アドレスに ?line=1 を付けたスマホだけだった）。
+   急いで止めるとき: 下を window.DERBY_LINE = null; にして公開し直す（匿名ログインに戻る。LINE でログインした人の BPT・スタンプは L… の番号に残る） */
+window.DERBY_LINE = { liffId: '2012817848-mLpbgONy', loginUrl: 'https://script.google.com/macros/s/AKfycbwYB7DH7wNfKusuuA47qhf2YvuySZzeQq2jaBgtm3f9skJLFUs0CbopGAw_fvU8-lI2/exec' };
