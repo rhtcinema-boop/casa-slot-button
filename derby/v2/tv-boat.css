@@ -420,3 +420,55 @@
 #boatOv .bo-lw.bo-bye { animation: boOut .5s ease-in both; }
 .bo-last .l3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; } .bo-last .l3 .or { min-width: 0; } .bo-last .l3 .nm { font-size: 24px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bo-last .l3 .or.out .rk { color: #fff; background: #8a2a20; border-radius: 6px; padding: 2px 8px; font-weight: 900; } .bo-last .l3 .or.out .nm { color: #ffb3a6; }
+
+/* ---------- 2026-11-28 オーナー「競馬に比べて暗い・ドヨーンとしてる。字が小さい・出走表が見づらい。大前提、競馬に寄せてよい」 ----------
+   競馬のテレビ（css/style.css の #stage: 明るい地＋ゆっくり回る光の筋、クリームの板、紺の時計）と同じ明るさ・同じ字の大きさの感覚に。色は水色（競馬は緑）。
+   場面の並び・部品の場所は変えない（色と大きさだけ）。結果は競馬と同じく濃い地（字が白・金なので）だが、字を大きくして空きを埋める */
+#boatOv { background: radial-gradient(ellipse at 50% 0%, #9be0ff 0%, #56bdf5 32%, #2f9ae6 68%, #1f82d2 100%); }
+#boatOv::before { content: ""; position: absolute; left: 50%; top: 50%; width: 3000px; height: 3000px; margin: -1500px 0 0 -1500px; background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, .13) 0deg 6deg, transparent 6deg 16deg); animation: rotate 120s linear infinite; pointer-events: none; z-index: 0; }
+.bo-panel { border-color: #0e4f8f; box-shadow: 0 7px 0 rgba(8, 52, 102, .35); }
+.bo-pill { border-color: #0e4f8f; } .bo-pill.st { background: #0e3f78; } .bo-pill.st.on { background: #1668d8; }
+.bo-pill.sn { background: rgba(8, 52, 102, .45); }
+/* 時計の板: 競馬と同じ濃い紺のまま、少し明るく・ふちを付けてくっきり */
+.bo-cd { background: linear-gradient(180deg, #1b4a8c, #0f2f63); }
+/* 投票中の出走表: 見出し（出走表）と項目の名前を 1 行にまとめて、行と字を大きく（競馬の出馬表と同じ並び） */
+.is-vote .bo-card2 { padding: 8px 14px 10px; }
+.is-vote .bo-card2 h3 { position: absolute; left: 20px; top: 12px; font-size: 30px; }
+.is-vote .bo-ct { margin-top: 0; gap: 5px; }
+.is-vote .bo-ct .hd, .is-vote .bo-ct .rw { grid-template-columns: 8px 50px minmax(0, 1fr) 50px 116px 84px 126px; column-gap: 7px; }
+.is-vote .bo-ct .hd { height: 44px; font-size: 22px; font-weight: 900; color: #0e4f8f; } .is-vote .bo-ct .hd span:nth-child(2) { visibility: hidden; }
+.is-vote .bo-ct .hd span:nth-child(n+3) { text-align: center; }
+.is-vote .bo-ct .rw { height: 50px; } .is-vote .bo-ct .bar { height: 40px; } .is-vote .bo-ct .bo-waku { width: 44px; height: 44px; font-size: 30px; }
+.is-vote .bo-ct .nm { font-size: 34px; } .is-vote .bo-ct .cl { font-size: 26px; text-align: center; } .is-vote .bo-ct .ty { font-size: 22px; padding: 4px 0; letter-spacing: -.02em; } /* いちばん長い「まくり差し」（5 字）が枠に入る大きさ */
+.is-vote .bo-ct .cn b { font-size: 26px; } .is-vote .bo-ct .cn small { font-size: 15px; font-weight: 700; }
+.is-vote .bo-ct .ps i { width: 40px; height: 42px; font-size: 28px; }
+/* 人気の組番: 倍率と順位を大きく */
+.bo-popp h3 { font-size: 34px; } .bo-popp .od { font-size: 44px; } .bo-popp .od small { font-size: 24px; } .bo-popp .rk { width: 44px; height: 44px; font-size: 28px; } .bo-popp .ar { font-size: 22px; }
+.bo-popp .pr .bo-waku.sm, .bo-popp .pr .bo-waku { width: 42px; height: 42px; font-size: 28px; }
+/* 結果: 濃い地は競馬と同じ。字を大きく・板をくっきり */
+.bo-res { background: radial-gradient(ellipse at 30% 0%, #1d5fae 0%, #123f80 45%, #0b2a5c 100%); padding: 22px 48px 14px; gap: 12px 40px; } /* 知らせが 2 行出るレース（返還＋払い戻しなし）でも下の 1 文が切れない詰め方 */
+.bo-void { background: radial-gradient(ellipse at 50% 0%, #1d5fae 0%, #123f80 45%, #0b2a5c 100%); }
+.bo-pay { background: linear-gradient(180deg, #fffaf0, #ffe9b5); border: 4px solid #f0a81e; color: #5a3d06; font-size: 34px; padding: 20px 30px; }
+.bo-pay b { font-size: 76px; color: #3d2a05; } .bo-pay b.y { color: #c2410c; } .bo-pay small { font-size: 30px; } .bo-pay .od { font-size: 44px; font-weight: 900; color: #3d2a05; }
+.bo-nm { font-size: 38px; } .bo-nm small { font-size: 28px; }
+.bo-order { grid-template-columns: 1fr 1fr; gap: 7px 26px; } .bo-order h3 { font-size: 26px; color: #cfe3ff; }
+.bo-order .or { font-size: 34px; font-weight: 900; gap: 12px; } .bo-order .rk { width: 70px; font-size: 28px; color: #cfe3ff; } .bo-order .or .bo-waku.sm { width: 44px; height: 44px; font-size: 28px; }
+.bo-order .or.out .rk { font-size: 28px; }
+.bo-note { font-size: 28px; } .bo-next { font-size: 30px; } .bo-inc { font-size: 28px; } .bo-inc b { font-size: 34px; }
+.bo-wins { background: rgba(6, 24, 56, .72); border: 2px solid #4f8fd0; padding: 18px 24px; }
+.bo-wins h3 { font-size: 36px; } .bo-wins li { font-size: 30px; padding: 8px 12px; gap: 10px; } .bo-wins b { font-size: 30px; } .bo-wins b small { font-size: 18px; } .bo-wins .st { font-size: 20px; color: #cfe3ff; } /* 名前 8 字が切れない大きさ（板の幅 560） */ .bo-none { font-size: 32px; color: #cfe3ff; }
+/* 締切の出走表（映像の上の板）: 項目の名前を読める大きさ・明るさに */
+.bo-card .bo-ct .hd { font-size: 22px; font-weight: 900; color: #cfe3ff; }
+/* レース中、下の帯（このあと）が消えている間に見える地: 真っ黒ではなく結果の画面と同じ紺に */
+.bo-film::before { background: #0b2a5c; }
+/* 待ち時間の QR の板（2026-11-28 オーナー「QR の周りの空白が空きすぎ」）: 競馬の待ちと同じ並び ＝ 見出し → 緑の札（参加無料）→ 大きい QR → 投票の時刻。空きを残さない */
+.bo-qrp .bo-qfree { display: none; }
+.is-wait .bo-qrp { justify-content: flex-start; gap: 0; padding: 0 0 22px; }
+.is-wait .bo-qrp h3 { font-size: 38px; line-height: 1.3; padding: 22px 0; }
+.is-wait .bo-qrp .bo-qfree { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 26px 0 0; width: 318px; height: 124px; border-radius: 62px; background: linear-gradient(180deg, #34b56a, #1f9a52); color: #fff; box-shadow: 0 5px 0 rgba(0, 0, 0, .15); }
+.is-wait .bo-qrp .bo-qfree b { font-size: 52px; font-weight: 900; line-height: 1.1; } .is-wait .bo-qrp .bo-qfree small { font-size: 26px; font-weight: 900; line-height: 1.2; }
+.is-wait .bo-qrp .bo-qr { width: 336px; height: 336px; margin-top: 22px; } .is-wait .bo-qrp .bo-qr svg { width: 330px; height: 330px; }
+.is-wait .bo-qrp .bo-qrc { font-size: 32px; margin-top: auto; }
+/* 投票受付中の QR を大きく（2026-11-28 採点: 参加してほしい場面で小さい）: 下の 1 文（上の札「無料で 1 票」と同じ中身）をやめて、その分 QR へ */
+.is-vote .bo-qrp .bo-qrc { display: none; }
+.is-vote .bo-qrp { gap: 0; padding-bottom: 0; justify-content: flex-start; } .is-vote .bo-qrp .bo-qr { width: 280px; height: 280px; margin: auto 0; } .is-vote .bo-qrp .bo-qr svg { width: 274px; height: 274px; }
