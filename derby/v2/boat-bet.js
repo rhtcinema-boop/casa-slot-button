@@ -313,10 +313,12 @@
   function vWait() {
     const r = S.race, n = nextR(), t = now();
     const nx = r && Boat.stageOf(r, t) === 'wait' ? { at: r.at, openAt: r.openAt, test: r.test } : n;
+    const nid = r && Boat.stageOf(r, t) === 'wait' ? r.id : (n && n.id) || '';
     if (!nx) return scr('mid b-wait', '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wv" data-wrap>いまはボートレースの時間ではありません</p></div>' + bptCard() + keibaLine() + aftLine() + howCard());
     return scr('mid b-wait', testTag(nx) + '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wt">' + hm(nx.at) + '<small>締切</small></p>' +
       '<div class="wr"><p class="wv">投票は ' + hm(nx.openAt) + ' から</p><div class="clock"><div class="k">受付開始まで あと</div><div class="v"' + cd(nx.openAt, t) + '</div></div></div></div>' + bptCard() + keibaLine() + aftLine(nx.at) +
-      '<p class="sub">投票が始まったら、お店のテレビの QR を読んでください（QR はレースごとに変わります）</p>' + howRow());
+      /* 2026-11-28: テレビは待ち時間にも QR を出す（締切の 14 分前からは、そのレースの QR）。もうそのレースの QR を読んであるスマホには「QR を読んでください」を出さない（始まったらそのまま投票できる） */
+      (nid && keyFor(nid) ? '<p class="sub">投票が始まったら、このまま投票できます</p>' : '<p class="sub">投票が始まったら、お店のテレビの QR を読んでください（QR はレースごとに変わります）</p>') + howRow());
   }
   function vNoQr() { // 投票中・このレースの QR をまだ読んでいない
     const r = S.race, t = now(), miss = !S.err && r && S.scanMiss === r.id;
