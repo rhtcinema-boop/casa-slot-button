@@ -1,9 +1,9 @@
 {
- "v": "b249",
+ "v": "b250",
  "files": [
   {
    "path": "index.html",
-   "sha256": "01ef30fbe84658a0f411b73fb435708e28743f29719808f9417254ecf8c16c22"
+   "sha256": "8fc6767f045897cca1509c45c357f9510c1117be1cc7f8d72f4c5e818bfa1b67"
   },
   {
    "path": "manifest.webmanifest",
@@ -227,15 +227,15 @@
   },
   {
    "path": "derby/art/voice-boat/ann.json",
-   "sha256": "8ece9b4f6ad5659f83480956903f897d82b4da7dcfbfefe18d04cc74a9ed26e5"
+   "sha256": "7fc12413088e7ddfeb751d22a6b7ba52a9fdb1ad8b3770cdebf3f8eb4691c8b1"
   },
   {
    "path": "derby/art/voice-boat/ann.m4a",
-   "sha256": "78563d11b40cd4485e8e5af29eb53258d215ee8e4e0f23a6545f619d385e43a6"
+   "sha256": "f8705bca7f3d958eee9f9e07450849e3db418e738e1633bf266289a52cc17f55"
   },
   {
    "path": "derby/art/voice-boat/announce.m4a",
-   "sha256": "68576ac2e6113d680503b9c60470080c4ceea198e6913de59a40cdc2de6945e4"
+   "sha256": "c82a131f76c03e29fb4964d4ae4d8450a60ef3191723491909a6e7cd9d2ea8b8"
   },
   {
    "path": "derby/art/voice-boat/buzzer.m4a",
@@ -251,7 +251,7 @@
   },
   {
    "path": "derby/art/voice-boat/index.json",
-   "sha256": "f661f5fa83832363e9856afcb7f14a504ec975d02911a3fd30031b8fc051e640"
+   "sha256": "db6399b97c843d433fdc302bd18c56a512df19d6423acdef9d48bb4e5729a719"
   },
   {
    "path": "derby/art/voice/c.m4a",
@@ -283,7 +283,7 @@
   },
   {
    "path": "derby/boat/boat3d.js",
-   "sha256": "9844aa52804b8286c14774815670cd6b97824b6add92de998573c3c36195a36f"
+   "sha256": "36a43684ce73aa59c047fae8f9cf257cbe55b223c2d2f6a1f986e9e5e84f609d"
   },
   {
    "path": "derby/boat/course.js",
@@ -303,15 +303,15 @@
   },
   {
    "path": "derby/boat/race-boat.js",
-   "sha256": "a499cdcc1bcc0636125b8f313d11a15375682c61fa8dfdbac882cda11e8e189c"
+   "sha256": "ad1ea407a27d679ae300eb8c835c90515daf7ddd23eadc549a53644cb93cda64"
   },
   {
    "path": "derby/boat/sound.js",
-   "sha256": "b941b615560c87c694ee4e751f59e50b861229fc742df548c07206c468b02799"
+   "sha256": "498ef06a2e266a4ebd97bd5cfd6711ac7d0edaabdaeb67c354163e1597cd123b"
   },
   {
    "path": "derby/boat/venue3d.js",
-   "sha256": "4df4a94807eb48b83d7cac03e6af1ca6e981cd580375bbe9c86684c0a9f4cee6"
+   "sha256": "9d066cfb56e94233634bfc4541472659f39fabc6743a467e11d185c8d32f8ad7"
   },
   {
    "path": "derby/css/style.css",
@@ -323,7 +323,7 @@
   },
   {
    "path": "derby/index.html",
-   "sha256": "818009f55e7872f538c11fae6955885eaadac2525cf5511dae43cd73511e23ff"
+   "sha256": "e90e2da79f4a362db001befc805990496d3794d93c76ebe8b5caaef89b3d21ab"
   },
   {
    "path": "derby/js/audio.js",
@@ -455,11 +455,11 @@
   },
   {
    "path": "derby/v2/tv-boat.css",
-   "sha256": "18521dd2d0f20ddedef5b05d22961043b47e7d80c6ec6e67a0863b5385baeb95"
+   "sha256": "bbbb4aea895e1500ffdfc80cf81ee5c8c39ecf09f5d5130420af9ced2a8f1007"
   },
   {
    "path": "derby/v2/tv-boat.js",
-   "sha256": "1e72d8e2ab2b909fcaae9f0008c1217c75115e329ac82eb899fa90dea33ac5e6"
+   "sha256": "8211cd347bc51271adda33bdeeef183aa34d8550da0b1dd43960bad655799b24"
   },
   {
    "path": "derby/v2/tv.css",
