@@ -980,7 +980,7 @@ BOAT.Tags = (function () {
   const LEN = BOAT.Boat ? BOAT.Boat.LEN : 2.895, HW = BOAT.Boat ? BOAT.Boat.WIDTH / 2 : 0.658;
   const A = LEN / 2 + 0.75, B = HW + 0.55;            // 楕円の半分の長さ・半分の幅（m）。艇の長さ 2.9m ＋ 前後 0.75m、幅 1.3m ＋ 左右 0.55m
   const LX = 2 * A + 1.0, LZ = 2 * B + 0.5;           // 輪の板の大きさ（三角とふちの余白込み）
-  const D0 = 0.8, TILT = 55 * Math.PI / 180, MINPX = 12, MAXPX = 20, SH = 480; // 札の直径（m）・起こす角度・画面での大きさの下限と上限（480 の高さの画面で）
+  const D0 = 0.8, TILT = 55 * Math.PI / 180, MINPX = 15, MAXPX = 24, SH = 480; /* 2026-11-28: 札を約 2 割大きく（12〜20 → 15〜24）。水面を明るくしたので、離れた席からでも艇番を追えるように */ // 札の直径（m）・起こす角度・画面での大きさの下限と上限（480 の高さの画面で）
   const NOTO = '"Noto Sans JP","Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif';
   const hex6 = (h) => { h = String(h || '#888'); return h.length === 4 ? '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3] : h; };
   const lumOf = (h) => { const n = parseInt(hex6(h).slice(1), 16); return ((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11; };
@@ -991,7 +991,7 @@ BOAT.Tags = (function () {
     const col = h.color || '#f4f4f4', lum = lumOf(col), lw = 6;   // 2026-11-19: 細く・薄く（艇がいちばん目立つように。前は 11）
     g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = lw + 4; g.stroke();   // 外の白いふち（暗い水面で黒の 2 号艇も見える）
     g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = lum > 230 ? '#e9e9e9' : col; g.lineWidth = lw; g.stroke();
-    if (lum > 230) { g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = 2; g.stroke(); }
+    if (lum > 230) { g.beginPath(); g.ellipse(cx, cy, rx, rz, 0, 0, TAU); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 2.5; g.stroke(); } // 2026-11-28: 明るい水面で 1 号艇（白）の輪が見えるよう少し濃く（前は .3・2）
     // 舳先の向き（右＝艇の前）に三角
     g.beginPath(); g.moveTo(cx + rx + 24, cy); g.lineTo(cx + rx + 4, cy - 11); g.lineTo(cx + rx + 4, cy + 11); g.closePath();
     g.fillStyle = lum > 230 ? '#ffffff' : col; g.fill(); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3; g.stroke();
@@ -1001,7 +1001,7 @@ BOAT.Tags = (function () {
     const N = 128, x0 = i * N, y0 = 768, m = N / 2, cx = x0 + m, cy = y0 + m;
     g.save(); g.beginPath(); g.rect(x0, y0, N, N); g.clip(); g.clearRect(x0, y0, N, N);
     const col = h.color || '#f4f4f4', ink = h.ink || '#111', num = String(h.no || i + 1);
-    g.beginPath(); g.arc(cx, cy, N * 0.47, 0, TAU); g.fillStyle = 'rgba(20,20,20,.75)'; g.fill();       // 細い黒の線（いちばん外）
+    g.beginPath(); g.arc(cx, cy, N * 0.49, 0, TAU); g.fillStyle = 'rgba(8,16,30,.92)'; g.fill();       // 濃い線（いちばん外。2026-11-28: 明るい水面でも札の形が分かるように太く・濃く。前は 0.47・.75）
     g.beginPath(); g.arc(cx, cy, N * 0.445, 0, TAU); g.fillStyle = '#ffffff'; g.fill();                  // 白いふち
     g.beginPath(); g.arc(cx, cy, N * 0.38, 0, TAU); g.fillStyle = col; g.fill();                         // 枠の色の地
     g.lineWidth = N * 0.012; g.strokeStyle = 'rgba(0,0,0,.35)'; g.stroke();
