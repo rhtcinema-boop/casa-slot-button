@@ -27,7 +27,7 @@ BOAT.Sound = (function () {
      cueS … 合図の音（ブザー・ファンファーレ）を 1 レースに 1 回だけ鳴らすための印（下の cue）。K … 場面の終わりの絞り（1 ＝ ふつう・0 ＝ 無音。下の frame）。
      stopT … 止めている途中（絞り終わったら中の音を片付ける予約）。stat … 確かめ用の数（debug） */
   let cueS = { key: null, buz: 0, fan: 0, off: null }, K = 1, Kv = 1, stopT = 0, resumeAt = 0;
-  const stat = { stops: 0, resumes: 0, cuts: 0, trims: 0, skips: 0 }, TAIL = 0.8, TAIL_V = 0.35, BUZ_FROM = -2.6, FAN_PRE = 0.3, FAN_END = 3.3;
+  const stat = { stops: 0, resumes: 0, cuts: 0, trims: 0, skips: 0 }, TAIL = 0.8, TAIL_V = 0.35, OVER = 0.6, BUZ_FROM = -2.6, FAN_PRE = 0.3, FAN_END = 3.3;
 
   function init() {
     if (MUTE || ctx) return;
@@ -64,11 +64,18 @@ BOAT.Sound = (function () {
     const src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf; g.gain.value = vol; src.connect(g); g.connect(dest); src.start(at, off); stat.files = (stat.files || 0) + 1;
     return true;
   }
-  function loadVoice() {
-    fetch(VOICE_DIR + 'index.json').then((r) => r.json()).then((j) => {
-      vidx = j; names = Object.keys(j.clips).filter((k) => k.indexOf('#S') === 1).map((k) => k.slice(3)).filter((v, i, a) => a.indexOf(v) === i);
-      return fetch(VOICE_DIR + (j.sprite || 'announce.m4a')).then((r) => r.arrayBuffer());
-    }).then((ab) => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej))).then((b) => {
+  /* again ＝ 取り直し。2026-11-28 に声を作り直した（速さを競馬に合わせた）ので、テレビに残っている古い音（announce.m4a）と新しい一覧（index.json）、またはその逆が組になることがある。
+     組が違うと部品の位置がずれて別の言葉が鳴るので、一覧に書いてある音の長さ（dur）と読んだ音の長さを比べ、違えば両方を取り直す（1 回だけ）。それでも違えば実況の声は出さない（字幕は出る） */
+  function loadVoice(again) {
+    const opt = again ? { cache: 'reload' } : undefined; let idx = null;
+    fetch(VOICE_DIR + 'index.json', opt).then((r) => r.json()).then((j) => {
+      idx = j;
+      if (!j.dur && !again) { loadVoice(true); return null; } // dur の無い一覧 ＝ 作り直す前の古い一覧が残っている → 取り直す
+      return fetch(VOICE_DIR + (j.sprite || 'announce.m4a'), opt).then((r) => r.arrayBuffer());
+    }).then((ab) => ab && new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej))).then((b) => {
+      if (!b) return;
+      if (idx.dur && Math.abs(b.duration - idx.dur) > 0.5) { stat.voiceMix = (stat.voiceMix || 0) + 1; if (!again) loadVoice(true); else console.warn('boat voice: 一覧と音の組が違う', idx.dur, b.duration); return; }
+      vidx = idx; names = Object.keys(idx.clips).filter((k) => k.indexOf('#S') === 1).map((k) => k.slice(3)).filter((v, i, a) => a.indexOf(v) === i);
       vbuf = b;
       // AAC の頭のずれを測る: 最初の部品の声の立ち上がり（頭の 15ms のあと）を探す
       const first = Object.values(vidx.clips).reduce((a, c) => (c[0] < a[0] ? c : a)), d = b.getChannelData(0), from = Math.max(0, Math.floor((first[0] - 0.2) * b.sampleRate));
@@ -192,20 +199,24 @@ BOAT.Sound = (function () {
     let dur = 0;
     items.forEach((x) => { if (x.pause != null) { seq.push({ pause: x.pause }); dur += x.pause; return; } const c = clipOf(x.key, x.tier); if (!c) { if (!warned[x.key]) { warned[x.key] = 1; console.warn('boat voice: no clip', x.key, line.s); } return; } seq.push({ c }); dur += c[1] - 0.015; });
     if (!seq.length) return;
-    // 次の行までに言い切れないときは少し速く（最大 1.12 倍）
-    let rate = 1; const list = R && R.capList, k = list ? list.indexOf(line) : -1, nxt = k >= 0 ? list[k + 1] : null;
-    if (nxt) { const avail = nxt.t - line.t - 0.1; if (dur > avail && avail > 0.5) rate = clamp(dur / avail, 1, 1.12); }
+    /* 声は速回ししない（2026-11-28 オーナー「実況も早口だから修正してほしい。競馬と同じぐらいのスピード感でいい」）。
+       前は、次の行までに言い切れない行を 1.12 倍まで速く回していた。声そのものも競馬より 2 割ほど速かった（測り: ボート 10.4・11.4・12.0 拍/秒、競馬 8.7・10.0・10.0 拍/秒）ので、
+       声を競馬と同じ速さで作り直し（tools/make-boat-announce.js の LV）、ここの速回しをやめた。台本（boat/race-boat.js の script）は、遅くした声でも次の行までに言い切れるように行を減らしてある。
+       それでも次の行に 0.6 秒より長くかかる行（先頭の入れ替わり・事故などが続いたとき）は、後ろの文から落とす（最初の文は残す）。0.6 秒までなら、次の行が少し待つ（下の「前の声がまだ続いている」） */
+    const rate = 1, list = R && R.capList, k = list ? list.indexOf(line) : -1, nxt = k >= 0 ? list[k + 1] : null;
+    const lenOf = () => seq.reduce((a, x) => a + (x.pause != null ? x.pause : x.c[1] - 0.015), 0);
+    const dropLast = () => { let j = -1; for (let i = seq.length - 1; i > 0; i--) if (seq[i].pause != null && seq[i].pause >= 0.18) { j = i; break; } if (j < 1) return false; seq.length = j; dur = lenOf(); return true; }; // 後ろの文を 1 つ落とす（「。」「！」の所で切る）。落とせなければ false
     // 前の声がまだ続いている: 1 秒以内に終わるなら待つ、それより長ければ切って次へ
     let t0 = now + 0.03;
     if (voiceUntil > now) { if (voiceUntil - now < 1.0) t0 = voiceUntil + 0.06; else { stopVoice(0.22); stat.cuts++; t0 = now + 0.2; } } // 切るときは 0.2 秒かけて消してから次の行へ（2026-11-23: 前は 0.02 秒で切れて「ブツッ」と聞こえた）
+    if (nxt) { const late = R && typeof R.tt === 'number' ? Math.max(0, R.tt - line.t) : 0, avail = nxt.t - line.t - late - (t0 - now) - (/^お知らせいたします/.test(line.s) ? 1.9 : 0) + OVER; let cut = false; while (dur > avail && dropLast()) cut = true; if (cut) stat.trims++; } // 次の行に 0.6 秒より長くかかるなら、後ろの文を落とす
     /* 映像の終わり（結果の画面に替わる所）までに言い切れない行（2026-11-23: 2 着のゴールが遅いレースで「着順確定。1着…2着…。2連単 1-2」の終わりが結果の画面に 1.5 秒ほどかぶっていた）:
-       少し速く言えば入るなら速く（1.12 倍まで）。それでも入らなければ後ろの文から落とす（最初の文は残す）。0.4 秒も無ければ言わない */
+       入らなければ後ろの文から落とす（最初の文は残す）。0.4 秒も無ければ言わない。速回しはしない（2026-11-28。前は 1.12 倍まで速くしていた） */
     if (R && typeof R.endT === 'number' && isFinite(R.endT) && typeof R.tt === 'number') {
       const room = (R.endT - TAIL_V - R.tt) - (t0 - now);
       if (room < 0.4) { stat.skips++; return; }
-      if (dur / rate > room && dur / room <= 1.12) rate = dur / room;
       let cut = false;
-      while (dur / rate > room) { let k = -1; for (let i = seq.length - 1; i > 0; i--) if (seq[i].pause != null && seq[i].pause >= 0.18) { k = i; break; } if (k < 1) break; seq.length = k; dur = seq.reduce((a, x) => a + (x.pause != null ? x.pause : x.c[1] - 0.015), 0); rate = Math.max(rate, Math.min(1.12, dur / room)); cut = true; }
+      while (dur > room && dropLast()) cut = true;
       if (cut) stat.trims++;
     }
     if (/^お知らせいたします/.test(line.s)) { BOAT.Fanfare.chime(ctx, fxBus, t0, LVL.chime); t0 += 1.9; }
