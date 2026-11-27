@@ -26,9 +26,12 @@
   const LIFF_PARAMS = ['code', 'state', 'liffClientId', 'liffRedirectUri', 'error', 'error_description'];
   /* 2026-11-27 総点検: 赤字は 2 行に決めて書く（\n で改行。幅のせまいスマホで文の途中で折れない・出たときに画面が動かない）。
      errSrv ＝ ログイン係の中の失敗（電波のせいではないので「電波を確認」と書かない）・errStop ＝ LINE を途中でやめて戻った */
-  const TX = { title: 'ログイン', lead: 'スマホやブラウザを変えても BPT が残ります', btn: 'LINEでログイン', busy: 'ログイン中…', again: 'もう一度',
+  const TX = { title: 'ログイン', lead: 'スマホやブラウザを変えても\nBPTを引き継げます', btn: 'LINEでログイン', busy: 'ログイン中…', again: 'もう一度',
     errNet: '通信できませんでした。\n電波を確認して、もう一度押してください', errLine: 'ログインできませんでした。\nもう一度押してください', errLoad: 'LINE の読み込みに失敗しました。\nもう一度押してください',
-    errSrv: 'ログインできませんでした。\n少し待って、もう一度押してください', errStop: 'ログインが終わっていません。\nもう一度押してください' };
+    errSrv: 'ログインできませんでした。\n少し待って、もう一度押してください', errStop: 'ログインが完了していません。\nもう一度「LINEでログイン」を押してください',
+    /* 2026-11-28 オーナー「メール・パスワードを入れる画面は無し。LINE のアプリで許可するだけ」: LINE のアプリが自動で開かなかった人（シークレットモードなど）には、
+       LINE 側のページにメール・パスワードの欄が出る（こちらからは消せない）。そのページのいちばん下に「LINEアプリでログイン」がある → LINE から戻ってきた人にだけ案内する */
+    tip: 'メールアドレスの入力画面が出たときは、\nいちばん下の「LINEアプリでログイン」を\n押してください' };
   const isLineUid = (u) => typeof u === 'string' && /^L/.test(u);
 
   /* deps（試験で差し替える）: cfg（DERBY_LINE）・liff・loadScript・fetch・doc（document）・loc（location）・hist（history）・ls（localStorage）・setTimeout */
@@ -107,9 +110,11 @@
       st.textContent = '#lnGate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom));background:#0b101b;color:#f3ead0;font-family:"Noto Sans JP",system-ui,-apple-system,sans-serif;text-align:center}' +
         'body.boat #lnGate{background:#071425}' +
         '#lnGate .in{width:100%;max-width:340px;display:flex;flex-direction:column;align-items:center;gap:14px}' +
-        '#lnGate h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.02em}#lnGate p{margin:0;font-size:14px;line-height:1.6;color:#c9c2ad}' +
+        '#lnGate h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.02em}#lnGate p{margin:0;font-size:14px;line-height:1.6;color:#c9c2ad;white-space:pre-line}' +
         '#lnGate button{width:100%;height:56px;margin-top:6px;border:0;border-radius:14px;background:#06c755;color:#fff;font:inherit;font-size:18px;font-weight:900;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
         '#lnGate button:active{filter:brightness(.92)}#lnGate button[disabled]{background:#0b7a3b;color:#fff;cursor:default;filter:none}' + /* 2026-11-27 総点検: 「ログイン中…」は字を白のまま・地だけ暗く（前は全体を薄くして字が読みにくかった） */
+        '#lnGate .tip{font-size:13px;line-height:1.6;color:#c9c2ad;white-space:pre-line;min-height:4.8em}#lnGate .tip:empty{visibility:hidden}' + /* 案内の 3 行ぶんの場所を先に取る（出たときにボタンが動かない。2026-11-28 採点） */
+        '' +
         '#lnGate .err{min-height:3.2em;color:#ff9d8c;font-size:13px;font-weight:700;white-space:pre-line}#lnGate .err:empty{visibility:hidden}'; /* 赤字は 2 行ぶんの場所を先に取る（出たときに画面が動かない） */
       doc.head.appendChild(st);
     }
@@ -118,12 +123,13 @@
       css();
       if (!ui) {
         const el = doc.createElement('div'); el.id = 'lnGate'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-labelledby', 'lnT');
-        el.innerHTML = '<div class="in"><h1 id="lnT"></h1><p id="lnP"></p><button type="button" id="lnB"></button><p class="err" id="lnE" role="alert" data-wrap></p></div>';
+        el.innerHTML = '<div class="in"><h1 id="lnT"></h1><p id="lnP"></p><button type="button" id="lnB"></button><p class="tip" id="lnH" data-wrap></p><p class="err" id="lnE" role="alert" data-wrap></p></div>';
         doc.body.appendChild(el); ui = el;
       }
       ui.querySelector('#lnT').textContent = TX.title; ui.querySelector('#lnP').textContent = TX.lead;
       const b = ui.querySelector('#lnB'); b.textContent = o.busy ? TX.busy : o.retry ? TX.again : TX.btn; b.disabled = !!o.busy; b.onclick = o.busy ? null : o.onTap;
       ui.querySelector('#lnE').textContent = o.err || '';
+      const tipEl = ui.querySelector('#lnH'); if (tipEl) tipEl.textContent = o.tip && !o.busy ? TX.tip : '';
       return ui;
     }
     function hide() { if (ui && ui.parentNode) ui.parentNode.removeChild(ui); ui = null; }
@@ -160,7 +166,7 @@
         const fail = (msg) => show({ err: msg, retry: true, onTap: () => go(true) });
         /* LINE へ移る（2026-11-27 総点検）: 移れなかった（何も起きない・LINE の画面からブラウザの「戻る」で前の画面がそのまま戻った）ときに「ログイン中…」のまま止まらないよう、
            8 秒たっても同じページにいる・pageshow（persisted）が来た → ボタンを押せる形に戻す */
-        const comeBack = () => { if (!away) return; away = false; clearTimeout(leaveT); const L = awayL; show({ onTap: () => leave(L) }); };
+        const comeBack = () => { if (!away) return; away = false; clearTimeout(leaveT); const L = awayL; show({ tip: true, onTap: () => leave(L) }); };
         function leave(L) {
           show({ busy: true }); away = true; awayL = L;
           try { toLine(L); } catch (e) { away = false; return fail(TX.errLine); }
@@ -171,6 +177,7 @@
           tries++; restoreSession(false);
           /* 2026-11-27 総点検: LINE を途中でやめて戻った（アドレスに error）→ 印を先に消す（残したままだと LIFF の準備が失敗し続けて、やり直せない）。ボタンと「ログインが終わっていません」 */
           const stopped = urlHas(['error']); if (stopped) cleanUrl();
+          const back = stopped || wentToLine(); // LINE へ行って戻ってきた（下でログインしていなければ、案内 tip を出す。2026-11-28）
           /* はじめての人には「ログイン中…」を出さない（ページの「読み込み中…」のまま待ち、LIFF の準備が済んだらボタン）。出すのは、押したあと・LINE から戻ったとき・LINE にログイン済みと分かったあと */
           if (tapped || (!stopped && (urlHas(['code', 'liffClientId']) || wentToLine()))) show({ busy: true });
           let L;
@@ -178,7 +185,7 @@
           if (!L.isLoggedIn()) {
             if (tapped) return leave(L);
             dropKeep(); // LINE から戻ったがログインしていない（やめた）: 送り出した覚えを消す（このタブの覚えは上でもう戻した）
-            return show({ err: stopped ? TX.errStop : '', onTap: () => leave(L) });
+            return show({ err: stopped ? TX.errStop : '', tip: back, onTap: () => leave(L) });
           }
           show({ busy: true });
           const idToken = L.getIDToken && L.getIDToken();
