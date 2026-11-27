@@ -327,7 +327,7 @@ BOAT.Race = (function () {
       this.tagK = 0; this.ordX = null; this.rk = null; this.ordK = null; this.ordShown = null;
       this.rank = race.horses.map((_, i) => i);
       try { this.wake.reset(); } catch (e) { }
-      try { if (this.venue.setTime) { const dn = new Date(); this.venue.setTime(this.info.hour != null ? this.info.hour : dn.getHours() + dn.getMinutes() / 60); } } catch (e) { console.warn('setTime', e); }
+      try { if (this.venue.setTime) this.venue.setTime(this.info.hour != null ? this.info.hour : null); } catch (e) { console.warn('setTime', e); } // 2026-11-28: info.hour が無ければ 晴れた昼（会場の部品の既定）。前は今の時刻 ＝ 19 時〜深夜のレースは毎回ナイターの暗い絵だった（オーナー「暗い・どよーんとしている」）
       try { if (this.venue.setWeather && this.info.weather) this.venue.setWeather(this.info.weather); } catch (e) { console.warn('setWeather', e); }
       try { this.timeline(); } catch (e) { console.warn('timeline', e); this.shots = [{ t: -PRE_T, id: 'approach', ev: {} }]; }
       try { this.script(); } catch (e) { console.warn('script', e); this.capList = []; }
@@ -678,7 +678,7 @@ BOAT.Race = (function () {
         else { c.fillStyle = '#e9c24a'; c.beginPath(); c.arc(lx + 16, ly, 16, 0, 6.2832); c.fill(); c.strokeStyle = '#a8842a'; c.lineWidth = 1.5; c.stroke();
         c.fillStyle = '#5a4210'; c.font = '900 11px ' + NOTO; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('casa', lx + 16, ly + 0.5, 28);
         c.save(); c.translate(lx + 38, ly + 1); c.transform(1, 0, -0.18, 1, 0, 0); tvText('BOAT', 0, 0, 24, '#ffffff', 'left'); c.restore(); }
-        const sky = { sunny: '晴', cloudy: '曇', rain: '雨' }[race.weather] || '';
+        const sky = '晴'; // 2026-11-28: 絵はいつも晴れた昼になった（オーナー「暗い」）。札の天気も晴にそろえる（前は race.weather で 晴・曇・雨。絵には元から効いていなかった。風と波はそのまま）
         tvText('casa競艇場  ' + (race.distLabel || 1200) + 'm  ' + sky, 18, H - 17, 14, '#eeeeee', 'left', 190); }
       if (!ordV.length) { c.globalAlpha = 1; return; }
       // ---- 右上: TIME の札（js/race3d.js の clockBox と同じ形） ----
@@ -866,12 +866,21 @@ BOAT.Race = (function () {
        ・言い方は「〜号艇＋姓」、順位と着順は「〜番」。フライングは「早いスタートがあった模様」→「判定中」→ +16.5 秒に発表
        ・場面と合わない字幕を出さないよう、どの艇が何をしたかは走りの計算（describe の lines・kimarite・scenario・st）と、その時刻の順位（stateAt）から決める
        ・待機行動の −100〜−40 秒の実況は資料に無いので「ピット離れ」と前付けの 1 行だけ（−40 秒より前の本物の実況は未調査）
-       1 行は { t, d, s, keys }。keys は声の部品の並び（声は音の段で作り直す。今は無い部品は鳴らない） */
+       1 行は { t, d, s, keys }。keys は声の部品の並び（声は音の段で作り直す。今は無い部品は鳴らない）
+       2026-11-28 オーナー「実況も早口だから修正してほしい。競馬と同じぐらいのスピード感でいい」: 声を競馬と同じ速さ（1 秒に 8.7・9.3・10.0 拍。前は 10.4・11.4・12.0）で作り直した（tools/make-boat-announce.js）。
+       1 行が 2 割ほど長くなるので、速回し（boat/sound.js。やめた）に頼らず言い切れるよう、同じ中身のくり返しを減らした。競馬と同じく「見せ場（1 周 1 マーク・2 着争いが並んだとき・ゴール前）は続けて、道中は間を空ける」:
+       ・バックストレッチは「2番手・3番手」だけ（先頭は直前の決まり手の行で言った）。「スタートは正常です」はそのあと
+       ・1 周 2 マークのあとの「2番手・3番手」は、すぐあとの「先頭…リードは…2番手…3番手」にまとめた。「最終周回に入ります」の前の「上位は…」はやめた
+       ・2 周目のバックの「2番手は○号艇が守っています」はやめた（並走のときだけ言う）。倍率は 1 つ（並走のときだけ 2 つ）。最終ターンのあとの「取り切った」はやめた（並んでいれば「届くか」）
+       ・字幕の長さ（d）は、声の長さの見積もり（vsec）＋ 0.6 秒。確かめ（2026-11-28）: 本物の台本と boat/sound.js を音を出さずに 45 レース流して、速回し 0 行・前の行の声を切る 0 回・映像の終わりにかかる行 0 */
     script() {
       const race = this.race, run = this.run, n = this.n, list = [], ent = this.entry, D = this.desc || {}, G = this.G, H = race.horses;
       const sur = (i) => String(H[i].name).split(/\s+/)[0], no = (i) => H[i].no;
       const B = (i) => no(i) + '号艇', BN = (i) => no(i) + '号艇 ' + sur(i), U = (i) => no(i) + '番', UN = (i) => no(i) + '番 ' + sur(i);
-      const say = (t, s, d) => list.push({ t, s, d: d || Math.max(1.6, s.length / 5.2), keys: [] });
+      // 声の長さの見積もり（秒）: 拍の数（かな 1・漢字 1.9・数字 1.7）× 段ごとの 1 拍の秒（スタート前・レース中・「！」の文。作った声を測った値）＋ 句読点の間（boat/announce-boat.js の PAUSE）＋ 組番の間
+      const vsec = (t, s) => { let m = 0; for (const ch of s) m += /[0-9]/.test(ch) ? 1.7 : /[ゃゅょャュョ]/.test(ch) ? 0 : /[ぁ-んァ-ヶー]/.test(ch) ? 1 : /[一-龠々]/.test(ch) ? 1.9 : 0; return m * (/！/.test(s) ? 0.095 : t >= 0 ? 0.112 : 0.116) + (s.match(/[。！](?=.)/g) || []).length * 0.2 + (s.match(/、/g) || []).length * 0.1 + (s.match(/[1-6]-[1-6]/g) || []).length * 0.25; };
+      // lo ＝ 言えなければ省いてよい行（順位の読み上げ・倍率など。下の「重なりの整理」）
+      const LO = new Set(), say = (t, s, d, lo) => { const x = { t, s, d: d || Math.max(1.6, vsec(t, s) + 0.6), keys: [] }; if (lo) LO.add(x); list.push(x); };
       const ordAt = (t) => this.stateAt(t).ord, posM = (t, i) => { this.stateAt(t); return run.pos[i] * M.DIST; };
       const minT = (arr, k) => { let m = Infinity; (arr || []).forEach((a) => { if (a && a[k] != null && a[k] < m) m = a[k]; }); return m; };
       const inc = run.incident, F = inc && inc.type === 'scratch' ? inc.horse : -1;
@@ -892,7 +901,7 @@ BOAT.Race = (function () {
       say(0.2, 'スタートしました！', 1.4);
       const st = Array.isArray(D.st) ? D.st : [], okST = st.map((v, i) => (i === F ? 9 : v)), top = okST.indexOf(Math.min.apply(null, okST.length ? okST : [0]));
       const spread = okST.length ? Math.max.apply(null, okST.filter((v) => v < 9)) - Math.min.apply(null, okST) : 0, tc = ent.indexOf(top);
-      if (F >= 0) { say(1.6, 'おっと、早いスタートがあった模様です'); say(5.2, 'ただいまスタート判定中です'); }
+      if (F >= 0) { say(1.6, 'おっと、早いスタートがあった模様です'); say(3.8, 'ただいまスタート判定中です'); }
       else if (spread <= 0.04) say(1.6, 'そろったスタート');
       else if (tc === 0) say(1.6, 'インコース ' + B(top) + 'がトップスタート');
       else if (tc === slow) say(1.6, 'カドから ' + B(top) + 'がのぞいた');
@@ -906,41 +915,41 @@ BOAT.Race = (function () {
       const sc = D.scenario || {}, att = sc.attacker != null && sc.attacker >= 0 ? sc.attacker : -1;
       if (isFinite(in1) && isFinite(out1)) {
         const a = ordAt(in1 + 0.2), e1 = ordAt(out1 + 0.4);
-        if (att >= 0 && /makuri|shibori/.test(sc.kind || '')) say(in1 - 1.8, '1周1マーク、' + (ent.indexOf(att) === slow ? 'カドから' : '') + 'まくっていく ' + B(att) + '！');
-        else say(in1 - 1.6, '1周1マーク。' + (a[0] === ent[0] ? '逃げる ' + BN(a[0]) : '先に回って ' + BN(a[0])));
+        if (att >= 0 && /makuri|shibori/.test(sc.kind || '')) say(in1 - 2.3, '1周1マーク、' + (ent.indexOf(att) === slow ? 'カドから' : '') + 'まくっていく ' + B(att) + '！');
+        else say(in1 - 2.3, '1周1マーク。' + (a[0] === ent[0] ? '逃げる ' + BN(a[0]) : '先に回って ' + BN(a[0]))); // 2026-11-28: 遅くした声で次の行（in1 + 1.2）までに言い切れるよう、0.5〜0.7 秒早く言い始める
         const others = e1.filter((i) => i !== e1[0]).slice(0, 2); say(in1 + 1.2, others.map(act).join('、') + '！', 2.6);
         const k1 = D.kimarite1 || D.kimarite, w = e1[0];
         say(out1 + 0.2, w === F ? '先頭は ' + BN(w) /* 発表の前のフライングの艇が先頭（決まり手は残りの艇のものなので言わない） */ : k1 === 'nige' ? '押し切った ' + BN(w) : k1 === 'sashi' ? '差しが届いた ' + BN(w) : k1 === 'makuri' ? 'まくり切った ' + BN(w) + '！' : k1 === 'makurizashi' ? 'まくり差しが入った ' + BN(w) + '！' : '先頭は ' + BN(w));
-        const b1 = ordAt(out1 + 3); say(out1 + 3, 'バックストレッチ、先頭は ' + BN(b1[0]) + '。2番手 ' + B(b1[1]) + '、3番手 ' + B(b1[2]), 4.6);
+        const b1 = ordAt(out1 + 3); say(out1 + 3, 'バックストレッチ。2番手 ' + B(b1[1]) + '、3番手 ' + B(b1[2]), 0, 1); // 先頭は直前の行（決まり手）で言った
       }
-      say(16.5, F >= 0 ? 'お知らせいたします。' + BN(F) + '、フライング。返還欠場です' : 'スタートは正常です', F >= 0 ? 4.5 : 2);
+      say(F >= 0 || !isFinite(out1) ? 16.5 : Math.max(16.5, out1 + 7.4), F >= 0 ? 'お知らせいたします。' + BN(F) + '、フライング。返還欠場です' : 'スタートは正常です', F >= 0 ? 6.2 : 2, F < 0); // フライングの発表は時刻どおり（チャイム 1.9 秒 ＋ 声）。正常のときはバックストレッチの行のあとに
       // ---- 1 周 2 マーク〜2 周目 ----
       let lead = -1;
       if (isFinite(in2)) {
         const o = ordAt(in2 + 0.2); lead = o[0]; say(in2 - 1.4, '1周2マーク、先頭 ' + B(o[0]) + 'が回る');
-        const lc = leadChange(in2 - 1, out2 + 6); if (lc) { say(lc.t, '差した ' + BN(lc.who) + '！先頭が入れ替わった'); lead = lc.who; } else { const o2 = ordAt(out2 + 0.3); say(out2 + 0.3, '2番手 ' + B(o2[1]) + '、3番手 ' + B(o2[2])); }
-        const th = out2 + 4.2, h = ordAt(th), gap = Math.max(0, Math.round((posM(th, h[0]) - posM(th, h[1])) / 2.9));
-        say(th, '先頭 ' + BN(h[0]) + (gap >= 2 ? '、リードは ' + gap + ' 艇身' : '') + '。2番手 ' + BN(h[1]) + '、3番手 ' + B(h[2]), 5);
+        const lc = leadChange(in2 - 1, out2 + 6); if (lc) { say(lc.t, '差した ' + BN(lc.who) + '！先頭が入れ替わった'); lead = lc.who; }
+        const th = lc ? Math.max(out2 + 2, lc.t + 3.4) : out2 + 2, h = ordAt(th), gap = Math.max(0, Math.round((posM(th, h[0]) - posM(th, h[1])) / 2.9)); // 2026-11-28: 回った直後の「2番手・3番手」はこの行にまとめた（その分 2.2 秒早く）
+        say(th, '先頭 ' + BN(h[0]) + (gap >= 2 ? '、リードは ' + gap + ' 艇身' : '') + '。2番手 ' + BN(h[1]) + '、3番手 ' + B(h[2]), 0, 1);
       }
       if (isFinite(in3)) {
-        const tl = in3 - 6.5, o = ordAt(tl); say(tl, '上位は ' + o.slice(0, 3).map(U).join('、') + '。最終周回に入ります', 4);
+        const tl = in3 - 5.6, o = ordAt(tl); say(tl, '最終周回に入ります', 0, 1); // 順位は直前の行で言った
         const a3 = ordAt(in3 + 0.2); say(in3 - 1.4, '2周1マーク、先頭 ' + BN(a3[0]));
         const lc3 = leadChange(in3 - 1, out3 + 4), e3 = ordAt(out3 + 0.4); if (lc3) say(lc3.t, '内から捉えた ' + BN(lc3.who) + '！先頭が入れ替わった'); else say(out3 + 0.4, e3[1] !== o[1] ? B(e3[1]) + 'が2番手に上がった！' : '2番手 ' + B(e3[1]) + '、その内をついて ' + B(e3[2]));
         const bt = out3 + 3.6, bo = ordAt(bt), d23 = Math.abs(posM(bt, bo[1]) - posM(bt, bo[2]));
-        say(bt, d23 < 8 ? '2番手は並走。' + B(bo[1]) + 'と ' + B(bo[2]) : '2番手は ' + B(bo[1]) + 'が守っています');
+        if (d23 < 8) say(bt, '2番手は並走。' + B(bo[1]) + 'と ' + B(bo[2]), 0, 1); // 離れているとき（「守っています」）は言わない ＝ 道中の間
         const ex = (this.info.odds && this.info.odds.exacta) || {}, kk = (x, y) => ex[x + '-' + y];
-        if (kk(bo[0], bo[1]) != null) say(out3 + 7.2, '2連単、' + no(bo[0]) + '-' + no(bo[1]) + ' なら ' + kk(bo[0], bo[1]).toFixed(1) + '倍' + (kk(bo[0], bo[2]) != null ? '、' + no(bo[0]) + '-' + no(bo[2]) + ' なら ' + kk(bo[0], bo[2]).toFixed(1) + '倍' : ''), 4.6);
+        if (kk(bo[0], bo[1]) != null) say(out3 + (d23 < 8 ? 6.8 : 7.2), '2連単、' + no(bo[0]) + '-' + no(bo[1]) + ' なら ' + kk(bo[0], bo[1]).toFixed(1) + '倍' + (d23 < 8 && kk(bo[0], bo[2]) != null ? '、' + no(bo[0]) + '-' + no(bo[2]) + ' なら ' + kk(bo[0], bo[2]).toFixed(1) + '倍' : ''), 0, 1); // 3 番手との倍率は、2 番手争いが並んでいるときだけ
         if (isFinite(in4)) {
           const a4 = ordAt(in4 + 0.2); say(in4 - 1.4, '最終ターンマーク。先頭 ' + BN(a4[0]));
           const lc4 = leadChange(in4 - 1, out4 + 4), e4 = ordAt(out4 + 0.4); if (lc4) say(lc4.t, '差し返して ' + BN(lc4.who) + '！先頭に'); else if (e4[1] !== bo[1]) say(out4 + 0.3, '差し返して ' + B(e4[1]) + '、2番手に！'); else say(out4 + 0.3, '2番手争い、先に回って ' + B(e4[1]));
           const ft = out4 + 3, fo = ordAt(ft), close = Math.abs(posM(ft, fo[1]) - posM(ft, fo[2])) < 6;
-          say(ft, close ? B(fo[2]) + '、届くか' : '2番手は ' + B(fo[1]) + 'が取り切った');
+          if (close) say(ft, B(fo[2]) + '、届くか', 0, 1); // 離れているとき（「取り切った」）は言わない: すぐあとの「上位は…まもなくゴールです」で言う
         }
       }
       if (inc && inc.type === 'fall' && run.fallT != null) { say(run.fallT, 'おっと、' + B(inc.horse) + 'バランスを崩した！'); say(run.fallT + 3, BN(inc.horse) + 'は転覆のため失格です', 3); }
       // ---- ゴール ----
       const fo = this.finalOrder, ftm = Array.isArray(run.finishTimes) ? run.finishTimes : [];
-      say(G - 3, '上位は ' + U(fo[0]) + '、' + U(fo[1]) + '。まもなくゴールです', 2.6);
+      say(G - 3.4, '上位は ' + U(fo[0]) + '、' + U(fo[1]) + '。まもなくゴールです', 3.1);
       say(G - 0.1, '先頭 ' + UN(fo[0]) + '、ゴールイン！', 2);
       const t2 = ftm[fo[1]] && ftm[fo[1]] < G + 8 ? ftm[fo[1]] : G + 1.4; say(Math.max(G + 1.6, t2), '2着 ' + UN(fo[1]) + '、ゴールイン', 2);
       /* 着順確定（2026-11-23）: 前は G+3.6 に 1 行「着順確定。1着 ○番、2着 ○番。2連単 a-b」（声は約 3.6 秒）で、映像の終わり（G+8）に入り切らないレースがあった。
@@ -952,7 +961,14 @@ BOAT.Race = (function () {
         else say(G + POST.win1 + 0.6, '着順確定。1着 ' + U(a), 2.4); }
       // 重なりの整理: 前の行が終わる前に次が来たら、次を少し待たせる（1.2 秒まで）。それでも重なれば前の行を短く
       list.sort((x, y) => x.t - y.t);
-      for (let k = 1; k < list.length; k++) { const p = list[k - 1], c = list[k], end = p.t + p.d; if (c.t < end) { const push = Math.min(1.2, end - c.t); c.t += push; if (c.t < p.t + p.d) p.d = Math.max(1.0, c.t - p.t - 0.05); } }
+      // 2026-11-28: 省いてよい行（lo）は、待たせても前の行の声がまだ 0.6 秒より長く続く所に来たら言わない（前は、前の行の声を途中で切って言っていた。事故・先頭の入れ替わりが続いたとき）。
+      // ve ＝ そこまでの行の声が終わる時刻の見積もり（前の声が残っていれば、次の行はそれを待って言い始める ＝ boat/sound.js の say）
+      { let ve = -1e9;
+        for (let k = 0; k < list.length; k++) { const c = list[k], p = k ? list[k - 1] : null;
+          if (p && c.t < p.t + p.d) c.t += Math.min(1.2, p.t + p.d - c.t);
+          if (p && LO.has(c) && ve > c.t + 0.6) { list.splice(k, 1); k--; continue; }
+          if (p && c.t < p.t + p.d) p.d = Math.max(1.0, c.t - p.t - 0.05);
+          ve = Math.max(c.t, ve) + vsec(c.t, c.s) + (/^お知らせいたします/.test(c.s) ? 1.9 : 0); } }
       list.sort((x, y) => x.t - y.t);
       this.capList = list; this.capCur = null;
     }
