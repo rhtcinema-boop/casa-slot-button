@@ -980,7 +980,7 @@ BOAT.Tags = (function () {
   const LEN = BOAT.Boat ? BOAT.Boat.LEN : 2.895, HW = BOAT.Boat ? BOAT.Boat.WIDTH / 2 : 0.658;
   const A = LEN / 2 + 0.75, B = HW + 0.55;            // 楕円の半分の長さ・半分の幅（m）。艇の長さ 2.9m ＋ 前後 0.75m、幅 1.3m ＋ 左右 0.55m
   const LX = 2 * A + 1.0, LZ = 2 * B + 0.5;           // 輪の板の大きさ（三角とふちの余白込み）
-  const D0 = 0.8, TILT = 55 * Math.PI / 180, MINPX = 15, MAXPX = 24, SH = 480; /* 2026-11-28: 札を約 2 割大きく（12〜20 → 15〜24）。水面を明るくしたので、離れた席からでも艇番を追えるように */ // 札の直径（m）・起こす角度・画面での大きさの下限と上限（480 の高さの画面で）
+  const D0 = 0.8, TILT = 55 * Math.PI / 180, TPX = (typeof window !== 'undefined' && Array.isArray(window.__BOAT_TAG_PX) && window.__BOAT_TAG_PX) || [19, 26], MINPX = TPX[0], MAXPX = TPX[1], SH = 480; /* window.__BOAT_TAG_PX: 測るときだけ大きさを差し替える（tests/boat-tags-measure.plan.js） */ /* 2026-11-28: 札を大きく（12〜20 → 19〜26。採点: 離れた席から艇番が追えること。22〜30 も試したが、札が艇やほかの札に重なって「薄くして隠す」決まりに当たることが増え、かえって見えなくなったので戻した）。水面を明るくしたので、離れた席からでも艇番を追えるように */ // 札の直径（m）・起こす角度・画面での大きさの下限と上限（480 の高さの画面で）
   const NOTO = '"Noto Sans JP","Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif';
   const hex6 = (h) => { h = String(h || '#888'); return h.length === 4 ? '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3] : h; };
   const lumOf = (h) => { const n = parseInt(hex6(h).slice(1), 16); return ((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11; };
@@ -1004,7 +1004,7 @@ BOAT.Tags = (function () {
     g.beginPath(); g.arc(cx, cy, N * 0.49, 0, TAU); g.fillStyle = 'rgba(8,16,30,.92)'; g.fill();       // 濃い線（いちばん外。2026-11-28: 明るい水面でも札の形が分かるように太く・濃く。前は 0.47・.75）
     g.beginPath(); g.arc(cx, cy, N * 0.445, 0, TAU); g.fillStyle = '#ffffff'; g.fill();                  // 白いふち
     g.beginPath(); g.arc(cx, cy, N * 0.38, 0, TAU); g.fillStyle = col; g.fill();                         // 枠の色の地
-    g.lineWidth = N * 0.012; g.strokeStyle = 'rgba(0,0,0,.35)'; g.stroke();
+    { const white = lumOf(col) > 230; g.lineWidth = white ? N * 0.045 : N * 0.012; g.strokeStyle = white ? 'rgba(8,16,30,.9)' : 'rgba(0,0,0,.35)'; g.stroke(); } // 2026-11-28 採点: 白い札（1 号艇）は明るい水面・水しぶきに溶けるので、内側にも濃い輪
     g.font = '900 ' + Math.round(N * 0.72) + 'px ' + NOTO; g.textAlign = 'center'; g.textBaseline = 'middle';
     const dark = lumOf(hex6(ink)) < 128;
     g.lineJoin = 'round'; g.lineWidth = N * 0.05; g.strokeStyle = dark ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.55)'; g.strokeText(num, cx, cy + N * 0.04);
@@ -1074,7 +1074,7 @@ BOAT.Tags = (function () {
         const cs = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]];
         cs.forEach((p, k) => { const o = (i * 4 + k) * 3; rp[o] = P.x + P.fx * p[0] + sx * p[1]; rp[o + 1] = 0.05; rp[o + 2] = P.z + P.fz * p[0] + sz * p[1]; });
         Q.ra += ((P.on ? 1 : 0) - Q.ra) * (dt <= 0 ? 1 : Math.min(1, Math.max(rdt, dt) / 0.2));
-        for (let k = 0; k < 4; k++) rc[(i * 4 + k) * 4 + 3] = Q.ra * gk * 0.7; // 輪は 7 割の濃さ
+        for (let k = 0; k < 4; k++) rc[(i * 4 + k) * 4 + 3] = Q.ra * gk * 0.9; // 輪の濃さ（2026-11-28: 7 割 → 9 割。明るい水面でも枠の色の輪が見えるように。札が隠れている間も輪で艇が分かる）
       }
       rGeo.attributes.position.needsUpdate = true; rGeo.attributes.color.needsUpdate = true;
       // ---- 札: 1 艇 1 枚。艇の形（船体・選手）と画面で重ならない所に置く ----
@@ -1097,20 +1097,22 @@ BOAT.Tags = (function () {
         const side = (-P.fz * ex + P.fx * ez) >= 0 ? 1 : -1;   // カメラのいる側（艇の右 ＝ +1）
         const cand = (c) => {
           const D = clamp(D0, MINPX / ppm0, MAXPX / ppm0), off = D / 2 + 0.35;
-          let lx, lz; if (c === 0) { lx = -(A * Q.qx + off); lz = 0; } else if (c === 1) { lx = -0.2; lz = side * (B * Q.qz + off); } else { lx = A * Q.qx + off; lz = 0; }
+          let lx, lz; if (c === 0) { lx = -(A * Q.qx + off); lz = 0; } else if (c === 1) { lx = -0.2; lz = side * (B * Q.qz + off); } else if (c === 3) { lx = -0.2; lz = -side * (B * Q.qz + off); } else { lx = A * Q.qx + off; lz = 0; } // 3 ＝ カメラの反対側の横（2026-11-28 追加: 置き場所の候補を 3 → 4 に。札が隠れる時間を減らす）
           const px = P.x + P.fx * lx - P.fz * lz, pz = P.z + P.fz * lx + P.fx * lz, q = proj(px, D / 2 * Math.sin(TILT), pz); if (!q) return null;
           const ppm = fovK / q.depth, Dd = clamp(D0, MINPX / ppm, MAXPX / ppm), r = Dd * 0.5 * ppm;
           const dOwn = Math.hypot(q.x - pc.x, q.y - pc.y), near = CEN.some((o, j) => j !== i && o && Math.hypot(q.x - o.x, q.y - o.y) < dOwn);
-          const hit = near || segD(q.x, q.y, pb, ps) < r + th || (pl && pq && segD(q.x, q.y, pl, pq) < r + th) || (pr && Math.hypot(q.x - pr.x, q.y - pr.y) < r + 0.5 * ppm0);
-          return { i, k: 0, px, pz, ex: (_c.x - px) / (Math.hypot(_c.x - px, _c.z - pz) || 1), ez: (_c.z - pz) / (Math.hypot(_c.x - px, _c.z - pz) || 1), D: Dd, x: q.x, y: q.y, r: r * 0.9, depth: q.depth, hit };
+          const own = segD(q.x, q.y, pb, ps) < r + th || (pl && pq && segD(q.x, q.y, pl, pq) < r + th) || (pr && Math.hypot(q.x - pr.x, q.y - pr.y) < r + 0.5 * ppm0), hit = near || own; // own ＝ 自分の艇・選手に重なる／near ＝ よその艇の方が近い（どの艇の札か分からない）
+          return { i, k: 0, px, pz, ex: (_c.x - px) / (Math.hypot(_c.x - px, _c.z - pz) || 1), ez: (_c.z - pz) / (Math.hypot(_c.x - px, _c.z - pz) || 1), D: Dd, x: q.x, y: q.y, r: r * 0.9, depth: q.depth, hit, near };
         };
         if (Q.slot == null) Q.slot = 0;
         let cur = cand(Q.slot);
         if (!cur || cur.hit) {
-          let best = -1; for (const c of [0, 1, 2]) { if (c === Q.slot) continue; const e = cand(c); if (e && !e.hit) { best = c; break; } }
+          let best = -1; for (const c of [0, 1, 2, 3]) { if (c === Q.slot) continue; const e = cand(c); if (e && !e.hit) { best = c; break; } }
           if (best >= 0 && (Q.ba[0] < 0.05 || dt <= 0)) { Q.slot = best; cur = cand(best); }   // 薄くなってから移す（シークではすぐ）
           else if (best >= 0) { Q.want[0] = 0; Q.e[0] = cur; continue; }                      // まず今の場所で薄くする
         }
+        /* 2026-11-28: どの場所も空いていないとき、自分の艇に少し重なるだけ（よその艇とは紛れない）なら、隠さずに出す（番号が見えないより良い。採点・オーナー「見づらい」）。よその艇の方が近い場所（near）には出さない */
+        if (cur && cur.hit && !cur.near) { Q.e[0] = cur; list.push(cur); continue; }
         if (!cur || cur.hit) { Q.want[0] = 0; if (cur) Q.e[0] = cur; continue; }
         Q.e[0] = cur; list.push(cur);
       }
