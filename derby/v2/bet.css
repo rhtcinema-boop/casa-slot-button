@@ -2,18 +2,21 @@
    2026-10-23 デザイン見直し 1 回目: 地を暗い緑から casa の紺に（DESIGN_SYSTEM_V4.md）。金・金のボタンはそのまま。
    文字: Noto Sans JP（2026-10-21 ゲーム全体で統一。見出しと大きな数字は太さ 900。読めなければ端末の文字） */
 :root {
-  --gold: #ffd773; --gold2: #c9a03e; --cream: #ffe9a8;
-  --bg: #0b101b; --bg2: #14203a; --card: #101d36; --card2: #18294a; --line: #2c3a57; --btn2: #16213a; --btn2ink: #e8eaf0;
-  --ink: #f5f3ef; --dim: #b8beca; --ok: #35e07a; --err: #ff8c7a; --test: #79a9ff; --test-bg: #0f1c35;
+  /* 2026-11-28 明るい見た目（いちばん下の段）。地＝明るい緑（店のテレビ css/style.css の #stage と同じ世界）・板＝クリームに木のふち・時計＝紺・押すボタン＝橙 */
+  --gold: #ffc41f; --gold2: #d98a00; --cream: #fff3c4;
+  --st1: #b6ee88; --st2: #7ccc4c; --st3: #5cb03a; --bar1: #2f7a1e; --bar2: #235c16; --nv1: #1f3260; --nv2: #14213d;
+  --bg: #fff; --bg2: #b6ee88; --card: #fff8e6; --card2: #fff; --line: #8b5e34; --btn2: #fffdf6; --btn2ink: #3b2a1e;
+  --b1: #ffc14d; --b2: #ff8a00; --b3: #b85c00; --bink: #2a1a0e;
+  --ink: #10280a; --dim: #183a0c; --hi: #0b1f06; --acc: #10280a; --em: #10280a; --ok: #35e07a; --err: #a31515; --test: #1d4ed8; --test-bg: #e8f0ff;
   --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom);
   --display: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; /* 2026-10-21 Noto Sans JP に統一（見出し・数字は太さ 900） */
   --body: "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html { background: var(--bg); -webkit-text-size-adjust: 100%; }
-html, body { margin: 0; min-height: 100%; background-color: var(--bg); color: var(--ink); font-family: var(--body); overscroll-behavior: none; touch-action: manipulation; }
+html { background: var(--st3); -webkit-text-size-adjust: 100%; }
+html, body { margin: 0; min-height: 100%; background-color: var(--st3); color: var(--ink); font-family: var(--body); overscroll-behavior: none; touch-action: manipulation; }
 body { user-select: none; -webkit-user-select: none; }
-#app { min-height: 100vh; min-height: 100dvh; background: radial-gradient(ellipse at 50% 22%, var(--bg2), var(--bg) 70%) fixed; padding-bottom: calc(var(--sab) + 24px); }
+#app { min-height: 100vh; min-height: 100dvh; background: repeating-conic-gradient(from 0deg at 50% 30%, rgba(255, 255, 255, .11) 0deg 6deg, transparent 6deg 16deg), radial-gradient(ellipse 130% 75% at 50% 24%, var(--st1), var(--st2) 55%, var(--st3)); padding-bottom: calc(var(--sab) + 24px); }
 .hidden { display: none !important; }
 .nw { white-space: nowrap; }
 /* 枠に入らない名前（bet.js の fitText）: 小さくしても入らないときは 2 行に */
@@ -32,7 +35,7 @@ button { font-family: inherit; }
 .race { margin-top: 6px; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
 .race:empty { display: none; }
 .race span { padding: 3px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.race span b { color: var(--cream); font-size: 15px; margin-left: 2px; }
+.race span b { color: var(--em); font-size: 15px; margin-left: 2px; }
 .race span.hot { border-color: #8a3a32; color: #ffb3a6; } .race span.hot b { color: #ffd0c6; }
 .race span.t { border-color: var(--test); background: var(--test-bg); color: var(--test); font-weight: 700; }
 .net { position: sticky; top: 0; z-index: 30; margin: 0; padding: 10px 16px; background: #3a120d; color: #ffd0c6; font-size: 14px; text-align: center; border-bottom: 1px solid #7a2a22; }
@@ -43,8 +46,8 @@ main { padding: 16px 16px 0; max-width: 520px; margin: 0 auto; }
 .scr.in { animation: fade .22s ease-out; } /* 画面が変わったときだけ（bet.js の draw） */
 .scr.mid { min-height: calc(100dvh - 140px); justify-content: center; }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.scr h1 { margin: 2px 0 0; font-family: var(--body); font-weight: 900; font-size: 24px; color: var(--gold); text-align: center; letter-spacing: .06em; }
-.scr h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--gold); text-align: center; letter-spacing: .06em; }
+.scr h1 { margin: 2px 0 0; font-family: var(--body); font-weight: 900; font-size: 24px; color: var(--acc); text-align: center; letter-spacing: .06em; }
+.scr h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--acc); text-align: center; letter-spacing: .06em; }
 .logo-h1 { text-align: center; } .logo-h1 img { width: 148px; height: 48px; }
 /* 起動の画面（2026-10-28 速さの見直し）: HTML に最初から入っていて、通信の前にすぐ出る。ロゴを大きく・上の帯の小さいロゴはその間だけ隠す（場所はそのまま＝画面がずれない） */
 .booting .top .crest { visibility: hidden; }
@@ -59,9 +62,9 @@ main { padding: 16px 16px 0; max-width: 520px; margin: 0 auto; }
 .err { color: var(--err); font-size: 14px; min-height: 20px; text-align: center; margin: 0; }
 .err:empty { min-height: 0; }
 /* 投票を送っている途中の知らせ（2026-10-28: 自動で送り直している・電波が戻ったら送る） */
-.vstat { color: var(--cream); font-size: 14px; text-align: center; margin: 0; line-height: 1.6; word-break: auto-phrase; text-wrap: balance; }
+.vstat { color: var(--em); font-size: 14px; text-align: center; margin: 0; line-height: 1.6; word-break: auto-phrase; text-wrap: balance; }
 .vstat:empty { display: none; }
-.note { background: var(--card2); border: 1px solid var(--gold2); color: var(--cream); border-radius: 12px; padding: 12px 16px; font-size: 14px; line-height: 1.6; text-align: center; }
+.note { background: var(--card2); border: 1px solid var(--gold2); color: var(--em); border-radius: 12px; padding: 12px 16px; font-size: 14px; line-height: 1.6; text-align: center; }
 .note b { display: block; font-size: 17px; }
 .note.red { background: #2a1210; border-color: #8a3a32; color: #ffd0c6; }
 .testtag { align-self: center; padding: 4px 14px; border-radius: 999px; border: 1px solid var(--test); background: var(--test-bg); color: var(--test); font-size: 13px; font-weight: 700; letter-spacing: .1em; }
@@ -69,10 +72,10 @@ main { padding: 16px 16px 0; max-width: 520px; margin: 0 auto; }
 .btn:active { transform: translateY(1px) scale(.99); }
 .btn:disabled { opacity: .4; box-shadow: none; }
 .btn.ghost { background: var(--btn2); color: var(--btn2ink); box-shadow: none; border: 1px solid var(--line); font-weight: 700; font-size: 16px; min-height: 50px; }
-.btn.unpaid { border: 2px solid var(--gold2); color: var(--cream); background: var(--card2); font-weight: 700; }
-.btn.unpaid small { display: block; font-size: 14px; color: var(--gold); font-weight: 700; margin-top: 2px; }
+.btn.unpaid { border: 2px solid var(--gold2); color: var(--em); background: var(--card2); font-weight: 700; }
+.btn.unpaid small { display: block; font-size: 14px; color: var(--acc); font-weight: 700; margin-top: 2px; }
 .link { background: none; border: 0; color: var(--dim); font-size: 14px; text-decoration: underline; padding: 8px; min-height: 44px; }
-.toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--sab) + 20px); z-index: 50; padding: 14px 16px; border-radius: 14px; background: var(--card2); border: 1px solid var(--gold2); color: var(--cream); text-align: center; font-size: 15px; pointer-events: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--sab) + 20px); z-index: 50; padding: 14px 16px; border-radius: 14px; background: var(--card2); border: 1px solid var(--gold2); color: var(--em); text-align: center; font-size: 15px; pointer-events: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
 .toast.err { border-color: #8a3a32; color: #ffb3a6; background: #2a1210; }
 .waku { outline: 1px solid rgba(255, 255, 255, .22); outline-offset: -1px; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; border-radius: 6px; font-family: var(--display); font-weight: 900; font-size: 17px; line-height: 1; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35); }
 .waku.sm { width: 24px; height: 24px; border-radius: 6px; font-size: 14px; }
@@ -81,12 +84,12 @@ main { padding: 16px 16px 0; max-width: 520px; margin: 0 auto; }
 
 /* ---------- ① 待ち ---------- */
 .waitbox { text-align: center; padding: 24px 16px; border-radius: 20px; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); }
-.waitbox .wk { margin: 0; font-size: 16px; color: var(--gold); font-weight: 700; letter-spacing: .12em; }
-.waitbox .wt { margin: 4px 0 0; font-family: var(--display); font-weight: 900; font-size: 72px; line-height: 1.05; color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 0 22px rgba(255, 215, 115, .3); }
-.waitbox .wv { margin: 6px 0 16px; font-size: 18px; color: var(--cream); font-weight: 700; }
+.waitbox .wk { margin: 0; font-size: 16px; color: var(--acc); font-weight: 700; letter-spacing: .12em; }
+.waitbox .wt { margin: 4px 0 0; font-family: var(--display); font-weight: 900; font-size: 72px; line-height: 1.05; color: var(--hi); font-variant-numeric: tabular-nums; text-shadow: 0 0 22px rgba(255, 215, 115, .3); }
+.waitbox .wv { margin: 6px 0 16px; font-size: 18px; color: var(--em); font-weight: 700; }
 .clock { text-align: center; }
 .clock .k { font-size: 13px; color: var(--dim); }
-.clock .v { font-family: var(--display); font-weight: 900; font-size: 46px; color: var(--cream); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.clock .v { font-family: var(--display); font-weight: 900; font-size: 46px; color: var(--em); font-variant-numeric: tabular-nums; line-height: 1.1; }
 .clock .v b { font-weight: 900; }
 
 /* ---------- ② 会計番号・ニックネーム ---------- */
@@ -94,18 +97,18 @@ main { padding: 16px 16px 0; max-width: 520px; margin: 0 auto; }
 /* 覚えた名前（2026-11-05）: 「ニックネーム　名前　［変える］」の 1 行 */
 .entry .sec.nickrow { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
 .nickrow .nl { font-size: 14px; color: var(--dim); }
-.nickrow .nv { flex: 1; min-width: 0; font-size: 20px; font-weight: 900; color: var(--cream); }
+.nickrow .nv { flex: 1; min-width: 0; font-size: 20px; font-weight: 900; color: var(--em); }
 .nickrow .btn.ghost.sm { width: auto; min-height: 44px; padding: 8px 16px; font-size: 15px; }
 .nickrow .sub { flex-basis: 100%; margin: 0; }
 .digits { display: flex; justify-content: center; gap: 12px; margin: 2px 0 4px; }
-.digits .dg { width: 78px; height: 92px; border-radius: 16px; border: 2px solid var(--gold2); background: var(--bg); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 900; font-size: 60px; color: #fff; font-variant-numeric: tabular-nums; }
+.digits .dg { width: 78px; height: 92px; border-radius: 16px; border: 2px solid var(--gold2); background: var(--bg); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 900; font-size: 60px; color: var(--hi); font-variant-numeric: tabular-nums; }
 .digits .dg.ph { color: #3d4a66; }
 .digits.empty .dg:first-child { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(255, 215, 115, .3); }
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .keypad button { min-height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--btn2); color: var(--ink); font-family: var(--display); font-weight: 900; font-size: 26px; cursor: pointer; }
 .keypad button[data-key="clr"], .keypad button[data-key="del"] { font-family: var(--body); font-size: 17px; font-weight: 700; color: var(--dim); background: var(--card); }
 .keypad button:active { background: #24375c; }
-input.big { width: 100%; padding: 14px 12px; font-size: 26px; text-align: center; letter-spacing: .04em; border-radius: 12px; border: 1px solid var(--gold2); background: var(--bg); color: #fff; font-family: var(--body); font-weight: 700; -webkit-user-select: text; user-select: text; outline: none; }
+input.big { width: 100%; padding: 14px 12px; font-size: 26px; text-align: center; letter-spacing: .04em; border-radius: 12px; border: 1px solid var(--gold2); background: var(--bg); color: var(--hi); font-family: var(--body); font-weight: 700; -webkit-user-select: text; user-select: text; outline: none; }
 input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 
 /* ---------- ③ 予想（馬の情報 ＋ 6×6 の表） ---------- */
@@ -116,13 +119,13 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .hr, .hh { display: contents; font-size: 12px; color: var(--dim); }
 .hr > *, .hh > * { white-space: nowrap; }
 .hh > * { font-size: 12px; font-weight: 700; color: var(--dim); letter-spacing: .04em; line-height: 1.4; }
-.hr .hn { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 700; color: #fff; line-height: 1.25; }
+.hr .hn { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 700; color: var(--hi); line-height: 1.25; }
 .hr .hc, .hr .hf { font-size: 13px; }
 .hr .hc b, .hr .hf b { color: var(--ink); font-weight: 700; }
 .hr .hf b { font-variant-numeric: tabular-nums; }
 .hr .hy, .hh .hy { text-align: center; }
 .hr .ht { display: inline-block; padding: 1px 6px; border-radius: 6px; color: #111; font-weight: 700; font-size: 12px; line-height: 1.5; }
-.axis { margin: 2px 0 0; text-align: center; font-size: 13px; color: var(--cream); }
+.axis { margin: 2px 0 0; text-align: center; font-size: 13px; color: var(--em); }
 .grid { display: grid; grid-template-columns: 34px repeat(6, minmax(0, 1fr)); gap: 2px; }
 .gc { display: flex; align-items: center; justify-content: center; min-height: 50px; border-radius: 8px; }
 .gc.corner { min-height: 34px; min-width: 0; overflow: visible; } .gc.corner small { font-size: 12px; font-weight: 700; letter-spacing: -.06em; color: var(--dim); line-height: 1.2; text-align: center; white-space: nowrap; }
@@ -130,13 +133,13 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .gc.ch, .gc.rh { border-radius: 8px; }
 .gc.x { background: repeating-linear-gradient(135deg, #0c1220 0 6px, #111a2c 6px 12px); }
 .gc.cell { border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; padding: 0; cursor: pointer; }
-.gc.cell.lo { color: #fff; border-color: #4a5c82; } /* 人気（10 倍未満）: 白い文字と明るい線だけ（面の色は選び直しの行・列に使う） */
+.gc.cell.lo { color: var(--hi); border-color: #4a5c82; } /* 人気（10 倍未満）: 白い文字と明るい線だけ（面の色は選び直しの行・列に使う） */
 .gc.cell.hi { color: var(--dim); font-size: 13px; }
 .gc.cell:active { background: #24375c; }
 /* 選び直しのとき: 今の予想の行（1 着）と列（2 着）を少し明るく、交わるマスを金の枠 2px（2026-10-23 デザイン見直し 1 回目） */
 .gc.cell.ax { background: linear-gradient(rgba(255, 215, 115, .08), rgba(255, 215, 115, .08)), var(--card); border-color: rgba(255, 215, 115, .32); }
 .gc.rh.on, .gc.ch.on { background: rgba(255, 215, 115, .14); box-shadow: inset 0 0 0 1px rgba(255, 215, 115, .45); }
-.gc.cell.sel { background: #2a3350; color: var(--gold); border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold), 0 0 12px rgba(255, 215, 115, .35); font-weight: 900; }
+.gc.cell.sel { background: #2a3350; color: var(--acc); border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold), 0 0 12px rgba(255, 215, 115, .35); font-weight: 900; }
 
 /* ---------- ④ 確認・⑤ 投票済み・⑥ レース中 ---------- */
 /* 1着・2着の札: 表の形にして、馬名が 2 行になっても「1着」「2着」と枠の高さがそろうように（2026-10-23 見直し） */
@@ -146,33 +149,33 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .pick .pp > .lb { grid-row: 1; } .pick .pp > .waku { grid-row: 2; } .pick .pp > .nm { grid-row: 3; align-self: start; }
 .pick .arw { grid-column: 2; grid-row: 2; }
 .pick .lb { font-size: 18px; color: var(--dim); font-weight: 700; letter-spacing: .1em; }
-.pick .nm { font-size: 15px; font-weight: 700; color: #fff; text-align: center; max-width: 100%; overflow: hidden; white-space: nowrap; line-height: 1.3; } /* 「…」で切らない（2026-10-23） */
-.pick .arw { font-style: normal; font-size: 44px; line-height: 1; color: var(--gold); flex: none; }
+.pick .nm { font-size: 15px; font-weight: 700; color: var(--hi); text-align: center; max-width: 100%; overflow: hidden; white-space: nowrap; line-height: 1.3; } /* 「…」で切らない（2026-10-23） */
+.pick .arw { font-style: normal; font-size: 44px; line-height: 1; color: var(--acc); flex: none; }
 .pick.big .nm { font-size: 17px; }
 /* ⑤ 投票済み・⑥ レース中の札（同じ大きさ。馬番 40px・馬名 16px・矢印 36px） */
 .pick.mid .lb { font-size: 16px; }
 .pick.mid .nm { font-size: 16px; }
 .pick.mid .arw { font-size: 36px; }
-.combo { text-align: center; font-size: 18px; font-weight: 900; color: var(--cream); font-variant-numeric: tabular-nums; }
+.combo { text-align: center; font-size: 18px; font-weight: 900; color: var(--em); font-variant-numeric: tabular-nums; }
 .ifwin { display: flex; align-items: baseline; justify-content: center; gap: 10px; padding: 12px 16px; border-radius: 16px; background: var(--card2); border: 1px solid var(--gold2); }
 .ifwin > span { font-size: 16px; color: var(--dim); font-weight: 700; white-space: nowrap; }
 .ifwin b .l6 { font-size: .88em; } .ifwin b .l7 { font-size: .78em; }
-.ifwin b { font-family: var(--display); font-weight: 900; font-size: 36px; color: #fff; font-variant-numeric: tabular-nums; line-height: 1.05; text-shadow: 0 0 16px rgba(255, 215, 115, .4); }
+.ifwin b { font-family: var(--display); font-weight: 900; font-size: 36px; color: var(--hi); font-variant-numeric: tabular-nums; line-height: 1.05; text-shadow: 0 0 16px rgba(255, 215, 115, .4); }
 .ifwin.sm { padding: 10px 16px; }
 .ifwin.sm b { font-size: 28px; }
-.pt { font-family: var(--body); font-size: .45em; color: var(--gold); margin-left: 3px; font-weight: 700; text-shadow: none; }
+.pt { font-family: var(--body); font-size: .45em; color: var(--acc); margin-left: 3px; font-weight: 700; text-shadow: none; }
 .ifwin b .pt { font-size: 15px; }
 .ifwin.sm b .pt { font-size: 13px; }
 /* ④ 確認: 倍率の注記は明るく、金のボタンとの間を 24px 以上 */
 .scr.confirm .sub.shift { font-size: 13px; color: var(--ink); opacity: .82; margin-top: -6px; }
 .scr.confirm .dock { margin-top: 8px; }
 .who { text-align: center; font-size: 15px; color: var(--dim); }
-.who b { font-family: var(--display); font-weight: 900; font-size: 20px; color: var(--cream); margin: 0 2px; }
+.who b { font-family: var(--display); font-weight: 900; font-size: 20px; color: var(--em); margin: 0 2px; }
 .dock { position: sticky; bottom: 0; z-index: 15; margin: 0 -16px; padding: 12px 16px calc(var(--sab) + 12px); background: rgba(11, 16, 27, .96); border-top: 1px solid var(--line); box-shadow: 0 -10px 24px rgba(0, 0, 0, .5); display: flex; flex-direction: column; gap: 8px; }
 .done-h { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .done-h i { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-family: var(--body); font-size: 19px; font-weight: 900; background: #22c55e; color: #04220f; }
 .mine { display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
-.mine .mk { margin: 0; text-align: center; font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: .12em; }
+.mine .mk { margin: 0; text-align: center; font-size: 15px; font-weight: 700; color: var(--acc); letter-spacing: .12em; }
 .mine.sm { padding: 12px 16px; }
 .mine .combo { font-size: 16px; }
 
@@ -181,18 +184,18 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .hit .t { font-size: 36px; letter-spacing: .3em; text-shadow: 0 0 18px rgba(255, 215, 115, .6); }
 .hit .k { font-size: 14px; color: var(--dim); font-weight: 700; }
 .hit .a .l6 { font-size: 58px; } .hit .a .l7 { font-size: 50px; }
-.hit .a { white-space: nowrap; font-family: var(--display); font-weight: 900; font-size: 64px; color: #fff; line-height: 1.02; text-shadow: 0 0 24px rgba(255, 215, 115, .7); font-variant-numeric: tabular-nums; }
+.hit .a { white-space: nowrap; font-family: var(--display); font-weight: 900; font-size: 64px; color: var(--hi); line-height: 1.02; text-shadow: 0 0 24px rgba(255, 215, 115, .7); font-variant-numeric: tabular-nums; }
 .billbig { display: flex; flex-direction: column; align-items: center; padding: 12px 16px 14px; border-radius: 20px; border: 2px solid var(--gold); background: var(--card2); }
-.billbig span { font-size: 14px; color: var(--gold); font-weight: 700; letter-spacing: .12em; }
-.billbig b { font-family: var(--display); font-weight: 900; font-size: 92px; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
-.billbig small { max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 17px; color: var(--cream); font-weight: 700; }
+.billbig span { font-size: 14px; color: var(--acc); font-weight: 700; letter-spacing: .12em; }
+.billbig b { font-family: var(--display); font-weight: 900; font-size: 92px; line-height: 1; color: var(--hi); font-variant-numeric: tabular-nums; }
+.billbig small { max-width: 100%; overflow: hidden; white-space: nowrap; font-size: 17px; color: var(--em); font-weight: 700; }
 /* スタッフが動かすスライド: 「スタッフが操作します」をすぐ上に。ボタン（金の面）と違って、暗い溝＋金の枠＋金の丸いつまみ */
 .payop { display: flex; flex-direction: column; gap: 8px; }
 .ops { margin: 0; text-align: center; font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: .04em; }
 .ops::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--gold); vertical-align: 2px; }
 .slider { position: relative; height: 60px; border-radius: 999px; background: #070b14; border: 2px solid var(--gold); box-shadow: inset 0 2px 8px rgba(0, 0, 0, .7); overflow: hidden; touch-action: none; }
 .slider .fillbar { position: absolute; left: 0; top: 0; bottom: 0; width: 30px; background: linear-gradient(90deg, rgba(255, 215, 115, .12), rgba(255, 215, 115, .42)); }
-.slider .lbl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-left: 52px; font-size: 16px; font-weight: 700; color: var(--gold); letter-spacing: .04em; pointer-events: none; }
+.slider .lbl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-left: 52px; font-size: 16px; font-weight: 700; color: var(--acc); letter-spacing: .04em; pointer-events: none; }
 .slider .knob { position: absolute; left: 2px; top: 2px; width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(180deg, var(--cream), var(--gold2)); color: #1a1408; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 900; box-shadow: 0 2px 10px rgba(0, 0, 0, .5); }
 .slider:not(.drag) .knob, .slider:not(.drag) .fillbar { transition: transform .2s ease, width .2s ease; }
 .slider.busy { opacity: .7; }
@@ -204,14 +207,14 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .miss { text-align: center; padding: 10px 0 0; }
 .miss .t { font-size: 40px; color: var(--ink); letter-spacing: .25em; }
 .miss .rc { margin: 6px 0 0; font-size: 18px; color: var(--dim); }
-.an { font-family: var(--display); font-weight: 900; font-size: 34px; color: var(--cream); margin-left: 6px; letter-spacing: 0; }
-.an i { font-style: normal; font-family: var(--body); font-weight: 900; color: var(--gold); margin: 0 4px; font-size: .8em; }
+.an { font-family: var(--display); font-weight: 900; font-size: 34px; color: var(--em); margin-left: 6px; letter-spacing: 0; }
+.an i { font-style: normal; font-family: var(--body); font-weight: 900; color: var(--acc); margin: 0 4px; font-size: .8em; }
 .mine.sm .an { font-size: 24px; }
 .resline { display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
 .resline > span { text-align: center; font-size: 13px; color: var(--dim); font-weight: 700; letter-spacing: .12em; }
 /* はずれ: 次のレースの時刻を大きく（24px）・投票の始まり 15px */
-.nextr { margin: 0; text-align: center; font-size: 17px; color: var(--cream); font-weight: 700; }
-.nextr .nt { font-family: var(--display); font-weight: 900; font-size: 24px; color: #fff; margin-left: 2px; font-variant-numeric: tabular-nums; }
+.nextr { margin: 0; text-align: center; font-size: 17px; color: var(--em); font-weight: 700; }
+.nextr .nt { font-family: var(--display); font-weight: 900; font-size: 24px; color: var(--hi); margin-left: 2px; font-variant-numeric: tabular-nums; }
 .nextr small { display: block; margin-top: 2px; font-size: 15px; color: var(--dim); font-weight: 500; }
 
 /* ---------- 低い画面 ---------- */
@@ -260,18 +263,18 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 
 /* ---------- 初参加ボーナス（2026-10-24。そのスマホで初めて投票するレースで、その日その番号で 1 回だけ 2 票）DESIGN_SYSTEM_V4.md の色・角丸 ---------- */
 /* 札「初参加ボーナス」: 金の枠＋金の文字（押すボタンの金の面と見分ける） */
-.bonustag { align-self: center; padding: 4px 14px; border-radius: 999px; border: 2px solid var(--gold); background: var(--card2); color: var(--gold); font-size: 13px; font-weight: 900; letter-spacing: .08em; white-space: nowrap; }
+.bonustag { align-self: center; padding: 4px 14px; border-radius: 999px; border: 2px solid var(--gold); background: var(--card2); color: var(--acc); font-size: 13px; font-weight: 900; letter-spacing: .08em; white-space: nowrap; }
 .sub.b2sub { margin: -6px 0 0; text-align: center; font-size: 13px; color: var(--dim); }
 /* 2 票目をえらぶ表: 1 票目のマスの右上に金の点（文字は入れない＝12px 未満の文字を出さない。説明は上の 1 行。同じマスも押せる） */
 .gc.cell.m1 { position: relative; border-color: var(--gold2); }
 .gc.cell.m1::after { content: ""; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 6px rgba(255, 215, 115, .7); }
 /* あなたの予想の札: 「1票目」「初参加ボーナス」の小さな札 */
-.mine .mk .vn { display: inline-block; margin-left: 8px; padding: 1px 10px; border-radius: 6px; border: 1px solid var(--gold2); color: var(--cream); font-size: 12px; font-weight: 700; letter-spacing: .04em; vertical-align: 1px; }
-.mine .mk .vn.bt { border-color: var(--gold); color: var(--gold); }
+.mine .mk .vn { display: inline-block; margin-left: 8px; padding: 1px 10px; border-radius: 6px; border: 1px solid var(--gold2); color: var(--em); font-size: 12px; font-weight: 700; letter-spacing: .04em; vertical-align: 1px; }
+.mine .mk .vn.bt { border-color: var(--gold); color: var(--acc); }
 .mine.b2 { border: 2px solid var(--gold2); }
 /* 「初参加ボーナス：もう1票」: 明るいカード＋金の枠 2px・金の主ボタン（この画面の主な操作） */
 .bonusbox { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; border: 2px solid var(--gold); background: var(--card2); text-align: center; box-shadow: 0 0 18px rgba(255, 215, 115, .18); }
-.bonusbox > b { font-size: 18px; font-weight: 900; color: var(--gold); letter-spacing: .04em; word-break: auto-phrase; }
+.bonusbox > b { font-size: 18px; font-weight: 900; color: var(--acc); letter-spacing: .04em; word-break: auto-phrase; }
 .bonusbox > span { font-size: 13px; color: var(--dim); font-weight: 500; line-height: 1.5; word-break: auto-phrase; text-wrap: balance; }
 .bonusbox .btn { margin-top: 4px; }
 /* 2 票あるときの「選び直す」は横に 2 つ（ふつうのボタン） */
@@ -285,12 +288,12 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .vlist .vk { flex: none; font-size: 13px; font-weight: 700; color: var(--dim); white-space: nowrap; }
 .vlist .an { font-size: 22px; }
 .vlist .vm { margin-left: auto; flex: none; font-size: 15px; font-weight: 900; color: var(--dim); white-space: nowrap; }
-.vlist .vr.w .vm { color: var(--gold); }
-.vlist .vr.w .vk { color: var(--cream); }
-.hit .x2 { font-size: 15px; font-weight: 700; color: var(--cream); font-variant-numeric: tabular-nums; }
+.vlist .vr.w .vm { color: var(--acc); }
+.vlist .vr.w .vk { color: var(--em); }
+.hit .x2 { font-size: 15px; font-weight: 700; color: var(--em); font-variant-numeric: tabular-nums; }
 
 /* ---------- 2026-10-26 オーナー「レースごとに投票できる店を選べる」: この店が投票できないレースの知らせ（待ち画面の上。文字 15px） ---------- */
-.note.watch { font-size: 15px; font-weight: 700; color: var(--cream); background: var(--card2); border: 1px solid var(--gold2); }
+.note.watch { font-size: 15px; font-weight: 700; color: var(--em); background: var(--card2); border: 1px solid var(--gold2); }
 
 /* ---------- 2026-10-27 オーナー「本日の出走時間を店ごとにテレビとスマホへ」: 本日のレースの時刻（bet.js todayRow。state.today ＝ この店が投票できる時刻表のレースだけ） ----------
    待ち画面の「次のレース」の枠の下、投票済み・結果の画面の下に 1 行。小さな札を横に並べ、320px 幅では折り返す。
@@ -303,8 +306,8 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .today .rc b { font-family: var(--display); font-weight: 900; font-size: 15px; font-variant-numeric: tabular-nums; }
 .today .rc i { font-style: normal; font-size: 12px; font-weight: 900; }
 .today .rc.done { opacity: .5; }
-.today .rc.nx { border: 2px solid var(--gold); background: var(--card2); color: var(--gold); padding: 0 8px; }
-.today .rc.nx b { color: var(--gold); }
+.today .rc.nx { border: 2px solid var(--gold); background: var(--card2); color: var(--acc); padding: 0 8px; }
+.today .rc.nx b { color: var(--acc); }
 .today .more { font-family: var(--display); font-weight: 900; font-size: 15px; color: var(--dim); padding: 0 2px; } /* 8 つより多いときの前後の「…」 */
 
 /* デザイン審査（2026-10-27）の直し: 札は均等幅で横 1 列（320 幅でも折り返さない）。高さ 44px 以上・間 8px・中の余白 横 8px 上下 12px。
@@ -327,7 +330,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .scr.voted { gap: 12px; }
 .scr.voted .today { padding: 12px 10px; margin-top: -8px; }
 /* 準備中（2026-10-28）: 投票の始まりを過ぎたのにレースがまだできていない（進行役のテレビを待っている）。0:00 のまま止まって見えないように */
-.waitbox .wv.prep { margin: 12px 0 6px; font-size: 18px; line-height: 1.5; color: var(--cream); }
+.waitbox .wv.prep { margin: 12px 0 6px; font-size: 18px; line-height: 1.5; color: var(--em); }
 .waitbox .prepdot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--gold); vertical-align: middle; animation: prepblink 1.2s ease-in-out infinite; }
 @keyframes prepblink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .waitbox .prepstaff { margin: 8px 0 0; font-size: 13px; color: var(--dim, #a89f89); }
@@ -335,16 +338,16 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 /* スタンプラリー（2026-11-02。仮・デモで確かめる）: 端末ごとのスタンプのカード（10 マス）・結果の「スタンプ +n」。.stamp（受け取り済み）とは別の名前 */
 .stampcard { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 16px; border: 1px solid rgba(255, 215, 115, .35); background: var(--card2); }
 .stampcard .sh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0; }
-.stampcard .sh > b { font-size: 15px; font-weight: 900; color: var(--gold); letter-spacing: .06em; }
+.stampcard .sh > b { font-size: 15px; font-weight: 900; color: var(--acc); letter-spacing: .06em; }
 .stampcard .sn { font-size: 14px; color: var(--dim); font-weight: 700; font-variant-numeric: tabular-nums; }
-.stampcard .sn b { font-size: 24px; color: var(--gold); font-weight: 900; margin-right: 2px; }
+.stampcard .sn b { font-size: 24px; color: var(--acc); font-weight: 900; margin-right: 2px; }
 .stampcard .cells { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .stampcard .sc { display: block; aspect-ratio: 1; border-radius: 50%; border: 2px dashed rgba(255, 255, 255, .22); }
 .stampcard .sc.on { border: 2px solid var(--gold); background: radial-gradient(circle at 35% 30%, #ffe9a8, var(--gold) 55%, #b8862b); box-shadow: 0 0 8px rgba(255, 215, 115, .35); }
 .stampcard .sl { margin: 0; font-size: 14px; font-weight: 700; text-align: center; word-break: auto-phrase; }
 .stampcard .sr { margin: 0; font-size: 12px; color: var(--dim); text-align: center; word-break: auto-phrase; }
 .stampgot { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 14px; border-radius: 14px; border: 2px solid var(--gold); background: var(--card2); text-align: center; }
-.stampgot b { font-size: 22px; font-weight: 900; color: var(--gold); letter-spacing: .04em; }
+.stampgot b { font-size: 22px; font-weight: 900; color: var(--acc); letter-spacing: .04em; }
 .stampgot span { font-size: 13px; color: var(--dim); font-weight: 600; }
 /* スタンプが押されたような動き（2026-11-02 オーナー）: 増えたマスは大きく出てから縮んで着地（少し回る・にじみの輪）。結果の「スタンプ +n」も同じ着地。動きを減らす設定の端末では出さない */
 @keyframes stampHit { 0% { transform: scale(2.1) rotate(-18deg); opacity: 0; } 55% { transform: scale(.86) rotate(4deg); opacity: 1; } 75% { transform: scale(1.08) rotate(-1deg); } 100% { transform: scale(1) rotate(0); } }
@@ -387,7 +390,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .pickscr .axis { margin: -4px 0 0; font-size: 13px; color: var(--dim); }
 .pvtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
 .pvt { min-height: 42px; border: 0; border-radius: 9px; background: transparent; color: var(--dim); font-size: 15px; font-weight: 700; cursor: pointer; }
-.pvt.on { background: var(--card2); color: var(--cream); box-shadow: inset 0 0 0 1px var(--gold2); }
+.pvt.on { background: var(--card2); color: var(--em); box-shadow: inset 0 0 0 1px var(--gold2); }
 .bt { display: flex; flex-direction: column; border-radius: 14px; background: var(--card); border: 1px solid var(--line); overflow: hidden; }
 .bth, .btr { display: grid; grid-template-columns: 40px minmax(0, 1fr) 62px 74px; align-items: center; column-gap: 8px; padding: 0 10px; }
 .bth { min-height: 34px; font-size: 12px; font-weight: 700; color: var(--dim); background: rgba(255, 255, 255, .03); border-bottom: 1px solid var(--line); }
@@ -397,7 +400,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .btr:first-of-type { border-top: 0; }
 .btr .waku.lg { width: 38px; height: 38px; font-size: 21px; }
 .btr .bn { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.btr .bn b { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btr .bn b { font-size: 15px; font-weight: 700; color: var(--hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btr .bn small { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btr .bn small i { font-style: normal; margin: 0 2px; opacity: .6; }
 .pk { height: 48px; border-radius: 10px; border: 1.5px solid #3a4866; background: var(--bg); color: var(--ink); font-size: 15px; font-weight: 800; cursor: pointer; padding: 0; display: flex; align-items: baseline; justify-content: center; gap: 1px; align-items: center; font-variant-numeric: tabular-nums; }
@@ -405,7 +408,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .pk:disabled { opacity: .35; cursor: default; }
 .pk.k1.on { background: linear-gradient(180deg, var(--cream), var(--gold)); border-color: var(--gold); color: #1a1408; box-shadow: 0 0 10px rgba(255, 215, 115, .35); }
 .pk.k2.od { border-color: #4a5c82; }
-.pk.k2.od b { font-size: 16px; font-weight: 900; color: #fff; }
+.pk.k2.od b { font-size: 16px; font-weight: 900; color: var(--hi); }
 .pk.k2 i { font-style: normal; font-size: 11px; color: var(--dim); margin-left: 1px; }
 .pk.k2.on { background: linear-gradient(180deg, #f4f7fc, #c9d3e3); border-color: #e8eef8; color: #111; box-shadow: 0 0 10px rgba(220, 230, 245, .3); }
 .pk.k2.on b, .pk.k2.on i { color: #111; }
@@ -417,24 +420,24 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .poplist .pop:active { background: #24375c; }
 .poplist .pop.sel { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
 .poplist .rk { font-size: 13px; font-weight: 800; color: var(--dim); text-align: center; font-variant-numeric: tabular-nums; }
-.poplist li:nth-child(-n+3) .rk { color: var(--gold); }
+.poplist li:nth-child(-n+3) .rk { color: var(--acc); }
 .poplist .cb { display: inline-flex; align-items: center; gap: 4px; }
-.poplist .cb i { font-style: normal; color: var(--gold); font-weight: 900; }
+.poplist .cb i { font-style: normal; color: var(--acc); font-weight: 900; }
 .poplist .nm2 { font-size: 12px; color: var(--dim); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.poplist .po { font-size: 20px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.poplist .po { font-size: 20px; font-weight: 900; color: var(--hi); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .poplist .po small { font-size: 12px; color: var(--dim); margin-left: 1px; font-weight: 700; }
 .poplist .pop em { position: absolute; top: -7px; right: 10px; font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--gold); color: #1a1408; }
 .v1line { margin: -6px 0 0; text-align: center; font-size: 14px; color: var(--dim); }
 .v1line .an { font-size: 20px; }
 .pickdock { position: sticky; bottom: 0; z-index: 15; margin: 0 -16px; padding: 10px 16px calc(var(--sab) + 12px); background: rgba(11, 16, 27, .97); border-top: 1px solid var(--line); box-shadow: 0 -10px 24px rgba(0, 0, 0, .5); display: flex; flex-direction: column; gap: 8px; }
-.pickdock .pdh { margin: 4px 0; text-align: center; font-size: 15px; font-weight: 700; color: var(--cream); }
+.pickdock .pdh { margin: 4px 0; text-align: center; font-size: 15px; font-weight: 700; color: var(--em); }
 .pickdock .pdsel { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .pickdock .pdc { display: inline-flex; align-items: center; gap: 6px; }
-.pickdock .pdc i { font-style: normal; color: var(--gold); font-weight: 900; font-size: 18px; }
+.pickdock .pdc i { font-style: normal; color: var(--acc); font-weight: 900; font-size: 18px; }
 .pickdock .pdo { font-size: 14px; color: var(--dim); font-weight: 700; }
-.pickdock .pdo b { font-size: 26px; color: #fff; font-weight: 900; margin-right: 1px; font-variant-numeric: tabular-nums; }
+.pickdock .pdo b { font-size: 26px; color: var(--hi); font-weight: 900; margin-right: 1px; font-variant-numeric: tabular-nums; }
 .pickdock .pdw { font-size: 14px; color: var(--dim); font-weight: 700; }
-.pickdock .pdw b { font-size: 18px; color: var(--gold); }
+.pickdock .pdw b { font-size: 18px; color: var(--acc); }
 @media (max-width: 350px) {
   .bth, .btr { grid-template-columns: 34px minmax(0, 1fr) 54px 64px; column-gap: 6px; padding: 0 8px; }
   .btr .waku.lg { width: 32px; height: 32px; font-size: 18px; }
@@ -445,7 +448,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 .bt[hidden], .poplist[hidden] { display: none; }
 .btr .bn small { white-space: normal; font-size: 11.5px; line-height: 1.35; overflow: visible; }
 /* 2 連単 2 回目（ChatGPT 84 点）: いま選ぶ列を金・選んだボタンに ✓ と太い枠・320px の崩れ・下の帯を 2 段に */
-.bth .c.now { color: var(--gold); }
+.bth .c.now { color: var(--acc); }
 .bth .c.now::after { content: ''; display: block; width: 26px; height: 3px; margin: 3px auto 0; border-radius: 2px; background: var(--gold); }
 .bt.step1 .pk.k1 { border-color: rgba(255, 215, 115, .55); }
 .bt.step2 .pk.k2:not(:disabled) { border-color: rgba(220, 230, 245, .55); }
@@ -494,7 +497,7 @@ input.big:focus { box-shadow: 0 0 0 3px rgba(255, 215, 115, .35); }
 html.tkok .mine.tk { opacity: 1; }
 
 /* 次のビッグレース（2026-11-11 試作）: 黒と金のカード。名前に光が走る */
-.bigc { margin: 12px 0; padding: 14px 14px 16px; border-radius: 16px; text-align: center; color: #fff; background: radial-gradient(ellipse at 50% 30%, #5a3a00, #1c1003 60%, #07060a); box-shadow: 0 0 0 2px #ffd24a, 0 0 18px rgba(255, 200, 60, .35); }
+.bigc { margin: 12px 0; padding: 14px 14px 16px; border-radius: 16px; text-align: center; color: var(--hi); background: radial-gradient(ellipse at 50% 30%, #5a3a00, #1c1003 60%, #07060a); box-shadow: 0 0 0 2px #ffd24a, 0 0 18px rgba(255, 200, 60, .35); }
 .bigc .bk { display: inline-block; padding: 4px 14px; border-radius: 999px; background: linear-gradient(90deg, #e0262b, #ff5a2a); font-size: 13px; font-weight: 900; letter-spacing: .12em; }
 .bigc .nm { display: block; margin: 8px 0 6px; font-size: 32px; font-weight: 900; line-height: 1.1; letter-spacing: .03em;
   background: linear-gradient(100deg, #ffd24a 0%, #fff7c2 18%, #ffd24a 30%, #d99a00 60%, #ffd24a 100%); background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: bigcShine 3.2s ease-in-out infinite; }
@@ -510,7 +513,7 @@ html.tkok .mine.tk { opacity: 1; }
 
 /* ---------- 2026-11-15 スタンプカード: 10 個で「2票目の券」1 枚に替わり、新しいカードが出る（オーナー「10 個たまったら演出・2票目獲得・次から使えます・次のカード発行・使ったら減る」） ---------- */
 .stampcard .stk { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 9px 12px; border-radius: 12px; border: 2px solid var(--gold); background: linear-gradient(180deg, #3a2f10, #241c08); }
-.stampcard .stk-t { display: flex; align-items: baseline; gap: 6px; font-size: 16px; font-weight: 900; color: var(--gold); white-space: nowrap; }
+.stampcard .stk-t { display: flex; align-items: baseline; gap: 6px; font-size: 16px; font-weight: 900; color: var(--acc); white-space: nowrap; }
 .stampcard .stk-t i { font-style: normal; font-size: 15px; }
 .stampcard .stk-t b { font-size: 22px; color: #fff3c4; font-variant-numeric: tabular-nums; margin-left: 2px; }
 .stampcard .stk-s { font-size: 13px; font-weight: 700; color: #ffe9a8; text-align: right; word-break: auto-phrase; }
@@ -518,7 +521,7 @@ html.tkok .mine.tk { opacity: 1; }
 .stampfx.out { opacity: 0; transition: opacity .25s; }
 .stampfx .sfx-rays { position: absolute; left: 50%; top: 42%; width: 200vmax; height: 200vmax; margin: -100vmax 0 0 -100vmax; background: repeating-conic-gradient(from 0deg, rgba(255, 215, 115, .12) 0deg 9deg, rgba(255, 215, 115, 0) 9deg 18deg); animation: sfxSpin 40s linear infinite, sfxFade .6s ease-out .9s both; pointer-events: none; }
 .stampfx .sfx-in { position: relative; width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
-.stampfx .sfx-k { margin: 0; font-size: 20px; font-weight: 900; color: var(--gold); letter-spacing: .06em; animation: sfxUp .4s ease-out both; }
+.stampfx .sfx-k { margin: 0; font-size: 20px; font-weight: 900; color: var(--acc); letter-spacing: .06em; animation: sfxUp .4s ease-out both; }
 .stampfx .sfx-deck { position: relative; width: 100%; display: grid; }
 .stampfx .sfx-deck .stampcard { grid-area: 1 / 1; align-self: center; text-align: left; }
 .stampfx .sfx-old { animation: sfxGlow .5s ease-out 1s both, sfxAway .55s cubic-bezier(.5, 0, .8, .4) 3.1s both; }
@@ -526,10 +529,10 @@ html.tkok .mine.tk { opacity: 1; }
 .stampfx .sfx-new { animation: sfxNew .55s cubic-bezier(.2, 1.2, .4, 1) 3.45s both; }
 .stampfx .sfx-h { margin: 6px 0 0; display: flex; align-items: baseline; justify-content: center; gap: 10px; font-family: var(--display); font-weight: 900; line-height: 1.05; color: #fff3c4; text-shadow: 0 3px 0 #7a5200, 0 0 26px rgba(255, 215, 115, .6); animation: sfxPop .6s cubic-bezier(.2, 1.5, .4, 1) 1.15s both; }
 .stampfx .sfx-h span { font-size: 46px; letter-spacing: .02em; }
-.stampfx .sfx-h em { font-style: normal; font-size: 58px; color: var(--gold); }
-.stampfx .sfx-s { margin: 0; font-size: 20px; font-weight: 900; color: #fff; animation: sfxUp .4s ease-out 1.9s both; }
+.stampfx .sfx-h em { font-style: normal; font-size: 58px; color: var(--acc); }
+.stampfx .sfx-s { margin: 0; font-size: 20px; font-weight: 900; color: var(--hi); animation: sfxUp .4s ease-out 1.9s both; }
 .stampfx .sfx-n { margin: 4px 0 0; display: flex; flex-direction: column; gap: 2px; font-size: 15px; font-weight: 700; color: var(--dim); animation: sfxUp .4s ease-out 3.6s both; }
-.stampfx .sfx-n small { font-size: 14px; color: var(--gold); font-weight: 900; }
+.stampfx .sfx-n small { font-size: 14px; color: var(--acc); font-weight: 900; }
 .stampfx .sfx-ok { margin-top: 8px; min-width: 200px; animation: sfxUp .4s ease-out 3.9s both; }
 @keyframes sfxIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes sfxFade { from { opacity: 0; } to { opacity: 1; } }
@@ -722,6 +725,9 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 .os-s .bonusbox > b { font-size: 15px; white-space: nowrap; }
 .os-s .bonusbox > span { grid-column: 1; font-size: 12px; line-height: 1.35; }
 .os-s .bonusbox .btn { grid-column: 2; grid-row: 1 / 3; margin: 0; width: auto; min-height: 48px; padding: 6px 14px; font-size: 16px; }
+/* 2026-11-27 総点検: 幅 389px 以下（iPhone SE・mini など）で詰めた形になると、見出し「初参加ボーナス：もう1票」の右はしがボタンの下に隠れていた → 見出しとボタンを幅に合わせて少し小さく */
+@media (max-width: 389px) { .os-s .bonusbox > b { font-size: 3.5vw; letter-spacing: 0; } .os-s .bonusbox .btn { padding: 6px 10px; font-size: 15px; } }
+@media (max-width: 340px) { .os-s .bonusbox { gap: 2px 8px; padding: 8px 8px 8px 10px; } .os-s .bonusbox > b { font-size: 3.4vw; } .os-s .bonusbox .btn { padding: 6px 8px; font-size: 14px; } }
 .os-s .redo2 .btn { min-height: 46px; padding: 6px; }
 .os-s .scr.racing { gap: 10px; }
 /* 結果（当たり）: 「当たり」と当選額を横に・会計番号は横長（数字は 60px 以上のまま） */
@@ -784,19 +790,19 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 /* BPT（ボートレースポイント）の追加の券（2026-11-18）: 確認の画面の「BPT で券を追加」［−］［＋］・投票済みの「BPT で券を追加」・別の組み合わせの追加の券の行。BPT がある人だけに出る */
 .bptrow { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 14px; background: var(--card); border: 1px dashed var(--gold2); }
 .bptrow .bl { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
-.bptrow .bl b { font-size: 15px; font-weight: 900; color: var(--gold); white-space: nowrap; }
+.bptrow .bl b { font-size: 15px; font-weight: 900; color: var(--acc); white-space: nowrap; }
 .bptrow .bl small { font-size: 12px; color: var(--dim); font-weight: 600; white-space: nowrap; }
 .bptrow .stp { display: flex; align-items: center; gap: 6px; flex: none; }
 .bptrow .stp .btn { width: 44px; min-height: 40px; padding: 0; font-size: 22px; line-height: 1; border-radius: 10px; }
 .bptrow .stp .btn:disabled { opacity: .35; }
-.bptrow .stp b { min-width: 22px; text-align: center; font-family: var(--display); font-size: 24px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; }
-.ifwin .xn { font-size: 14px; font-weight: 800; color: var(--gold); white-space: nowrap; }
-.mine .mk .vn.xn { border-color: var(--gold); color: var(--gold); }
-.bptbtn { min-height: 46px; font-size: 15px; border-color: var(--gold2); color: var(--gold); padding: 6px 12px; }
+.bptrow .stp b { min-width: 22px; text-align: center; font-family: var(--display); font-size: 24px; font-weight: 900; color: var(--hi); font-variant-numeric: tabular-nums; }
+.ifwin .xn { font-size: 14px; font-weight: 800; color: var(--acc); white-space: nowrap; }
+.mine .mk .vn.xn { border-color: var(--gold); color: var(--acc); }
+.bptbtn { min-height: 46px; font-size: 15px; border-color: var(--gold2); color: var(--acc); padding: 6px 12px; }
 .bptbtn small { display: block; font-size: 11px; font-weight: 600; color: var(--dim); }
 .xlist { padding: 8px 14px; gap: 4px; }
 .xlist .vm small { font-size: 12px; font-weight: 700; color: var(--dim); margin-left: 4px; }
-.xlist .vr.w .vm { color: var(--gold); }
+.xlist .vr.w .vm { color: var(--acc); }
 .os-s .bptrow { padding: 6px 8px 6px 12px; } .os-s .bptrow .stp .btn { min-height: 36px; width: 40px; } .os-s .bptbtn { min-height: 42px; } .os-s .bptbtn small { display: none; }
 /* 2026-11-20 オーナー「BPT は競馬にも使えることを目立たせる」: ボートの BPT を持っている人の「BPT で券を追加」をボートの水色で光らせる（字・大きさは変えない＝1 画面の決まりは今のまま） */
 .bptrow { border: 1.5px solid #4fb0e2; background: linear-gradient(135deg, #12365a, #0d1f36); box-shadow: 0 0 0 1px rgba(79, 176, 226, .25) inset, 0 0 16px rgba(79, 176, 226, .35); }
@@ -805,8 +811,8 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 /* 2026-11-24 BPT で組み合わせを複数（ボートと同じ形）: 予想の画面の下に並べた組み合わせ（押すと消せる）・「もう1つ えらぶ」・まとめて確認の表。色は BPT の水色（上の .bptbtn と同じ） */
 .cartl { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 0 0 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .cartl::-webkit-scrollbar { display: none; }
-.cartl .cc { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 34px; padding: 0 8px; border-radius: 10px; border: 1px solid #4fb0e2; background: #0f2440; color: #fff; font: inherit; white-space: nowrap; cursor: pointer; }
-.cartl .cc i { font-style: normal; color: var(--gold); font-weight: 900; }
+.cartl .cc { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 34px; padding: 0 8px; border-radius: 10px; border: 1px solid #4fb0e2; background: #0f2440; color: var(--hi); font: inherit; white-space: nowrap; cursor: pointer; }
+.cartl .cc i { font-style: normal; color: var(--acc); font-weight: 900; }
 .cartl .cc small { font-size: 12px; font-weight: 700; color: #8fdcff; margin-left: 3px; }
 .cartl .cc em { font-style: normal; color: var(--dim); margin-left: 4px; font-size: 15px; }
 .pickdock .cartbtns .btn { min-height: 52px; }
@@ -818,11 +824,196 @@ main > .scr:has(.fx) { flex: 1 1 0; }
 .cartc .clh { flex: none; padding: 0 16px; font-size: 12px; font-weight: 700; color: var(--dim); text-align: right; }
 .cartc .clist { flex: 0 1 auto; min-height: 0; overflow-y: auto; gap: 4px; }
 .cartc .clist .vr { min-height: 40px; }
-.cartc .clist .vk { font-size: 12px; font-weight: 800; color: var(--cream); }
+.cartc .clist .vk { font-size: 12px; font-weight: 800; color: var(--em); }
 .cartc .clist .vk.b { color: #8fdcff; }
-.cartc .cpc { display: inline-flex; align-items: center; gap: 4px; } .cartc .cpc i { font-style: normal; color: var(--gold); font-weight: 900; }
-.cartc .cpo { text-align: right; font-size: 13px; color: var(--dim); font-weight: 700; white-space: nowrap; } .cartc .cpo b { font-size: 20px; color: #fff; font-weight: 900; font-variant-numeric: tabular-nums; margin-right: 1px; }
-.cartc .cpw { text-align: right; font-size: 15px; font-weight: 900; color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cartc .cpc { display: inline-flex; align-items: center; gap: 4px; } .cartc .cpc i { font-style: normal; color: var(--acc); font-weight: 900; }
+.cartc .cpo { text-align: right; font-size: 13px; color: var(--dim); font-weight: 700; white-space: nowrap; } .cartc .cpo b { font-size: 20px; color: var(--hi); font-weight: 900; font-variant-numeric: tabular-nums; margin-right: 1px; }
+.cartc .cpw { text-align: right; font-size: 15px; font-weight: 900; color: var(--acc); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cartc .cx { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--btn2); color: var(--dim); font-size: 18px; font-weight: 700; padding: 0; cursor: pointer; }
 .cartc .cx:disabled { opacity: .35; }
 .cartc .cbal { flex: none; margin: 0; text-align: center; font-size: 14px; font-weight: 700; color: #8fdcff; font-variant-numeric: tabular-nums; }
+
+/* ====================================================================================================
+   2026-11-28 明るい見た目（オーナー「スマホの投票画面、ゲームであんな暗い画面ないでしょ。ダークモードいらない」）
+   店のテレビ（css/style.css の #stage）と同じ世界にそろえる: 明るい緑の地＋光の筋／クリームの板に木のふち／紺の時計の板／橙の押すボタン。
+   変えたのは色・地・板の見た目だけ（大きさ・余白・並び・文言はそのまま。ふちの太さと厚みは box-shadow で足す＝場所を取らない）。
+   字の色は場所ごとに変数で決める: :root ＝ 緑の地の上／「板の中」＝クリーム・白の板／.waitbox ＝ 紺の板。
+     --ink 字／--dim 小さい字／--hi いちばん濃い字（数字・名前）／--acc 見出し・目立たせる字／--em 強める字。--gold・--gold2・--cream は金の面・ふち（字には使わない）
+   どの組み合わせも WCAG AA（4.5 以上）を数字で確かめた（screens/phone-bright/色の決め方.txt）。
+   光の筋は止めた絵（スマホでは回さない＝重くしない）。OS のダークモードには連動しない（いつも明るい）。券の紙（v2/ticket.css）は前の色のまま
+   ==================================================================================================== */
+/* 板の中の字（クリーム・白の上）: 茶（テレビの --ink #3b2a1e・--ink-sub #7a5a3e）。見出しは濃い橙 */
+.note, .hinfo, .ifwin, .mine:not(.tk), .billbig, .resline, .bonusbox, .bonustag, .vlist, .today, .stampcard, .stampgot, .pvtabs, .bt, .poplist, .bptrow, .dock, .pickdock, .toast, .race, .keypad, .digits, .nickrow, .btn, .cartl, .incline, .stamp {
+  --ink: #3b2a1e; --dim: #7a5a3e; --hi: #2a1a0e; --acc: #b45309; --em: #6e3f17; }
+/* 券の紙は前の色のまま（紙の中の金・クリームの字は、変える前の値に固定） */
+.tkt { --gold: #ffd773; --gold2: #c9a03e; --cream: #ffe9a8; }
+/* 上の帯: 濃い緑の帯（ロゴは白い字の絵）。店の名前は白・残り時間はクリームの札 */
+.top { --dim: #fff; background: linear-gradient(180deg, var(--bar1), var(--bar2)); border-bottom-color: var(--bar2); box-shadow: 0 3px 0 rgba(0, 0, 0, .16); } /* 下の線 1px は残す（色だけ。消すと下の全部が 1px 上がる） */
+.store.off i { background: #c5cbd6; }
+.race span { box-shadow: 0 2px 0 rgba(0, 0, 0, .22); }
+.race span.hot { border-color: #e53935; background: #fff0ee; color: #a31515; } .race span.hot b { color: #c81e1e; }
+.net { background: #c62828; color: #fff; border-bottom-color: #8e1c1c; }
+/* 地の上の見出し・文 */
+.scr h1, .scr h2 { text-shadow: 0 1px 0 rgba(255, 255, 255, .45); }
+.err:not(:empty) { background: #fff0ee; border-radius: 8px; box-shadow: 0 0 0 4px #fff0ee; }
+.note.red, .toast.err { background: #fff0ee; border-color: #e53935; color: #a31515; } .note.red { box-shadow: 0 0 0 1.5px #e53935, 0 4px 0 rgba(0, 0, 0, .16); }
+.incline { background: #fff0ee; border-color: #e57373; color: #a31515; }
+.incline.bptback { background: #e8f4ff; border-color: #4f9fe0; color: #0b4f7a; }
+.pickscr > .link, .keeptill { color: var(--dim); }
+/* 板: クリームに木のふち（ふち 1px ＋ 外に 1.5px）と下の厚み */
+.waitbox, .note, .ifwin, .mine:not(.tk), .billbig, .resline, .bonusbox, .vlist, .today, .stampcard, .stampgot, .pvtabs, .bt, .bptrow, .nickrow { box-shadow: 0 0 0 1.5px var(--line), 0 4px 0 rgba(0, 0, 0, .16); }
+.note, .ifwin, .billbig, .bonusbox, .stampcard, .stampgot, .bonustag { border-color: var(--line); }
+.entry .sec.nickrow { background: var(--card); }
+.toast { box-shadow: 0 0 0 1.5px var(--line), 0 10px 24px rgba(0, 0, 0, .3); border-color: var(--line); }
+/* 押すボタン: 橙の面＋下の厚み（押すと沈む）。2 番目のボタンは白い面 */
+.btn { background: linear-gradient(180deg, var(--b1), var(--b2)); color: var(--bink); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .5), 0 0 0 2px var(--b3), 0 5px 0 var(--b3), 0 9px 12px rgba(0, 0, 0, .2); }
+.btn:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .5), 0 0 0 2px var(--b3), 0 2px 0 var(--b3); }
+.btn:disabled { opacity: .5; box-shadow: 0 0 0 2px var(--b3); transform: none; }
+.btn.ghost { background: var(--btn2); color: var(--btn2ink); box-shadow: 0 0 0 1px var(--line), 0 3px 0 rgba(0, 0, 0, .2); }
+.btn.ghost:active { transform: translateY(2px); box-shadow: 0 0 0 1px var(--line), 0 1px 0 rgba(0, 0, 0, .2); }
+.btn.ghost:disabled { box-shadow: 0 0 0 1px var(--line); transform: none; }
+.btn.unpaid { background: #fff; border-color: var(--b2); box-shadow: 0 0 0 1px var(--b3), 0 3px 0 rgba(0, 0, 0, .2); }
+/* 番号の札（1 白・2 黒・3 赤・4 青・5 黄・6 緑は公式の色のまま）: 白・黄が明るい板に溶けないよう濃いふち */
+.waku { outline: 1.5px solid rgba(20, 22, 28, .62); outline-offset: -1.5px; box-shadow: inset 0 0 0 2.5px rgba(0, 0, 0, .1), 0 1px 0 rgba(0, 0, 0, .22); }
+/* 待ちの枠 ＝ 紺の時計の板（テレビの時計の板と同じ: 白い時刻・黄色い残り時間） */
+.waitbox { --ink: #fff; --dim: #cfe0ff; --hi: #fff; --acc: #9ec5ff; --em: #ffd84a; background: linear-gradient(180deg, var(--nv1), var(--nv2)); }
+.waitbox .wt { text-shadow: 0 3px 0 rgba(0, 0, 0, .28); }
+.waitbox .wv:not(.prep) { color: #fff; }
+/* 会計番号 */
+.digits .dg.ph { color: #d2c8b4; }
+.digits.empty .dg:first-child { box-shadow: 0 0 0 3px rgba(255, 196, 31, .6); }
+.keypad button { box-shadow: 0 3px 0 rgba(0, 0, 0, .2); }
+.keypad button:active { background: #ffe2a8; transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .2); }
+input.big:focus { box-shadow: 0 0 0 3px rgba(255, 196, 31, .6); }
+/* 予想の表: クリームの板に白い行 */
+.bth { background: rgba(110, 63, 23, .08); border-bottom-color: rgba(110, 63, 23, .3); }
+.btr { border-top-color: rgba(110, 63, 23, .18); }
+.pk { border-color: var(--line); box-shadow: 0 2px 0 rgba(0, 0, 0, .16); }
+.pk:active { transform: translateY(1px) scale(.98); box-shadow: 0 1px 0 rgba(0, 0, 0, .16); }
+.pk:disabled { box-shadow: none; }
+.pk.k1.on { box-shadow: 0 2px 0 var(--gold2); }
+.pk.k2.od { border-color: var(--line); }
+.pk.k2.on { background: linear-gradient(180deg, #f6f8fc, #c3cddd); border-color: #6b7789; color: #111; box-shadow: 0 2px 0 #6b7789; }
+.btr.s1 { background: linear-gradient(90deg, rgba(255, 196, 31, .34), rgba(255, 196, 31, 0) 72%); }
+.btr.s2 { background: linear-gradient(90deg, rgba(110, 125, 150, .26), rgba(110, 125, 150, 0) 72%); }
+.bt.step1 .pk.k1 { border-color: var(--gold2); }
+.bt.step2 .pk.k2:not(:disabled) { border-color: #6b7789; }
+.bth .c.now::after { background: var(--b2); }
+.poplist .pop:active { background: #ffe9bd; }
+.poplist .pop.sel { background: #fff0c2; box-shadow: 0 0 0 1px var(--gold2); }
+.poplist li:nth-child(-n+3) .rk { color: var(--acc); }
+.pickdock .pdok { color: #15803d; }
+.pickdock .pdc i, .poplist .cb i, .pick .arw, .an i, .cartl .cc i, .cartc .cpc i { color: var(--acc); }
+/* 下の帯（確認・予想）: クリームの板。画面の下の端まで同じ色 */
+.dock, .pickdock { background: var(--card); border-top-color: var(--line); box-shadow: 0 -1.5px 0 var(--line), 0 80px 0 var(--card); }
+/* 確認・投票済み・結果 */
+.ifwin b { text-shadow: none; }
+.mine .mk .vn { border-color: currentColor; }
+.scr .mine .mk .vn.ms { border-color: #4a5160; color: #2f3541; }
+/* 当たりの見出しと額 ＝ 金の板（テレビの払戻の板と同じ。券の .hit とは別＝ .scr の直下だけ） */
+.scr > .hit { background: linear-gradient(180deg, #fffaf0, #ffe9b5); border-radius: 12px; box-shadow: 0 0 0 3px #fff3d1, 0 0 0 5px #f0a81e, 0 8px 0 rgba(0, 0, 0, .14); --ink: #5a3d06; --acc: #c2410c; --dim: #6b4a12; --em: #5a3d06; --hi: #3d2a05; }
+.scr > .hit .t, .scr > .hit .a { text-shadow: none; }
+.slider { background: #3b2a1e; } .slider .lbl { color: #ffd84a; }
+.stamp { border-color: #1e9e52; color: #17703a; background: #e9f9ef; } .stamp small { color: #17703a; }
+.today .rc.done { color: #6b7280; } .today .rc.done b, .today .rc.done i { color: #6b7280; }
+.today .rc.nx { border-color: var(--b2); color: var(--acc); } .today .rc.nx b { color: var(--acc); }
+.bonusbox { box-shadow: 0 0 0 1.5px var(--b2), 0 4px 0 rgba(0, 0, 0, .16); border-color: var(--b2); }
+/* スタンプカード */
+.stampcard .sc { border-color: #b39a72; color: #7a5a3e; opacity: 1; }
+.stampcard .sc.on { border-color: var(--gold2); color: #3f2a03; }
+.stampcard .sr, .stampgot span { color: var(--dim); }
+.stampcard .sl .hi { color: var(--acc); }
+.stampcard .stk { background: linear-gradient(180deg, #fff3c4, #ffe08a); }
+.stampcard .stk-t b { color: var(--hi); } .stampcard .stk-s { color: var(--em); }
+/* BPT（ボートの色 ＝ 青）の枠・ボタン */
+.bptrow { border-color: #1668d8; background: linear-gradient(180deg, #f1f8ff, #d6ebff); box-shadow: 0 0 0 1.5px #1668d8, 0 4px 0 rgba(0, 0, 0, .16); --acc: #0e5fb0; --dim: #3d5f86; --hi: #06203f; }
+.bptrow .bl b, .bptbtn, .pickdock .cartbtns .cartadd, .cartl .cc small, .cartc .clist .vk.b { color: #0e5fb0; }
+.bptbtn, .pickdock .cartbtns .cartadd { border-color: #1668d8; background: #f1f8ff; box-shadow: 0 0 0 1px #1668d8, 0 3px 0 rgba(0, 0, 0, .2); }
+.cartl .cc { border-color: #1668d8; background: #fff; box-shadow: 0 2px 0 rgba(0, 0, 0, .16); }
+.cartc .cbal { color: var(--ink); }
+/* ビッグレース: 金の板に赤い札（黒い板をやめる） */
+.bigc { color: #3d2a05; background: radial-gradient(ellipse at 50% 20%, #fffbe0, #ffe27a 62%, #ffc41f); box-shadow: 0 0 0 2px #b85c00, 0 4px 0 rgba(0, 0, 0, .16); }
+.bigc .bk, .bigc .bw em { color: #fff; }
+.bigc .nm, .bigtag b { background-image: linear-gradient(100deg, #b3261e 0%, #ff8a00 18%, #b3261e 30%, #7a1410 60%, #b3261e 100%); }
+.bigtag { background: linear-gradient(180deg, #fffbe0, #ffd95a); box-shadow: 0 0 0 2px #b85c00, 0 3px 0 rgba(0, 0, 0, .16); }
+.bigtag i { color: #b3261e; }
+/* スタンプ 10 個の演出（全画面）: 光が映えるよう幕は濃いまま。黒ではなく芝の濃い緑（テレビのレース中の幕と同じ考え） */
+.stampfx { background: radial-gradient(ellipse at 50% 40%, rgba(47, 122, 30, .98), rgba(18, 52, 12, .98) 78%); --dim: #eef9ea; --acc: var(--gold); }
+.stampfx .sfx-s { color: #fff; }
+
+/* ====================================================================================================
+   2026-11-28 動き（オーナー「お客さんの投票画面にワクワクするアニメーションを。UI/UX の観点で」）。競馬とボートで同じ「言葉」（色だけゲームごと）:
+     入り（画面が替わる）… ふわっと上がる .22s（前からの .scr.in）＋中の部品が 40ms ずつ順に（.mv-in）
+     押した（1着・2着・数字）… はずむ .28s ／ そろった（組番が決まる）… 番号が左右から寄って組み上がり、倍率 → 当たれば の順にぱっと出る .5s
+     入った（えらんだ票が下に並ぶ）… ぽんと出る .3s ／ 数が変わる（票数・BPT）… 数字が下から入る .18s
+     刷られた（投票が通る）… 券が上から刷られて出る .5s → 光が走る .7s → 当たれば の額がはずむ（v2/ticket.css）
+     鼓動（残り 30 秒から）… 残り時間が 1 秒に 1 回ふくらむ・残り 10 秒は 2 回（ドクドク）
+     当たり… 光の筋と紙吹雪 2 秒・額が数え上がる .9s・判子（v2/ticket.css・ticket.js の BetFx）／ はずれ… 静かに入るだけ。次のレースの時刻が 1 回そっとはずむ
+     待ち… 時計の板に 6 秒に 1 回、光が走る
+   出し方: 押した所・届いた所で JS が合図（mv）を出し、次に描いた画面の根（.scr）に mv-名前 が付く（途中で描き直しても --mv-名前 の時間の続きから）。
+   動かすのは transform と opacity だけ（大きさ・場所は変えない）。動きの終わりを待たずに押せる。隠れた画面では止まる。「視差効果を減らす」の端末では出さない。音・振動なし
+   ==================================================================================================== */
+@keyframes mvUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes mvPop { 0% { transform: scale(.84); } 60% { transform: scale(1.08); } 100% { transform: none; } }
+@keyframes mvPop2 { 0% { opacity: 0; transform: scale(.5); } 60% { opacity: 1; transform: scale(1.14); } 100% { opacity: 1; transform: none; } }
+@keyframes mvInL { from { opacity: 0; transform: translateX(-24px) rotate(-14deg); } to { opacity: 1; transform: none; } }
+@keyframes mvInR { from { opacity: 0; transform: translateX(24px) rotate(14deg); } to { opacity: 1; transform: none; } }
+@keyframes mvTick { from { opacity: .2; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes mvBeatA { 30% { transform: scale(1.14); } } @keyframes mvBeatB { 30% { transform: scale(1.14); } }
+@keyframes mvBeatC { 16% { transform: scale(1.26); } 38% { transform: scale(1); } 56% { transform: scale(1.15); } } @keyframes mvBeatD { 16% { transform: scale(1.26); } 38% { transform: scale(1); } 56% { transform: scale(1.15); } }
+@keyframes mvSheen { 0%, 80% { transform: translateX(-130%); } 100% { transform: translateX(330%); } }
+/* 入り: 中の部品が順に（券・スタンプは自分の動きがあるので除く）。印は .mv-in ＝ 1 画面の詰め（fitLevel）を測ったあとに JS が付ける（動きの始まりのずれを「入らない」と測らないように） */
+.scr.mv-in > :not(.mine):not(.stampcard):not(.stampgot):not(.btks) { animation: mvUp .3s cubic-bezier(.2, .9, .3, 1) backwards; }
+.scr.mv-in > :nth-child(2) { animation-delay: 40ms; } .scr.mv-in > :nth-child(3) { animation-delay: 80ms; } .scr.mv-in > :nth-child(4) { animation-delay: 120ms; } .scr.mv-in > :nth-child(n+5) { animation-delay: 160ms; }
+/* 結果の 1着・2着の番号が順に出る */
+.scr.mv-in .resline .waku, .scr.mv-in .resl .waku { animation: mvPop2 .32s cubic-bezier(.3, 1.5, .5, 1) .18s backwards; } .scr.mv-in .resline .pp:last-child .waku, .scr.mv-in .resl .waku ~ .waku { animation-delay: .34s; }
+/* 押した・そろった・入った・数が変わる */
+.mv-p1 .pk.k1.on, .mv-p1 .btr.s1 > .waku { animation: mvPop .28s cubic-bezier(.3, 1.5, .5, 1) var(--mv-p1, 0s) both; }
+.mv-p2 .pk.k2.on, .mv-p2 .btr.s2 > .waku, .mv-p2 .poplist .pop.sel { animation: mvPop .28s cubic-bezier(.3, 1.5, .5, 1) var(--mv-p2, 0s) both; }
+.mv-set .pdc > .waku:first-child { animation: mvInL .3s cubic-bezier(.2, 1.3, .4, 1) var(--mv-set, 0s) both; }
+.mv-set .pdc > .waku:last-child { animation: mvInR .3s cubic-bezier(.2, 1.3, .4, 1) calc(var(--mv-set, 0s) + 60ms) both; }
+.mv-set .pdc > i { animation: mvPop2 .22s ease-out calc(var(--mv-set, 0s) + .14s) both; }
+.pickdock .pdo b, .pickdock .pdw b, .ifwin b > span, .nextr .nt, .nextr > b { display: inline-block; } /* 動かす数字はいつも inline-block（動きの間だけ変えると字の箱の形が変わるため。並びは変わらない） */
+.mv-set .pdo b { animation: mvPop2 .34s cubic-bezier(.3, 1.5, .5, 1) calc(var(--mv-set, 0s) + .18s) both; }
+.mv-set .pdw b { animation: mvPop2 .34s cubic-bezier(.3, 1.5, .5, 1) calc(var(--mv-set, 0s) + .28s) both; }
+.mv-chip { animation: mvPop2 .3s cubic-bezier(.3, 1.5, .5, 1) var(--mvd, 0s) both; } .mv-pp { animation: mvPop .26s cubic-bezier(.3, 1.5, .5, 1) both; }
+.mv-qty .qty b, .mv-qty .pdw b, .mv-qty .bpts b, .mv-qty .bptrow .stp b, .mv-qty .ifwin b > span { animation: mvTick .18s ease-out var(--mv-qty, 0s) both; }
+/* はずれ: 次のレースの時刻が 1 回そっとはずむ／BPT が変わった */
+.mv-lose .nextr .nt, .mv-lose .nextr > b { animation: mvPop .4s cubic-bezier(.3, 1.4, .5, 1) calc(var(--mv-lose, 0s) + .6s) backwards; }
+.mv-bpt .bptcard .bh b, .mv-bpt .bnote b { animation: mvPop .3s cubic-bezier(.3, 1.5, .5, 1) var(--mv-bpt, 0s) both; }
+/* 鼓動（残り 30 秒 ＝ a・残り 10 秒 ＝ b。0・1 は秒の偶数・奇数 ＝ 毎秒かけ直すため） */
+b[data-bt] { display: inline-block; }
+[data-bt="a0"] { animation: mvBeatA .36s ease-out; } [data-bt="a1"] { animation: mvBeatB .36s ease-out; }
+[data-bt="b0"] { animation: mvBeatC .62s ease-out; } [data-bt="b1"] { animation: mvBeatD .62s ease-out; }
+/* 待ち: 時計の板に光が走る（6 秒に 1 回） */
+.waitbox { position: relative; overflow: hidden; }
+.waitbox::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 34%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .17), transparent); transform: translateX(-130%); animation: mvSheen 6s ease-in-out 1.5s infinite; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .scr.in, [class*="mv-"], [class*="mv-"] *, [data-bt], .waitbox::after { animation: none !important; } } /* .scr.in: 画面の入りも止める（ボートにも入れたので、ここでそろえて止める） */
+
+/* ====================================================================================================
+   2026-11-28 採点 1 回目の直し（固定の採点者: ボート 91 点・競馬 94 点。指摘を 1 つずつ。ボートだけの物は v2/boat-bet.css のいちばん下）
+   ==================================================================================================== */
+/* 上の帯: いつも 1 行（ロゴ・店の名前・残り時間を横に）。前は入らない画面だけ 1 行（.os-t）で、確認の画面などはロゴ・店・時間が縦に並ぶ高い帯だった ＝ 画面ごとに帯がちがって見えた */
+.top { display: flex; align-items: center; gap: 10px; padding: calc(var(--sat) + 6px) 16px 6px; text-align: left; }
+.crest { flex: none; padding: 0; } .crest img { width: 86px; height: 28px; }
+.store { flex: 1 1 auto; min-width: 0; }
+.race { flex: none; margin-top: 0; flex-wrap: nowrap; gap: 4px; } .race span { padding: 3px 10px; }
+/* 予想の表の補助の字（競馬 ＝ 調子・脚質・近走／ボート ＝ 級・調子・得意・近走）を 1.2 倍に（11.5px → 13.5px・幅 350px までは 11px → 12.5px）。
+   近走を 2 行目に分けていつも 2 行にし（.kin。前は長い物だけ 3 行に折れていた）、点の間・行の間を詰めたので、行の高さは前より高くならない */
+.btr .bn { gap: 2px; }
+.btr .bn b { line-height: 1.35; }
+.btr .bn small { font-size: 13.5px; line-height: 1.2; letter-spacing: -.01em; }
+.btr .bn small i { margin: 0 -.12em; }
+.btr .bn small .kin { display: block; }
+.os-s .btr { padding-top: 0; padding-bottom: 0; }
+.os-s .btr .bn b { line-height: 1.1; }
+.os-s .btr .bn small { font-size: 13.5px; line-height: 1.2; }
+@media (max-width: 350px) { .btr .bn b { line-height: 1.25; } .os-s .btr .bn b { line-height: 1.1; } .btr .bn small, .os-s .btr .bn small { font-size: 12.5px; letter-spacing: -.02em; } }
+/* 1 着に選んだ馬・艇の「2 着」のボタン: 押せないことがはっきり分かる見た目（斜めの線の地・点線のふち・影なし） */
+.btr.s1 .pk.k2:disabled { opacity: 1; background: repeating-linear-gradient(135deg, rgba(0, 0, 0, .05) 0 5px, rgba(0, 0, 0, .12) 5px 10px); border-style: dashed; border-color: rgba(0, 0, 0, .38); box-shadow: none; }
+/* 小さい補足の字を濃く・1 段太く（文は同じ）: 説明の 1 行（.sub）・確認の倍率の注意・券の下の注意・「受け取るまで、この画面が出ます」・スタンプの条件 */
+.sub, .sub.b2sub, .keeptill, .scr .tk-note { color: var(--ink); font-weight: 600; }
+.scr.confirm .sub.shift { opacity: 1; }
+.stampcard .sr, .stampgot span { color: var(--ink); font-weight: 600; }
+/* 会計番号の「全部消す」（4 字）: 字を少し小さく（ボタンの場所・大きさは同じ） */
+.keypad button[data-key="clr"] { font-size: 16px; }
