@@ -82,7 +82,7 @@ html.bw.bw-short.w-port .wres .wr { padding: 4px 12px; } html.bw.bw-short.w-port
 /* ---------- 横向きのスマホ（w-bot）: 下の細い帯に ［‹ 投票ページ］・場面の札・自分の予想・［図で見る］ ---------- */
 html.bw.w-bot .wtop { left: 0; right: 0; top: auto; bottom: calc(var(--sbar, 0px) + env(safe-area-inset-bottom)); height: 50px; padding: 0 8px; justify-content: space-between; pointer-events: none; z-index: 2; }
 html.bw.w-bot .wtop .wb { pointer-events: auto; }
-html.bw.w-bot .wmine { left: 118px; right: 98px; bottom: calc(var(--sbar, 0px) + env(safe-area-inset-bottom)); height: 50px; box-sizing: border-box; padding: 0; flex-wrap: nowrap; justify-content: center; gap: 4px 8px; overflow: hidden; background: #0b101b; backdrop-filter: none; -webkit-backdrop-filter: none; } /* 左右はボタンの分を空ける（中身がボタンの下に入らない） */
+html.bw.w-bot .wmine { left: 124px; right: 104px; bottom: calc(var(--sbar, 0px) + env(safe-area-inset-bottom)); height: 50px; box-sizing: border-box; padding: 0; flex-wrap: nowrap; justify-content: center; gap: 4px 8px; overflow: hidden; background: #0b101b; backdrop-filter: none; -webkit-backdrop-filter: none; } /* 左右はボタンの分を空ける（中身がボタンの下に入らない） */
 html.bw.w-bot .wst, html.bw.w-bot .wl, html.bw.w-bot .wv { flex: none; }
 html.bw.w-bot .wst .ttl { display: none; }
 html.bw.w-bot .wst .clk { font-size: 15px; margin-left: 0; }
@@ -108,3 +108,11 @@ html.bw.w-bot .wlock, html.bw.w-bot .wcele { z-index: 3; }
 /* ---------- 横向きで右に空きのある画面（w-side。パソコンなど） ---------- */
 html.bw.w-side .wst { flex-wrap: wrap; }
 html.bw.w-side .wst .ttl { display: none; }
+/* 2026-11-28 またぎ・見切れ調べ（tests/box-check.js）で見つけた物:
+   ① 横向きの下の帯: 左の「‹ 投票ページ」・右の「3Dで見る」のボタンに帯が 4px かぶっていた → 帯の左右を 118/98 → 124/104px に（上の行）
+   ② 縦向き: 当たりの形で光る予想の行（.wv.hot）は少し大きくなったり戻ったりする。帯（overflow: hidden）の端ちょうどに置いていたので、光のふちと大きくなった分が左右と下で 5px 切れていた
+      → 帯を画面の幅いっぱいにして内側に 8px の余白（下は 6px）。中身の位置と幅は変わらない
+   ③ 横向きの帯の「当たりの形！」の札も同じ動きで右が 4px 切れていた → 帯の中では小さい動き（bwPulse）にする */
+html.bw.w-port .wmine { left: 0; right: 0; box-sizing: border-box; padding: 0 8px 6px; bottom: calc(50px + var(--sbar, 0px) + env(safe-area-inset-bottom)); }
+html.bw.bw-short.w-port .wmine { bottom: calc(2px + var(--sbar, 0px) + env(safe-area-inset-bottom)); }
+html.bw.w-bot .hb.hot { animation-name: bwPulse; }
