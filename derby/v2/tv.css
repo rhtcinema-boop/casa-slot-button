@@ -1721,3 +1721,12 @@
 #stage.v2.m-result .v2qr .tx b { height: 36px; line-height: 36px; }
 #stage.v2.m-result .v2qr .code { width: 234px; height: 234px; margin: 0; }
 #stage.v2.m-result .v2qr .free { line-height: 1.1; }
+
+/* 2026-11-28 レース中・前のレースのリプレイ: 状態の札が映像の枠の上の角に 8px ほど重なっていた（札 60px＋白いふち 3px×2＝66px に対し、枠の上の空きは 60px）。
+   この 2 つの場面だけ札を 50px に（y3〜53・白いふちは y56 まで）。枠との間に 4px あく */
+#stage.v2.m-live .top, #stage.v2.m-hl .top { top: -4px; }
+#stage.v2.m-live .top > .v2st, #stage.v2.m-hl .top > .v2st { height: 50px; font-size: 34px; padding: 0 24px 0 18px; box-shadow: 0 0 0 3px #fff; }
+/* 2026-11-28 前のレースのリプレイ: 右下の QR の箱の白いふちが、映像の枠の右下の角に 7px かぶっていた（tests/box-check.js で見つけた）。
+   QR の一辺は tv.js がマスの整数倍で決める（--qh は CSS で変えられない）ので、箱のほうを細くする: 外側の白いふち 4px をやめ、内側の白い余白を 10→7px（QR のまわりの白は 3 マス＋7px で 4 マス以上のまま）、右へ 4px。下端はそのまま */
+#stage.v2.m-hl .v2qr { right: 9px; top: 596px; padding: 7px; box-shadow: 0 0 0 5px var(--orange), 0 14px 30px rgba(0, 0, 0, .35); }
+#stage.v2.m-hl .v2qr.xshut { box-shadow: 0 0 0 5px #8a96a6, 0 14px 30px rgba(0, 0, 0, .35); }
