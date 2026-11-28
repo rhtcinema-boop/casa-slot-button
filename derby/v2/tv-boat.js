@@ -117,11 +117,12 @@
   function show(id) {
     if (shown === id) return;
     const prev = shown; shown = id;
+    { const ov = $('boatOv'); if (ov) ov.classList.toggle('on-film', id === 'boFilm'); } // 2026-11-28 オーナー「レース中の上のバーの背景画像ダサい」: 映像の間は上の帯を濃い紺の無地に（tv-boat.css）
     const from = prev === 'boVote' ? ($('boVote').classList.contains('is-wait') ? 'wait' : 'vote') : prev === 'boFilm' ? 'film' : prev === 'boRes' ? 'res' : '';
     SECS.forEach((x) => { const e = $(x); if (x !== id) { hideF(e, true); return; } if (e.dataset.from !== from) e.dataset.from = from; hideF(e, false); });
   }
   // 画面を出していない間（競馬の画面）: 板を全部しまう（次に出すとき、前のレースの板から「替わる」動きをさせない）
-  function showNone() { if (!shown) return; shown = ''; SECS.forEach((x) => cutHide($(x))); }
+  function showNone() { if (!shown) return; shown = ''; { const ov = $('boatOv'); if (ov) ov.classList.remove('on-film'); } SECS.forEach((x) => cutHide($(x))); }
   /* 上の場面の札（2026-11-23）: 字が変わるたびに 1 回はずませる（印 pop / pop2 を交互に付け替える ＝ 動きがやり直される）。hot ＝ 締切 30 秒前からの赤（競馬の「まもなく締切」） */
   let pillN = 0;
   function pill(label, on, hot) {
