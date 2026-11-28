@@ -18,6 +18,37 @@
       if (el.scrollWidth > el.clientWidth + 1) el.classList.add('wrap2');
     });
   };
+  /* ---------- 2026-11-28 動き（言葉は v2/bet.css のいちばん下の「動き」の段。見た目は ticket.css）: 当たりの光の筋と紙吹雪・数字の数え上がり。競馬（bet.js）とボート（boat-bet.js）が同じ物を呼ぶ ----------
+     BetFx.burst(t0): 画面の上に光の筋 1 つと紙吹雪 22 枚を出して、2.6 秒で消す（押す物の邪魔をしない＝pointer-events なし。t0 ごとに 1 回だけ）
+     BetFx.count(el, t0, ms, from): el の数字（「1,200」）を from（無ければ 0）から数え上げる。本当の字はそのまま（場所を取ったまま・読み上げも試験も最終の数字）で、見える数字だけ重ねて動かす。
+       途中で画面を描き直しても、同じ t0 で呼び直せば続きから。「視差効果を減らす」の端末・隠れた画面では何もしない */
+  const calm = () => { try { return document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+  const CF = ['#ffc41f', '#fff', '#d6332b', '#2459c9', '#2a9a4a', '#ff8a00'];
+  let burstT = 0;
+  window.BetFx = {
+    burst(t0) {
+      if (calm() || !t0 || t0 === burstT || performance.now() - t0 > 600) return; burstT = t0;
+      const old = document.getElementById('tkFx'); if (old) old.remove();
+      const box = document.createElement('div'); box.id = 'tkFx'; box.className = 'tkfx'; box.setAttribute('aria-hidden', 'true');
+      let h = '<i class="ry"></i>', r = (t0 * 9301 + 49297) % 233280; const rnd = () => { r = (r * 9301 + 49297) % 233280; return r / 233280; };
+      for (let i = 0; i < 22; i++) h += '<i class="cf" style="--x:' + Math.round(4 + rnd() * 92) + '%;--dx:' + Math.round(rnd() * 120 - 60) + 'px;--r:' + Math.round(rnd() * 900 - 450) + 'deg;--t:' + (1.5 + rnd() * .7).toFixed(2) + 's;--d:' + (rnd() * .45).toFixed(2) + 's;--c:' + CF[i % CF.length] + '"></i>';
+      box.innerHTML = h; (document.getElementById('app') || document.body).appendChild(box);
+      setTimeout(() => { box.remove(); }, 2700);
+    },
+    count(el, t0, ms, from) {
+      if (!el || calm() || el.querySelector('.tkn')) return;
+      const tn = Array.prototype.find.call(el.childNodes, (n) => n.nodeType === 3 && /\d/.test(n.textContent)); if (!tn) return;
+      const txt = tn.textContent, to = Number(txt.replace(/[^\d]/g, '')), a = Number(from) || 0, dur = ms || 900; if (!isFinite(to) || to === a || performance.now() - t0 >= dur) return;
+      const w = document.createElement('i'); w.className = 'tkn'; w.style.setProperty('--tkc', getComputedStyle(el).color); w.textContent = txt; el.replaceChild(w, tn);
+      const fmt = (n) => Math.round(n).toLocaleString('ja-JP');
+      (function step() {
+        const p = Math.min(1, (performance.now() - t0) / dur);
+        if (!w.isConnected) return;
+        if (p >= 1) { w.parentNode.replaceChild(document.createTextNode(txt), w); return; }
+        w.setAttribute('data-n', fmt(a + (to - a) * (1 - Math.pow(1 - p, 3)))); requestAnimationFrame(step);
+      })();
+    },
+  };
   const pad = (n) => ('0' + n).slice(-2), JST = (ms) => new Date(ms + 9 * 3600e3), bill2 = (b) => String(b).padStart(2, '0');
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const FRAME = ['#f4f4f4', '#1a1a1e', '#d6332b', '#2459c9', '#f2c531', '#2a9a4a'], INK = ['#111', '#fff', '#fff', '#fff', '#111', '#fff'];
@@ -34,7 +65,7 @@
   window.BetTicket = function (r, v, n, res, opt) {
     const B = window.BET || window.BET_TK, TX = B.TX, st = B.st, hhmm = B.hhmm, payFor = B.payFor, oddsTxt = B.oddsTxt, now = Date.now, who = true, cmp = !!(opt && opt.cmp);
     const dayStartHour = () => { const x = st && ((st.tuning && st.tuning.dayStartHour) != null ? st.tuning.dayStartHour : st.settings && st.settings.dayStartHour); const h = Number(x); return Number.isFinite(h) ? h : 5; };
-    const shiftOn = () => { const x = st && st.settings; if (!x || x.shiftUp == null || x.shiftDown == null) return true; return Number(x.shiftUp) > 0 || Number(x.shiftDown) > 0; };
+    const shiftOn = () => { const x = st && st.settings; if (x && typeof x.shiftOn === 'boolean') return x.shiftOn; if (!x || x.shiftUp == null || x.shiftDown == null) return true; return Number(x.shiftUp) > 0 || Number(x.shiftDown) > 0; }; // bet.js と同じ（shiftOn: 2026-11-21）
     /* ⑤ 投票済みの「馬券ふうの投票券」（2026-11-07 オーナー選定・手本は紙の馬券の写真）。見た目だけ: 票の中身・決まりは今までどおり。
        横長の白い券・緑の丸い地紋（casa DERBY と蹄鉄）・左に日付と店とレース番号・真ん中に縦の帯「2連単」・右に四角い番号と ★ と当たれば pt・下に合計と通し番号風の飾り。
        お金で買った券に見えないように「投票券（参加無料）」を必ず出す。倍率は締切まで動くので「いまの倍率」 */
@@ -70,7 +101,7 @@
       /* 2026-11-08 オーナー「馬券のデザインを本物にサイズとかも全部寄せて」: 手本の写真（1.6:1）の割合で組む（scratchpad/ticket-ref-measure.md）。
          左の列 36%＝日付・店（大）・[番号]レース・QR 風 2 つ・レース名と発走・casa DERBY 店／帯 12%＝EXACTA・2連単・EXACTA（左右に細い線）／右の列＝本物の 3 行:
          行 1 [3]-[5] ★★★ 100pt・行 2 馬名＋いまの倍率・行 3 当たれば ○pt／下＝会計番号・名前・発行（本物の合計の位置。「合計」の行は入れない＝オーナー 11/7）、通し番号。大きさは券の幅に比例（cqw） */
-      return '<div class="mine tk' + (n === 2 ? ' b2' : '') + (hit ? ' hit' : miss ? ' miss' : '') + (cmp ? ' cmp' : '') + '"><p class="mk">' + esc(hit ? (n === 2 ? TX.vote2 : n === 1 ? TX.vote1 : '的中した投票券') : n === 2 ? TX.vote2 : miss && n === 1 ? TX.vote1 : TX.yourPick) + (hit ? '<span class="vn bt">' + esc(TX.hitMark) + '</span>' : miss ? '<span class="vn ms">' + esc(TX.missMark || 'はずれ') + '</span>' : n === 1 ? '<span class="vn">' + esc(TX.vote1) + '</span>' : n === 2 ? '<span class="vn bt">' + esc(v.stamp ? TX.stampTag : TX.bonusTag) + '</span>' : '') + (cnt > 1 ? '<span class="vn xn">×' + cnt + '枚</span>' : '') + '</p>' +
+      return '<div class="mine tk' + (n === 2 ? ' b2' : '') + (hit ? ' hit' : miss ? ' miss' : '') + (cmp ? ' cmp' : '') + '"><p class="mk">' + esc(hit ? (n === 2 ? TX.vote2 : n === 1 ? TX.vote1 : '的中した投票券') : n === 2 ? TX.vote2 : miss && n === 1 ? TX.vote1 : TX.yourPick) + (hit ? '<span class="vn bt">' + esc(TX.hitMark) + '</span>' : miss ? '<span class="vn ms">' + esc(TX.missMark || 'はずれ') + '</span>' : n === 1 ? '<span class="vn">' + esc(TX.vote1) + '</span>' : n === 2 ? '<span class="vn bt">' + esc(v.stamp ? TX.stampTag : TX.bonusTag) + '</span>' : '') + (cnt > 1 ? '<span class="vn xn">×' + cnt + '票</span>' : '') + '</p>' +
         '<div class="tkt"><div class="tkin">' +
           '<div class="tk-l"><div class="tk-date">' + esc(ymd) + '</div><div class="tk-store" data-fit="14">' + esc(store) + '</div>' +
             (ri >= 0 ? '<div class="tk-rno"><b>' + (ri + 1) + '</b><span>レース</span></div>' : '<div class="tk-rno tm"><b>' + esc(at) + '</b><span>発走</span></div>') +
