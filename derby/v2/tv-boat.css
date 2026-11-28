@@ -489,3 +489,9 @@
 .bo-res { padding-top: 16px; } .bo-order { gap: 5px 26px; } .bo-inc { font-size: 26px; } .bo-inc b { font-size: 30px; } /* 知らせが 2 行出るレースでも、下の 1 文（30px）が切れない詰め方 */
 .is-vote .bo-ct .hd, .is-vote .bo-ct .rw { grid-template-columns: 8px 50px minmax(0, 1fr) 50px 116px 98px 126px; } /* 調子の言葉「いまひとつ」（5 字・19px）が欄に入る幅 */
 .bo-wins h3 { font-size: 32px; }
+
+/* 2026-11-28 オーナー「今のレース画面の上のバーの部分の背景画像ダサい。レース中はあれじゃない方がいい」:
+   映像の間（.on-film。v2/tv-boat.js の show）は、上の帯を下の字幕の帯と同じ濃い紺の無地に（光の筋と水色の地は出さない＝中継の画面らしく）。待ち・投票・結果は今までどおり */
+#boatOv::before { transition: opacity .5s ease; }
+#boatOv.on-film::before { opacity: 0; }
+#boatOv.on-film::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 80px; z-index: -1; background: linear-gradient(180deg, #0a2450, #0b2a5c); animation: boFade .5s ease-out both; }
