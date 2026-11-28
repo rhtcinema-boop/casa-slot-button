@@ -482,7 +482,7 @@
     return '<button class="btn ghost watchbtn" data-act="watch"><span aria-hidden="true">▶ </span>' + esc(TX.watchBtn) + '</button>'; /* 2026-11-28 オーナー「無駄に説明多い」: 消した */
   }
   /* 窓の見た目は開くときだけ足す（投票ページの最初の読み込みを重くしない＝bet.css には入れない） */
-  const WATCH_CSS = '#watchOv{position:fixed;inset:0;z-index:100;background:#0b101b}#watchOv iframe{position:absolute;top:0;bottom:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:100%;border:0;display:block;background:#0b101b}html.watching,html.watching body{overflow:hidden}.watchbtn small{display:block;font-size:12px;font-weight:500;opacity:.8}';
+  const WATCH_CSS = '#watchOv{position:fixed;inset:0;z-index:100;background:#0b101b}#watchOv iframe{position:absolute;top:0;bottom:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:100%;border:0;display:block;background:#0b101b}html.watching,html.watching body{overflow:hidden}#watchOv .wload{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:linear-gradient(180deg,#9be070,#5dbb3f);color:#14301a;font-size:18px;font-weight:800}#watchOv .wload p{margin:0}#watchOv .wload .btn{width:auto;min-width:160px;padding:12px 28px}.watchbtn small{display:block;font-size:12px;font-weight:500;opacity:.8}';
   function openWatch() {
     if (!my || !my.vote || $('watchOv')) return;
     if (!watchOk()) { lastSig = ''; route(); return; }
@@ -497,6 +497,17 @@
     const q = '?store=' + encodeURIComponent(STORE) + '&race=' + encodeURIComponent(my.raceId) + keep;
     fr.src = map ? 'watchmap.html' + q : (DEMO ? '../tv.html' : '../index.html') + q + '&watch=1';
     ov.appendChild(fr); document.body.appendChild(ov); document.documentElement.classList.add('watching');
+    /* 2026-11-28 オーナー「投票確定後にこんな画面出るんだけどバグ？」（旗と空の絵だけの画面）: 窓の中のページ（テレビと同じ画面）は部品が多く、読み込みが終わるまで
+       拡大された起動画面の絵だけが出ていた（4G だと長い・閉じるボタンも無い）→ 窓の中の準備ができるまで、上に「読み込み中…」と「閉じる」を出す。
+       準備できた＝窓の中のページに watch.js の印（html.watch）が付き、起動画面（#splash）が消えた。図の表示（watchmap.html）は読み込みが終わったら */
+    { const ld = document.createElement('div'); ld.className = 'wload'; ld.innerHTML = '<p role="status">' + esc(TX.loading || '読み込み中…') + '</p><button type="button" class="btn ghost">' + esc(TX.watchClose || '閉じる') + '</button>';
+      ld.querySelector('button').addEventListener('click', () => closeWatch(false)); ov.appendChild(ld);
+      const iv = setInterval(() => {
+        if (!ov.isConnected) return clearInterval(iv);
+        let ok = false;
+        try { const d = fr.contentDocument, here = d && d.location && /^https?:/.test(d.location.protocol); ok = !!here && (map ? d.readyState === 'complete' : d.documentElement.classList.contains('watch') && !d.getElementById('splash')); } catch (e) { ok = false; }
+        if (ok) { clearInterval(iv); ld.remove(); }
+      }, 200); }
     try { history.pushState(Object.assign({}, history.state || {}, { derbyWatch: 1 }), ''); } catch (e) { /* noop */ } // スマホの「戻る」で窓を閉じる
   }
   function closeWatch(fromPop) {
