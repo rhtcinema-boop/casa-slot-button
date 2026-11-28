@@ -399,3 +399,18 @@ body.boat .mine.tk .mk { color: var(--ink); } body.boat .mine.tk .mk .vn, body.b
   .scr.b-voted { grid-template-rows: minmax(0, 1fr) auto auto auto auto auto minmax(0, 1fr); }
   .scr.b-voted > .vsum { grid-row: 4; margin: 0; } .scr.b-voted > .sub { grid-row: 5; } .scr.b-voted > .btnrow { grid-row: 6; }
 }
+
+/* 2026-11-28 オーナー「文字被ってたり」: 幅 360 以下で、店の名前と残り時間の札がぶつかる → 札の言葉を小さく・ロゴを少し小さく（数字はそのまま） */
+@media (max-width: 360px) {
+  body.boat .top { gap: 6px; padding-left: 10px; padding-right: 10px; }
+  body.boat .top .crest img { width: 74px; height: 24px; }
+  body.boat .top .store { font-size: 12px; }
+  body.boat .top .race span { padding: 3px 7px; font-size: 11px; letter-spacing: -.03em; } body.boat .top .race span b { font-size: 14px; }
+}
+/* 結果の画面の券の欄も、投票前と同じく「1 枚目の券がまるごと見える大きさ」に（前は結果の画面だけ券がいつもの大きさで、下が欄で切れて見えた） */
+.scr.b-result .btks { flex: 1 1 0; container-type: size; }
+.scr.b-result .btks .mine.tk .tkt { width: min(100%, calc((100cqh - 26px) * 1.594)); margin: 0 auto; }
+.os-s .scr.b-result .btks .mine.tk .tkt { width: min(100%, calc((100cqh - 22px) * 1.594)); }
+/* 結果の券: 1 枚まるごと見える大きさにしたら、狭い画面で小さくなりすぎた → 幅の 70% より小さくしない（入らない分は欄の中で動く・下の端はうすく消える） */
+.scr.b-result .btks .mine.tk .tkt { width: min(100%, max(80%, calc((100cqh - 26px) * 1.594))); }
+.os-s .scr.b-result .btks .mine.tk .tkt { width: min(100%, max(80%, calc((100cqh - 22px) * 1.594))); }
