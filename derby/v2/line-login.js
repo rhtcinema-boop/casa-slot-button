@@ -113,9 +113,9 @@
         '#lnGate h1{margin:0;font-size:22px;font-weight:900;letter-spacing:.02em}#lnGate p{margin:0;font-size:14px;line-height:1.6;color:#6b4a2c;white-space:pre-line}body.boat #lnGate p{color:#3d5f86}' +
         '#lnGate button{width:100%;height:56px;margin-top:6px;border:0;border-radius:14px;background:#06c755;color:#fff;font:inherit;font-size:18px;font-weight:900;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
         '#lnGate button:active{filter:brightness(.92)}#lnGate button[disabled]{background:#0b7a3b;color:#fff;cursor:default;filter:none}' + /* 2026-11-27 総点検: 「ログイン中…」は字を白のまま・地だけ暗く（前は全体を薄くして字が読みにくかった） */
-        '#lnGate .tip{font-size:13px;line-height:1.6;white-space:pre-line;min-height:3.2em}#lnGate .tip:empty{visibility:hidden}' + /* 案内の 2 行ぶんの場所を先に取る（出たときにボタンが動かない。2026-11-28 採点） */
+        '#lnGate .tip{font-size:13px;line-height:1.6;white-space:pre-line}#lnGate .tip:empty{display:none}' + /* 案内の 2 行ぶんの場所を先に取る（出たときにボタンが動かない。2026-11-28 採点） */
         '' +
-        '#lnGate .err,body.boat #lnGate .err{min-height:3.2em;color:#a31515;font-size:13px;font-weight:700;white-space:pre-line}#lnGate .err:empty{visibility:hidden}'; /* 赤字は 2 行ぶんの場所を先に取る（出たときに画面が動かない） */
+        '#lnGate .err,body.boat #lnGate .err{color:#a31515;font-size:13px;font-weight:700;white-space:pre-line}#lnGate .err:empty{display:none}'; /* 赤字は 2 行ぶんの場所を先に取る（出たときに画面が動かない） */
       doc.head.appendChild(st);
     }
     function show(o) {
