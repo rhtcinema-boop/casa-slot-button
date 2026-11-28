@@ -18,7 +18,7 @@ BOAT.Sound = (function () {
   const VOICE_DIR = (() => { try { const me = document.currentScript && document.currentScript.src; return me ? new URL('../art/voice-boat/', me).href : '../art/voice-boat/'; } catch (e) { return '../art/voice-boat/'; } })(); // 2026-11-19: 店のテレビ（ルートの index.html）から読んでも同じ場所（このファイルの場所から数える）
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v)), db = (x) => Math.pow(10, x / 20);
   // 音量の目安（声の部品は −16dBFS にそろえてある＝ 1.0）。エンジンは「全速で目の前」で声の −10dB、話している間はさらに −9dB（資料 10 8-5: 声のすき間は 20〜40dB 下）
-  const LVL = { voice: 1.0, eng: 0.033, duck: db(-9), water: 0.5, spray: 0.9, fan: 0.42, buzzer: 0.5, chime: 0.6, crowd: 0.05 };
+  const LVL = { voice: 1.0, eng: 0.022, /* 2026-11-28 オーナー「モーターの音も大きすぎるからちょっと落として」: 0.033 → 0.022（約 −3.5dB） */ duck: db(-9), water: 0.5, spray: 0.9, fan: 0.42, buzzer: 0.5, chime: 0.6, crowd: 0.05 };
   let ctx = null, master = null, voiceBus = null, engBus = null, duckG = null, fxBus = null, crowdBus = null;
   let vbuf = null, vidx = null, voff = 0, names = [], warned = {};
   let eng = [], water = null, spray = null, slap = null, crowd = null, clap = null;
@@ -66,22 +66,37 @@ BOAT.Sound = (function () {
   }
   /* again ＝ 取り直し。2026-11-28 に声を作り直した（速さを競馬に合わせた）ので、テレビに残っている古い音（announce.m4a）と新しい一覧（index.json）、またはその逆が組になることがある。
      組が違うと部品の位置がずれて別の言葉が鳴るので、一覧に書いてある音の長さ（dur）と読んだ音の長さを比べ、違えば両方を取り直す（1 回だけ）。それでも違えば実況の声は出さない（字幕は出る） */
+  /* 2026-11-28 オーナー「競艇の実況の音が聞こえなくなった」（声を作り直して 439 秒 → 490 秒に長くなったあと）。テレビの中は見えないので、声が出なくなる道を 3 つともふさぐ:
+     1) 音をほどく大きさ: 前はテレビの音の細かさ（48kHz）でほどいていた（490 秒 ≒ 94MB。前の声は 84MB）→ 声の元の細かさ（24kHz）でほどく（≒ 47MB。鳴らすときに自動で合う・聞こえ方は同じ）。できない端末は今までどおり
+     2) 読めなかった（電波・ほどけない）ときに、そのまま最後まで黙っていた → 20 秒・1 分・3 分あけて 3 回までやり直す
+     3) 長さの比べ方が厳しすぎた（0.5 秒）→ 3 秒（古い声と新しい声の差は 51 秒なので、取り違えは今までどおり見つかる） */
+  function decodeVoice(ab) {
+    const viaCtx = () => new Promise((res, rej) => ctx.decodeAudioData(ab.slice(0), res, rej));
+    try {
+      const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!OC) return viaCtx();
+      const oc = new OC(1, 1, 24000);
+      return new Promise((res, rej) => { const p = oc.decodeAudioData(ab.slice(0), res, rej); if (p && p.catch) p.catch(rej); }).catch(() => viaCtx());
+    } catch (e) { return viaCtx(); }
+  }
+  let voiceTry = 0;
+  const VOICE_RETRY = [20000, 60000, 180000];
+  function retryVoice(why) { stat.voiceErr = String(why || '').slice(0, 60); if (vbuf || voiceTry >= VOICE_RETRY.length) return; const ms = VOICE_RETRY[voiceTry++]; setTimeout(() => { if (!vbuf) loadVoice(true); }, ms); }
   function loadVoice(again) {
     const opt = again ? { cache: 'reload' } : undefined; let idx = null;
     fetch(VOICE_DIR + 'index.json', opt).then((r) => r.json()).then((j) => {
       idx = j;
       if (!j.dur && !again) { loadVoice(true); return null; } // dur の無い一覧 ＝ 作り直す前の古い一覧が残っている → 取り直す
       return fetch(VOICE_DIR + (j.sprite || 'announce.m4a'), opt).then((r) => r.arrayBuffer());
-    }).then((ab) => ab && new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej))).then((b) => {
+    }).then((ab) => ab && decodeVoice(ab)).then((b) => {
       if (!b) return;
-      if (idx.dur && Math.abs(b.duration - idx.dur) > 0.5) { stat.voiceMix = (stat.voiceMix || 0) + 1; if (!again) loadVoice(true); else console.warn('boat voice: 一覧と音の組が違う', idx.dur, b.duration); return; }
+      if (idx.dur && Math.abs(b.duration - idx.dur) > 3) { stat.voiceMix = (stat.voiceMix || 0) + 1; if (!again) loadVoice(true); else { console.warn('boat voice: 一覧と音の組が違う', idx.dur, b.duration); retryVoice('mix'); } return; }
       vidx = idx; names = Object.keys(idx.clips).filter((k) => k.indexOf('#S') === 1).map((k) => k.slice(3)).filter((v, i, a) => a.indexOf(v) === i);
       vbuf = b;
       // AAC の頭のずれを測る: 最初の部品の声の立ち上がり（頭の 15ms のあと）を探す
       const first = Object.values(vidx.clips).reduce((a, c) => (c[0] < a[0] ? c : a)), d = b.getChannelData(0), from = Math.max(0, Math.floor((first[0] - 0.2) * b.sampleRate));
       let i = from; while (i < d.length && Math.abs(d[i]) < 0.012) i++;
       voff = clamp(i / b.sampleRate - (first[0] + 0.015), -0.15, 0.15);
-    }).catch((e) => console.warn('boat voice', e));
+    }).catch((e) => { console.warn('boat voice', e); retryVoice(e && e.message); });
   }
   /* ---------- エンジン ---------- */
   // 1 艇の音色: 主役の山（1 回転に 2 回の爆発）を 0dB として、1 オクターブ下 −5・1.5 倍 −14・2 倍 −13・2.5 倍 −14・3 倍 −9（資料 10 8-2 の近くのマイクの実測）。
