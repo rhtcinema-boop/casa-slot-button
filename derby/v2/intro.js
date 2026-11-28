@@ -45,7 +45,7 @@
       '</div>' +
       '<div class="two"><div class="n">2<small>票</small></div><div><h2>' + esc(TX.twoH) + '</h2><p>' + esc(TX.twoP) + '</p></div></div>' +
       '<button type="button" class="btn" data-act="introGo">' + esc(TX.go) + '</button>' +
-      '<p class="skip">' + esc(TX.skip) + '</p>' +
+      '' /* 2026-11-28 オーナー「無駄に説明多い」: 消した */ +
       '</div>';
   }
   function seen() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
