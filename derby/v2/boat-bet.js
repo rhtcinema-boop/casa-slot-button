@@ -322,7 +322,7 @@
   function scr(cls, html) { return '<div class="scr ' + cls + '">' + html + '</div>'; }
   function bptCard() {
     if (!S.bpt) return '';
-    return '<div class="bptcard"><div class="bh"><span>あなたの BPT' + (S.member ? '<small class="mid">ID ' + esc(S.member.code) + '</small>' : '') + '</span><b>' + amt(S.bpt.bal) + '</b></div><p>ボートの当たりで貯まります。競馬の票を 100 BPT で 1 票 増やせます（毎週月曜の朝 5 時にリセット）</p></div>';
+    return '<div class="bptcard"><div class="bh"><span>あなたの BPT' + (S.member ? '<small class="mid">ID ' + esc(S.member.code) + '</small>' : '') + '</span><b>' + amt(S.bpt.bal) + '</b></div></div>'; /* 2026-11-28 オーナー「無駄に説明多いのでなくして」: 説明の文を消す（見出し＋数字＋ボタン） */
   }
   function howCard() {
     return '<div class="howcard"><div class="hw"><b>1</b><span><em>無料で 1 票</em>テレビの QR を読めば、だれでも 1 レース 1 票</span></div><div class="hw"><b>2</b><span><em>1着と2着を順番に</em>6 艇から 2連単。BPT 100 で 1 票、何票でも追加</span></div><div class="hw"><b>3</b><span><em>当たりは BPT</em>この画面に自動で入ります（受け取りなし）</span></div></div>';
@@ -343,12 +343,12 @@
     return scr('mid b-wait', testTag(nx) + '<div class="waitbox"><p class="wk">次のボートレース</p><p class="wt">' + hm(nx.at) + '<small>締切</small></p>' +
       '<div class="wr"><p class="wv">投票は ' + hm(nx.openAt) + ' から</p><div class="clock"><div class="k">受付開始まで あと</div><div class="v"' + cd(nx.openAt, t) + '</div></div></div></div>' + bptCard() + keibaLine() + aftLine(nx.at) +
       /* 2026-11-28: テレビは待ち時間にも QR を出す（締切の 14 分前からは、そのレースの QR）。もうそのレースの QR を読んであるスマホには「QR を読んでください」を出さない（始まったらそのまま投票できる） */
-      (nid && keyFor(nid) ? '<p class="sub">投票が始まったら、このまま投票できます</p>' : '<p class="sub">投票が始まったら、お店のテレビの QR を読んでください（QR はレースごとに変わります）</p>') + howRow());
+      howRow()); /* 2026-11-28 オーナー「無駄に説明多いのでなくして」: 説明の文を消す（見出し＋数字＋ボタン） */
   }
   function vNoQr() { // 投票中・このレースの QR をまだ読んでいない
     const r = S.race, t = now(), miss = !S.err && r && S.scanMiss === r.id;
     return scr('mid b-noqr', testTag(r) + '<div class="waitbox hot"><p class="wk">投票受付中</p><p class="wt">' + (r ? hm(r.at) : '') + '<small>締切</small></p><div class="wr"><p class="wv">締切まで あと</p><div class="clock"><div class="v"' + (r ? cd(r.closeAt, t) : '>') + '</div></div></div></div>' +
-      '<div class="note qrnote"><b>テレビの QR を読んでください</b>ボートの投票はお店の中だけ。いまテレビに出ている QR を、スマホのカメラで読むと投票できます。</div>' +
+      '<div class="note qrnote"><b>テレビの QR を読んでください</b></div>' /* 2026-11-28 説明の 2 行を消した */ +
       (S.err ? '<p class="err" data-wrap>' + esc(S.err) + '</p>' : miss ? '<p class="err" data-wrap>読んだ QR は、いまのレースのものではありません</p>' : '') + bptCard() + howRow());
   }
   function vClosed() { // 締切のあと・投票していない人（2026-11-20 B3: 「QR を読むと投票できます」は出さない・「締め切りました」は 1 回）
@@ -364,7 +364,7 @@
     return scr('mid b-noderby', '<div class="waitbox"><p class="wk">ボートの投票</p><p class="wv" data-wrap>今日の競馬に参加したスマホで投票できます</p></div><div class="note">ボートに投票できるのは、<b>今日の casa DERBY（競馬）に会計番号で投票したスマホ</b>だけです。競馬に投票すると、この画面は自動でボートの投票に戻ります' + (S.cart.length ? '（えらんだ票はそのまま）' : '') + '。</div><a class="btn ghost" href="bet.html?store=' + encodeURIComponent(STORE) + '">競馬の投票へ</a>');
   }
   function vNick() {
-    return scr('b-nick', '<h1>ニックネーム</h1><p class="sub">当たったらテレビに出ます（競馬と同じ名前）</p><input id="nk" class="nkin" type="text" maxlength="40" autocomplete="off" autocapitalize="off" enterkeyhint="done" placeholder="8 文字まで" value="' + esc(savedNick()) + '"><div class="dock"><button class="btn" data-act="nick">決める</button></div>');
+    return scr('b-nick', '<h1>ニックネーム</h1><input id="nk" class="nkin" type="text" maxlength="40" autocomplete="off" autocapitalize="off" enterkeyhint="done" placeholder="8 文字まで" value="' + esc(savedNick()) + '"><div class="dock"><button class="btn" data-act="nick">決める</button></div>');
   }
   /* 初めての人への説明（2026-11-20 オーナー「競馬の初めての人への案内と同じ形で、絵つきで 3〜4 枚めくる」）: v2/intro.js（競馬）と同じ言い方・同じ絵の作り。4 枚をめくる。
      1 回だけ出す（casa.boat.intro）。あとで見返す入口は待ちの画面などの「あそびかた」（S.introAgain）。文言は ref/boat/説明の文言_2026-11-20.md と同じ */
@@ -384,7 +384,7 @@
       '<div class="icard"><div class="ipic">' + c.pic + '</div><h2>' + esc(c.h) + '</h2><p data-wrap>' + esc(c.p) + '</p></div>' +
       '<div class="idots">' + INTRO.map((_, i) => '<i class="' + (i === k ? 'on' : '') + '"></i>').join('') + '</div>' +
       '<div class="btnrow">' + (k > 0 ? '<button class="btn ghost" data-act="introPrev">もどる</button>' : '') + '<button class="btn" data-act="' + (last ? 'intro' : 'introNext') + '">' + (last ? (S.introAgain ? 'とじる' : 'はじめる') : '次へ') + '</button></div>' +
-      (S.introAgain ? '' : '<p class="sub">この案内は、次からは出ません（待ちの画面の「あそびかた」でいつでも見られます）</p>'));
+      ''); /* 2026-11-28 オーナー「無駄に説明多い」: 「この案内は、次からは出ません…」を消した */
   }
   function vPick() {
     const k = S.f != null && S.s != null ? S.f + '-' + S.s : null, change = S.mode === 'change';
@@ -409,7 +409,7 @@
     const nB = cartN(), nAll = nB + (freeInCart() ? 1 : 0), lock = S.busy || !!S.pend; // 送信中・届いたか確かめ中は、修正も投票もできない（B4・F3）
     return scr('b-confirm', testTag(S.race) + '<h1>投票内容の確認</h1><div class="ctab fx" data-scrollarea><table><thead><tr><th>No</th><th>勝式</th><th>組番</th><th class="n">オッズ</th><th class="n">購入金額</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<div class="csum"><div><span>合計ベット数</span><b>' + nAll + '</b>件</div><div><span>購入金額</span><b>' + amt(nB * 100) + '</b><small>BPT</small>' + (freeInCart() ? '<em>＋無料の 1 票</em>' : '') + '</div>' + (nB ? '<div class="dim"><span>BPT 残り</span>' + amt((S.bpt ? S.bpt.bal : 0)) + ' → <b>' + amt(Math.max(0, (S.bpt ? S.bpt.bal : 0) - nB * 100)) + '</b></div>' : '') + '</div>' +
-      (S.pend ? '<p class="sub" role="status" data-wrap>投票が届いたか確かめています…（電波が戻ると自動で確かめます）</p>' : '<p class="sub">オッズは締切のあとに少し変わることがあります</p>') + (S.err ? '<p class="err" data-wrap>' + esc(S.err) + '</p>' : '') +
+      (S.pend ? '<p class="sub" role="status" data-wrap>投票が届いたか確かめています…</p>' : '') + (S.err ? '<p class="err" data-wrap>' + esc(S.err) + '</p>' : '') +
       '<div class="btnrow"><button class="btn ghost" data-act="fix"' + (lock ? ' disabled' : '') + '>投票内容を修正する</button><button class="btn" data-act="vote"' + (lock ? ' disabled' : '') + '>' + (S.busy ? '送信中…' : S.pend ? '確かめ中…' : '投票する') + '</button></div>');
   }
   /* 投票結果の要約の 1 行（2026-11-28 採点「券が並ぶと、何件・いくら分か一目で分からない」）: 無料の票 1 ＋ BPT の票（v.n）。BPT の票が無いときは件数だけ。幅に入らないときは字を縮め（data-fit ＝ v2/ticket.js の BetTicketFit）、11px でも入らない細い欄（横向きで票が多いとき）だけ 2 行に折る（data-wrap） */
@@ -417,11 +417,11 @@
   function vVoted() {
     const r = S.race, t = now(), v = myVote(), bl = S.bpt ? Math.floor((S.bpt.bal || 0) / 100) : 0;
     return scr('b-voted', '<div class="vhead"><h1 class="done-h">' + (S.thanks ? '投票結果' : '投票済み') + '</h1>' + testTag(r) /* 見出しの行の中（高さを増やさない） */ + '<span class="cd">締切まで あと <b' + cd(r.closeAt, t) + '</b></span></div>' + (S.thanks ? '<p class="thx">ご投票ありがとうございました。</p>' : '') + vsum(v) +
-      papers(v) + '<p class="sub">締切までは無料の票の組番を変えられます。BPT の票は足せますが、消せません</p>' +
+      papers(v) + /* 説明の文は消した（2026-11-28） */
       '<div class="btnrow"><button class="btn ghost" data-act="tochange">組番を変える</button><button class="btn ghost" data-act="tobuy"' + (bl > 0 ? '' : ' disabled') + '>BPT で票を足す' + (S.bpt ? '<small>あと ' + bl + ' 票</small>' : '') + '</button></div>');
   }
   function vRace() {
-    return scr('b-race', testTag(S.race) + '<h1>テレビでレース中</h1><p class="sub">' + (S.pend ? '投票が届いたか確かめています…' : '結果はテレビとこの画面に出ます') + '</p>' + papers(myVote()) + watchBtn(S.race));
+    return scr('b-race', testTag(S.race) + '<h1>テレビでレース中</h1>' + (S.pend ? '<p class="sub">投票が届いたか確かめています…</p>' : '') + '' + papers(myVote()) + watchBtn(S.race));
   }
   /* 「▶ レースを見る」（2026-11-23 オーナー「ボートにも入れる」。競馬のスマホ v2/bet.js の watchBtn・openWatch・closeWatch・BETWATCH と同じ作り）:
      このスマホに票があるレースの、レース中の画面にだけ出す（取り消したレースには出さない）。押すとこのページの上に窓を開き、v2/boat-watch.html（テレビと同じ映像・図。音なし）を出す。
@@ -432,7 +432,7 @@
   function watchBtn(r) {
     if (!myVote() || !r || r.refunded === true || r.status === 'void') return '';
     if (!watchOk()) return '<button class="btn ghost watchbtn" disabled aria-disabled="true">観戦は休止中です<small>混み合っているため</small></button>';
-    return '<button class="btn ghost watchbtn" data-act="watch"><span aria-hidden="true">▶ </span>レースを見る<small>テレビと同じ画面</small></button>';
+    return '<button class="btn ghost watchbtn" data-act="watch"><span aria-hidden="true">▶ </span>レースを見る</button>'; /* 2026-11-28 オーナー「無駄に説明多い」: 消した */
   }
   const WATCH_CSS = '#watchOv{position:fixed;inset:0;z-index:100;background:#0b101b}#watchOv iframe{position:absolute;top:0;bottom:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:100%;border:0;display:block;background:#0b101b}html.watching,html.watching body{overflow:hidden}';
   function openWatch() {
@@ -494,9 +494,9 @@
     /* 2026-11-21 H7: 上限で 1 BPT も増えなかったときは「おめでとう ＋0」と出さず「的中しましたが、上限 3,000 BPT のため BPT は増えません」。読み直す前で上限に届くかもしれないときは額を「…」 */
     const zero = !!(cp && cp.capped && cp.real === 0);
     const gainH = zero ? '<p class="hitmsg">的中しました</p><div class="gain zero"><em>BPT が上限に達しているため増えません</em></div>'
-      : '<p class="hitmsg">的中ベットがありました。<br>おめでとうございます！</p><div class="gain">＋<b>' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x ? x.won : 0)) + '</b><small>BPT</small>' + (cp && cp.capped ? '<em>上限で止まりました</em>' : '') + '</div>'; // x ? : 投票していない人（x が無い）の結果の画面でここが落ちて、締切後の画面のまま止まっていた（2026-11-23 見つけて直した）
+      : '<p class="hitmsg">的中しました</p><div class="gain">＋<b>' + (cp && cp.real == null ? '…' : amt(cp && cp.real != null ? cp.real : x ? x.won : 0)) + '</b><small>BPT</small>' + (cp && cp.capped ? '<em>上限で止まりました</em>' : '') + '</div>'; // x ? : 投票していない人（x が無い）の結果の画面でここが落ちて、締切後の画面のまま止まっていた（2026-11-23 見つけて直した）
     if (won) return scr('b-result win', tag + gainH + resLine(res) + incLine + capLine + papers(v) +
-      '<p class="bnote">BPT 残り <b>' + (fresh ? amt(S.bpt.bal) : '…') + '</b><span class="bn2"><br>この BPT で競馬の票を増やせます（100 BPT で 1 票）</span></p><a class="btn tokeiba" href="' + kHref() + '">競馬の投票へ（BPT で票を増やす）' + (kp ? '<small class="kn">' + kp.h + kp.s + '</small>' : '') + '</a>' + next);
+      '<p class="bnote">BPT 残り <b>' + (fresh ? amt(S.bpt.bal) : '…') + '</b></p><a class="btn tokeiba" href="' + kHref() + '">競馬の投票へ（BPT で票を増やす）' + (kp ? '<small class="kn">' + kp.h + kp.s + '</small>' : '') + '</a>' + next);
     const lead = !v ? '' : x && x.hit > 0 && res.noPay === true ? '的中（このレースは払い戻しなし）' : bk && bk.n && !(bk.bpt > 0) && v.won != null ? '返還（BPT が上限に達しているため増えません）' : bk && bk.n ? '返還 ＋' + amt(bk.bpt) + ' BPT' + (fresh ? '（BPT 残り ' + amt(S.bpt.bal) + '）' : '') : bk && bk.free && !v.n ? '無料の票は返還（はずれではありません）' : '今回ははずれ';
     return scr('b-result lose', tag + '<h1>結果</h1>' + resLine(res) + incLine + capLine + (v ? papers(v) + '<p class="lead">' + lead + '</p>' : '') + nextB() + keibaLine() + aftLine()); // 2026-11-23: はずれ・投票していない人にも「競馬の投票へ」をいつも（次のボート → 次の競馬と入口 → このあと。待ち・締切後の画面と同じ並び）
   }
@@ -593,6 +593,15 @@
     const over = () => m.scrollHeight > m.clientHeight + 1 || Array.prototype.some.call(m.querySelectorAll('.fx:not([data-long])'), (f) => f.scrollHeight > f.clientHeight + 1 && f.clientHeight < 40);
     app.classList.remove('os-t', 'os-s', 'os-xs');
     ['os-t', 'os-s', 'os-xs'].forEach((c) => { if (over()) app.classList.add(c); }); // 中身の送りの棒は幅を取らない（boat-bet.css で消してある）ので、詰めても幅は変わらない
+    markMore(m);
+  }
+  /* 2026-11-28 オーナー「文字被ってたり」: 中だけ動く欄（券・スタンプなど）が入りきらないと、次の券やカードが欄の下で途中まで見えて、ボタンや字に重なって見えた
+     → 入りきらない欄に .more を付け、下の端をうすく消す（続きがあると分かる・切れて見えない）。いちばん下まで動かしたら消す */
+  function markMore(m) {
+    Array.prototype.forEach.call((m || document).querySelectorAll('.fx'), (f) => {
+      const upd = () => { const more = f.scrollHeight > f.clientHeight + 2; f.classList.toggle('more', more); f.classList.toggle('end', more && f.scrollTop + f.clientHeight >= f.scrollHeight - 4); };
+      upd(); if (!f.__mm) { f.__mm = 1; f.addEventListener('scroll', upd, { passive: true }); }
+    });
   }
 
   /* ---------- 通信 ---------- */
