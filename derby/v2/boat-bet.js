@@ -93,6 +93,29 @@
     e.classList.toggle('act', !!o.btn); e.classList.remove('hidden'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hidden'), o.ms || 2600);
   }
 
+  /* ---------- 動き（2026-11-28 オーナー「お客さんの投票画面にワクワクするアニメーションを」。言葉と見た目は v2/bet.css のいちばん下の「動き」の段 ＝ 競馬と同じ） ----------
+     画面は作り直して描く（innerHTML）ので、動きは「合図」で出す: 押した所・届いた所で mv('名前') → 次に描いた画面の根（.scr）に mv-名前 が付く（CSS がその中の部品を動かす）。
+     合図は MVMS の長さだけ生きていて、途中で描き直しても続きから（--mv-名前 に進んだ時間をマイナスで入れる ＝ animation-delay）。動きの終わりは待たない（押す・送る・読むは今までどおり。通信も増やさない）。
+     鼓動: 残り 30 秒からの残り時間（data-bt）。当たりの光と数え上がりは v2/ticket.js の BetFx。transform と opacity だけ・音と振動なし・「視差効果を減らす」の端末は CSS で止める */
+  const mvT = {}, MVMS = { p1: 400, p2: 400, set: 700, add: 450, qty: 300, print: 1600, win: 2600, lose: 1400, bpt: 900 };
+  const mv = (k, x) => { mvT[k] = { t: performance.now(), x }; };
+  function mvMark(root) {
+    const n = performance.now();
+    for (const k in mvT) { const d = n - mvT[k].t; if (d > MVMS[k]) { delete mvT[k]; continue; } root.classList.add('mv-' + k); root.style.setProperty('--mv-' + k, -Math.round(d) + 'ms'); }
+  }
+  const btOf = (ms) => { const s = Math.ceil(ms / 1000); return ms > 0 && s <= 30 ? (s <= 10 ? 'b' : 'a') + (s & 1) : ''; };
+  const btA = (ms) => { const k = btOf(ms); return k ? ' data-bt="' + k + '"' : ''; };
+  const beat = (e, ms) => { const k = btOf(ms); if (k) { if (e.dataset.bt !== k) e.dataset.bt = k; } else if (e.dataset.bt) delete e.dataset.bt; };
+  let drawnKey = '', fxFor = '', fxDue = '', balShown = null; // 前に描いた画面／当たり・はずれの動きを出したレース／窓を閉じたら出す動き／前に見せた BPT の数
+  function mvMore(root) { // 描いたあと: えらんだ票の札・BPT の数が変わった・当たり（光と数え上がり）
+    const n = performance.now(), bb = root.querySelector('.bptcard .bh b, .bnote b');
+    if (mvT.add) { const c = root.querySelectorAll('.cartl .cc')[mvT.add.x]; if (c) { c.classList.add('mv-chip'); c.style.setProperty('--mvd', -Math.round(n - mvT.add.t) + 'ms'); } }
+    if (bb && S.bpt && /\d/.test(bb.textContent)) { const bal = S.bpt.bal || 0; if (balShown != null && bal !== balShown && !mvT.bpt) { mv('bpt', balShown); mvMark(root); } balShown = bal; }
+    const FX = window.BetFx; if (!FX) return;
+    if (mvT.win) { FX.burst(mvT.win.t); FX.count(root.querySelector('.gain b'), mvT.win.t, 900); }
+    if (mvT.bpt && bb) FX.count(bb, mvT.bpt.t, 700, mvT.bpt.x);
+  }
+
   /* ---------- 競馬とつなぐ（2026-11-23 オーナー決定「次は競馬なんだ、次はボートなんだ、が全部分かるように」「受付開始まで何分とかも全部表示」。絵は ref/boat/つなぐ設計案_2026-11-23.jpg の④） ----------
      待ち・締切後・結果の画面に:「次の競馬 17:00（投票は 16:57 から）」＋［競馬の投票へ］（いつも）／「このあと 15:30 ボート・17:00 競馬」（ボートと競馬を時刻順に 3 件まで）／次のボートの「受付開始まで あと ○:○○」
      競馬の時刻は競馬の状態（C.state()）から。見張らない。読むのは上の画面に切り替わったときだけ・1 回読んだら 10 分は覚える（60 秒より短い間では読み直さない。開きっぱなしのスマホは画面が替わるまで読まない）。
@@ -153,8 +176,8 @@
     const one = (h) => { if (box.innerHTML !== h) box.innerHTML = h; };
     /* 2026-11-23 残り時間の言い方を競馬とボートでそろえた（ref/boat/つなぐ設計案_2026-11-23.jpg）: 待ち「受付開始まで あと」→ 投票中「締切まで あと」→ 締切後「まもなく発走」。前は「投票まで」「始まりまで あと」「締切まで」 */
     if (!r || st === 'over' || st === 'none') { const n = nextR(); return one(n ? '<span>次 <b>' + hm(n.at) + '</b></span>' : ''); }
-    if (st === 'wait') return one('<span>受付開始まで あと <b>' + left(r.openAt - t) + '</b></span>');
-    if (st === 'vote') return one('<span class="' + (r.closeAt - t <= 30000 ? 'hot' : '') + '">締切まで あと <b>' + left(r.closeAt - t) + '</b></span>');
+    if (st === 'wait') return one('<span>受付開始まで あと <b' + btA(r.openAt - t) + '>' + left(r.openAt - t) + '</b></span>');
+    if (st === 'vote') return one('<span class="' + (r.closeAt - t <= 30000 ? 'hot' : '') + '">締切まで あと <b' + btA(r.closeAt - t) + '>' + left(r.closeAt - t) + '</b></span>');
     if (st === 'closed') return one('<span class="hot">まもなく発走</span>'); // 締切のあと、映像が始まる（runAt）まで
     if (st === 'film') return one('<span class="hot">レース中</span>');
     if (st === 'result') return one('<span>結果</span>');
@@ -224,7 +247,9 @@
     const k1 = S.f, step = k1 == null ? 1 : S.s == null ? 2 : 0;
     const rows = boats().map((b, i) => {
       const is1 = S.f === i, is2 = S.s === i, o = k1 != null && !is1 ? odds(k1 + '-' + i) : null;
-      const sub = [b.cls, condOf(i), TYPES[b.type] || '', (b.past || []).length ? '近走 ' + (b.past || []).slice(0, 3).join('-') : ''].filter(Boolean).map((x) => '<span class="nw">' + esc(x) + '</span>').join('<i>・</i>');
+      /* 2026-11-28 採点「級・調子・得意・近走が小さい」: 字を 1.2 倍に。級・調子・得意を 1 行目、近走を 2 行目に分けて、いつも 2 行（前は長い得意の艇だけ 3 行に折れていた＝行の高さは増えない） */
+      const kin = (b.past || []).length ? '<span class="nw kin">近走 ' + esc((b.past || []).slice(0, 3).join('-')) + '</span>' : '';
+      const sub = [b.cls, condOf(i), TYPES[b.type] || ''].filter(Boolean).map((x) => '<span class="nw">' + esc(x) + '</span>').join('<i>・</i>') + kin;
       return '<div class="btr' + (is1 ? ' s1' : '') + (is2 ? ' s2' : '') + '" role="row">' + waku(i, 'lg') + '<span class="bn"><b>' + esc(b.name) + '</b><small>' + sub + '</small></span>' +
         '<button type="button" class="pk k1' + (is1 ? ' on' : '') + '" data-f="' + i + '" aria-pressed="' + is1 + '">' + (is1 ? '<span class="ck" aria-hidden="true">✓</span><b>1着</b>' : '1着') + '</button>' +
         '<button type="button" class="pk k2' + (is2 ? ' on' : '') + (o != null ? ' od' : '') + '" data-s="' + i + '"' + (k1 == null || is1 ? ' disabled' : '') + ' aria-pressed="' + is2 + '">' + (is2 ? '<span class="ck" aria-hidden="true">✓</span>' : '') + (o != null ? '<b>' + o + '</b><i>倍</i>' : is1 ? '<small>1着</small>' : '2着') + '</button></div>';
@@ -290,7 +315,7 @@
   }
   function cartLine() { // えらんだ券（下の帯の上に 1 行・押すと消せる）
     if (!S.cart.length) return '';
-    return '<div class="cartl" data-scrollarea>' + S.cart.map((x, i) => { const p = x.k.split('-').map(Number); return '<button type="button" class="cc" data-del="' + i + '" aria-label="取り消す">' + waku(p[0], 'sm') + '<i>→</i>' + waku(p[1], 'sm') + '<small>' + (x.free ? '無料' : '×' + (x.n || 1)) + '</small><em>×</em></button>'; }).join('') + '</div>';
+    return '<div class="cartl" data-scrollarea><span class="clh">えらんだ票</span>' /* 2026-11-28 採点: 下の「いまの組番」と見分ける見出し（同じ行の頭＝高さは増えない） */ + S.cart.map((x, i) => { const p = x.k.split('-').map(Number); return '<button type="button" class="cc" data-del="' + i + '" aria-label="取り消す">' + waku(p[0], 'sm') + '<i>→</i>' + waku(p[1], 'sm') + '<small>' + (x.free ? '無料' : '×' + (x.n || 1)) + '</small><em>×</em></button>'; }).join('') + '</div>';
   }
 
   /* ---------- 画面 ---------- */
@@ -366,7 +391,7 @@
     const needFree = !hasFree() && !freeInCart(), bl = bptLeft();
     const head = '<div class="pkh2"><h1>' + (change ? '組番を変える（無料の票）' : needFree ? '2連単をえらぶ' : 'BPT で票を追加') + '</h1>' + testTag(S.race) /* 見出しの行の中（高さを増やさない） */ + (change || needFree ? '' :'<span class="bpts">BPT 残り <b>' + (S.bpt ? amt(bptRest()) : '…') + '</b></span>') + '</div>';
     let dock;
-    if (!k) dock = '<p class="pdh">' + (S.f == null ? '1着の艇をえらんでください' : '2着の艇をえらんでください') + '</p>' + (S.cart.length && !change ? '<button class="btn" data-act="confirm">確認へ（' + (cartN() + (freeInCart() ? 1 : 0)) + '件）</button>' : hasFree() ? '<button class="btn ghost" data-act="back">もどる</button>' : '');
+    if (!k) dock = '<p class="pdh">' + (S.f == null ? '1着の艇をえらんでください' : '<span class="pdn">1着 ' + waku(S.f, 'sm') + '</span><i aria-hidden="true">→</i>2着をえらんでください' /* 2026-11-28 採点: 選び終わった 1 着を見せて、次に選ぶ物を言う */) + '</p>' + (S.cart.length && !change ? '<button class="btn" data-act="confirm">確認へ（' + (cartN() + (freeInCart() ? 1 : 0)) + '件）</button>' : hasFree() ? '<button class="btn ghost" data-act="back">もどる</button>' : '');
     else {
       const o = odds(k), q = Math.max(1, Math.min(S.qty || 1, Math.max(1, bl))), n = change || needFree ? 1 : q;
       /* 当たれば増える BPT は 3,000 までの空きで（2026-11-21 H7）: 空き ＝ 3,000 −（この券まで買ったあとの残り）。空きが足りないときは「上限」と分かる文 */
@@ -387,9 +412,11 @@
       (S.pend ? '<p class="sub" role="status" data-wrap>投票が届いたか確かめています…（電波が戻ると自動で確かめます）</p>' : '<p class="sub">オッズは締切のあとに少し変わることがあります</p>') + (S.err ? '<p class="err" data-wrap>' + esc(S.err) + '</p>' : '') +
       '<div class="btnrow"><button class="btn ghost" data-act="fix"' + (lock ? ' disabled' : '') + '>投票内容を修正する</button><button class="btn" data-act="vote"' + (lock ? ' disabled' : '') + '>' + (S.busy ? '送信中…' : S.pend ? '確かめ中…' : '投票する') + '</button></div>');
   }
+  /* 投票結果の要約の 1 行（2026-11-28 採点「券が並ぶと、何件・いくら分か一目で分からない」）: 無料の票 1 ＋ BPT の票（v.n）。BPT の票が無いときは件数だけ。幅に入らないときは字を縮め（data-fit ＝ v2/ticket.js の BetTicketFit）、11px でも入らない細い欄（横向きで票が多いとき）だけ 2 行に折る（data-wrap） */
+  function vsum(v) { if (!v) return ''; const n = Number(v.n) || 0; return '<p class="vsum" data-fit="11" data-wrap>投票 <b>' + (1 + n) + '</b> 件' + (n ? '（無料 1・BPT ' + n + '）・合計 <b>' + amt(n * 100) + '</b> BPT' : '（無料）') + '</p>'; }
   function vVoted() {
     const r = S.race, t = now(), v = myVote(), bl = S.bpt ? Math.floor((S.bpt.bal || 0) / 100) : 0;
-    return scr('b-voted', '<div class="vhead"><h1 class="done-h">' + (S.thanks ? '投票結果' : '投票済み') + '</h1>' + testTag(r) /* 見出しの行の中（高さを増やさない） */ + '<span class="cd">締切まで あと <b' + cd(r.closeAt, t) + '</b></span></div>' + (S.thanks ? '<p class="thx">ご投票ありがとうございました。</p>' : '') +
+    return scr('b-voted', '<div class="vhead"><h1 class="done-h">' + (S.thanks ? '投票結果' : '投票済み') + '</h1>' + testTag(r) /* 見出しの行の中（高さを増やさない） */ + '<span class="cd">締切まで あと <b' + cd(r.closeAt, t) + '</b></span></div>' + (S.thanks ? '<p class="thx">ご投票ありがとうございました。</p>' : '') + vsum(v) +
       papers(v) + '<p class="sub">締切までは無料の票の組番を変えられます。BPT の票は足せますが、消せません</p>' +
       '<div class="btnrow"><button class="btn ghost" data-act="tochange">組番を変える</button><button class="btn ghost" data-act="tobuy"' + (bl > 0 ? '' : ' disabled') + '>BPT で票を足す' + (S.bpt ? '<small>あと ' + bl + ' 票</small>' : '') + '</button></div>');
   }
@@ -425,6 +452,7 @@
     try { if (fr) fr.src = 'about:blank'; } catch (e) { /* noop */ }
     ov.remove(); document.documentElement.classList.remove('watching');
     if (!fromPop) { try { if (history.state && history.state.boatWatch) history.back(); } catch (e) { /* noop */ } }
+    if (fxDue) { if (S.screen === 'result') mv(fxDue); fxDue = ''; } // 動き: 窓を見ている間に結果が出ていたら、戻ったときに当たり／はずれの動き
     lastKey = ''; draw();
   }
   window.addEventListener('popstate', () => { if ($('watchOv')) closeWatch(true); });
@@ -537,7 +565,7 @@
     const html = (VIEW[sc] || vWait)(), key = cdKey(html), m = $('main');
     chip(); armEdge();
     if (key === lastKey) { // 中身は同じ: 残りの時間だけ
-      const t = now(); Array.prototype.forEach.call(m.querySelectorAll('[data-cd]'), (e) => { const x = left(Number(e.dataset.cd) - t); if (e.textContent !== x) e.textContent = x; });
+      const t = now(); Array.prototype.forEach.call(m.querySelectorAll('[data-cd]'), (e) => { const x = left(Number(e.dataset.cd) - t); if (e.textContent !== x) e.textContent = x; beat(e, Number(e.dataset.cd) - t); });
       return;
     }
     if (sc === 'nick' && document.activeElement && document.activeElement.id === 'nk') return; // 入力中は書き換えない
@@ -547,6 +575,12 @@
     $('app').classList.remove('booting');
     fitLevel();
     if (window.BetTicketFit) { try { BetTicketFit(m); } catch (e) { /* 字の大きさの合わせだけ */ } } // 確定のあとの舟券（v2/ticket.js の道具）
+    /* 動き（2026-11-28）: 画面が替わったときだけ「入り」（.in。あそびかたは 1 枚めくるごと）・結果が出たら当たり／はずれ（レースごとに 1 回）・合図の印・残り時間の鼓動 */
+    const f0 = m.firstElementChild, dk = sc === 'intro' ? 'intro' + (S.introPage || 0) : sc; if (!f0) return;
+    if (dk !== drawnKey) { if (drawnKey) f0.classList.add('in', 'mv-in'); drawnKey = dk; } // ここは fitLevel（1 画面の詰め）を測ったあと: 動きの始まりのずれを「入らない」と測らない
+    if (sc === 'result' && S.race && S.race.result && fxFor !== S.race.id) { fxFor = S.race.id; if (myVote()) { const x = resOf(myVote(), S.race), k = x && x.won > 0 ? 'win' : 'lose'; if ($('watchOv') || document.hidden) fxDue = k; else mv(k); } } // 「レースを見る」の窓が上にある間は出さない（閉じたときに出す＝closeWatch）
+    mvMark(f0); mvMore(f0);
+    { const t = now(); Array.prototype.forEach.call(m.querySelectorAll('[data-cd]'), (e) => beat(e, Number(e.dataset.cd) - t)); }
   }
   // 場面の変わり目（投票の始まり・締切・映像・発表・終わり）ちょうどに描き直す（1 秒ごとの描き直しを待たない。2026-11-20 B3: 締切のあと 1 秒ほど「投票する」が押せた）
   function armEdge() {
@@ -771,6 +805,7 @@
     minusCart(ctx.sent); saveCart(); // 送った券だけカートから消す
     S.f = S.s = null; S.mode = 'buy'; S.qty = 1; S.err = '';
     if (ctx.kind === 'change') toast('組番を変えました'); else S.thanks = true;
+    mv('print'); // 動き: 舟券が刷られて出る
     S.screen = 'voted';
   }
   function sendFail(ctx, e) {
@@ -880,8 +915,8 @@
     if (MOVE.indexOf(a) >= 0 || b.dataset.del != null) holdTaps(); // カートの「×」も（2026-11-21 L4: 早押しで、詰まって同じ場所に来た次の券まで消えていた）
     const edit = b.dataset.f != null || b.dataset.s != null || b.dataset.del != null || ['add', 'qm', 'qp', 'q10', 'confirm', 'fix', 'vote', 'tochange', 'tobuy', 'back', 'change'].indexOf(a) >= 0;
     if ((S.busy || S.pend) && edit) return; // 送信中・届いたか確かめ中は券を動かさない（入れた券が黙って消えない。B4）
-    if (b.dataset.f != null) { const i = Number(b.dataset.f); S.f = S.f === i ? null : i; if (S.s === S.f) S.s = null; S.qty = 1; S.err = ''; return draw(); } // 組番を選び直したら枚数は 1 に戻す（B6）
-    if (b.dataset.s != null) { const i = Number(b.dataset.s); S.s = S.s === i ? null : i; S.qty = 1; S.err = ''; return draw(); }
+    if (b.dataset.f != null) { const i = Number(b.dataset.f); S.f = S.f === i ? null : i; if (S.s === S.f) S.s = null; S.qty = 1; S.err = ''; if (S.f != null) { mv('p1'); if (S.s != null) mv('set'); } return draw(); } // 組番を選び直したら枚数は 1 に戻す（B6）
+    if (b.dataset.s != null) { const i = Number(b.dataset.s); S.s = S.s === i ? null : i; S.qty = 1; S.err = ''; if (S.s != null) { mv('p2'); mv('set'); } return draw(); }
     if (b.dataset.del != null) { S.cart.splice(Number(b.dataset.del), 1); const k = fixFree(); saveCart(); if (k) toast('無料の票を ' + comboTx(k) + ' にしました'); if (!S.cart.length && S.screen === 'confirm') S.screen = 'pick'; return draw(); }
     if (a === 'introNext' || a === 'introPrev') { if (tn - introAt < 300) return; introAt = tn; S.introPage = Math.max(0, Math.min(INTRO.length - 1, (S.introPage || 0) + (a === 'introNext' ? 1 : -1))); return draw(); }
     if (a === 'intro') { if (tn - introAt < 300) return; introAt = tn; tapLock = tn + 300; const again = S.introAgain; if (!again) ls.set('casa.boat.intro', '1'); lastKey = ''; S.introPage = 0; S.introAgain = false; S.screen = again ? '' : 'pick'; return draw(); }
@@ -893,12 +928,13 @@
     if (a === 'add') {
       if (S.f == null || S.s == null) return;
       const k = S.f + '-' + S.s;
+      let ai = 0; // 動き: いま入った札の場所
       if (!hasFree() && !freeInCart()) S.cart.unshift({ k, free: true });
-      else if (bptLeft() > 0) { const q = Math.max(1, Math.min(S.qty || 1, bptLeft())), have = S.cart.find((x) => !x.free && x.k === k); if (have) have.n = (have.n || 1) + q; else S.cart.push({ k, free: false, n: q }); }
+      else if (bptLeft() > 0) { const q = Math.max(1, Math.min(S.qty || 1, bptLeft())), have = S.cart.find((x) => !x.free && x.k === k); if (have) have.n = (have.n || 1) + q; else S.cart.push({ k, free: false, n: q }); ai = have ? S.cart.indexOf(have) : S.cart.length - 1; }
       else { toast(S.bpt ? 'BPT が足りません' : 'BPT を確かめています…'); return; }
-      S.f = S.s = null; S.qty = 1; saveCart(); return draw();
+      S.f = S.s = null; S.qty = 1; saveCart(); mv('add', ai); return draw();
     }
-    if (a === 'qm' || a === 'qp' || a === 'q10') { const L = bptLeft(); S.qty = Math.max(1, Math.min(L, (S.qty || 1) + (a === 'qm' ? -1 : a === 'qp' ? 1 : 10))); return draw(); }
+    if (a === 'qm' || a === 'qp' || a === 'q10') { const L = bptLeft(); S.qty = Math.max(1, Math.min(L, (S.qty || 1) + (a === 'qm' ? -1 : a === 'qp' ? 1 : 10))); mv('qty'); return draw(); }
     if (a === 'confirm') { if (!S.cart.length) return; if (fixFree()) saveCart(); S.err = ''; S.screen = 'confirm'; return draw(); }
     if (a === 'fix') { S.qty = 1; S.screen = 'pick'; return draw(); }
     if (a === 'vote') return send('vote');
@@ -953,10 +989,11 @@
     document.addEventListener('visibilitychange', () => {
       clearTimeout(hideT);
       if (document.hidden) { hideT = setTimeout(stopWatch, 60000); return; }
+      if (fxDue && !$('watchOv')) { if (S.screen === 'result') mv(fxDue); fxDue = ''; lastKey = ''; draw(); } // 動き: 画面を消している間に結果が出ていたら、戻ったときに当たり／はずれの動き
       startWatch(); resync();
     });
     addEventListener('pageshow', (ev) => { if (ev.persisted) { stopWatch(); startWatch(); resync(); } }); // 競馬のページから「戻る」で戻った
     addEventListener('storage', (ev) => { if (ev.key && ev.key.indexOf(VKEY) === 0) draw(); }); // ほかのタブで競馬に投票した（F10）
   })();
-  window.BOATBET = { S, C, draw, dropKey, loadBpt /* 確かめ用（J13） */, cleanNick /* 確かめ用（H10） */, get screen() { return S.screen; } }; // 確かめ用（tests/boat-phone.plan.js・tests/boat-phone-bugs.plan.js。dropKey: 覚えた合言葉を忘れさせる）
+  window.BOATBET = { S, C, draw, mv /* 確かめ用（動きの合図を出して、連続写真で見る） */, dropKey, loadBpt /* 確かめ用（J13） */, cleanNick /* 確かめ用（H10） */, get screen() { return S.screen; } }; // 確かめ用（tests/boat-phone.plan.js・tests/boat-phone-bugs.plan.js。dropKey: 覚えた合言葉を忘れさせる）
 })();
