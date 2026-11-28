@@ -116,3 +116,28 @@ html.watch .mine .mk .vn.ms { border-color: #8a93a6; color: #c3c9d6; }
 .mine.tk.cmp.hit .tkt { box-shadow: 0 0 0 1.5px var(--gold2), 0 6px 16px rgba(0, 0, 0, .4); }
 
 html.watch .mine.tk .tk-amt .pt { color: var(--tk-ink); } /* 見るだけの窓でも pt は紺 1 色（watch.css の .pt の金を受けない） */
+
+/* ---------- 2026-11-28 動き（言葉は v2/bet.css のいちばん下の「動き」の段。スマホの投票ページだけ ＝ .scr に mv-名前 が付いたときだけ。「レースを見る」の窓では動かない） ----------
+   刷られた（投票が通った・組番を変えた）: 券が上から刷られて出る → 紙の上を光が走る → 「当たれば」の額がはずむ。2 枚目は少し遅れて
+   当たり（v2/ticket.js の BetFx）: 画面の上に光の筋と紙吹雪（2.4 秒で消える・押す物の邪魔をしない）／額の数え上がり（字の場所は取ったまま、見える数字だけ上がる）
+   動かすのは transform と opacity だけ。「視差効果を減らす」の端末では出さない */
+@keyframes tkPrint { 0% { opacity: 0; transform: translateY(-26px) scaleY(.8); } 55% { opacity: 1; transform: translateY(3px) scaleY(1.01); } 100% { opacity: 1; transform: none; } }
+@keyframes tkSheen { from { transform: translateX(-130%); } to { transform: translateX(330%); } }
+@keyframes tkAmt { 0% { transform: scale(1); } 45% { transform: scale(1.16); } 100% { transform: none; } }
+.mv-print .mine.tk .tkt { transform-origin: 50% 0; animation: tkPrint .5s cubic-bezier(.2, .9, .3, 1.1) var(--mv-print, 0s) backwards; }
+.mv-print .mine.tk ~ .mine.tk .tkt { animation-delay: calc(var(--mv-print, 0s) + .12s); }
+.mv-print .mine.tk .tkt::after { content: ""; position: absolute; z-index: 3; top: 0; bottom: 0; left: 0; width: 34%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .8), transparent); transform: translateX(-130%); animation: tkSheen .7s ease-out calc(var(--mv-print, 0s) + .42s) backwards; pointer-events: none; }
+.mv-print .mine.tk ~ .mine.tk .tkt::after { animation-delay: calc(var(--mv-print, 0s) + .54s); }
+.mv-print .tk-pts .tk-amt { transform-origin: 100% 60%; animation: tkAmt .34s ease-out calc(var(--mv-print, 0s) + .85s) backwards; }
+.mv-print .done-h i { animation: tkAmt .4s ease-out calc(var(--mv-print, 0s) + .1s) backwards; }
+/* 当たり: 光の筋と紙吹雪 */
+.tkfx { position: fixed; z-index: 70; inset: 0; overflow: hidden; pointer-events: none; }
+.tkfx .ry { position: absolute; left: 50%; top: 30%; width: 100vmin; height: 100vmin; margin: -50vmin 0 0 -50vmin; border-radius: 50%; background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, .45) 0deg 7deg, rgba(255, 255, 255, 0) 7deg 20deg); will-change: transform, opacity; animation: tkRays 2.2s ease-out both; }
+.tkfx .cf { position: absolute; top: -18px; left: var(--x); width: 9px; height: 14px; border-radius: 2px; background: var(--c); will-change: transform; animation: tkFall var(--t) cubic-bezier(.25, .5, .5, 1) var(--d) both; }
+.tkfx .cf:nth-child(3n) { width: 11px; height: 11px; border-radius: 50%; }
+@keyframes tkRays { 0% { opacity: 0; transform: scale(.5) rotate(0deg); } 14% { opacity: 1; } 60% { opacity: .75; } 100% { opacity: 0; transform: scale(2.6) rotate(48deg); } }
+@keyframes tkFall { 0% { opacity: 1; transform: translate3d(0, -4vh, 0) rotate(0deg); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate3d(var(--dx), 104vh, 0) rotate(var(--r)); } }
+/* 数え上がり: 本当の数字（字の場所）はそのまま透明にして、見える数字だけ上に重ねる */
+.tkn { position: relative; display: inline-block; font-style: normal; color: transparent !important; -webkit-text-fill-color: transparent; text-shadow: none !important; }
+.tkn::after { content: attr(data-n); position: absolute; left: -1em; right: -1em; top: 0; text-align: center; color: var(--tkc); -webkit-text-fill-color: var(--tkc); }
+@media (prefers-reduced-motion: reduce) { .mv-print .mine.tk .tkt, .mv-print .mine.tk .tkt::after, .mv-print .tk-amt, .mv-print .done-h i { animation: none !important; } .tkfx { display: none; } }
