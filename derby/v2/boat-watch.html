@@ -13,7 +13,7 @@
      映像は店のテレビと同じ部品（boat/race-boat.js の BOAT.Race）を、押して開いたあとに読む。音の部品（boat/sound.js ほか）は読まない＝スマホは無音 -->
 <link rel="icon" href="../art/logo-3d/B/icon-3d-B.svg" type="image/svg+xml">
 <link rel="stylesheet" href="watch.css?v=w5">
-<link rel="stylesheet" href="boat-watch.css?v=bw1">
+<link rel="stylesheet" href="boat-watch.css?v=bw7">
 <script>/* 1 画面の高さ（v2/boat.html・bet.html と同じ）: iOS 26 の Safari は下の浮いたバーの分を --sbar として空ける。確かめ用: window.__sbarForce = true */
 (function () {
   var d = document.documentElement;
@@ -33,7 +33,7 @@
   }
   f(); window.__casaVH = f; window.addEventListener('resize', f); window.addEventListener('orientationchange', function () { setTimeout(f, 300); });
 })();</script>
-<script src="config.js?v=v4p3"></script>
+<script src="config.js?v=v4p"></script>
 </head>
 <body>
 <!-- 映像の枠（位置と大きさは boat-watch.js の fit が --wx・--wy・--ww・--wh・--ws に入れる）。中の絵は 1000×480 で描いて全体を縮める（テレビのページと同じ考え方） -->
@@ -58,7 +58,7 @@
 <script>/* 画面のスクリプト。版の印は、窓を開いた投票ページ（v2/boat.html）がもう読んだものと同じにする（同じファイルを 2 回読まない）。直接開いたときは下の印。
    公開のたびに V（ボートのファイル）を上げる。DV は競馬と共通のファイル（core.js・client.js）の印で、v2/boat.html の DV と同じにする。実行は入れた順（async=false） */
 (function () {
-  var V = '?v=bw6', DV = '?v=v4q46', BV = '?v=b15', h = document.head, P = null, PW = null;
+  var V = '?v=bw1', DV = '?v=v4q29', BV = '?v=b5', h = document.head, P = null, PW = null;
   try { if (window.parent && window.parent !== window && window.parent.BOATWATCH) { PW = window.parent; P = PW.document; } } catch (e) { P = null; PW = null; }
   function from(name, dflt) { // 投票ページが読んだ住所（あれば）。name はファイルの名前そのもの（'core.js' は boat-core.js に当たらない）
     try { var L = P ? P.querySelectorAll('script[src]') : [], re = new RegExp('/' + name.replace(/\./g, '\\.') + '(\\?|$)'); for (var i = 0; i < L.length; i++) { if (re.test(L[i].src || '')) return L[i].src; } } catch (e) { /* 下へ */ }
