@@ -115,7 +115,7 @@
           '<div class="tk-stub"><span class="tk-who"><span class="nw">' + esc(TX.billHead) + ' <b>' + esc(v.bill) + '</b></span>' + (who ? ' <span class="nw tk-nick" data-fit="9">' + esc(v.nick) + '</span>' : '') + '</span>' + (issued ? '<span class="tk-iss">発行 ' + esc(hhmm(issued)) + '</span>' : '') + '</div>' +
           '<div class="tk-ser" aria-hidden="true">' + esc(ser) + '</div>' +
         '</div></div>' +
-        (o && !closed && !cmp && shiftOn() ? '<p class="tk-note">倍率と当たりの額は、締切まで動きます</p>' : '') + '</div>';
+        '' /* 2026-11-28 オーナー「無駄に説明多い」: 消した */ + '</div>';
     }
     return ticketCard(r, v, n, who, res); // 会計番号は 2 枚とも出す（券ごとに 1 枚で分かるように）
   };
