@@ -21,17 +21,17 @@
   const left = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return (s >= 3600 ? Math.floor(s / 3600) + ':' + p2(Math.floor(s / 60) % 60) : Math.floor(s / 60)) + ':' + p2(s % 60); }; // bet.js の残り時間と同じ形（1 秒ごとの書き換えは bet.js の data-cd）
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* 覚えられない端末は毎回読む */ } };
 
-  /* 見た目（このファイルが届いたときに 1 回だけ足す）。色はボートの水色（bet.css の .bptrow と同じ系統）。入らない画面だけ詰める（下の .os-s〜.os-xx） */
+  /* 見た目（このファイルが届いたときに 1 回だけ足す）。色はボートの青（bet.css の .bptrow と同じ系統。2026-11-28 明るい見た目: 白〜水色の板に紺の字）。入らない画面だけ詰める（下の .os-s〜.os-xx） */
   const st = document.createElement('style'); st.id = 'bbCss';
-  st.textContent = '.bbc{flex:none;display:flex;flex-direction:column;gap:5px;padding:10px 14px;border-radius:14px;border:1.5px solid #4fb0e2;background:linear-gradient(135deg,#12365a,#0d1f36);text-align:left;line-height:1.3}' +
+  st.textContent = '.bbc{flex:none;display:flex;flex-direction:column;gap:5px;padding:10px 14px;border-radius:14px;border:1.5px solid #1668d8;background:linear-gradient(180deg,#f1f8ff,#d6ebff);box-shadow:0 0 0 1.5px #1668d8,0 4px 0 rgba(0,0,0,.16);text-align:left;line-height:1.3}' +
     '.bbc p{margin:0}.bbc .bb1{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 10px}' +
-    '.bbc .bbt{font-size:14px;font-weight:700;color:#d8f3ff;white-space:nowrap}.bbc .bbt b{margin-left:2px;font-family:var(--display);font-size:22px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}' +
-    '.bbc .bbcd{margin-left:auto;font-size:11.5px;color:#a9c4dc;white-space:nowrap}.bbc .bbcd b{margin-left:1px;font-family:var(--display);font-size:18px;font-weight:900;color:#d8f3ff;font-variant-numeric:tabular-nums}.bbc .bbcd.hot,.bbc .bbcd.hot b{color:#ffe08a}' +
-    '.bbc .bbh{font-size:12.5px;color:#a9c4dc}' +
-    '.bbc .bb3 .bbid{margin-left:auto;font-size:11.5px;font-weight:600;color:#a9c4dc;white-space:nowrap}' + /* 会員 ID（2026-11-26 LINE ログイン） */
+    '.bbc .bbt{font-size:14px;font-weight:700;color:#0e4f8f;white-space:nowrap}.bbc .bbt b{margin-left:2px;font-family:var(--display);font-size:22px;font-weight:900;color:#06203f;font-variant-numeric:tabular-nums}' +
+    '.bbc .bbcd{margin-left:auto;font-size:11.5px;color:#3d5f86;white-space:nowrap}.bbc .bbcd b{margin-left:1px;font-family:var(--display);font-size:18px;font-weight:900;color:#0e4f8f;font-variant-numeric:tabular-nums}.bbc .bbcd.hot,.bbc .bbcd.hot b{color:#a8360a}' +
+    '.bbc .bbh{font-size:12.5px;color:#3d5f86}' +
+    '.bbc .bb3 .bbid{margin-left:auto;font-size:11.5px;font-weight:600;color:#3d5f86;white-space:nowrap}' + /* 会員 ID（2026-11-26 LINE ログイン） */
     '.bbc .bb3.bbio b{font-size:17px;letter-spacing:.02em}.os-xs .bbc .bb3.bbio b{font-size:16px}' + /* 2026-11-27 総点検: BPT が無いときの ID だけの行は「あなたの ID C-4821」と左から書く（前は右端に小さな ID だけで、空の枠に見えた） */
-    '.bbc .bb3{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px;font-size:13px;font-weight:700;color:#8fdcff}.bbc .bb1~.bb3{padding-top:5px;border-top:1px dashed rgba(143,220,255,.35)}' +
-    '.bbc .bb3 b{margin-left:2px;font-family:var(--display);font-size:21px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}.bbc .bb3 small{font-size:12.5px;font-weight:600;color:#d8f3ff}' +
+    '.bbc .bb3{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px;font-size:13px;font-weight:700;color:#0e5fb0}.bbc .bb1~.bb3{padding-top:5px;border-top:1px dashed rgba(22,104,216,.45)}' +
+    '.bbc .bb3 b{margin-left:2px;font-family:var(--display);font-size:21px;font-weight:900;color:#06203f;font-variant-numeric:tabular-nums}.bbc .bb3 small{font-size:12.5px;font-weight:600;color:#3d5f86}' +
     /* 入らない画面だけ詰める（bet.js の fitLevel）: .os-s 余白 → .os-xs 字を少し小さくして時刻と残り時間を 1 行に → .os-xx（それでも入らないときだけ）説明を省く＝「（テレビの QR から…）」「投票受付中・」「（競馬の票を…）」と、BPT の行があるときのスタンプカードの下の 1 文（数は上に出ている） */
     '.scr.lose>.bbc+.btnrow{margin-top:0}' + /* はずれの結果: 「次のレース」→ この枠 → ボタンを下にまとめる（bet.css の .scr.lose > .nextr + .btnrow と同じ並び） */
     '.os-s .bbc{gap:3px;padding:7px 12px}.os-s .bbc .bb1~.bb3{padding-top:3px}' +
