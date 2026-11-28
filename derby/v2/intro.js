@@ -10,7 +10,7 @@
     s1h: '参加はタダ、当たればチップ', s1p: '参加は無料で 1票 100pt。当たると 100pt × 倍率のチップ（16倍なら 1,600pt）。' /* 2026-11-18 1 画面に入るよう要約（前: 参加は無料、1票は 100pt。当たると 100pt × 倍率のチップ。16倍なら 1,600pt です。） */,
     s2h: '1着と2着を、順番に当てる', s2p: '6頭から、1着と2着になる馬を順番に選びます。',
     s3h: '当たったら、スタッフへ', s3p: 'レースはお店のテレビで。当たったら、この画面をスタッフへ。',
-    twoH: '初めての方は 2票！', twoP: '票が 2 枚。2 通り予想できます（同じ組み合わせも OK）。' /* 2026-11-18 要約（前: 100pt の票が 2 枚。2 通りの予想ができます（同じ組み合わせも OK）。） */,
+    twoH: '初めての方は 2票！', twoP: '2 票あります。2 通り予想できます（同じ組み合わせも OK）。' /* 2026-11-23: 数え方を「枚」→「票」に */ /* 2026-11-18 要約（前: 100pt の票が 2 枚。2 通りの予想ができます（同じ組み合わせも OK）。） */,
     go: 'はじめる', skip: 'この案内は、次からは出ません',
   };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +30,7 @@
   const PIC3 = '<svg viewBox="0 0 92 78" aria-hidden="true">' +
     '<rect x="6" y="6" width="34" height="66" rx="6" class="ink"/><rect x="9" y="11" width="28" height="56" rx="3" class="bg"/>' +
     '<rect x="12" y="24" width="22" height="16" rx="2" class="paper"/><circle cx="23" cy="32" r="6" fill="none" stroke="#c0392b" stroke-width="1.6"/><text x="23" y="34.5" text-anchor="middle" font-size="6" font-weight="900" fill="#c0392b" font-family="inherit">的中</text>' +
-    '<path d="M44 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#ffd773" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M44 40 h10 m-4 -5 l5 5 l-5 5" fill="none" stroke="#ff8a00" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<g transform="translate(74 0)"><circle cx="0" cy="22" r="11" class="cream"/><path d="M-11 22 a11 11 0 0 1 22 0 v-3 a11 11 0 0 0 -22 0z" class="ink"/><path d="M-11 22 a11 11 0 0 1 22 0 l-3 0 a8 8 0 0 0 -16 0z" class="ink"/>' +
     '<path d="M-17 58 a17 17 0 0 1 34 0 v14 h-34z" class="ink"/><path d="M-6 42 l6 6 l6 -6 l-3 -3 h-6z" class="gold"/><path d="M-4 42 h8" stroke="#1a1407" stroke-width="1"/></g>' +
     '</svg>';
